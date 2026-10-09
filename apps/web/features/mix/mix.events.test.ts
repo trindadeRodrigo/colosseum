@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 import type { MixReview } from '@colosseum/schemas';
 import { vaultOf } from '@colosseum/sdk';
-import { createElement, StrictMode } from 'react';
+import { createElement, StrictMode, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
+import { click, find, fire, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
 import { withAccount } from '../account/test/screen';
 import { recallOrder } from '../order/order-record';
@@ -14,7 +14,7 @@ import { VaultConversation } from '../vault-conversation/VaultConversation';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
-import { UseGoalMix } from './UseGoalMix';
+import { CHECK_MS, DepositStep, type Purpose } from './DepositStep';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -150,29 +150,53 @@ const moved = (over: Partial<MixReview> = {}): Partial<MixReview> => ({
 });
 const box = (host: HTMLElement) =>
   find<HTMLInputElement>(host, '[data-ui="mix-review-warnings"] input[type="checkbox"]');
-const chooseGoal = async (host: HTMLElement, goal = 'grow', risk = 'medium') => {
-  for (const [i, value] of [goal, risk].entries()) {
-    const select = host.querySelectorAll('select')[i] as HTMLSelectElement;
-    select.value = value;
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-  }
+const SAID: Purpose = { goal: 'grow', risk: 'medium' };
+/** The deposit step as /goal mounts it: the amount is the host's, so another proposal keeps it. */
+function Deposit({ said, onChangeMix }: { said: Purpose; onChangeMix: () => void }) {
+  const [amountText, setAmountText] = useState('');
+  return createElement(DepositStep, {
+    chain: 'solana',
+    userId,
+    allocations: [
+      { assetId: 'solana:usdc', weightBps: 6000 },
+      { assetId: 'solana:gldx', weightBps: 4000 },
+    ],
+    said,
+    amountText,
+    onAmountText: setAmountText,
+    provenance: 'sandbox',
+    onChangeMix,
+    onClose: () => {},
+  });
+}
+const goalMix = (lang: 'en' | 'pt' = 'en', said: Purpose = SAID, onChangeMix = () => {}) =>
+  mount(withAccount(lang, createElement(Deposit, { said, onChangeMix })));
+const amountBox = (host: HTMLElement) =>
+  find<HTMLInputElement>(host, '[data-ui="amount-large"] input');
+/** Types the amount and waits for the server's check of it to land. */
+const deposit = async (host: HTMLElement, text: string) => {
+  await type(amountBox(host), text);
+  await settle(CHECK_MS + 50);
+};
+const toReview = async (host: HTMLElement) => {
+  await click(find(host, '[data-action="deposit-review"]'));
   await settle();
 };
-const goalMix = (lang: 'en' | 'pt' = 'en') =>
-  mount(
-    withAccount(
-      lang,
-      createElement(UseGoalMix, {
-        chain: 'solana',
-        userId,
-        allocations: [
-          { assetId: 'solana:usdc', weightBps: 6000 },
-          { assetId: 'solana:gldx', weightBps: 4000 },
-        ],
-        onClose: () => {},
-      }),
-    ),
+const openEditor = (host: HTMLElement) => click(find(host, '[data-action="edit-by-hand"]'));
+/** What each row of the read-only mix says in its dollars column, by asset. */
+const amounts = (host: HTMLElement) =>
+  Object.fromEntries(
+    [...host.querySelectorAll('[data-ui="mix-lines"] tbody tr')].map((row) => [
+      row.getAttribute('data-asset'),
+      row.querySelector('[data-ui="mix-line-amount"]')?.textContent,
+    ]),
   );
+
+/** What a review echoes of the request it answers: the amount and the goal it was checked for. */
+const of = (body: { amountUsd: number; goal: MixReview['goal'] }) => ({
+  amountUsd: body.amountUsd,
+  goal: body.goal,
+});
 
 type Call = { url: string; body: Record<string, unknown> };
 beforeEach(() => {
@@ -412,7 +436,7 @@ describe('a vault conversation’s preview, applied to the vault', () => {
 });
 
 describe('a new goal’s mix, made into a plan', () => {
-  it('asks the amount and goal, reviews, and stores the plan for the existing buy', async () => {
+  it('takes one amount with the goal the person said, checks, reviews, and stores the plan for the existing buy', async () => {
     const calls: Call[] = [];
     const proposalId = '0f6a3b9e-2c4d-4e5f-8a7b-1c2d3e4f5a6b';
     const { planOn } = await import('../order/test/fixtures');
@@ -424,39 +448,30 @@ describe('a new goal’s mix, made into a plan', () => {
       return body.confirm
         ? json({
             status: 'stored',
-            review: reviewOf({ unconfirmed: [] }),
+            review: reviewOf({ ...of(body), unconfirmed: [] }),
             proposalId,
             proposal: plan.proposal,
           })
-        : json({ status: 'review', review: reviewOf() });
+        : json({ status: 'review', review: reviewOf(of(body)) });
     });
-    const host = await mount(
-      withAccount(
-        'en',
-        createElement(UseGoalMix, {
-          chain: 'solana',
-          userId,
-          allocations: [
-            { assetId: 'solana:usdc', weightBps: 6000 },
-            { assetId: 'solana:gldx', weightBps: 4000 },
-          ],
-          onClose: () => {},
-        }),
-      ),
+    const host = await goalMix('en', { goal: 'protect', risk: 'low' });
+    // no form: nothing to choose from, the goal and risk said as one sentence, the editor closed
+    expect(host.querySelectorAll('select')).toHaveLength(0);
+    expect(find(host, '[data-ui="deposit-purpose"]').textContent).toContain(
+      en.mix.deposit.purpose('protect', 'low'),
     );
-    await click(find(host, '[data-action="mix-review"]'));
+    expect(host.querySelectorAll('input')).toHaveLength(1);
+    expect(host.querySelector('[data-ui="weight-editor"]')).toBeNull();
+    expect(host.textContent).not.toContain(en.mix.editor.unit);
+    expect(host.textContent).not.toContain(en.mix.editor.lines(1));
+    expect([...host.querySelectorAll('button')].map((b) => b.textContent)).not.toContain(
+      en.mix.editor.remove('GLDx'),
+    );
+    await toReview(host);
     expect(calls).toEqual([]);
-    expect(host.textContent).toContain(en.mix.goal.errors.amount);
-    await type(host.querySelector('input') as HTMLInputElement, '100');
-    const [goal, risk] = [...host.querySelectorAll('select')];
-    if (!goal || !risk) throw new Error('goal and risk are asked');
-    goal.value = 'protect';
-    goal.dispatchEvent(new Event('change', { bubbles: true }));
-    risk.value = 'low';
-    risk.dispatchEvent(new Event('change', { bubbles: true }));
-    await settle();
-    await click(find(host, '[data-action="mix-review"]'));
-    await settle();
+    expect(host.textContent).toContain(en.mix.deposit.blocked.amount);
+    await deposit(host, '100');
+    expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({
       url: '/v1/conversations/solana/goal/accept',
       body: {
@@ -471,6 +486,9 @@ describe('a new goal’s mix, made into a plan', () => {
         ],
       },
     });
+    // the review the person reads is the check already on the screen: not asked for twice
+    await toReview(host);
+    expect(calls).toHaveLength(1);
     await click(find(host, '[data-ui="mix-review-warnings"] input[type="checkbox"]'));
     await click(find(host, '[data-action="mix-confirm"]'));
     await settle();
@@ -479,9 +497,132 @@ describe('a new goal’s mix, made into a plan', () => {
       reviewHash: hash,
       acceptedWarnings: ['EXIT_OVER_CAPACITY:solana:gldx'],
       amountUsd: 100,
+      goal: 'protect',
+      risk: 'low',
     });
     expect(router.push).toHaveBeenCalledWith(`/plan/${proposalId}/buy`);
     expect(localStorage.getItem(`tf-plan:${proposalId}`)).not.toBeNull();
+  });
+
+  it('shows each row the dollars the server checked, and a dash until it has', async () => {
+    portStore.setApi(async (url, init) => {
+      if (!url.endsWith('/goal/accept')) return json({}, 404);
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      // figures no arithmetic on the screen would give: only the server's can be what is shown
+      const review = reviewFor(body.allocations, of(body));
+      return json({
+        status: 'review',
+        review: {
+          ...review,
+          lines: review.lines.map((line) => ({
+            ...line,
+            amountUsd: line.cls === 'cash' ? 61.07 : 38.93,
+          })),
+        },
+      });
+    });
+    const host = await goalMix();
+    expect(amounts(host)).toEqual({
+      'solana:gldx': `—${en.mix.deposit.unchecked}`,
+      'solana:usdc': `—${en.mix.deposit.unchecked}`,
+    });
+    expect(find(host, '[data-ui="deposit-check"]').textContent).toBe(en.mix.deposit.needAmount);
+    await type(amountBox(host), '100');
+    // typed, not yet checked: still no figure
+    expect(amounts(host)['solana:gldx']).toBe(`—${en.mix.deposit.unchecked}`);
+    expect(find(host, '[data-ui="deposit-check"]').textContent).toBe(en.mix.deposit.checking);
+    await settle(CHECK_MS + 50);
+    expect(amounts(host)).toEqual({ 'solana:gldx': '$38.93', 'solana:usdc': '$61.07' });
+    expect(find(host, '[data-ui="deposit-check"]').textContent).toBe(en.mix.deposit.checked);
+    // another amount: the old figures go at once, never shown beside an amount they are not of
+    await type(amountBox(host), '250');
+    expect(amounts(host)['solana:usdc']).toBe(`—${en.mix.deposit.unchecked}`);
+  });
+
+  it('holds the amount to the limits and says which one, without asking the server', async () => {
+    const calls: Call[] = [];
+    portStore.setApi(async (url, init) => {
+      if (!url.endsWith('/goal/accept')) return json({}, 404);
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      calls.push({ url, body });
+      return json({ status: 'review', review: reviewOf(of(body)) });
+    });
+    const host = await goalMix();
+    const press = () => find(host, '[data-action="deposit-review"]');
+    expect(host.textContent).toContain(en.mix.deposit.limits);
+    for (const [text, error] of [
+      ['9.99', en.mix.deposit.errors.belowMin],
+      ['1000000.01', en.mix.deposit.errors.aboveMax],
+      ['ten', en.mix.deposit.errors.notAmount],
+    ] as const) {
+      await deposit(host, text);
+      expect(host.textContent).toContain(error);
+      expect(amountBox(host).getAttribute('aria-invalid')).toBe('true');
+      expect(press().getAttribute('aria-disabled')).toBe('true');
+    }
+    expect(calls).toEqual([]);
+    for (const text of ['10', '1000000']) {
+      await deposit(host, text);
+      expect(amountBox(host).getAttribute('aria-invalid')).toBeNull();
+      expect(press().getAttribute('aria-disabled')).toBeNull();
+    }
+    expect(calls.map((call) => call.body.amountUsd)).toEqual([10, 1_000_000]);
+    // a quick amount types itself, and the press names it
+    await click(find(host, '[data-ui="deposit-quick"] li:nth-child(2) button'));
+    expect(amountBox(host).value).toBe('500');
+    expect(press().textContent).toContain(en.mix.deposit.reviewOf('$500'));
+  });
+
+  it('never fills in a goal or a risk: unsaid, each is asked by one tap and nothing is checked before', async () => {
+    const calls: Call[] = [];
+    portStore.setApi(async (url, init) => {
+      if (!url.endsWith('/goal/accept')) return json({}, 404);
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      calls.push({ url, body });
+      return json({ status: 'review', review: reviewOf(of(body)) });
+    });
+    const host = await goalMix('en', { goal: null, risk: null });
+    expect(host.querySelector('[data-ui="deposit-purpose"]')).toBeNull();
+    expect(host.querySelectorAll('select')).toHaveLength(0);
+    expect(host.querySelectorAll('[aria-pressed="true"]')).toHaveLength(0);
+    await deposit(host, '100');
+    expect(calls).toEqual([]);
+    expect(find(host, '[data-ui="deposit-check"]').textContent).toBe(en.mix.deposit.needPurpose);
+    expect(amounts(host)['solana:gldx']).toBe(`—${en.mix.deposit.unchecked}`);
+    await toReview(host);
+    expect(calls).toEqual([]);
+    expect(host.textContent).toContain(en.mix.deposit.blocked.purpose);
+    await click(find(host, '[data-ui="deposit-goal"] [data-value="income"]'));
+    await settle(CHECK_MS + 50);
+    // a goal alone is not enough: the risk is not guessed either
+    expect(calls).toEqual([]);
+    await click(find(host, '[data-ui="deposit-risk"] [data-value="high"]'));
+    await settle(CHECK_MS + 50);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.body).toMatchObject({ goal: 'income', risk: 'high', confirm: false });
+    expect(
+      find(host, '[data-ui="deposit-goal"] [data-value="income"]').getAttribute('aria-pressed'),
+    ).toBe('true');
+  });
+
+  it('asks only what the person has not said, and says the rest as their own', async () => {
+    const calls: Call[] = [];
+    portStore.setApi(async (url, init) => {
+      if (!url.endsWith('/goal/accept')) return json({}, 404);
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      calls.push({ url, body });
+      return json({ status: 'review', review: reviewOf(of(body)) });
+    });
+    const host = await goalMix('en', { goal: 'grow', risk: null });
+    expect(find(host, '[data-ui="deposit-purpose"]').textContent).toContain(
+      en.mix.deposit.purpose('grow', null),
+    );
+    expect(host.querySelector('[data-ui="deposit-goal"]')).toBeNull();
+    await deposit(host, '100');
+    expect(calls).toEqual([]);
+    await click(find(host, '[data-ui="deposit-risk"] [data-value="low"]'));
+    await settle(CHECK_MS + 50);
+    expect(calls[0]?.body).toMatchObject({ goal: 'grow', risk: 'low' });
   });
 
   it('unticks a warning whose figure moved under the same id, and holds the confirm again', async () => {
@@ -490,13 +631,14 @@ describe('a new goal’s mix, made into a plan', () => {
       if (!url.endsWith('/goal/accept')) return json({}, 404);
       const body = JSON.parse(String(init?.body ?? '{}'));
       n += 1;
-      return json({ status: 'review', review: body.confirm ? reviewOf(moved()) : reviewOf() });
+      return json({
+        status: 'review',
+        review: body.confirm ? reviewOf(moved(of(body))) : reviewOf(of(body)),
+      });
     });
     const host = await goalMix();
-    await type(host.querySelector('input') as HTMLInputElement, '100');
-    await chooseGoal(host);
-    await click(find(host, '[data-action="mix-review"]'));
-    await settle();
+    await deposit(host, '100');
+    await toReview(host);
     await click(box(host));
     await click(find(host, '[data-action="mix-confirm"]'));
     await settle();
@@ -515,20 +657,21 @@ describe('a new goal’s mix, made into a plan', () => {
       // the same warning id at 40% and at 90%; the hash is the review's own
       return json({
         status: 'review',
-        review: reviewFor(body.allocations, gold.weightBps === 4000 ? {} : moved()),
+        review: reviewFor(body.allocations, gold.weightBps === 4000 ? of(body) : moved(of(body))),
       });
     });
     const host = await goalMix();
-    await type(host.querySelector('input') as HTMLInputElement, '100');
-    await chooseGoal(host);
-    await click(find(host, '[data-action="mix-review"]'));
-    await settle();
+    await deposit(host, '100');
+    await toReview(host);
     await click(box(host));
     expect(find(host, '[data-action="mix-confirm"]').getAttribute('aria-disabled')).toBeNull();
-    await click(buttonNamed(host, en.mix.review.back));
+    // back to the deposit, with the amount still there
+    await click(buttonNamed(host, en.mix.deposit.backToDeposit));
+    expect(amountBox(host).value).toBe('100');
+    await openEditor(host);
     await type(find<HTMLInputElement>(host, '[data-ui="targets-lines"] input'), '90');
-    await click(find(host, '[data-action="mix-review"]'));
-    await settle();
+    await settle(CHECK_MS + 50);
+    await toReview(host);
     expect(find(host, '[data-ui="mix-review-lines"]').textContent).toContain('90%');
     expect(box(host).checked).toBe(false);
     expect(find(host, '[data-action="mix-confirm"]').getAttribute('aria-disabled')).toBe('true');
@@ -540,14 +683,17 @@ describe('a new goal’s mix, made into a plan', () => {
       if (!url.endsWith('/goal/accept')) return json({}, 404);
       const body = JSON.parse(String(init?.body ?? '{}'));
       calls.push({ url, body });
-      return json({ status: 'review', review: reviewOf({ amountUsd: body.amountUsd }) });
+      return json({ status: 'review', review: reviewOf(of(body)) });
     });
+    const pt = dictionary('pt');
     const host = await goalMix('pt');
-    await type(host.querySelector('input') as HTMLInputElement, '100,50');
-    await chooseGoal(host);
-    await click(find(host, '[data-action="mix-review"]'));
-    await settle();
+    expect(find(host, '[data-ui="deposit-purpose"]').textContent).toContain(
+      pt.mix.deposit.purpose('grow', 'medium'),
+    );
+    await deposit(host, '100,50');
     expect(calls[0]?.body.amountUsd).toBe(100.5);
+    expect(find(host, '[data-action="deposit-review"]').textContent).toMatch(/100,50/);
+    await toReview(host);
     expect(find(host, '[data-ui="mix-review-total"]').textContent).toMatch(/100,50/);
   });
 
@@ -564,46 +710,252 @@ describe('a new goal’s mix, made into a plan', () => {
           )
         : json({}, 404),
     );
-    const host = await goalMix();
-    await type(host.querySelector('input') as HTMLInputElement, '100');
-    await chooseGoal(host, 'protect', 'low');
-    await click(find(host, '[data-action="mix-review"]'));
-    await settle();
-    const said = (find(host, '[role="alert"]').textContent ?? '').split('\n');
-    expect(said).toHaveLength(3);
+    const host = await goalMix('en', { goal: 'protect', risk: 'low' });
+    await deposit(host, '100');
+    const said = (find(host, '[data-ui="deposit-refused"]').textContent ?? '').split('\n');
+    expect(find(host, '[data-ui="deposit-refused"]').getAttribute('role')).toBe('alert');
+    expect(said).toHaveLength(4);
     expect(said[0]).toBe(en.mix.failure.invalid);
     expect(said[1]).toMatch(/gold|GLD/i);
     expect(said[1]).toContain('Take it out, or choose another goal.');
     expect(said[2]).not.toBe(said[1]);
     expect(said[2]).toContain('Take it out, or choose another goal.');
+    // and where to do that: the conversation, or the editor
+    expect(said[3]).toBe(en.mix.deposit.invalidNext);
+    expect(amounts(host)['solana:gldx']).toBe(`—${en.mix.deposit.unchecked}`);
     const pt = dictionary('pt');
     expect(pt.mix.issue('NOT_FOR_GOAL', 'Ouro')).toContain('Ouro');
     expect(pt.mix.issue('NOT_FOR_GOAL', 'Ouro')).not.toBe(pt.mix.issue('', 'Ouro'));
   });
+
+  it('says a check that did not get through, and asks again on the press', async () => {
+    let up = false;
+    portStore.setApi(async (_url, init) =>
+      up
+        ? json({ status: 'review', review: reviewOf(of(JSON.parse(String(init?.body ?? '{}')))) })
+        : json({}, 502),
+    );
+    const host = await goalMix();
+    await deposit(host, '100');
+    expect(find(host, '[data-ui="deposit-refused"]').textContent).toBe(en.mix.failure.unreachable);
+    up = true;
+    await toReview(host);
+    expect(host.querySelector('[data-ui="deposit-refused"]')).toBeNull();
+    expect(find(host, '[data-ui="mix-review-lines"]').textContent).toContain('40%');
+  });
+
+  it('goes back to the conversation to change the mix, and to change the goal', async () => {
+    const back = vi.fn();
+    const host = await goalMix('en', SAID, back);
+    await click(find(host, '[data-action="change-mix"]'));
+    expect(back).toHaveBeenCalledTimes(1);
+    await click(find(host, '[data-ui="deposit-purpose"] button'));
+    expect(back).toHaveBeenCalledTimes(2);
+  });
 });
 
-describe('a new goal’s mix, with a weight the person changed', () => {
-  it('reviews the weights in the fields and says the person chose them', async () => {
+describe('the deposit step, kept honest while things move', () => {
+  const accepts = (answer: (body: Record<string, unknown>, n: number) => Promise<Response>) => {
     const calls: Call[] = [];
     portStore.setApi(async (url, init) => {
       if (!url.endsWith('/goal/accept')) return json({}, 404);
       const body = JSON.parse(String(init?.body ?? '{}'));
       calls.push({ url, body });
-      return json({ status: 'review', review: reviewFor(body.allocations, { origin: 'person' }) });
+      return answer(body, calls.length);
+    });
+    return calls;
+  };
+  const later = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  it('drops a late answer about an amount that is no longer the one typed', async () => {
+    // the check of 100 answers after the check of 250 has
+    accepts(async (body) => {
+      if (body.amountUsd === 100) await later(400);
+      return json({
+        status: 'review',
+        review: reviewFor(body.allocations as never, of(body as never)),
+      });
     });
     const host = await goalMix();
-    await type(host.querySelector('input') as HTMLInputElement, '100');
-    await chooseGoal(host);
+    await type(amountBox(host), '100');
+    await settle(CHECK_MS + 20);
+    await type(amountBox(host), '250');
+    await settle(CHECK_MS + 100);
+    const shown = amounts(host);
+    await settle(400);
+    // the rows are still the newer amount's check, and the review opens at it
+    expect(amounts(host)).toEqual(shown);
+    expect(find(host, '[data-ui="deposit-check"]').textContent).toBe(en.mix.deposit.checked);
+    await toReview(host);
+    expect(find(host, '[data-ui="mix-review-total"]').textContent).toContain('$250.00');
+  });
+
+  it('locks the amount, the taps and the editor while the press is checked', async () => {
+    let release: () => void = () => {};
+    const calls = accepts(async (body) => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return json({ status: 'review', review: reviewOf(of(body as never)) });
+    });
+    const host = await goalMix('en', { goal: 'grow', risk: null });
+    await click(find(host, '[data-ui="deposit-risk"] [data-value="low"]'));
+    await openEditor(host);
+    await type(amountBox(host), '200');
+    // pressed before the check of the pause has gone out: the press asks, and the step is held
+    await click(find(host, '[data-action="deposit-review"]'));
+    expect(amountBox(host).disabled).toBe(true);
+    for (const held of [
+      amountBox(host).closest('[inert]'),
+      find(host, '[data-ui="deposit-risk"]').closest('[inert]'),
+      find(host, '[data-ui="weight-editor"]').closest('[inert]'),
+    ])
+      expect(held).not.toBeNull();
+    release();
+    await settle(CHECK_MS + 50);
+    release();
+    await settle();
+    // the review is of the amount in the field, and says what it was checked for
+    expect(calls.every((call) => call.body.amountUsd === 200)).toBe(true);
+    expect(find(host, '[data-ui="mix-review-total"]').textContent).toContain('$200.00');
+    expect(find(host, '[data-ui="mix-review-purpose"]').textContent).toBe(
+      en.mix.deposit.purpose('grow', 'low'),
+    );
+  });
+
+  it('refuses a review that is not of the amount or the goal it was asked for', async () => {
+    let wrong: Record<string, unknown> = { amountUsd: 200 };
+    accepts(async (body) =>
+      json({ status: 'review', review: reviewOf({ ...of(body as never), ...wrong }) }),
+    );
+    const host = await goalMix();
+    await deposit(host, '500');
+    expect(find(host, '[data-ui="deposit-refused"]').textContent).toBe(en.mix.failure.unreadable);
+    expect(amounts(host)['solana:gldx']).toBe(`—${en.mix.deposit.unchecked}`);
+    wrong = { goal: 'protect' };
+    await toReview(host);
+    expect(host.querySelector('[data-ui="mix-review-lines"]')).toBeNull();
+    expect(find(host, '[data-ui="deposit-refused"]').textContent).toBe(en.mix.failure.unreadable);
+  });
+
+  it('moves focus on purpose: the amount on open, the heading of the review, the press on the way back', async () => {
+    accepts(async (body) => json({ status: 'review', review: reviewOf(of(body as never)) }));
+    const host = await goalMix();
+    expect(document.activeElement).toBe(amountBox(host));
+    await deposit(host, '100');
+    await toReview(host);
+    const heading = find(host, '[data-ui="deposit-review"] h2');
+    expect(heading.textContent).toBe(en.mix.review.title);
+    expect(document.activeElement).toBe(heading);
+    await click(buttonNamed(host, en.mix.deposit.backToDeposit));
+    expect(document.activeElement).toBe(find(host, '[data-action="deposit-review"]'));
+  });
+
+  it('keeps focus in the editor when a row is removed', async () => {
+    accepts(async (body) =>
+      json({ status: 'review', review: reviewFor(body.allocations as never, of(body as never)) }),
+    );
+    const host = await goalMix();
+    await openEditor(host);
+    await click(buttonNamed(host, en.mix.editor.remove('GLDx')));
+    await settle(50);
+    // the only row is gone: the way to add one takes focus
+    expect(document.activeElement).toBe(find(host, '[data-ui="weight-editor"] select'));
+  });
+
+  it('does not call an amount wrong on the first digit, only after a pause or on leaving the field', async () => {
+    accepts(async (body) => json({ status: 'review', review: reviewOf(of(body as never)) }));
+    const host = await goalMix();
+    await type(amountBox(host), '5');
+    expect(host.textContent).not.toContain(en.mix.deposit.errors.belowMin);
+    expect(amountBox(host).getAttribute('aria-invalid')).toBeNull();
+    await fire(amountBox(host), new FocusEvent('focusout', { bubbles: true }));
+    expect(host.textContent).toContain(en.mix.deposit.errors.belowMin);
+    await type(amountBox(host), '7');
+    expect(host.textContent).not.toContain(en.mix.deposit.errors.belowMin);
+    await settle(CHECK_MS + 50);
+    expect(host.textContent).toContain(en.mix.deposit.errors.belowMin);
+  });
+
+  it('says the wallet is checked on the buy screen, and holds the press while a reply is on its way', async () => {
+    const host = await mount(
+      withAccount(
+        'en',
+        createElement(DepositStep, {
+          chain: 'solana',
+          userId,
+          allocations: [{ assetId: 'solana:gldx', weightBps: 4000 }],
+          said: SAID,
+          amountText: '100',
+          onAmountText: () => {},
+          provenance: 'sandbox',
+          onChangeMix: () => {},
+          onClose: () => {},
+          waiting: true,
+        }),
+      ),
+    );
+    expect(host.textContent).toContain(en.mix.deposit.balance);
+    const press = find(host, '[data-action="deposit-review"]');
+    expect(press.getAttribute('aria-disabled')).toBe('true');
+    await click(press);
+    expect(host.textContent).toContain(en.mix.deposit.blocked.reply);
+  });
+
+  it('keeps the edited mark and the way back while the hand weights do not add up, and shows no stale mix', async () => {
+    accepts(async (body) =>
+      json({ status: 'review', review: reviewFor(body.allocations as never, of(body as never)) }),
+    );
+    const host = await goalMix();
+    await deposit(host, '100');
+    await openEditor(host);
+    await type(find<HTMLInputElement>(host, '[data-ui="targets-lines"] input'), '140');
+    expect(find(host, '[data-ui="deposit-edited"]').textContent).toBe(en.mix.deposit.edited);
+    expect(host.querySelector('[data-action="reset-mix"]')).not.toBeNull();
+    // the proposal's 40% is not shown as if it were the mix now
+    expect(host.querySelector('[data-ui="mix-lines"]')).toBeNull();
+    expect(find(host, '[data-ui="deposit-broken"]').textContent).toBe(en.mix.deposit.brokenMix);
+    expect(find(host, '[data-action="deposit-review"]').getAttribute('aria-disabled')).toBe('true');
+    await click(find(host, '[data-action="reset-mix"]'));
+    expect(host.querySelector('[data-ui="deposit-edited"]')).toBeNull();
+    expect(find(host, '[data-ui="mix-lines"]').textContent).toContain('40%');
+  });
+});
+
+describe('a new goal’s mix, with a weight the person changed', () => {
+  it('keeps the editor closed until asked, marks the mix as edited, and sends the person’s weights', async () => {
+    const calls: Call[] = [];
+    portStore.setApi(async (url, init) => {
+      if (!url.endsWith('/goal/accept')) return json({}, 404);
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      calls.push({ url, body });
+      return json({
+        status: 'review',
+        review: reviewFor(body.allocations, { ...of(body), origin: 'person' }),
+      });
+    });
+    const host = await goalMix();
+    const open = find(host, '[data-action="edit-by-hand"]');
+    expect(open.getAttribute('aria-expanded')).toBe('false');
+    expect(host.querySelector('[data-ui="targets-lines"]')).toBeNull();
+    expect(host.querySelector('[data-ui="deposit-edited"]')).toBeNull();
+    await deposit(host, '100');
+    expect(calls[0]?.body.origin).toBe('model');
+    await openEditor(host);
+    expect(open.getAttribute('aria-expanded')).toBe('true');
+    // tidied: percents only, no count of lines
+    expect(host.querySelectorAll('select')).toHaveLength(1);
+    expect(host.textContent).not.toContain(en.mix.editor.unit);
+    expect(host.textContent).not.toContain(en.mix.editor.lines(1));
     const weight = find<HTMLInputElement>(host, '[data-ui="targets-lines"] input');
     expect(weight.value).toBe('40');
     // a weight that does not read holds the review back
     await type(weight, '140');
-    expect(find(host, '[data-action="mix-review"]').getAttribute('aria-disabled')).toBe('true');
+    expect(find(host, '[data-action="deposit-review"]').getAttribute('aria-disabled')).toBe('true');
     await type(weight, '25');
-    await settle();
-    await click(find(host, '[data-action="mix-review"]'));
-    await settle();
-    expect(calls[0]?.body).toMatchObject({
+    await settle(CHECK_MS + 50);
+    expect(find(host, '[data-ui="deposit-edited"]').textContent).toBe(en.mix.deposit.edited);
+    expect(calls.at(-1)?.body).toMatchObject({
       origin: 'person',
       confirm: false,
       allocations: [
@@ -611,9 +963,19 @@ describe('a new goal’s mix, with a weight the person changed', () => {
         { assetId: 'solana:usdc', weightBps: 7500 },
       ],
     });
+    // the read-only rows are the edited mix, with the server's dollars for it
+    expect(find(host, '[data-ui="mix-lines"]').textContent).toContain('25%');
+    expect(amounts(host)).toEqual({ 'solana:gldx': '$25.00', 'solana:usdc': '$75.00' });
+    await toReview(host);
     const lines = find(host, '[data-ui="mix-review-lines"]').textContent ?? '';
     expect(lines).toContain('25%');
     expect(lines).toContain('75%');
+    // back, and back to the proposed weights: the mix is the conversation's again
+    await click(buttonNamed(host, en.mix.deposit.backToDeposit));
+    await click(find(host, '[data-action="reset-mix"]'));
+    await settle(CHECK_MS + 50);
+    expect(host.querySelector('[data-ui="deposit-edited"]')).toBeNull();
+    expect(calls.at(-1)?.body).toMatchObject({ origin: 'model' });
   });
 });
 

@@ -13,10 +13,7 @@ import {
 } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
 import { withAccount } from '../account/test/screen';
-import { PERSONALIZE_PATH, PROPOSE_PATH } from '../goal/build-plan';
 import { GOAL_HANDOFF, GOAL_HANDOFF_OWNER } from '../goal/draft';
-import { proposalFor, READ_IN_DOLLARS } from '../goal/test/plan';
-import { keepWay, readWay } from '../invest/handoff';
 import { Simulate } from '../landing/Simulate';
 import { sourceValue } from '../vault-conversation/StrategyPreview';
 import { preview } from '../vault-conversation/test/fixtures';
@@ -55,11 +52,6 @@ const send = async (host: HTMLElement, words: string) => {
   await settle();
 };
 const show = (lang: 'en' | 'pt' = 'en') => mount(withAccount(lang, createElement(GoalEntry)));
-async function mode(host: HTMLElement, value: string) {
-  const selector = find<HTMLSelectElement>(host, '[data-ui="goal-mode"]');
-  selector.value = value;
-  await fire(selector, new Event('change', { bubbles: true }));
-}
 beforeEach(() => {
   window.history.replaceState(null, '', '/goal');
   router.push.mockClear();
@@ -159,12 +151,12 @@ describe('private strategy exploration for a new goal', () => {
     'defaults to truthful explore workbench with no fake vault or funding (%s)',
     async (lang) => {
       const host = await show(lang);
-      expect(find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').value).toBe('explore');
+      expect(host.querySelector('[data-ui="goal-mode"]')).toBeNull();
       expect(find(host, '[data-ui="goal-empty-preview"]').textContent).toContain(
         dictionary(lang).goal.explore.empty,
       );
       expect(host.querySelector('[data-ui="invest-screen"]')).toBeNull();
-      expect(host.querySelector('[data-ui="holdings-bar"]')).toBeNull();
+      expect(host.querySelector('[data-ui="mix-joint"]')).toBeNull();
       expect(host.querySelector('[data-ui="buy-card"]')).toBeNull();
       expect(host.querySelector('a[href^="/vaults/"]')).toBeNull();
       await send(host, 'I want a strategy with gold and cash');
@@ -177,21 +169,38 @@ describe('private strategy exploration for a new goal', () => {
       });
       expect(calls[0].body).not.toHaveProperty('vault');
       expect(calls[0].body).not.toHaveProperty('address');
+      // on a proposal the line over "Deposit" says how the draft is bought, not that it cannot be
       expect(find(host, '[data-ui="goal-strategy"]').textContent).toContain(
+        dictionary(lang).goal.explore.draftNote,
+      );
+      expect(find(host, '[data-ui="goal-strategy"]').textContent).not.toContain(
         dictionary(lang).goal.explore.previewOnly,
       );
       expect(find(host, '[data-ui="goal-strategy"]').textContent).not.toContain(
         dictionary(lang).shared.vault.conversation.comparison,
       );
       expect(
-        [...find(host, '[data-ui="holdings-bar"]').children].map(
-          (e) => (e as HTMLElement).style.width,
+        [...host.querySelectorAll<HTMLElement>('[data-ui="mix-joint"] [data-part="piece"]')].map(
+          (e) => e.style.width,
         ),
       ).toEqual(['40%', '60%']);
       expect(host.querySelector('[data-ui="buy-card"]')).toBeNull();
-      expect(
-        find(host, '[data-ui="goal-strategy"]').querySelector('button[data-variant="primary"]'),
-      ).toBeNull();
+      // The preview's one primary button is "Deposit" (gate DEPOSIT-STEP, Thom, Oct 8): it opens the
+      // deposit step, and neither buys, funds nor signs anything.
+      const primary = [
+        ...find(host, '[data-ui="goal-strategy"]').querySelectorAll(
+          'button[data-variant="primary"]',
+        ),
+      ];
+      expect(primary.map((button) => button.textContent)).toEqual([
+        dictionary(lang).mix.preview.deposit,
+      ]);
+      const before = calls.length;
+      await click(primary[0] as HTMLElement);
+      expect(host.querySelector('[data-ui="deposit-step"]')).not.toBeNull();
+      expect(host.querySelector('[data-ui="buy-card"]')).toBeNull();
+      expect(calls).toHaveLength(before);
+      expect(router.push).not.toHaveBeenCalled();
     },
   );
   it('sends complete words and actual prior nonexecuted draft weights to refine the next turn', async () => {
@@ -212,22 +221,6 @@ describe('private strategy exploration for a new goal', () => {
     expect(messages.at(-1)).toEqual({ who: 'person', text: 'Less gold please' });
     expect(calls.every((row) => row.path === path)).toBe(true);
   });
-  it('keeps separate mode history and cannot hand model draft to guided funding', async () => {
-    const host = await show();
-    await send(host, 'Consider gold');
-    await mode(host, 'guided');
-    expect(host.querySelector('[data-ui="goal-conversation"]')).toBeNull();
-    expect(find(host, '[data-ui="invest-screen"]').textContent).not.toContain(
-      'Here is a private preview.',
-    );
-    expect(find(host, '[data-ui="invest-turns"]').textContent).toBe('');
-    expect(host.querySelector('[data-ui="buy-card"]')).toBeNull();
-    await mode(host, 'explore');
-    expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain('Consider gold');
-    expect(host.querySelector('[data-ui="goal-empty-preview"]')).not.toBeNull();
-    expect(host.querySelector('[data-ui="holdings-bar"]')).toBeNull();
-    expect(calls).toHaveLength(1);
-  });
   it('preserves exact plain words across unavailable API and reopen without fabricating reply', async () => {
     portStore.setApi(async (url) => baseApi(url));
     const words = '<img src=x onerror=alert(1)> I like electric vehicles';
@@ -241,6 +234,56 @@ describe('private strategy exploration for a new goal', () => {
     expect(find(reopened, '[data-ui="goal-transcript"]').textContent).toContain(words);
     expect(reopened.querySelector('[data-ui="goal-empty-preview"]')).not.toBeNull();
   });
+  it.each(['en', 'pt'] as const)(
+    'after a failed reply the words are back in the box, and trying again sends the one turn (%s)',
+    async (lang) => {
+      const copy = dictionary(lang).goal.explore;
+      const words = 'Explore electric vehicles';
+      let down = true;
+      portStore.setApi(async (url, init) => {
+        if (init?.method !== 'POST') return baseApi(url);
+        const body = JSON.parse(String(init.body));
+        calls.push({ path: url, body });
+        return down ? json({}, 503) : json(response(body.messageId));
+      });
+      const host = await show(lang);
+      expect(host.querySelector('[data-ui="goal-retry"]')).toBeNull();
+      await send(host, words);
+      expect(host.textContent).toContain(copy.unavailable);
+      expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe(words);
+      const retry = find(host, '[data-ui="goal-retry"]');
+      const again = find<HTMLButtonElement>(retry, 'button[data-act="goal-retry"]');
+      expect(again.textContent).toBe(copy.retry);
+      const way = find<HTMLAnchorElement>(retry, 'a[href="/shelf"]');
+      expect(way.textContent).toBe(copy.elsewhere);
+      expect(again.tabIndex).toBe(0);
+      expect(way.tabIndex).toBe(0);
+      // still down: "Try again" sends the same turn, and so does sending the box as it stands
+      await click(again);
+      await settle();
+      await click(find(host, '[data-ui="composer-send"]'));
+      await settle();
+      const sent = (i: number) => calls[i].body.messages as { who: string; text: string }[];
+      expect(calls).toHaveLength(3);
+      for (const i of [0, 1, 2]) expect(sent(i)).toEqual([{ who: 'person', text: words }]);
+      const turns = () => [...find(host, '[data-ui="goal-transcript"]').children];
+      expect(turns()).toHaveLength(1);
+      // back up: one more press, the reply follows the one turn, and the box and the row are clear
+      down = false;
+      await click(find(host, 'button[data-act="goal-retry"]'));
+      await settle();
+      expect(sent(3)).toEqual([{ who: 'person', text: words }]);
+      expect(turns().filter((turn) => turn.textContent?.includes(words))).toHaveLength(1);
+      expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe('');
+      expect(host.querySelector('[data-ui="goal-retry"]')).toBeNull();
+      expect(host.textContent).not.toContain(copy.unavailable);
+      expect(
+        JSON.parse(
+          localStorage.getItem(goalConversationKey(userId, 'solana', 'sandbox')) ?? '{}',
+        ).transcript.filter((turn: { text: string }) => turn.text === words),
+      ).toHaveLength(1);
+    },
+  );
   it.each(['en', 'pt'] as const)(
     'explains only checked server failures and retains the person words (%s)',
     async (lang) => {
@@ -353,7 +396,7 @@ describe('private strategy exploration for a new goal', () => {
     );
     await act(async () => release(json(response(messageId))));
     await settle();
-    expect(host.querySelector('[data-ui="holdings-bar"]')).toBeNull();
+    expect(host.querySelector('[data-ui="mix-joint"]')).toBeNull();
     expect(localStorage.getItem(goalConversationKey(userId, 'solana', 'live'))).toBeNull();
     expect(localStorage.getItem(goalConversationKey(userId, 'solana', 'sandbox'))).toContain(
       'Sandbox-only words',
@@ -390,7 +433,7 @@ describe('private strategy exploration for a new goal', () => {
       const host = await show();
       await send(host, 'Consider gold');
       expect(host.textContent).toContain(en.goal.explore.failed);
-      expect(host.querySelector('[data-ui="holdings-bar"]')).toBeNull();
+      expect(host.querySelector('[data-ui="mix-joint"]')).toBeNull();
       expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain('Consider gold');
     },
   );
@@ -412,6 +455,553 @@ describe('private strategy exploration for a new goal', () => {
   });
 });
 
+describe('the deposit step of a new goal', () => {
+  const accept = '/v1/conversations/solana/goal/accept';
+  const strategy = (host: HTMLElement) => find(host, '[data-ui="goal-strategy"]');
+  const amount = (host: HTMLElement) =>
+    find<HTMLInputElement>(host, '[data-ui="amount-large"] input');
+  /** Replies in turn; a null is a reply that failed. */
+  const replies = (...turns: (Record<string, unknown> | null)[]) => {
+    let n = 0;
+    portStore.setApi(async (url, init) => {
+      if (init?.method !== 'POST') return baseApi(url);
+      const body = JSON.parse(String(init.body));
+      calls.push({ path: url, body });
+      if (url === accept) return json({}, 502);
+      const turn = turns[Math.min(n++, turns.length - 1)];
+      return turn ? json({ ...response(body.messageId), ...turn }) : json({}, 500);
+    });
+  };
+
+  it('opens from the proposal with the goal and risk the person said, and no form', async () => {
+    replies({ goal: 'grow', risk: 'high' });
+    const host = await show();
+    await send(host, 'Stocks to grow, I can take high risk');
+    // the one action of the preview: named for what it does, and the card's primary button
+    const press = find(host, '[data-action="deposit"]');
+    expect(press.textContent).toBe(en.mix.preview.deposit);
+    expect(en.mix.preview.deposit).toBe('Deposit');
+    expect(dictionary('pt').mix.preview.deposit).toBe('Depositar');
+    expect(press.getAttribute('data-variant')).toBe('primary');
+    expect(find(host, '[data-ui="goal-strategy"]').textContent).not.toMatch(/use this mix/i);
+    await click(find(host, '[data-action="deposit"]'));
+    const step = find(host, '[data-ui="deposit-step"]');
+    expect(find(step, '[data-ui="deposit-purpose"]').textContent).toContain(
+      en.mix.deposit.purpose('grow', 'high'),
+    );
+    expect(step.querySelectorAll('select')).toHaveLength(0);
+    expect(step.querySelectorAll('input')).toHaveLength(1);
+    // the same rows the preview drew, read only
+    for (const line of preview.allocations)
+      expect(step.querySelector(`[data-asset="${line.assetId}"]`)).not.toBeNull();
+    // nothing is signed or ordered from /goal
+    expect(calls.map((call) => call.path)).toEqual([path]);
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('asks by a tap what an older server or the person left unsaid, never a default', async () => {
+    // a reply with no goal or risk at all, and one with a value this app does not know
+    replies({}, { goal: 'speculate', risk: 'medium' });
+    const host = await show();
+    await send(host, 'Some stocks');
+    await click(find(host, '[data-action="deposit"]'));
+    expect(host.querySelector('[data-ui="deposit-purpose"]')).toBeNull();
+    expect(host.querySelectorAll('[data-ui="deposit-goal"] button')).toHaveLength(3);
+    expect(host.querySelectorAll('[data-ui="deposit-risk"] button')).toHaveLength(3);
+    expect(host.querySelectorAll('[aria-pressed="true"]')).toHaveLength(0);
+    await send(host, 'medium risk please');
+    await click(find(host, '[data-action="deposit"]'));
+    expect(find(host, '[data-ui="deposit-purpose"]').textContent).toContain(
+      en.mix.deposit.purpose(null, 'medium'),
+    );
+    expect(host.querySelectorAll('[data-ui="deposit-goal"] button')).toHaveLength(3);
+    expect(host.querySelector('[data-ui="deposit-risk"]')).toBeNull();
+  });
+
+  it('changes the mix in the conversation: the box takes focus, and the proposal and amount stay', async () => {
+    const more = {
+      ...preview,
+      objective: 'More of one, less of the other',
+      allocations: preview.allocations.map((line, i) => ({
+        ...line,
+        weightBps: i === 0 ? line.weightBps + 100 : i === 1 ? line.weightBps - 100 : line.weightBps,
+      })),
+    };
+    replies(
+      { goal: 'grow', risk: 'high' },
+      null,
+      { goal: 'grow', risk: 'low', proposal: null, message: 'Lower risk it is.' },
+      { goal: 'grow', risk: 'low', proposal: more },
+    );
+    const host = await show();
+    await send(host, 'Stocks to grow, high risk');
+    await click(find(host, '[data-action="deposit"]'));
+    await type(amount(host), '250');
+    await click(find(host, '[data-action="change-mix"]'));
+    expect(document.activeElement).toBe(find(host, 'textarea'));
+    expect(host.querySelector('[data-ui="deposit-step"]')).not.toBeNull();
+
+    // the chat fails: its error says so by the box, and the deposit step keeps the mix and the amount
+    await send(host, 'more of the first, less of the second');
+    expect(find(host, '[data-ui="goal-chat"]').textContent).toContain(en.goal.explore.failed);
+    expect(find(host, '[data-ui="goal-retry"]').textContent).toContain(en.goal.explore.retry);
+    expect(amount(host).value).toBe('250');
+    expect(
+      strategy(host).querySelector(`[data-asset="${preview.allocations[0]?.assetId}"]`),
+    ).not.toBeNull();
+
+    // a reply that only talks changes what was said, not the mix
+    await send(host, 'actually low risk');
+    expect(find(host, '[data-ui="deposit-purpose"]').textContent).toContain(
+      en.mix.deposit.purpose('grow', 'low'),
+    );
+    expect(amount(host).value).toBe('250');
+
+    // another proposal is read as a preview first; using it finds the amount where it was
+    await send(host, 'more of the first, less of the second');
+    expect(host.querySelector('[data-ui="deposit-step"]')).toBeNull();
+    expect(strategy(host).textContent).toContain('More of one, less of the other');
+    await click(find(host, '[data-action="deposit"]'));
+    expect(amount(host).value).toBe('250');
+    expect(calls.filter((call) => call.path === path).at(-1)?.body.messages).toEqual(
+      expect.arrayContaining([{ who: 'person', text: 'more of the first, less of the second' }]),
+    );
+  });
+
+  it('moves focus with the screen: to the amount when the step opens, to the button on the way back', async () => {
+    replies({ goal: 'grow', risk: 'high' });
+    const host = await show();
+    await send(host, 'Stocks to grow, high risk');
+    await click(find(host, '[data-action="deposit"]'));
+    expect(document.activeElement).toBe(amount(host));
+    await click(
+      [...host.querySelectorAll('button')].find(
+        (button) => button.textContent === en.mix.deposit.backToProposal,
+      ) as HTMLElement,
+    );
+    expect(document.activeElement).toBe(find(host, '[data-action="deposit"]'));
+  });
+
+  it('holds the deposit action while a reply is being worked on', async () => {
+    let release: () => void = () => {};
+    let n = 0;
+    portStore.setApi(async (url, init) => {
+      if (init?.method !== 'POST') return baseApi(url);
+      const body = JSON.parse(String(init.body));
+      n += 1;
+      if (n === 2)
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      return json({ ...response(body.messageId), goal: 'grow', risk: 'high' });
+    });
+    const host = await show();
+    await send(host, 'Stocks to grow, high risk');
+    await type(find<HTMLTextAreaElement>(host, 'textarea'), 'more of the first');
+    await click(find(host, '[data-ui="composer-send"]'));
+    // the last mix stays on the screen, and its button waits for the reply
+    const press = find(host, '[data-action="deposit"]');
+    expect(press.getAttribute('aria-disabled')).toBe('true');
+    await click(press);
+    expect(host.querySelector('[data-ui="deposit-step"]')).toBeNull();
+    release();
+    await settle();
+    expect(find(host, '[data-action="deposit"]').getAttribute('aria-disabled')).toBeNull();
+  });
+
+  it('starts over with no mix, no amount and no deposit step', async () => {
+    replies({ goal: 'grow', risk: 'high' });
+    const host = await show();
+    await send(host, 'Stocks to grow, high risk');
+    await click(find(host, '[data-action="deposit"]'));
+    await type(amount(host), '250');
+    await click(
+      [...host.querySelectorAll('button')].find(
+        (button) => button.textContent === en.talk.startOver,
+      ) as HTMLElement,
+    );
+    expect(host.querySelector('[data-ui="deposit-step"]')).toBeNull();
+    expect(host.querySelector('[data-ui="goal-empty-preview"]')).not.toBeNull();
+  });
+});
+
+describe('the proposed mix drawn as a joint', () => {
+  const lineOf = (symbol: string, weightBps: number) => ({
+    assetId: `solana:${symbol.toLowerCase()}`,
+    weightBps,
+    why: `Why ${symbol} is in it.`,
+    evidenceIds: ['exit'],
+    symbol,
+  });
+  const mixOf = (...lines: [string, number][]) => ({
+    ...preview,
+    allocations: lines.map(([symbol, bps]) => lineOf(symbol, bps)),
+  });
+  /** Answers each turn with the next of `replies`; with `hold`, only once it is let through. */
+  const answer = (replies: Record<string, unknown>[], hold = false) => {
+    const waiting: (() => void)[] = [];
+    let turn = 0;
+    portStore.setApi(async (url, init) => {
+      if (init?.method !== 'POST') return baseApi(url);
+      const body = JSON.parse(String(init.body));
+      const reply = replies[Math.min(turn++, replies.length - 1)];
+      if (hold) await new Promise<void>((done) => waiting.push(done));
+      return json({ ...response(body.messageId), ...reply });
+    });
+    return async () => {
+      await act(async () => waiting.shift()?.());
+      await settle();
+    };
+  };
+  const pieces = (host: HTMLElement) => [
+    ...host.querySelectorAll<HTMLElement>('[data-ui="mix-joint"] [data-part="piece"]'),
+  ];
+  const rowOf = (host: HTMLElement, symbol: string) =>
+    find(host, `tr[data-row="solana:${symbol.toLowerCase()}"]`);
+  const touch = (type: string) =>
+    new PointerEvent(type, { bubbles: true, pointerType: 'touch' } as PointerEventInit);
+  const SIX: [string, number][] = [
+    ['SPY', 1667],
+    ['QQQ', 1667],
+    ['NVDA', 1667],
+    ['AAPL', 1667],
+    ['GLD', 1666],
+    ['USDC', 1666],
+  ];
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each(['en', 'pt'] as const)(
+    'names each piece with the share its row shows, which is the proposal’s own (%s)',
+    async (lang) => {
+      answer([{ proposal: mixOf(...SIX) }]);
+      const host = await show(lang);
+      await send(host, 'Six things');
+      const joint = find(host, '[data-ui="mix-joint"]');
+      expect(joint.getAttribute('data-motion')).toBe('arrive');
+      // every piece here is as wide as its share, and the drawing says so
+      expect(find(joint, '[data-part="hint"]').textContent).toBe(
+        dictionary(lang).shared.vault.conversation.jointHint,
+      );
+      expect(find(joint, '[role="toolbar"]').getAttribute('aria-label')).toBe(
+        dictionary(lang).shared.vault.conversation.jointLabel,
+      );
+      expect(pieces(host)).toHaveLength(SIX.length);
+      for (const [i, [symbol, bps]] of SIX.entries()) {
+        const shown = sourceValue(lang, bps / 10000, 'fraction');
+        // the row shows the final figure whole while its piece is still on its way in
+        expect(find(rowOf(host, symbol), '[data-part="share"]').textContent).toBe(shown);
+        expect(pieces(host)[i].getAttribute('aria-label')).toBe(`${symbol}, ${shown}`);
+        // and the piece and its row carry one colour
+        const fill = find(pieces(host)[i], '[data-part="fill"]').className.match(/bg-leg-\d/)?.[0];
+        expect(fill).toBe(`bg-leg-${(i % 4) + 1}`);
+        expect(find(rowOf(host, symbol), '[data-part="swatch"]').className).toContain(fill);
+      }
+      // one tab stop for the beam
+      expect(pieces(host).map((p) => p.tabIndex)).toEqual([0, -1, -1, -1, -1, -1]);
+    },
+  );
+
+  it('lights a row from its piece and a piece from its row, and lets go', async () => {
+    answer([{ proposal: mixOf(...SIX) }]);
+    const host = await show();
+    await send(host, 'Six things');
+    const [spy, qqq] = pieces(host);
+    // focus on a piece lights its row, and only its row
+    await act(async () => qqq.focus());
+    // a highlight, not a toggle: nothing is announced as pressed
+    expect(qqq.getAttribute('data-lit')).toBe('true');
+    expect(qqq.hasAttribute('aria-pressed')).toBe(false);
+    expect(rowOf(host, 'QQQ').getAttribute('data-lit')).toBe('true');
+    expect(rowOf(host, 'SPY').getAttribute('data-lit')).toBe('false');
+    expect(find(host, '[data-ui="mix-joint-readout"]').textContent).toContain('QQQ');
+    // the arrows walk the beam, and Escape lets go
+    await press(qqq, 'ArrowLeft');
+    expect(document.activeElement).toBe(spy);
+    expect(rowOf(host, 'SPY').getAttribute('data-lit')).toBe('true');
+    expect(pieces(host).map((p) => p.tabIndex)).toEqual([0, -1, -1, -1, -1, -1]);
+    await press(spy, 'End');
+    expect(rowOf(host, 'USDC').getAttribute('data-lit')).toBe('true');
+    await press(document.activeElement as HTMLElement, 'Escape');
+    expect(host.querySelectorAll('[data-lit="true"]')).toHaveLength(0);
+    // a finger on a row lights its piece; a second tap, or a tap elsewhere, lets it go
+    await fire(rowOf(host, 'NVDA'), touch('pointerup'));
+    expect(pieces(host)[2].getAttribute('data-lit')).toBe('true');
+    expect(rowOf(host, 'NVDA').getAttribute('data-lit')).toBe('true');
+    await fire(rowOf(host, 'NVDA'), touch('pointerup'));
+    expect(pieces(host)[2].getAttribute('data-lit')).toBe('false');
+    await fire(pieces(host)[3], touch('pointerup'));
+    expect(rowOf(host, 'AAPL').getAttribute('data-lit')).toBe('true');
+    await fire(find(host, '[data-ui="goal-chat"]'), touch('pointerdown'));
+    expect(host.querySelectorAll('[data-lit="true"]')).toHaveLength(0);
+    expect(host.querySelector('[data-ui="mix-joint-readout"] [data-part="lit"]')).toBeNull();
+    expect(find(host, '[data-ui="mix-joint-readout"]').textContent).toBe(
+      en.shared.vault.conversation.jointHint,
+    );
+  });
+
+  it.each(['en', 'pt'] as const)(
+    'says so, under the beam and in its name, when a small share is drawn wider than it is (%s)',
+    async (lang) => {
+      const words = dictionary(lang).shared.vault.conversation;
+      // 90% and ten lines of 1%: the ten are drawn at 3% each, a third of the beam for a tenth of the money
+      const small = Array.from({ length: 10 }, (_, i) => [`S${i}`, 100] as [string, number]);
+      answer([{ proposal: mixOf(['SPY', 9000], ...small) }, { proposal: mixOf(...SIX) }]);
+      const host = await show(lang);
+      await send(host, 'Mostly one fund');
+      const joint = find(host, '[data-ui="mix-joint"]');
+      expect(pieces(host).map((p) => p.style.width)).toEqual(['70%', ...small.map(() => '3%')]);
+      expect(find(joint, '[data-part="hint"]').textContent).toBe(words.jointHintWidened);
+      expect(find(joint, '[role="toolbar"]').getAttribute('aria-label')).toBe(
+        words.jointLabelWidened,
+      );
+      expect(pieces(host).map((p) => p.dataset.widened)).toEqual([
+        undefined,
+        ...small.map(() => 'true'),
+      ]);
+      // the figures are exact all the same, in the row and in the piece's name
+      const one = sourceValue(lang, 0.01, 'fraction');
+      expect(find(rowOf(host, 'S0'), '[data-part="share"]').textContent).toBe(one);
+      expect(pieces(host)[1].getAttribute('aria-label')).toBe(`S0, ${one}`);
+      // and the plain sentence comes back with a mix that is drawn as it is
+      await send(host, 'Six things instead');
+      expect(find(joint, '[data-part="hint"]').textContent).toBe(words.jointHint);
+      expect(find(joint, '[role="toolbar"]').getAttribute('aria-label')).toBe(words.jointLabel);
+      expect(host.querySelectorAll('[data-part="piece"][data-widened]')).toHaveLength(0);
+    },
+  );
+
+  it('lets a lit piece go, and takes the focus on the beam, when the next draft drops it', async () => {
+    answer([
+      { proposal: mixOf(['SPY', 5000], ['GLD', 3000], ['USDC', 2000]) },
+      { proposal: mixOf(['SPY', 6000], ['USDC', 4000]) },
+    ]);
+    const host = await show();
+    await send(host, 'A fund, gold and cash');
+    const gold = pieces(host)[1];
+    await act(async () => gold.focus());
+    expect(rowOf(host, 'GLD').getAttribute('data-lit')).toBe('true');
+    // off and on again by a finger on its row: it is lit when the next draft comes
+    await fire(rowOf(host, 'GLD'), touch('pointerup'));
+    await fire(rowOf(host, 'GLD'), touch('pointerup'));
+    expect(gold.getAttribute('data-lit')).toBe('true');
+    await send(host, 'No gold');
+    expect(pieces(host).map((p) => p.dataset.asset)).toEqual(['solana:spy', 'solana:usdc']);
+    // nothing is lit, so nothing is dimmed, and the readout is the hint again
+    expect(pieces(host).map((p) => p.dataset.lit)).toEqual(['false', 'false']);
+    expect(pieces(host).some((p) => p.className.includes('opacity-45'))).toBe(false);
+    expect(host.querySelector('[data-ui="mix-joint-readout"] [data-part="lit"]')).toBeNull();
+    expect(host.querySelectorAll('tr[data-lit="true"]')).toHaveLength(0);
+  });
+
+  it('moves the focus to the beam when the piece that had it is dropped', async () => {
+    const release = answer(
+      [
+        { proposal: mixOf(['SPY', 5000], ['GLD', 3000], ['USDC', 2000]) },
+        { proposal: mixOf(['SPY', 6000], ['USDC', 4000]) },
+      ],
+      true,
+    );
+    const host = await show();
+    await send(host, 'A fund, gold and cash');
+    await release();
+    await send(host, 'No gold');
+    await act(async () => pieces(host)[1].focus());
+    await release();
+    expect(pieces(host)).toHaveLength(2);
+    expect(document.activeElement).toBe(find(host, '[data-ui="mix-joint"] [role="toolbar"]'));
+  });
+
+  it('keeps the last mix when the next reply is only a question, and never called it a new draft', async () => {
+    const release = answer(
+      [
+        { proposal: mixOf(['SPY', 5000], ['GLD', 3000], ['USDC', 2000]) },
+        { proposal: null, message: 'I need one thing first.', question: 'For how long?' },
+      ],
+      true,
+    );
+    const host = await show();
+    const strategy = find(host, '[data-ui="goal-strategy"]');
+    await send(host, 'A fund, gold and cash');
+    await release();
+    await send(host, 'Make it safer');
+    // the line promises no new draft: the reply may be a question
+    const line = find(strategy, '[data-ui="preview-pending"]').textContent ?? '';
+    expect(line).toBe(en.shared.vault.conversation.reworking);
+    expect(line).not.toMatch(/new draft/i);
+    await release();
+    // the settled rule (gate DEPOSIT-STEP): a reply with no proposal keeps the last mix, no longer
+    // marked as waiting, and its deposit action is the person's again
+    expect(pieces(host).map((p) => p.dataset.asset)).toEqual([
+      'solana:spy',
+      'solana:gld',
+      'solana:usdc',
+    ]);
+    expect(find(strategy, '[data-ui="preview-pending"]').textContent).toBe('');
+    expect(strategy.querySelector('[data-ui="goal-empty-preview"]')).toBeNull();
+    expect(find(strategy, '[data-action="deposit"]').getAttribute('aria-disabled')).toBeNull();
+    expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain(
+      'I need one thing first.\n\nFor how long?',
+    );
+  });
+
+  it('says a draft is being worked on, keeps the one before it unusable, then moves only what changed', async () => {
+    const release = answer(
+      [
+        { proposal: mixOf(['SPY', 5000], ['GLD', 3000], ['USDC', 2000]) },
+        { proposal: mixOf(['SPY', 6000], ['USDC', 2000], ['QQQ', 2000]) },
+      ],
+      true,
+    );
+    const host = await show();
+    const strategy = find(host, '[data-ui="goal-strategy"]');
+    const status = find(strategy, '[data-ui="goal-empty-preview"] [role="status"]');
+    expect(status.textContent).toBe(en.goal.explore.empty);
+    await send(host, 'A fund, gold and cash');
+    // the first wait: the empty card says so, and draws nothing yet
+    expect(find(strategy, '[data-ui="goal-working"]').textContent).toBe(en.goal.explore.working);
+    expect(find(strategy, '[data-ui="goal-working"]').getAttribute('role')).toBe('status');
+    // the region was there before the words came
+    expect(status).toBe(find(strategy, '[data-ui="goal-working"]'));
+    expect(strategy.querySelector('[data-ui="mix-joint"]')).toBeNull();
+    await release();
+    expect(strategy.querySelector('[data-ui="goal-working"]')).toBeNull();
+    expect(find(strategy, '[data-ui="mix-joint"]').getAttribute('data-motion')).toBe('arrive');
+    const use = () => find(strategy, '[data-action="deposit"]');
+    expect(use().getAttribute('aria-disabled')).not.toBe('true');
+
+    // the next wait: the draft stays, said to be the last one, and its action waits
+    // the button opens the deposit step; back on the proposal, the next words are sent
+    await click(use());
+    expect(host.querySelector('[data-action="deposit-review"]')).not.toBeNull();
+    await click(
+      [...host.querySelectorAll('button')].find(
+        (button) => button.textContent === en.mix.deposit.backToProposal,
+      ) as HTMLElement,
+    );
+    // the line is there, empty, before its words change
+    const pendingLine = find(strategy, '[data-ui="preview-pending"]');
+    expect(pendingLine.getAttribute('role')).toBe('status');
+    expect(pendingLine.textContent).toBe('');
+    await send(host, 'Swap the gold for a second fund');
+    expect(find(strategy, '[data-ui="preview-pending"]').textContent).toBe(
+      en.shared.vault.conversation.reworking,
+    );
+    expect(pendingLine).toBe(find(strategy, '[data-ui="preview-pending"]'));
+    // only the beam recedes: its hint, the rows and their figures are not inside what is dimmed
+    const dimmed = find(strategy, '[data-receded]');
+    expect(dimmed.getAttribute('role')).toBe('toolbar');
+    expect(dimmed.querySelector('[data-part="hint"]')).toBeNull();
+    expect(pieces(host).map((p) => p.dataset.asset)).toEqual([
+      'solana:spy',
+      'solana:gld',
+      'solana:usdc',
+    ]);
+    // the button cannot open the deposit step while the reply is on its way
+    expect(use().getAttribute('aria-disabled')).toBe('true');
+    await click(use());
+    expect(host.querySelector('[data-action="deposit-review"]')).toBeNull();
+
+    await release();
+    const joint = find(strategy, '[data-ui="mix-joint"]');
+    expect(joint.getAttribute('data-motion')).toBe('change');
+    expect(find(strategy, '[data-ui="preview-pending"]').textContent).toBe('');
+    expect(use().getAttribute('aria-disabled')).not.toBe('true');
+    expect(strategy.querySelector('[data-receded]')).toBeNull();
+    expect(pieces(host).map((p) => [p.dataset.asset, p.style.width])).toEqual([
+      ['solana:spy', '60%'],
+      ['solana:usdc', '20%'],
+      ['solana:qqq', '20%'],
+    ]);
+    const body = (i: number) => find(pieces(host)[i], '[data-part="body"]');
+    // SPY stays where it starts and grows; cash slides along at the size it had; the new piece seats
+    expect(body(0).className).not.toContain('tf-joint-move');
+    expect(find(pieces(host)[0], '[data-part="fill"]').className).toContain('tf-joint-size');
+    expect(
+      find(pieces(host)[0], '[data-part="fill"]').style.getPropertyValue('--tf-joint-sx'),
+    ).toBe(String(50 / 60));
+    expect(body(1).className).toContain('tf-joint-move');
+    expect(body(1).style.getPropertyValue('--tf-joint-x')).toBe('20cqw');
+    expect(find(pieces(host)[1], '[data-part="fill"]').className).not.toContain('tf-joint-size');
+    expect(body(2).className).toContain('tf-joint-arrive');
+    // gold fades where it lay, out of reach of a pointer and of a reader
+    const ghost = find(joint, '[data-part="ghost"]');
+    expect([ghost.style.left, ghost.style.width]).toEqual(['50%', '30%']);
+    expect(ghost.getAttribute('aria-hidden')).toBe('true');
+    // only a figure that changed drops in again, and it is the final one
+    const figure = (symbol: string) => find(rowOf(host, symbol), '[data-part="share"]');
+    expect(figure('SPY').textContent).toBe('60%');
+    expect(figure('SPY').className).toContain('tf-joint-figure');
+    expect(figure('USDC').className).not.toContain('tf-joint-figure');
+    expect(rowOf(host, 'QQQ').className).toContain('tf-joint-row');
+    expect(rowOf(host, 'USDC').className).not.toContain('tf-joint-row');
+    expect(strategy.querySelector('tr[data-row="solana:gld"]')).toBeNull();
+  });
+
+  it('keeps the mix before it when the next reply does not come', async () => {
+    let fail = false;
+    portStore.setApi(async (url, init) => {
+      if (init?.method !== 'POST') return baseApi(url);
+      if (fail) return json({}, 500);
+      return json(response(JSON.parse(String(init.body)).messageId));
+    });
+    const host = await show();
+    await send(host, 'Gold and cash');
+    expect(host.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
+    fail = true;
+    await send(host, 'Something else');
+    // the settled rule (gate DEPOSIT-STEP): the chat says it failed, and the last mix stays usable
+    expect(find(host, '[role="alert"]').textContent).toBe(en.goal.explore.failed);
+    expect(host.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="goal-empty-preview"]')).toBeNull();
+    expect(find(host, '[data-ui="preview-pending"]').textContent).toBe('');
+    expect(find(host, '[data-action="deposit"]').getAttribute('aria-disabled')).toBeNull();
+  });
+
+  it('moves nothing for a person who asked for reduced motion: each mix is simply there', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === '(prefers-reduced-motion: reduce)',
+      media: query,
+      addEventListener() {},
+      removeEventListener() {},
+    }));
+    answer([
+      { proposal: mixOf(['SPY', 5000], ['GLD', 3000], ['USDC', 2000]) },
+      { proposal: mixOf(['SPY', 6000], ['USDC', 2000], ['QQQ', 2000]) },
+    ]);
+    const host = await show();
+    const moving = () => host.querySelectorAll('[class*="tf-joint-"]');
+    await send(host, 'A fund, gold and cash');
+    expect(find(host, '[data-ui="mix-joint"]').getAttribute('data-motion')).toBe('still');
+    expect(moving()).toHaveLength(0);
+    await send(host, 'Swap the gold for a second fund');
+    expect(find(host, '[data-ui="mix-joint"]').getAttribute('data-motion')).toBe('still');
+    expect(moving()).toHaveLength(0);
+    expect(host.querySelector('[data-part="ghost"]')).toBeNull();
+    expect(pieces(host).map((p) => p.style.width)).toEqual(['60%', '20%', '20%']);
+    expect(find(rowOf(host, 'SPY'), '[data-part="share"]').textContent).toBe('60%');
+  });
+
+  it('says a question once when the message already ends with it', async () => {
+    const question = 'How long can this money stay invested?';
+    answer([
+      {
+        proposal: null,
+        message: `I can work with that.  how long can this money\nstay invested?`,
+        question,
+      },
+      { proposal: null, message: 'I can work with that.', question },
+    ]);
+    const host = await show();
+    await send(host, 'Something steady');
+    const said = () => [...find(host, '[data-ui="goal-transcript"]').children].at(-1)?.textContent;
+    expect(said()).toBe(
+      `${en.talk.me}: I can work with that.  how long can this money\nstay invested?`,
+    );
+    await send(host, 'Tell me more');
+    expect(said()).toBe(`${en.talk.me}: I can work with that.\n\n${question}`);
+  });
+});
+
 describe('existing entry handoffs', () => {
   it('prefills actual landing words in Explore across sign-in, then consumes once on accepted words even if reply fails', async () => {
     portStore.set(fakePort());
@@ -423,7 +1013,6 @@ describe('existing entry handoffs', () => {
     await unmountAll();
     portStore.setApi(async (url) => baseApi(url));
     const host = await show();
-    expect(find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').value).toBe('explore');
     expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe(words);
     expect(find<HTMLTextAreaElement>(host, 'textarea').disabled).toBe(true);
     expect(calls).toHaveLength(0);
@@ -460,7 +1049,6 @@ describe('existing entry handoffs', () => {
     const words = 'Consider gold with a small budget';
     window.history.replaceState(null, '', `/goal#goal=${encodeURIComponent(words)}`);
     const host = await show();
-    expect(find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').value).toBe('explore');
     expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe(words);
     expect(sessionStorage.getItem(GOAL_HANDOFF)).toBe(words);
     expect(calls).toHaveLength(0);
@@ -469,47 +1057,16 @@ describe('existing entry handoffs', () => {
     expect(sessionStorage.getItem(GOAL_HANDOFF)).toBeNull();
     expect(calls[0].body.messages).toEqual([{ who: 'person', text: words }]);
   });
-  it('routes a validated old plan change to its original guided consumer without model authority', async () => {
-    const sheet = {
-      basketType: 'standard' as const,
-      goal: 'income' as const,
-      amountUsd: 80000,
-      horizonMonths: 12,
-      risk: 'low' as const,
-      themes: [],
-      chains: ['solana' as const],
-      incomeTargetUsdMonthly: 300,
-      rules: { useHoldings: true, glide: true },
-      language: 'en' as const,
-    };
-    const way = 'You can aim for $147 a month instead of $300.';
-    portStore.set(fakePort());
-    keepWay(sheet, way);
-    expect(readWay()).toMatchObject({ sheet: { incomeTargetUsdMonthly: 300 }, way });
-    portStore.setApi(async (url, init) => {
-      if (init?.method === 'POST') {
-        const body = JSON.parse(String(init.body));
-        calls.push({ path: url, body });
-        if (url === PERSONALIZE_PATH || url === PROPOSE_PATH)
-          return json({ id: 'continued-plan', proposal: proposalFor(body.sheet, 'sandbox') });
-        if (url === '/goals') return json(READ_IN_DOLLARS);
-        return json({}, 404);
-      }
-      return baseApi(url);
-    });
+  it('ignores a continuation the removed guided flow left in the tab', async () => {
+    const saved = JSON.stringify({ sheet: { goal: 'income' }, way: 'Aim for $147 a month.' });
+    sessionStorage.setItem('tf-invest-way', saved);
     const host = await show();
     await settle();
-    await settle();
-    expect(find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').value).toBe('guided');
-    expect(host.querySelector('[data-ui="goal-conversation"]')).toBeNull();
-    expect(find(host, '[data-ui="invest-turns"]').textContent).toContain(way);
-    expect(readWay()).toBeNull();
-    expect(
-      calls
-        .filter((call) => [PERSONALIZE_PATH, PROPOSE_PATH].includes(call.path))
-        .map((call) => call.body.sheet),
-    ).toMatchObject([{ goal: 'income', amountUsd: 80000, incomeTargetUsdMonthly: 147 }]);
-    expect(calls.some((call) => call.path === path || call.path.includes('/orders'))).toBe(false);
+    expect(host.querySelector('[data-ui="goal-conversation"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="invest-screen"]')).toBeNull();
+    expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe('');
+    expect(sessionStorage.getItem('tf-invest-way')).toBe(saved);
+    expect(calls).toHaveLength(0);
   });
 });
 

@@ -17,14 +17,14 @@ test('new-goal exploration opens a responsive preview-only workbench', async ({ 
       financialPosts.push(request.url());
   });
   await page.goto('/goal');
-  await expect(page.locator('[data-ui="goal-mode"]')).toHaveValue('explore');
+  await expect(page.locator('[data-ui="goal-mode"]')).toHaveCount(0);
   await expect(page.locator('[data-ui="goal-conversation"]')).toBeVisible();
   await expect(page.locator('[data-ui="goal-empty-preview"]')).toContainText(
     en.goal.explore.previewOnly,
   );
   await expect(
     page.locator(
-      '[data-ui="holdings-bar"], [data-ui="invest-card"], [data-ui="order-step"], [data-ui="plan-invest"]',
+      '[data-ui="holdings-bar"], [data-ui="mix-joint"], [data-ui="invest-card"], [data-ui="order-step"], [data-ui="plan-invest"]',
     ),
   ).toHaveCount(0);
   await expect(page.locator('[data-ui="invest-screen"]')).toHaveCount(0);

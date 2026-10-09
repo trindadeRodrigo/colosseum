@@ -2072,11 +2072,16 @@ export type PostConversationsByChainGoalReplyResponse = {
       | 'pick_dropped'
       | 'share_unmet'
       | 'share_unread'
-      | 'share_withdrawn';
+      | 'share_withdrawn'
+      | 'pick_outside_goal';
     assetIds: string[];
     quote?: string;
   }[];
   chain: 'solana' | 'base' | 'robinhood';
+  /** What the person said the money is for, read by the server from plain statements in their own messages; the latest one stands. Null until they have plainly said it, and after they take it back or question it. Never the model’s reading and never defaulted. */
+  goal: ('grow' | 'income' | 'protect') | null;
+  /** The risk the person said they accept, read the same way. Null until they have plainly said it; never defaulted. */
+  risk: ('low' | 'medium' | 'high') | null;
 };
 
 /** GET /v1/funding: query. What the signed-in wallet is missing on its chain: the dollar token and native gas */
@@ -3600,7 +3605,8 @@ export type PostVaultsByChainByAddressConversationReplyResponse = {
       | 'pick_dropped'
       | 'share_unmet'
       | 'share_unread'
-      | 'share_withdrawn';
+      | 'share_withdrawn'
+      | 'pick_outside_goal';
     assetIds: string[];
     quote?: string;
   }[];

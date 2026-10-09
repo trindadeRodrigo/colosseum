@@ -3,17 +3,10 @@ import { Button } from '../../components/ui/Button';
 import { useT } from '../../i18n/I18nProvider';
 import { useAccount } from './AccountProvider';
 
-// Someone signed in who is still not ready (AccountProvider, `slow`): what is slow, and the two
-// things they can do. Plain text and links: nothing moves while they wait (STYLE.md).
+// Someone signed in who is still not ready (AccountProvider, `slow`): what is slow, and "Try
+// again". Plain text and links: nothing moves while they wait (STYLE.md).
 
-export function SlowSignIn({
-  onSignOut,
-  className,
-}: {
-  /** "Sign out", where it is not already beside this (the account menu has its own). */
-  onSignOut?: () => void;
-  className?: string;
-}) {
+export function SlowSignIn({ className }: { className?: string }) {
   const t = useT();
   const { slow, again } = useAccount();
   if (!slow) return null;
@@ -30,11 +23,6 @@ export function SlowSignIn({
         ) : (
           <Button variant="link" data-act="sign-in-again" onClick={again}>
             {t.shell.slow.again}
-          </Button>
-        )}
-        {onSignOut && slow.side !== 'service' && (
-          <Button variant="link" data-act="sign-in-leave" onClick={onSignOut}>
-            {t.shell.signOut}
           </Button>
         )}
       </p>

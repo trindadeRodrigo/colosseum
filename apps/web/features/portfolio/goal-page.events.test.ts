@@ -2,7 +2,7 @@
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import GoalPage from '../../app/(app)/goal/page';
-import { click, find, fire, mount, settle, unmountAll } from '../../components/ui/test/dom';
+import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary, type Lang } from '../../i18n';
@@ -58,9 +58,6 @@ function api(person: Person | null, portfolio: () => Response = () => json(portf
 const home = async (lang: Lang = 'en') => {
   const host = await mount(withAccount(lang, createElement(GoalPage)));
   await settle();
-  const mode = find<HTMLSelectElement>(host, '[data-ui="goal-mode"]');
-  mode.value = 'guided';
-  await fire(mode, new Event('change', { bubbles: true }));
   return host;
 };
 const summary = (host: HTMLElement) => host.querySelector<HTMLElement>('[data-ui="owned-vaults"]');
@@ -86,9 +83,6 @@ describe('home', () => {
       const host = await home(lang);
       const switcher = find<HTMLDetailsElement>(host, '[data-ui="vault-switcher"]');
       expect(switcher.open).toBe(false);
-      expect(find(host, '[data-ui="invest-screen"]').classList.contains('lg:grid')).toBe(true);
-      expect(find(host, '[data-ui="invest-chat"]').classList.contains('lg:col-span-5')).toBe(true);
-      expect(find(host, '[data-ui="invest-pane"]').classList.contains('lg:col-span-7')).toBe(true);
       expect(find(switcher, 'summary').textContent).toBe(dictionary(lang).portfolio.summary.title);
       expect(find(switcher, 'summary + ul').className).not.toMatch(/grid-cols/);
       await click(find(switcher, 'summary'));

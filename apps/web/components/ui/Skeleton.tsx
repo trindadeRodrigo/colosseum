@@ -148,18 +148,18 @@ export function SkeletonCards({ count = 3 }: { count?: number }) {
 }
 
 /** The lattice that assembles: horizontals slide in, then the verticals drop, then a hold. */
-export function LatticeLoader() {
+export function LatticeLoader({ size = 24 }: { size?: number }) {
   const at = [0.5, 16.5, 32.5, 47.5];
   return (
     <svg
       data-ui="lattice-loader"
-      width={24}
-      height={24}
+      width={size}
+      height={size}
       viewBox="0 0 48 48"
       aria-hidden="true"
       fill="none"
       stroke="currentColor"
-      strokeWidth={2}
+      strokeWidth={48 / size}
       className="tf-lattice-assemble shrink-0 overflow-hidden text-muted-foreground"
     >
       {at.map((p, i) => (

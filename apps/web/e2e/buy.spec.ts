@@ -1,11 +1,11 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
-import { planFromGoal, readyToInvest } from './invest';
+import { openPlan, readyToInvest } from './invest';
 import { inTheme } from './theme';
 
-// A person's buy, end to end in a browser, on the mock chain: sign in with the throwaway wallet, read a
-// goal, build the plan, look at it, buy it, review every step and sign. The order screen's executor
+// A person's buy, end to end in a browser, on the mock chain: sign in with the throwaway wallet, open
+// a plan, look at it, buy it, review every step and sign. The order screen's executor
 // builds each step from the stub API, holds it to the review with the real guard, has the throwaway
 // wallet sign it and reports it, until the stub's mock chain confirms every step. A second buy has the
 // stub lie about one step, and the guard refuses it. Every screen is checked with axe at 375 px, in
@@ -137,7 +137,6 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
   await box.press('Enter');
   await expect(page).toHaveURL(/\/goal$/);
   // Plain landing words stay an unconfirmed model-led prefill. Only an explicit Send can ask for a reply.
-  await expect(page.locator('[data-ui="goal-mode"]')).toHaveValue('explore');
   await expect(page.locator('[data-ui="goal-chat"] textarea')).toHaveValue(
     'Grow $2,000 for ten years, high risk',
   );
@@ -253,7 +252,7 @@ async function toBuy(page: Page, o: { fund?: 'mock' | 'test' } = {}) {
   await expect(page).toHaveURL(/\/goal$/);
   await check(page, 'home');
 
-  await planFromGoal(page, 'Grow $40 for three years, medium risk');
+  await openPlan(page);
 
   await expect(page).toHaveURL(/\/plan\/[^/]+$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Grow $40 over 36 months.');

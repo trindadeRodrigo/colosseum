@@ -4,7 +4,6 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
-import { Field, Input } from '../../components/ui/Field';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -14,6 +13,7 @@ import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { formatBps } from './amounts';
 import { type Funding, FundingStep } from './FundingStep';
 import type { InvestProgress } from './invest-words';
+import { MAX_USD, MIN_USD } from './limits';
 import { OrderScreen } from './OrderScreen';
 import {
   type BuyOf,
@@ -49,8 +49,8 @@ export const AUTO_ORDERS = 4;
 /** How long the press is held after an order takes another's place on the card. */
 export const READ_MS = 1_500;
 
-export const MIN_USD = 10;
-export const MAX_USD = 1_000_000;
+export { AmountField } from './AmountField';
+export { MAX_USD, MIN_USD };
 
 /** An order made for the card, or why none was, in the words the card shows. */
 export type InvestPlaced =
@@ -122,43 +122,6 @@ export type InvestEmbedded = Pick<
   InvestCardProps,
   'amount' | 'onProgress' | 'onDone' | 'onStopped' | 'onVersionChanged' | 'onAmount'
 >;
-
-/** The amount of a buy, typed in dollars: the one field over the card on a screen of its own. */
-export function AmountField({
-  text,
-  onText,
-  hint,
-  value,
-  disabled = false,
-}: {
-  text: string;
-  onText: (text: string) => void;
-  hint: string;
-  /** The amount in dollars, or null while the text is not one from $10 to $1,000,000. */
-  value: number | null;
-  /** The person pressed: the order under way is for the amount it was made for. */
-  disabled?: boolean;
-}) {
-  const t = useT();
-  return (
-    <Field
-      label={t.buy.amount.label}
-      hint={hint}
-      error={text.trim() && value === null ? t.buy.blocked.amount : undefined}
-    >
-      {(control) => (
-        <Input
-          {...control}
-          inputMode="decimal"
-          width="14ch"
-          disabled={disabled}
-          value={text}
-          onChange={(e) => onText(e.currentTarget.value)}
-        />
-      )}
-    </Field>
-  );
-}
 
 type Made = {
   key: string;

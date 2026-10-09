@@ -240,9 +240,6 @@ export const en = {
 
   goal: {
     explore: {
-      mode: 'Conversation',
-      explore: 'Explore a strategy',
-      guided: 'Guided investing',
       invitation: 'What would you like your strategy to do?',
       lead: 'Tell me your ideas, needs and limits. I can discuss an allocation with its sources and tradeoffs.',
       placeholder: 'Describe what you want to explore…',
@@ -252,8 +249,15 @@ export const en = {
       readingAccount: 'Your account and chain must be ready before I can get a reply.',
       empty:
         'Your proposed allocation and its sources will appear here after a reply. No vault has been created.',
-      previewOnly:
-        'Preview only. This draft cannot be invested here yet. Guided investing is a separate flow.',
+      previewOnly: 'Preview only. This draft cannot be invested here yet.',
+      /** In the empty preview while the first reply is on its way. */
+      working: 'Working on a draft from what you said. It will appear here with its sources.',
+      /** On a proposal, over "Deposit": the way from the draft to a buy. */
+      draftNote:
+        'A draft from this conversation. Deposit to choose an amount. Nothing is bought until you review and sign.',
+      /** Under the box when the person's last words got no reply. */
+      retry: 'Try again',
+      elsewhere: 'See shared portfolios',
       unavailable:
         'The strategy conversation service is unavailable. Your words are kept; no draft was produced.',
       timeout: 'The reply took too long. Your words are kept; try again in a moment.',
@@ -288,14 +292,6 @@ export const en = {
         '$80,000 for $300 a month of income, 5 years, low risk',
       ],
       /** The sheet's source line, for an example sent as it is: its limits are the app's own. */
-    },
-    /** Beside the reader on the sheet's source line, when the words of the goal filled what it left empty. */
-    readFailure: {
-      unreachable:
-        'I couldn’t reach our server to read that. Your text is still here. Try again in a moment.',
-      tooShort: 'That’s too short for me to read. Try an amount and a time frame.',
-      tooLong: 'That’s too long for me to read. Keep it under 2,000 characters.',
-      unreadable: 'I got an answer I couldn’t read. Your text is still here. Try again.',
     },
     /** Under the sheet's title, while the only reader is the one made for goals in reais. */
     /** What the reading left empty, by name: "Amount (dollars) and Time frame (months)". */
@@ -387,22 +383,12 @@ export const en = {
       unset: 'Not set',
       unsetNote: 'A plan is built on the chain you’re on.',
       choose: 'Choose the chain',
-      unknown: 'Not known yet',
     },
     blocked: {
       chainNotChosen: 'Choose a chain from the bar at the top first.',
       chainUnknown:
         'I can’t tell yet which chain your plan lives on, so I can’t build for it. Ask again, above.',
       refused: 'Our server didn’t accept these limits. Check each field, then try again.',
-      /** The goal or a withdrawal is in another currency (gate USD-ONLY). */
-      currency:
-        'Plans are in dollars for now: the amount and every withdrawal. Give them in dollars, then build again.',
-      /** The server answered 401 or 403 to "Build my plan". */
-      signInAgain:
-        'Our server doesn’t recognise your sign-in any more, so the plan wasn’t built. Sign out, then sign in again.',
-      /** The server answered 401 because the identity token was not sent. */
-      noIdentity:
-        'The plan wasn’t built: the sign-in service didn’t give me the part of your sign-in that lists your wallets, so our server can’t check them. Your limits are kept. Wait a minute, then try again.',
       chainOff: (chain: string) =>
         `${chain} is switched off on our server for now, so I can’t build a plan there. Your limits are kept.`,
     },
@@ -718,182 +704,15 @@ export const en = {
     },
   },
 
-  /**
-   * The Invest screen's conversation and pane (gate INVEST-TWO-PANE): the conversation on the left,
-   * the plan on the right. The invest card's own words are `invest`.
-   */
+  /** The Invest workspace (`/goal`): its title, the preview's heading and who spoke. */
   talk: {
     workbench: {
       title: 'Invest',
-      invitation: 'Tell me what you want to achieve. I’ll help you work through the details.',
       strategy: 'Strategy preview',
-      empty:
-        'Your plan’s holdings and sources will appear here when it is built and ready to review.',
-      preview: 'Building a preview does not invest your money.',
     },
-    capacity:
-      'This conversation has reached its limit. Your earlier messages are kept. Start over to begin another.',
     startOver: 'Start over',
-    /** The words that pick a plan by its name: "choose Cover", "I’ll take Spread". */
-    pickWords: "choose|pick|take|i choose|i pick|i[’']ll take|i want|go with|let[’']s go with",
-    chat: 'The conversation',
     you: 'You',
     me: 'tenonfi',
-    box: 'What should this money do?',
-    placeholder: 'Say it in a sentence, or answer the question above.',
-    reply: 'Send',
-    reading: 'Reading…',
-    examples: 'Start from an example',
-    /** What the app says. Every figure in these comes from the sheet, never from a reader. */
-    say: {
-      understood: (facts: string) => `Here’s what I have: ${facts}.`,
-      notUnderstood:
-        'I couldn’t read a goal in that. Say how much, for how long, and what it’s for.',
-      set: (label: string, value: string) => `${label}: ${value}.`,
-      incomeSkipped: 'No set amount a month, then.',
-      ready: 'That’s all I need. Shall I build your plan? Nothing is bought when I do.',
-      /** Words that changed nothing while a goal is held: what is held, then what can be done. */
-      held: (facts: string) => `I found nothing to change in that. I still have: ${facts}.`,
-      heldBuilt:
-        'Your plan is built from that. Tap a limit to change it, or tell me what to change.',
-      allocation: (request: string, conflict: boolean, bound?: string) =>
-        `You asked: “${request}”. ${bound ? `Your requirement “${bound}” has not been applied. Minimum and maximum allocation limits aren’t supported yet. ` : 'I cannot confirm that this allocation request was applied. '}${conflict ? 'Income and protection plans hold no stocks. Changing to growth does not apply your requested share or keep a monthly income target. ' : ''}Review the current read-back. Funding stays paused until you explicitly drop this request and accept those terms.`,
-      allocationDropped:
-        'You dropped that allocation request. The current validated goal remains; review its actual terms before building or choosing a plan.',
-      heldOpen: 'I still need one more thing.',
-      /** What our server read the person wants held, said before its question. */
-      heardThemes: (names: string) => `I have what you want held: ${names}.`,
-      heardMix: (mix: string) => `Held as you said: ${mix}.`,
-      noneYet: 'I don’t have a way to pick stocks by that yet.',
-      first: 'One thing I need first:',
-      /** The guided intake did not answer: said once, then the simple questions follow. */
-      simple: 'The assistant didn’t answer, so I’m reading this the simple way for now.',
-      notAnswer:
-        'I couldn’t take that as an answer to this. Pick one below, or say it another way.',
-      building: 'Building your plan from these limits…',
-      built: 'The plan is on the right. Review it and invest, or change anything.',
-      /** Several plans were made: they are side by side, and one is picked. */
-      builtChoice:
-        'Your plans are on the right, side by side. Compare them and choose one, or change anything.',
-      picked: (name: string) =>
-        `${name} it is. Review it on the right and invest, or see the plans again.`,
-      /** Nothing changed and every fact is known: the plan is offered, in other words than before. */
-      heldReady: 'Nothing changed. Say yes and I build the plan from this.',
-      /** A single name to buy was asked for: said by our own name for it, never the typed words. */
-      cantPick: {
-        stock: (name: string) =>
-          `I can’t pick single stocks like ${name} yet. I can change the risk, the amount, the time or what it’s for.`,
-        coin: (name: string) =>
-          `I can’t pick single coins like ${name} yet. I can change the risk, the amount, the time or what it’s for.`,
-      },
-      riskTop: 'The risk is already high, the highest I can do.',
-      riskBottom: 'The risk is already low, the lowest I can do.',
-      /** The same, on a phone, where the plan is at the foot of the conversation. */
-      builtBelow: 'The plan is ready below. Open it to review and invest, or change anything.',
-      unfit: {
-        goal: 'I can do income, growth or protecting it. Which one?',
-        amount: 'I need an amount in dollars, from $10 to $1,000,000.',
-        income: 'I need an amount in dollars a month, or no set amount.',
-        horizon: 'I need a time frame, from 1 month to 40 years.',
-        risk: 'I can do low, medium or high risk. Which one?',
-      },
-      signIn: 'Sign in to invest. Your goal and this plan stay here.',
-      /** From the invest card: every step is confirmed. */
-      done: 'Your vault is open.',
-      /** The buy stopped short: what landed is kept, and the order's page has the rest. */
-      stopped: 'The buy stopped before every step was done. What landed is kept.',
-      finish: 'Finish the buy',
-    },
-    /** One question at a time. */
-    ask: {
-      goal: 'What is the money for?',
-      amount: 'How much are you starting with?',
-      income: 'How much do you want it to pay a month?',
-      horizon: 'For how long?',
-      risk: 'How much risk will you take?',
-    },
-    /** The quick replies' words, where the sheet's own are not enough. */
-    replies: {
-      years: (n: number) => (n === 1 ? '1 year' : `${n} years`),
-      aMonth: (amount: string) => `${amount} a month`,
-      noIncome: 'No set amount',
-      growGoal: 'Make it a growth goal',
-      dropAllocation: 'Drop this allocation request',
-      all: 'All of it',
-      half: 'Half',
-      none: 'None',
-      yes: 'Yes',
-      no: 'No',
-      build: 'Yes, build it',
-    },
-    facts: {
-      /** What was read beyond the five facts, from the sheet. */
-      theme: 'Theme',
-      themeShare: (name: string, share: string) => `${name} · ${share}`,
-      mix: 'Held as you said',
-      mixPart: {
-        growth: (share: string) => `${share} stocks and crypto`,
-        dollarYield: (share: string) => `${share} dollar yield`,
-        gold: (share: string) => `${share} gold`,
-        cash: (share: string) => `${share} cash`,
-      },
-      title: 'Your goal',
-      goal: 'What it’s for',
-      amount: 'Amount',
-      income: 'Income a month',
-      horizon: 'For how long',
-      risk: 'Risk',
-      open: 'Not said yet',
-      noIncome: 'No set amount',
-      /** Before a fact's name, for a screen reader: the fact is a button. */
-      change: 'Change',
-      /** What the person is taken to have said by tapping a fact. */
-      changeSay: {
-        goal: 'Change what it’s for',
-        amount: 'Change the amount',
-        income: 'Change the income a month',
-        horizon: 'Change how long',
-        risk: 'Change the risk',
-      },
-      /** At the foot of the facts, once every one is known. */
-      build: 'Build my plan',
-      noAccount: 'Building and seeing the plan needs no account.',
-    },
-    pane: {
-      label: 'Your plan',
-      empty: {
-        title: 'Your plan is built here.',
-        body: 'Say what the money is for. Each thing you tell me shows up on this side, then the plan with the reason for every part and the way out.',
-      },
-      building: 'Building your plan…',
-      /** On a phone the plan is one line that opens. */
-      open: 'Open your plan',
-      close: 'Back to the conversation',
-      summaryEmpty: 'No plan yet',
-      summaryFacts: (known: number, of: number) => `Your goal: ${known} of ${of} set`,
-      ownPage: 'Open this plan on its own page',
-      investTitle: 'Invest',
-      picked: (name: string) => `You chose ${name}.`,
-      backToPlans: 'See the plans again',
-      /** Signed in, with a plan that was built for a visitor: it is built again as theirs. */
-      makeYours: 'Make this plan yours',
-      /** The plan shown is from before a change that is still being asked about. */
-      stale: 'This plan is from before your change. Answer the question and I build it again.',
-      backToPlan: 'Back to the plan',
-    },
-    /** A way to close a gap, pressed: said as the person's own turn. */
-    ways: {
-      amount: (amount: string) => `Make it ${amount}`,
-      income: (income: string) => `Aim for ${income}`,
-      other: 'Change it that way',
-    },
-    failure: {
-      unavailable:
-        'Our server can’t build plans right now. Your limits are kept. Try again in a moment.',
-      refused: 'Our server didn’t accept these limits. Change one and I try again.',
-      noPlan: 'No plan fits these limits. Change the amount, the time or the risk and I try again.',
-      again: 'Try again',
-    },
   },
 
   plan: {
@@ -903,16 +722,16 @@ export const en = {
       'This plan came from a link: our engine made it from the limits the link carried, which someone else may have set. Check the goal, the amount and the limits above before you buy.',
     missing: {
       title: 'I can’t find this plan for you.',
-      body: 'It isn’t a plan made with this sign-in, or it is no longer kept. Build one from your goal: your limits are kept.',
-      again: 'Build it again',
+      body: 'It isn’t a plan made with this sign-in, or it is no longer kept. Nothing from it carries over: describe your goal in the conversation and I’ll propose a new mix.',
+      again: 'Describe your goal',
     },
     backToGoal: 'Back to your goal',
     /** A plan on a chain no wallet of the person's signs on. */
     unsignable: (plan: string) =>
-      `This plan is on ${plan}, and the wallet you signed in with doesn’t sign there. Sign in with a wallet that does, or build a plan from your goal.`,
+      `This plan is on ${plan}, and the wallet you signed in with doesn’t sign there. Sign in with a wallet that does, or describe your goal in the conversation for a new mix.`,
     /** A plan made before a plan lived on one chain. */
     split:
-      'This plan is spread over two chains, and a plan lives on one. Build it again from your goal.',
+      'This plan is spread over two chains, and a plan lives on one. It can’t be bought as it is: describe your goal in the conversation for a new mix.',
     lead: (chain: string) =>
       `Built for ${chain}, from your limits. Nothing is bought until you review every step and sign it.`,
     holds: 'What it holds',
@@ -1117,8 +936,6 @@ export const en = {
     /** The one button of a plan: it names the action and the amount. */
     invest: (amount: string) => `Invest ${amount}`,
     investing: 'Opening the steps…',
-    /** The invest step, once one of several plans is picked. */
-    investIn: (amount: string, name: string) => `Invest ${amount} in ${name}`,
     /** The answer of a plan with no income asked of it: the range it projects, with its pin. */
     answer: {
       /** A plan to grow or protect: what most of it is in, and what a bad fall could cost. */
@@ -1131,91 +948,6 @@ export const en = {
       range: (low: string, high: string) => `${low} to ${high} a year`,
       rangeAfter: 'projected. A range, not a promise.',
       none: 'No projection yet: there is no yield reading for this plan.',
-    },
-    choice: {
-      title: 'Your plans',
-      lead: (plans: number, chain: string) =>
-        plans === 1
-          ? `One plan from your limits, on ${chain}. Nothing is bought until you choose it, review every step and sign it.`
-          : `${plans} plans from the same limits, on ${chain}, each made a different way. None is picked for you: compare them and choose one. Nothing is bought until you review every step and sign it.`,
-      names: { cover: 'Cover', spread: 'Spread', carry: 'Carry' },
-      aims: {
-        cover: 'Sets the most aside for your withdrawals, and sells at the lowest measured cost.',
-        spread: 'Spreads the money across the most issuers your limits allow.',
-        carry: 'Holds the most yield observed inside your limits.',
-      },
-      see: (name: string) => `All of ${name}`,
-      /** Said once, quietly, on a candidate not live: no plate on the card. */
-      sample: { sandbox: 'Sample figures · test network', mock: 'Sample figures' },
-      /** The two or three figures a card leads with; the rest is in its Details. */
-      /** The figures a candidate leads with, each with its label over it. */
-      figures: {
-        yield: 'Yield observed, a year',
-        exit: 'Cost to sell it all',
-        fall: 'In a bad fall',
-        lost: (amount: string) => `about −${amount}`,
-        noLoss: 'no loss counted',
-      },
-      headline: {
-        paidOf: (paid: number, all: number) =>
-          `${paid} of ${all} months of withdrawals paid at the rates observed.`,
-        holds: 'What it holds',
-        parts: (n: number) => (n === 1 ? '1 part' : `${n} parts`),
-        paid: 'Months paid',
-        worst: 'Worst case',
-        worstMonths: (stress: string, paid: number, all: number) =>
-          `If ${stress}, ${paid} of ${all} months are paid.`,
-        fall: (amount: string) => `In a bad fall, about ${amount} lost.`,
-        noFall: 'In a bad fall, about $0 lost: nothing here is stocks, crypto or gold.',
-      },
-      picker: {
-        legend: 'Choose a plan',
-        buy: (name: string) => `Choose ${name}`,
-        none: 'Choose a plan to invest in it.',
-      },
-      score: {
-        title: 'How it compares',
-        covered: 'Months of withdrawals set aside',
-        paidNow: 'Months paid at the rates observed',
-        paidUnder: (stress: string) => `Months paid if ${stress}`,
-        of: (paid: number, all: number) => `${paid} of ${all}`,
-        short: (amount: string) => `${amount} short`,
-        carry: 'Yield observed, a year',
-        exit: 'Cost to sell it all at your size',
-        exitNone: 'not measured',
-        measured: (share: string) => `${share} of it measured`,
-        issuer: 'Largest issuer',
-        issuers: (n: number) => (n === 1 ? '1 issuer' : `${n} issuers`),
-        credit: 'In credit and basis',
-        fx: 'Owed in another currency, not held in it',
-      },
-      stress: {
-        yields_fall: (fall: string) => `yields fall by ${fall}`,
-        credit_gate: (months: number) => `credit can’t be sold for ${months} months`,
-        equity_fall: (fall: string) => `stocks, crypto and gold fall by ${fall}`,
-        fx_goal_up: (currency: string, move: string, months: number) =>
-          `the ${currency} gains ${move} on the dollar over ${months} months`,
-        fx_goal_down: (currency: string, move: string, months: number) =>
-          `the ${currency} loses ${move} on the dollar over ${months} months`,
-        other: 'a named stress applies',
-      },
-      status: {
-        title: 'Your withdrawals',
-        met: 'Pays every withdrawal, at the rates observed and under each stress.',
-        notMet: 'Does not pay every withdrawal under each stress.',
-        observedOn: (date: string) => `Rates observed on ${date}.`,
-        needed: (needed: string, observed: string) =>
-          `Needs ${needed} a year on its dollar yield, and ${observed} is observed.`,
-        neededNone: (observed: string) =>
-          `Needs no yield to pay them, and ${observed} is observed.`,
-        neededOut: (observed: string) =>
-          `No yield up to 100% a year pays every month, and ${observed} is observed.`,
-        ways: 'What would close the gap',
-      },
-      notShown: {
-        title: 'Not shown',
-        lead: 'Made from the same limits, and left out, with the reason.',
-      },
     },
     chainNotReady: (chain: string) =>
       `${chain} isn’t ready for buying yet: its vaults aren’t deployed on this network. Your plan is kept, and can be bought once they are.`,
@@ -1271,7 +1003,7 @@ export const en = {
       hint: (planned: string) => `Your plan was built for ${planned}. From $10 to $1,000,000.`,
       /** Under an amount that is not the plan's: its limits were set in dollars at that amount. */
       other: (planned: string) =>
-        `Your plan was built for ${planned}, and its limits were worked out at that amount. To buy another amount, build the plan again for it.`,
+        `Your plan was built for ${planned}, and its limits were worked out at that amount. To buy another amount, describe your goal in the conversation and use the new mix at that amount.`,
     },
     /** The four steps of a buy, one open at a time. */
     steps: {
@@ -1650,6 +1382,17 @@ export const en = {
       title: 'A vault, as its chain holds it',
       conversation: {
         proposedShare: 'Proposed share',
+        /** The drawing of a proposed mix, for a reader who cannot see it; each piece then says its own. */
+        jointLabel:
+          'The proposed strategy drawn as one joint: a piece for each asset, as wide as its share.',
+        jointHint: 'One piece per asset, as wide as its share.',
+        /** The same two when a small share is drawn wider than it is, so that it can be seen. */
+        jointLabelWidened:
+          'The proposed strategy drawn as one joint: a piece for each asset. Small shares are drawn wider than they are so they can be seen; each piece says its exact share.',
+        jointHintWidened:
+          'One piece per asset. Small shares are drawn wider so they can be seen; the figures in the list are exact.',
+        /** On the last draft while a reply is on its way. */
+        reworking: 'Reading what you said. This is the last draft.',
         resume: 'Resume conversation',
         holdings: 'Holdings',
         explain: 'Explain my holdings',
@@ -2315,7 +2058,8 @@ export const en = {
   mix: {
     activity: (when: string) => `New targets for your vault · ${when}`,
     preview: {
-      use: 'Use this mix',
+      /** On a new goal's proposal: the one action it leads to, the deposit step. */
+      deposit: 'Deposit',
       apply: 'Apply to my vault',
       notes: 'How the weights were set',
       notesAlone: 'About the shares you gave',
@@ -2359,23 +2103,73 @@ export const en = {
       back: 'Change the mix',
     },
     goal: {
-      title: 'Use this mix for a new goal',
-      lead: 'Say how much and what it’s for. I check the mix at today’s prices before anything is bought.',
-      amount: 'Amount',
-      amountHint: 'In dollars, from $10 to $1,000,000.',
-      goal: 'Goal',
       goals: { grow: 'Make it grow', income: 'Monthly income', protect: 'Keep it safe' },
-      risk: 'Risk',
       risks: { low: 'Low', medium: 'Medium', high: 'High' },
       choose: 'Choose one',
-      review: 'Review this mix',
-      reviewing: 'Reviewing…',
       confirm: 'Confirm and go to buy',
       confirming: 'Confirming…',
+    },
+    deposit: {
+      title: 'Deposit into this mix',
+      /** What the person said in the conversation, as one sentence: "For growth, at higher risk." */
+      purpose: (
+        goal: 'grow' | 'income' | 'protect' | null,
+        risk: 'low' | 'medium' | 'high' | null,
+      ) => {
+        const goals = {
+          grow: 'For growth',
+          income: 'For monthly income',
+          protect: 'To keep it safe',
+        };
+        const risks = { low: 'at lower risk', medium: 'at medium risk', high: 'at higher risk' };
+        if (goal && risk) return `${goals[goal]}, ${risks[risk]}.`;
+        if (goal) return `${goals[goal]}.`;
+        return risk ? `A${risks[risk].slice(1)}.` : '';
+      },
+      /** The dollar sign before the amount, as this language writes it. */
+      currency: '$',
+      changePurpose: 'Change',
+      changePurposeLabel: 'Change the goal or the risk in the conversation',
+      askGoal: 'What is this money for?',
+      askRisk: 'How much risk can it take?',
+      askWhy:
+        'You haven’t said this in the conversation, and I don’t guess it: the goal decides which assets the plan may hold. Tap one, or say it in the conversation.',
+      limits: 'From $10 to $1,000,000.',
+      quick: 'Quick amounts',
+      quickOne: (amount: string) => `Deposit ${amount}`,
+      mix: 'What it buys',
+      edited: 'Edited by hand',
+      share: 'Share',
+      unchecked: 'not checked yet',
+      needAmount: 'Type an amount to see what goes into each asset.',
+      needPurpose: 'Choose the goal and the risk to see what goes into each asset.',
+      checking: 'Checking at today’s prices…',
+      checked: 'Checked at today’s prices. Nothing is bought yet.',
+      review: 'Review deposit',
+      reviewOf: (amount: string) => `Review deposit of ${amount}`,
+      reviewing: 'Checking…',
+      changeMix: 'Change the mix',
+      next: 'Nothing is bought or signed on this page. Next you check the review, then sign each step on the buy screen.',
+      brokenMix:
+        'The weights in the editor don’t add up yet, so there is no mix to show. Fix them below, or go back to the proposed weights.',
+      balance: 'Your wallet’s balance is checked on the buy screen.',
+      editByHand: 'Edit weights by hand',
+      editorLead:
+        'Type a weight for each asset, in percent. Whatever you leave unassigned stays in cash. The weights here are the ones I check.',
+      reset: 'Back to the proposed weights',
+      backToProposal: 'Back to the proposal',
+      backToDeposit: 'Back to the deposit',
+      invalidNext: 'Ask for a change in the conversation, or edit the weights by hand.',
+      blocked: {
+        reply: 'Wait for the reply in the conversation first.',
+        weights: 'Fix the weights in the editor first.',
+        amount: 'Type an amount first.',
+        purpose: 'Choose the goal and the risk first.',
+      },
       errors: {
-        amount: 'Type an amount from $10 to $1,000,000.',
-        goal: 'Choose what the money is for.',
-        risk: 'Choose a risk.',
+        notAmount: 'Type an amount in dollars, such as 250 or 250.50.',
+        belowMin: 'The least you can deposit is $10.',
+        aboveMax: 'The most in one deposit is $1,000,000. Type less.',
       },
     },
     vault: {
@@ -2419,7 +2213,7 @@ export const en = {
       back: 'Back to your vault',
     },
     failure: {
-      invalid: 'I can’t use this mix as it is:',
+      invalid: 'This mix can’t go ahead as it is:',
       signedOut: 'Your sign-in ran out. Sign in again and try once more.',
       noWallet: 'Your sign-in has no wallet on this chain. Add one, then try again.',
       notYours: 'This isn’t a vault of yours.',

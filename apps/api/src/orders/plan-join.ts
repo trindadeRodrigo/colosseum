@@ -2,6 +2,7 @@ import { baskets, type Db, legs, orders, proposals, users, vaults } from '@colos
 import {
   type Address,
   BasketProposal,
+  type BasketSheet,
   ChainError,
   type ChainId,
   chainFamily,
@@ -473,4 +474,19 @@ function goalOf(stored: unknown): Pick<VaultPlan, 'sheet' | 'card' | 'verdict' |
   if (!plan.success) return {};
   const { sheet, card, verdict, observations } = plan.data;
   return { sheet, card, verdict: verdict ?? null, observations };
+}
+
+/**
+ * The goal and risk of the plan the person's vault was opened for, where the server holds it and it is
+ * theirs to read (`plansOf`). What a mix for that vault is checked against, in the conversation as in
+ * the review of its targets; null where there is none, and then no line is checked against a goal.
+ */
+export async function planSheetOf(
+  db: Db,
+  chain: ChainId,
+  address: Address,
+  privyId: string | undefined,
+): Promise<Pick<BasketSheet, 'goal' | 'risk'> | null> {
+  const sheet = (await plansOf(db, chain, [address], privyId)).get(address)?.plan.sheet;
+  return sheet ? { goal: sheet.goal, risk: sheet.risk } : null;
 }
