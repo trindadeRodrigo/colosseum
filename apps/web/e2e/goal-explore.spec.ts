@@ -33,7 +33,7 @@ test('new-goal exploration opens a responsive preview-only workbench', async ({ 
   );
   await expect(
     page.locator(
-      '[data-ui="holdings-bar"], [data-ui="mix-joint"], [data-ui="invest-card"], [data-ui="order-step"], [data-ui="plan-invest"]',
+      '[data-ui="holdings-bar"], [data-ui="holding-legs"], [data-ui="invest-card"], [data-ui="order-step"], [data-ui="plan-invest"]',
     ),
   ).toHaveCount(0);
   await expect(page.locator('[data-ui="invest-screen"]')).toHaveCount(0);

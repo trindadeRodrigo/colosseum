@@ -1286,13 +1286,7 @@ export const pt: Dictionary = {
       title: 'Um cofre, como a rede o tem',
       conversation: {
         proposedShare: 'Fatia proposta',
-        jointLabel:
-          'A estratégia proposta desenhada como um encaixe: uma peça para cada ativo, com a largura da sua fatia.',
-        jointHint: 'Uma peça por ativo, com a largura da sua fatia.',
-        jointLabelWidened:
-          'A estratégia proposta desenhada como um encaixe: uma peça para cada ativo. Fatias pequenas são desenhadas mais largas do que são, para ficarem visíveis; cada peça diz sua fatia exata.',
-        jointHintWidened:
-          'Uma peça por ativo. Fatias pequenas são desenhadas mais largas para ficarem visíveis; os números da lista são exatos.',
+        others: (count: number) => `${count} outros`,
         reworking: 'Lendo sua mensagem. Abaixo está o rascunho de antes.',
         waitingAction: 'Aguardando a resposta…',
         hint: 'Enter para enviar · Shift+Enter para nova linha',

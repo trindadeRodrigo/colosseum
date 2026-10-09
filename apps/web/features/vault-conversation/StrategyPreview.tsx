@@ -1,5 +1,5 @@
 'use client';
-import { type CSSProperties, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody } from '../../components/ui/Card';
 import { cn } from '../../components/ui/cn';
@@ -12,7 +12,7 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import { AssetMark } from '../order/PlanView';
 import { displayName } from '../order/plain';
 import { dollars } from '../portfolio/figures';
-import { fillOf, MixJoint, staggerMs, useJointMotion } from '../shared/MixJoint';
+import { HoldingLegs, legFill, legsOf } from '../shared/HoldingLegs';
 import type { VaultStrategyPreview } from './agent';
 import { ProjectionChart } from './ProjectionChart';
 
@@ -31,10 +31,9 @@ export function sourceValue(lang: Lang, value: number | null | undefined, unit?:
 /**
  * A sourced visual preview; this component has no order, signing or execution capability.
  *
- * The mix is drawn as a joint (MixJoint.tsx) tied to the rows under it: pointing at a piece lights its
- * row and pointing at a row lights its piece. A mix that has just come assembles, and one that
- * follows another moves only what changed. Every figure on the card is the proposal's own from the
- * first frame: motion slides and fades a final figure in, and never counts up to it.
+ * The draft is drawn on the plan bar (plan-leg.md, HoldingLegs.tsx): at most four legs, each with its
+ * label under the bar, and under them a row for every holding with its exact share. Every figure on
+ * the card is the proposal's own from the first frame: nothing counts up to it.
  */
 export function StrategyPreview({
   proposal,
@@ -67,15 +66,6 @@ export function StrategyPreview({
    */
   use?: { label: string; onUse: () => void; primary?: boolean };
 }) {
-  const [pointed, setLit] = useState<string | null>(null);
-  // a row the next draft dropped cannot stay lit
-  const lit = proposal.allocations.some((line) => line.assetId === pointed) ? pointed : null;
-  // how the mix on the card came to be there: a first one arrives, a next one changes it
-  const shares = useMemo(
-    () => proposal.allocations.map((line) => ({ key: line.assetId, bps: line.weightBps })),
-    [proposal],
-  );
-  const { motion, run } = useJointMotion(shares);
   const pending = waiting && wait !== undefined;
   const t = useT();
   const copy = t.shared.vault.conversation;
@@ -111,18 +101,12 @@ export function StrategyPreview({
     displayName(asset, t.plan);
   const change = (bps: number) =>
     `${new Intl.NumberFormat(LOCALE[language], { maximumFractionDigits: 2, signDisplay: 'exceptZero' }).format(bps / 100).replace('-', '−')} ${copy.points}`;
-  const stagger = staggerMs(proposal.allocations.length);
-  /** When a row follows its piece in: as the piece starts to slide home, on arrival and on a change. */
-  const rowDelay = (row: (typeof rows)[number]): CSSProperties | undefined => {
-    if (motion.kind === 'still' || row.piece === null) return undefined;
-    const ms = (motion.kind === 'arrive' ? Math.round(row.piece * stagger) : 0) + 160;
-    return { '--tf-joint-delay': `${ms}ms` } as CSSProperties;
-  };
-  const enters = (row: (typeof rows)[number]) =>
-    row.piece !== null &&
-    (motion.kind === 'arrive' || (motion.kind === 'change' && !motion.from.has(row.asset)));
-  const figureMoves = (row: (typeof rows)[number]) =>
-    enters(row) || (motion.kind === 'change' && motion.from.get(row.asset)?.bps !== row.proposed);
+  const held = proposal.allocations.map((line) => ({
+    key: line.assetId,
+    name: line.symbol ?? displayName(line.assetId, t.plan),
+    bps: line.weightBps,
+  }));
+  const { legOf } = legsOf(held);
   return (
     <>
       <Card
@@ -175,14 +159,15 @@ export function StrategyPreview({
             </p>
           </div>
           {/* The draft from before, set back as a whole while a reply is on its way: its ink goes
-              grey and its beam and swatches recede. Every word and figure stays readable, and so do
+              grey and its bar and swatches recede. Every word and figure stays readable, and so do
               the letters on an asset's mark, which are text and are not faded. */}
           <div
             data-ui="preview-draft"
             data-set-back={pending ? true : undefined}
             className={cn(
               'flex min-w-0 flex-col gap-4 motion-safe:transition-colors motion-safe:duration-(--tf-dur-fade)',
-              pending && 'text-muted-foreground [&_[data-part=swatch]]:opacity-60',
+              pending &&
+                'text-muted-foreground [&_[data-part=swatch]]:opacity-60 [&_[data-ui=plan-legs-bar]]:opacity-70',
             )}
           >
             <p className="text-body font-medium [overflow-wrap:anywhere]">{proposal.objective}</p>
@@ -221,31 +206,7 @@ export function StrategyPreview({
                 )}
               />
             )}
-            <MixJoint
-              pieces={rows.flatMap((row) =>
-                row.piece === null
-                  ? []
-                  : [
-                      {
-                        key: row.asset,
-                        bps: row.proposed,
-                        name: row.symbol ?? displayName(row.asset, t.plan),
-                        share: allocationShare(row.proposed),
-                      },
-                    ],
-              )}
-              words={{
-                label: copy.jointLabel,
-                hint: copy.jointHint,
-                widenedLabel: copy.jointLabelWidened,
-                widenedHint: copy.jointHintWidened,
-              }}
-              lit={lit}
-              onLit={setLit}
-              motion={motion}
-              run={run}
-              receded={pending}
-            />
+            <HoldingLegs shares={held} share={allocationShare} others={copy.others} size="hero" />
             <table className="w-full table-fixed border-collapse text-body-sm">
               <caption className="sr-only">{targets ? copy.comparison : copy.proposed}</caption>
               <thead className="text-caption text-muted-foreground">
@@ -271,34 +232,17 @@ export function StrategyPreview({
                   <tr
                     key={row.asset}
                     data-row={row.asset}
-                    data-lit={row.piece !== null ? lit === row.asset : undefined}
-                    {...(row.piece !== null
-                      ? {
-                          // the row answers as its piece does: a mouse over it, or a finger's tap
-                          onPointerEnter: (e) => e.pointerType === 'mouse' && setLit(row.asset),
-                          onPointerLeave: (e) => e.pointerType === 'mouse' && setLit(null),
-                          onPointerUp: (e) => {
-                            if (e.pointerType !== 'mouse')
-                              setLit((now) => (now === row.asset ? null : row.asset));
-                          },
-                        }
-                      : {})}
-                    style={enters(row) ? rowDelay(row) : undefined}
-                    className={cn(
-                      'border-b border-border align-top motion-safe:transition-colors motion-safe:duration-(--tf-dur-fade)',
-                      lit === row.asset && 'bg-muted',
-                      enters(row) && 'tf-joint-row',
-                    )}
+                    className="border-b border-border align-top"
                   >
                     <th scope="row" className="py-3 pr-2 pl-1 text-start font-normal">
                       <span className="flex min-w-0 items-center gap-2">
-                        {/* the piece's own colour, so the row and the piece are one thing to the eye */}
+                        {/* its leg's colour: holdings grouped into one leg share it */}
                         <span
                           aria-hidden="true"
                           data-part="swatch"
                           className={cn(
                             'size-2.5 shrink-0',
-                            row.piece === null ? 'border border-border' : fillOf(row.piece),
+                            legFill(legOf.get(row.asset)) ?? 'border border-border',
                           )}
                         />
                         <AssetMark asset={row.asset} />
@@ -311,13 +255,7 @@ export function StrategyPreview({
                       </span>
                     </th>
                     <td className="py-3 pr-1 text-end tabular-nums">
-                      {/* the final figure, whole, from the first frame: it drops in, it never counts */}
-                      <span
-                        key={`${row.current}:${row.proposed}`}
-                        data-part="share"
-                        style={figureMoves(row) ? rowDelay(row) : undefined}
-                        className={cn('inline-block', figureMoves(row) && 'tf-joint-figure')}
-                      >
+                      <span data-part="share">
                         {targets
                           ? `${allocationShare(row.current)} → ${allocationShare(row.proposed)}`
                           : allocationShare(row.proposed)}

@@ -173,7 +173,7 @@ describe('private strategy exploration for a new goal', () => {
         dictionary(lang).goal.explore.empty,
       );
       expect(host.querySelector('[data-ui="invest-screen"]')).toBeNull();
-      expect(host.querySelector('[data-ui="mix-joint"]')).toBeNull();
+      expect(host.querySelector('[data-ui="holding-legs"]')).toBeNull();
       expect(host.querySelector('[data-ui="buy-card"]')).toBeNull();
       expect(host.querySelector('a[href^="/vaults/"]')).toBeNull();
       await send(host, 'I want a strategy with gold and cash');
@@ -197,8 +197,8 @@ describe('private strategy exploration for a new goal', () => {
         dictionary(lang).shared.vault.conversation.comparison,
       );
       expect(
-        [...host.querySelectorAll<HTMLElement>('[data-ui="mix-joint"] [data-part="piece"]')].map(
-          (e) => e.style.width,
+        [...find(host, '[data-ui="plan-legs-bar"]').children].map(
+          (e) => (e as HTMLElement).style.width,
         ),
       ).toEqual(['40%', '60%']);
       expect(host.querySelector('[data-ui="buy-card"]')).toBeNull();
@@ -242,12 +242,12 @@ describe('private strategy exploration for a new goal', () => {
   it('shows the last preview again on return, offers no funding, and keeps earlier conversations to reopen', async () => {
     let host = await show();
     await send(host, 'Consider gold');
-    expect(host.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="holding-legs"]')).not.toBeNull();
     await unmountAll();
     host = await show();
     await settle();
     expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain('Consider gold');
-    expect(host.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="holding-legs"]')).not.toBeNull();
     expect(host.querySelector('[data-ui="goal-empty-preview"]')).toBeNull();
     expect(host.querySelector('[data-ui="buy-card"]')).toBeNull();
     expect(
@@ -260,12 +260,12 @@ describe('private strategy exploration for a new goal', () => {
     await settle();
     expect(find(host, '[data-ui="goal-transcript"]').textContent).toBe('');
     expect(host.querySelector('[data-ui="goal-empty-preview"]')).not.toBeNull();
-    expect(host.querySelector('[data-ui="mix-joint"]')).toBeNull();
+    expect(host.querySelector('[data-ui="holding-legs"]')).toBeNull();
     // The earlier conversation is kept, listed by its first words, and comes back with its preview.
     await unmountAll();
     host = await show();
     await settle();
-    expect(host.querySelector('[data-ui="mix-joint"]')).toBeNull();
+    expect(host.querySelector('[data-ui="holding-legs"]')).toBeNull();
     const saved = [...find<HTMLSelectElement>(host, '[data-ui="goal-picker"]').options].find((o) =>
       o.value.startsWith('conversation:'),
     );
@@ -273,7 +273,7 @@ describe('private strategy exploration for a new goal', () => {
     await mode(host, saved?.value ?? '');
     await settle();
     expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain('Consider gold');
-    expect(host.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="holding-legs"]')).not.toBeNull();
     expect(calls).toHaveLength(1);
   });
   it('preserves exact plain words across unavailable API and reopen without fabricating reply', async () => {
@@ -458,7 +458,7 @@ describe('private strategy exploration for a new goal', () => {
     );
     await act(async () => release(json(response(messageId))));
     await settle();
-    expect(host.querySelector('[data-ui="mix-joint"]')).toBeNull();
+    expect(host.querySelector('[data-ui="holding-legs"]')).toBeNull();
     expect(localStorage.getItem(goalConversationKey(userId, 'solana', 'live'))).toBeNull();
     expect(localStorage.getItem(goalConversationKey(userId, 'solana', 'sandbox'))).toContain(
       'Sandbox-only words',
@@ -495,7 +495,7 @@ describe('private strategy exploration for a new goal', () => {
       const host = await show();
       await send(host, 'Consider gold');
       expect(host.textContent).toContain(en.goal.explore.failed);
-      expect(host.querySelector('[data-ui="mix-joint"]')).toBeNull();
+      expect(host.querySelector('[data-ui="holding-legs"]')).toBeNull();
       expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain('Consider gold');
     },
   );
@@ -774,7 +774,7 @@ describe('the deposit step of a new goal', () => {
   });
 });
 
-describe('the proposed mix drawn as a joint', () => {
+describe('the draft drawn on the plan bar', () => {
   const lineOf = (symbol: string, weightBps: number) => ({
     assetId: `solana:${symbol.toLowerCase()}`,
     weightBps,
@@ -802,13 +802,19 @@ describe('the proposed mix drawn as a joint', () => {
       await settle();
     };
   };
-  const pieces = (host: HTMLElement) => [
-    ...host.querySelectorAll<HTMLElement>('[data-ui="mix-joint"] [data-part="piece"]'),
-  ];
+  /** The bar's legs as drawn: each segment's width and colour, in order. */
+  const legs = (host: HTMLElement) =>
+    [...find(host, '[data-ui="goal-strategy"] [data-ui="plan-legs-bar"]').children].map((el) => [
+      `${Number(Number.parseFloat((el as HTMLElement).style.width).toFixed(2))}%`,
+      el.className.match(/bg-leg-\d/)?.[0],
+    ]);
+  /** The label under the bar for each leg: its name and its share. */
+  const labels = (host: HTMLElement) =>
+    [...find(host, '[data-ui="goal-strategy"] [data-ui="plan-legs"] ol').children].map(
+      (el) => el.textContent,
+    );
   const rowOf = (host: HTMLElement, symbol: string) =>
     find(host, `tr[data-row="solana:${symbol.toLowerCase()}"]`);
-  const touch = (type: string) =>
-    new PointerEvent(type, { bubbles: true, pointerType: 'touch' } as PointerEventInit);
   const SIX: [string, number][] = [
     ['SPY', 1667],
     ['QQQ', 1667],
@@ -820,144 +826,88 @@ describe('the proposed mix drawn as a joint', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it.each(['en', 'pt'] as const)(
-    'names each piece with the share its row shows, which is the proposal’s own (%s)',
+    'draws four legs at most: the three largest holdings and the rest as one, with every holding in the rows (%s)',
     async (lang) => {
+      // six holdings, the first four a hair larger: SPY, QQQ and NVDA are a leg each, the other three one
       answer([{ proposal: mixOf(...SIX) }]);
       const host = await show(lang);
       await send(host, 'Six things');
-      const joint = find(host, '[data-ui="mix-joint"]');
-      expect(joint.getAttribute('data-motion')).toBe('arrive');
-      // every piece here is as wide as its share, and the drawing says so
-      expect(find(joint, '[data-part="hint"]').textContent).toBe(
-        dictionary(lang).shared.vault.conversation.jointHint,
-      );
-      expect(find(joint, '[role="toolbar"]').getAttribute('aria-label')).toBe(
-        dictionary(lang).shared.vault.conversation.jointLabel,
-      );
-      expect(pieces(host)).toHaveLength(SIX.length);
-      for (const [i, [symbol, bps]] of SIX.entries()) {
-        const shown = sourceValue(lang, bps / 10000, 'fraction');
-        // the row shows the final figure whole while its piece is still on its way in
-        expect(find(rowOf(host, symbol), '[data-part="share"]').textContent).toBe(shown);
-        expect(pieces(host)[i].getAttribute('aria-label')).toBe(`${symbol}, ${shown}`);
-        // and the piece and its row carry one colour
-        const fill = find(pieces(host)[i], '[data-part="fill"]').className.match(/bg-leg-\d/)?.[0];
-        expect(fill).toBe(`bg-leg-${(i % 4) + 1}`);
-        expect(find(rowOf(host, symbol), '[data-part="swatch"]').className).toContain(fill);
-      }
-      // one tab stop for the beam
-      expect(pieces(host).map((p) => p.tabIndex)).toEqual([0, -1, -1, -1, -1, -1]);
-    },
-  );
-
-  it('lights a row from its piece and a piece from its row, and lets go', async () => {
-    answer([{ proposal: mixOf(...SIX) }]);
-    const host = await show();
-    await send(host, 'Six things');
-    const [spy, qqq] = pieces(host);
-    // focus on a piece lights its row, and only its row
-    await act(async () => qqq.focus());
-    // a highlight, not a toggle: nothing is announced as pressed
-    expect(qqq.getAttribute('data-lit')).toBe('true');
-    expect(qqq.hasAttribute('aria-pressed')).toBe(false);
-    expect(rowOf(host, 'QQQ').getAttribute('data-lit')).toBe('true');
-    expect(rowOf(host, 'SPY').getAttribute('data-lit')).toBe('false');
-    expect(find(host, '[data-ui="mix-joint-readout"]').textContent).toContain('QQQ');
-    // the arrows walk the beam, and Escape lets go
-    await press(qqq, 'ArrowLeft');
-    expect(document.activeElement).toBe(spy);
-    expect(rowOf(host, 'SPY').getAttribute('data-lit')).toBe('true');
-    expect(pieces(host).map((p) => p.tabIndex)).toEqual([0, -1, -1, -1, -1, -1]);
-    await press(spy, 'End');
-    expect(rowOf(host, 'USDC').getAttribute('data-lit')).toBe('true');
-    await press(document.activeElement as HTMLElement, 'Escape');
-    expect(host.querySelectorAll('[data-lit="true"]')).toHaveLength(0);
-    // a finger on a row lights its piece; a second tap, or a tap elsewhere, lets it go
-    await fire(rowOf(host, 'NVDA'), touch('pointerup'));
-    expect(pieces(host)[2].getAttribute('data-lit')).toBe('true');
-    expect(rowOf(host, 'NVDA').getAttribute('data-lit')).toBe('true');
-    await fire(rowOf(host, 'NVDA'), touch('pointerup'));
-    expect(pieces(host)[2].getAttribute('data-lit')).toBe('false');
-    await fire(pieces(host)[3], touch('pointerup'));
-    expect(rowOf(host, 'AAPL').getAttribute('data-lit')).toBe('true');
-    await fire(find(host, '[data-ui="goal-chat"]'), touch('pointerdown'));
-    expect(host.querySelectorAll('[data-lit="true"]')).toHaveLength(0);
-    expect(host.querySelector('[data-ui="mix-joint-readout"] [data-part="lit"]')).toBeNull();
-    expect(find(host, '[data-ui="mix-joint-readout"]').textContent).toBe(
-      en.shared.vault.conversation.jointHint,
-    );
-  });
-
-  it.each(['en', 'pt'] as const)(
-    'says so, under the beam and in its name, when a small share is drawn wider than it is (%s)',
-    async (lang) => {
-      const words = dictionary(lang).shared.vault.conversation;
-      // 90% and ten lines of 1%: the ten are drawn at 3% each, a third of the beam for a tenth of the money
-      const small = Array.from({ length: 10 }, (_, i) => [`S${i}`, 100] as [string, number]);
-      answer([{ proposal: mixOf(['SPY', 9000], ...small) }, { proposal: mixOf(...SIX) }]);
-      const host = await show(lang);
-      await send(host, 'Mostly one fund');
-      const joint = find(host, '[data-ui="mix-joint"]');
-      expect(pieces(host).map((p) => p.style.width)).toEqual(['70%', ...small.map(() => '3%')]);
-      expect(find(joint, '[data-part="hint"]').textContent).toBe(words.jointHintWidened);
-      expect(find(joint, '[role="toolbar"]').getAttribute('aria-label')).toBe(
-        words.jointLabelWidened,
-      );
-      expect(pieces(host).map((p) => p.dataset.widened)).toEqual([
-        undefined,
-        ...small.map(() => 'true'),
+      const others = dictionary(lang).shared.vault.conversation.others(3);
+      const share = (bps: number) => sourceValue(lang, bps / 10000, 'fraction');
+      expect(find(host, '[data-ui="holding-legs"]').getAttribute('data-legs')).toBe('4');
+      expect(legs(host)).toEqual([
+        ['16.67%', 'bg-leg-1'],
+        ['16.67%', 'bg-leg-2'],
+        ['16.67%', 'bg-leg-3'],
+        ['49.99%', 'bg-leg-4'],
       ]);
-      // the figures are exact all the same, in the row and in the piece's name
-      const one = sourceValue(lang, 0.01, 'fraction');
-      expect(find(rowOf(host, 'S0'), '[data-part="share"]').textContent).toBe(one);
-      expect(pieces(host)[1].getAttribute('aria-label')).toBe(`S0, ${one}`);
-      // and the plain sentence comes back with a mix that is drawn as it is
-      await send(host, 'Six things instead');
-      expect(find(joint, '[data-part="hint"]').textContent).toBe(words.jointHint);
-      expect(find(joint, '[role="toolbar"]').getAttribute('aria-label')).toBe(words.jointLabel);
-      expect(host.querySelectorAll('[data-part="piece"][data-widened]')).toHaveLength(0);
+      // each leg is labelled right under the bar; the grouped one says how many it holds and their sum
+      expect(labels(host)).toEqual([
+        `SPY·${share(1667)}`,
+        `QQQ·${share(1667)}`,
+        `NVDA·${share(1667)}`,
+        `${others}·${share(4999)}`,
+      ]);
+      // every holding has its own row with its exact share, and the swatch of the leg it is drawn in
+      for (const [i, [symbol, bps]] of SIX.entries()) {
+        expect(find(rowOf(host, symbol), '[data-part="share"]').textContent).toBe(share(bps));
+        expect(find(rowOf(host, symbol), '[data-part="swatch"]').className).toContain(
+          `bg-leg-${Math.min(i, 3) + 1}`,
+        );
+      }
+      expect(find(host, '[data-ui="goal-strategy"]').querySelectorAll('tbody tr')).toHaveLength(6);
     },
   );
 
-  it('lets a lit piece go, and takes the focus on the beam, when the next draft drops it', async () => {
+  it('groups by size, not by place: a large holding late in the draft keeps its own leg', async () => {
     answer([
-      { proposal: mixOf(['SPY', 5000], ['GLD', 3000], ['USDC', 2000]) },
-      { proposal: mixOf(['SPY', 6000], ['USDC', 4000]) },
+      {
+        proposal: mixOf(['USDC', 500], ['SPY', 4000], ['QQQ', 500], ['GLD', 3000], ['NVDA', 2000]),
+      },
     ]);
     const host = await show();
-    await send(host, 'A fund, gold and cash');
-    const gold = pieces(host)[1];
-    await act(async () => gold.focus());
-    expect(rowOf(host, 'GLD').getAttribute('data-lit')).toBe('true');
-    // off and on again by a finger on its row: it is lit when the next draft comes
-    await fire(rowOf(host, 'GLD'), touch('pointerup'));
-    await fire(rowOf(host, 'GLD'), touch('pointerup'));
-    expect(gold.getAttribute('data-lit')).toBe('true');
-    await send(host, 'No gold');
-    expect(pieces(host).map((p) => p.dataset.asset)).toEqual(['solana:spy', 'solana:usdc']);
-    // nothing is lit, so nothing is dimmed, and the readout is the hint again
-    expect(pieces(host).map((p) => p.dataset.lit)).toEqual(['false', 'false']);
-    expect(pieces(host).some((p) => p.className.includes('opacity-45'))).toBe(false);
-    expect(host.querySelector('[data-ui="mix-joint-readout"] [data-part="lit"]')).toBeNull();
-    expect(host.querySelectorAll('tr[data-lit="true"]')).toHaveLength(0);
+    await send(host, 'Five things');
+    // the three largest in the order the draft gives them, then the two small ones together
+    expect(labels(host)).toEqual([
+      'SPY·40%',
+      'GLD·30%',
+      'NVDA·20%',
+      `${en.shared.vault.conversation.others(2)}·10%`,
+    ]);
+    expect(legs(host).map(([width]) => width)).toEqual(['40%', '30%', '20%', '10%']);
+    const swatch = (symbol: string) =>
+      find(rowOf(host, symbol), '[data-part="swatch"]').className.match(/bg-leg-\d/)?.[0];
+    expect(['USDC', 'SPY', 'QQQ', 'GLD', 'NVDA'].map(swatch)).toEqual([
+      'bg-leg-4',
+      'bg-leg-1',
+      'bg-leg-4',
+      'bg-leg-2',
+      'bg-leg-3',
+    ]);
   });
 
-  it('moves the focus to the beam when the piece that had it is dropped', async () => {
-    const release = answer(
-      [
-        { proposal: mixOf(['SPY', 5000], ['GLD', 3000], ['USDC', 2000]) },
-        { proposal: mixOf(['SPY', 6000], ['USDC', 4000]) },
-      ],
-      true,
-    );
+  it('gives four holdings or fewer a leg each, and is his bar: pill ends, no button, nothing dimmed', async () => {
+    answer([{ proposal: mixOf(['SPY', 5000], ['GLD', 3000], ['USDC', 2000]) }]);
     const host = await show();
     await send(host, 'A fund, gold and cash');
-    await release();
-    await send(host, 'No gold');
-    await act(async () => pieces(host)[1].focus());
-    await release();
-    expect(pieces(host)).toHaveLength(2);
-    expect(document.activeElement).toBe(find(host, '[data-ui="mix-joint"] [role="toolbar"]'));
+    expect(legs(host)).toEqual([
+      ['50%', 'bg-leg-1'],
+      ['30%', 'bg-leg-2'],
+      ['20%', 'bg-leg-3'],
+    ]);
+    expect(labels(host)).toEqual(['SPY·50%', 'GLD·30%', 'USDC·20%']);
+    const bar = find(host, '[data-ui="goal-strategy"] [data-ui="plan-legs-bar"]');
+    // a picture: the labels and the rows carry everything, and the bar is not a control
+    expect(bar.getAttribute('aria-hidden')).toBe('true');
+    expect(bar.querySelector('button, [tabindex]')).toBeNull();
+    expect(bar.firstElementChild?.className).toContain('first:rounded-l-full');
+    expect(bar.lastElementChild?.className).toContain('last:rounded-r-full');
+    // pointing at a label rules its segment; no class dims a segment or lifts one, and no row lights
+    const strategy = find(host, '[data-ui="goal-strategy"]');
+    expect(bar.innerHTML).not.toMatch(/opacity-|translate-y/);
+    expect(strategy.querySelector('[data-lit], [data-part="piece"], [role="toolbar"]')).toBeNull();
+    // the legs seat once when a draft arrives (plan-lock; a crossfade under reduced motion, in CSS)
+    expect([...bar.children].every((el) => el.className.includes('animate-seat'))).toBe(true);
   });
 
   it('keeps the last mix when the next reply is only a question, and never called it a new draft', async () => {
@@ -981,11 +931,7 @@ describe('the proposed mix drawn as a joint', () => {
     await release();
     // the settled rule (gate DEPOSIT-STEP): a reply with no proposal keeps the last mix, no longer
     // marked as waiting, and its deposit action is the person's again
-    expect(pieces(host).map((p) => p.dataset.asset)).toEqual([
-      'solana:spy',
-      'solana:gld',
-      'solana:usdc',
-    ]);
+    expect(labels(host)).toEqual(['SPY·50%', 'GLD·30%', 'USDC·20%']);
     expect(find(strategy, '[data-ui="preview-pending"]').textContent).toBe('');
     expect(strategy.querySelector('[data-ui="goal-empty-preview"]')).toBeNull();
     expect(find(strategy, '[data-action="deposit"]').getAttribute('aria-disabled')).toBeNull();
@@ -994,7 +940,7 @@ describe('the proposed mix drawn as a joint', () => {
     );
   });
 
-  it('says a draft is being worked on, keeps the one before it unusable, then moves only what changed', async () => {
+  it('says a draft is being worked on, keeps the one before it unusable, then shows the next one', async () => {
     const release = answer(
       [
         { proposal: mixOf(['SPY', 5000], ['GLD', 3000], ['USDC', 2000]) },
@@ -1020,14 +966,14 @@ describe('the proposed mix drawn as a joint', () => {
     expect(boxes.getAttribute('aria-hidden')).toBe('true');
     expect(boxes.textContent).toBe('');
     expect(boxes.querySelectorAll('[data-ui="skeleton"]').length).toBeGreaterThan(6);
-    expect(strategy.querySelector('[data-ui="mix-joint"]')).toBeNull();
+    expect(strategy.querySelector('[data-ui="holding-legs"]')).toBeNull();
     expect(strategy.textContent).not.toMatch(/\d\s?%/);
     // the wait is announced by the conversation, once: the card is busy, and is no live region
     expect(strategy.getAttribute('aria-busy')).toBe('true');
     expect(strategy.querySelector('[role="status"]')).toBeNull();
     await release();
     expect(strategy.querySelector('[data-ui="draft-building"]')).toBeNull();
-    expect(find(strategy, '[data-ui="mix-joint"]').getAttribute('data-motion')).toBe('arrive');
+    expect(labels(host)).toEqual(['SPY·50%', 'GLD·30%', 'USDC·20%']);
     const use = () => find(strategy, '[data-action="deposit"]');
     expect(use().getAttribute('aria-disabled')).not.toBe('true');
 
@@ -1057,76 +1003,50 @@ describe('the proposed mix drawn as a joint', () => {
     expect(find(strategy, '[data-ui="card"] [data-ui="card-body"]').firstElementChild).toBe(
       pendingLine.parentElement,
     );
-    // The whole draft is set back, not the beam alone: the objective, the beam, the rows and their
-    // figures are inside it, in grey ink. No word is faded: only the beam, the swatches and the
-    // marks, which are drawings, lose opacity.
+    // The whole draft is set back, not the bar alone: the objective, the bar, the rows and their
+    // figures are inside it, in grey ink. No word is faded: only the bar and the swatches,
+    // which are drawings, lose opacity.
     const back = find(strategy, '[data-set-back]');
     expect(back.className).toContain('text-muted-foreground');
     expect(back.className).not.toMatch(/(^| )opacity-/);
-    expect(back.contains(find(strategy, '[data-receded]'))).toBe(true);
+    expect(back.contains(find(strategy, '[data-ui="plan-legs-bar"]'))).toBe(true);
+    expect(back.className).toContain('[&_[data-ui=plan-legs-bar]]:opacity-70');
     expect(back.contains(find(strategy, 'table'))).toBe(true);
     expect(back.textContent).toContain(preview.objective);
-    expect(find(strategy, '[data-receded]').getAttribute('role')).toBe('toolbar');
     // the banner and the action are not set back
     expect(back.contains(pendingLine)).toBe(false);
     expect(back.contains(use())).toBe(false);
     // it is still the draft from before, with the figures it had
     expect(shares()).toEqual(before);
-    expect(pieces(host).map((p) => p.dataset.asset)).toEqual([
-      'solana:spy',
-      'solana:gld',
-      'solana:usdc',
-    ]);
+    expect(labels(host)).toEqual(['SPY·50%', 'GLD·30%', 'USDC·20%']);
     // In the Deposit button's place: the same button, which keeps its focus and its width, says it
     // waits for the reply, with the mark of a wait. It cannot open the deposit step meanwhile.
     expect(use().getAttribute('aria-disabled')).toBe('true');
     expect(use().getAttribute('aria-busy')).toBe('true');
-    const labels = [...use().querySelectorAll(':scope > span > span')];
-    expect(labels.map((el) => [el.textContent, el.getAttribute('aria-hidden')])).toEqual([
+    const words = [...use().querySelectorAll(':scope > span > span')];
+    expect(words.map((el) => [el.textContent, el.getAttribute('aria-hidden')])).toEqual([
       [en.mix.preview.deposit, 'true'],
       [en.shared.vault.conversation.waitingAction, null],
     ]);
     expect(
-      labels[1]?.querySelector('[data-ui="lattice"], [data-ui="lattice-loader"]'),
+      words[1]?.querySelector('[data-ui="lattice"], [data-ui="lattice-loader"]'),
     ).not.toBeNull();
     await click(use());
     expect(host.querySelector('[data-action="deposit-review"]')).toBeNull();
 
     await release();
-    const joint = find(strategy, '[data-ui="mix-joint"]');
-    expect(joint.getAttribute('data-motion')).toBe('change');
     expect(find(strategy, '[data-ui="preview-pending"]').textContent).toBe('');
     expect(use().getAttribute('aria-disabled')).not.toBe('true');
     expect(use().getAttribute('aria-busy')).toBeNull();
-    expect(strategy.querySelector('[data-receded]')).toBeNull();
     expect(strategy.querySelector('[data-set-back]')).toBeNull();
-    expect(pieces(host).map((p) => [p.dataset.asset, p.style.width])).toEqual([
-      ['solana:spy', '60%'],
-      ['solana:usdc', '20%'],
-      ['solana:qqq', '20%'],
+    // the next draft is simply the new bar and rows: each figure the proposal's own
+    expect(legs(host)).toEqual([
+      ['60%', 'bg-leg-1'],
+      ['20%', 'bg-leg-2'],
+      ['20%', 'bg-leg-3'],
     ]);
-    const body = (i: number) => find(pieces(host)[i], '[data-part="body"]');
-    // SPY stays where it starts and grows; cash slides along at the size it had; the new piece seats
-    expect(body(0).className).not.toContain('tf-joint-move');
-    expect(find(pieces(host)[0], '[data-part="fill"]').className).toContain('tf-joint-size');
-    expect(
-      find(pieces(host)[0], '[data-part="fill"]').style.getPropertyValue('--tf-joint-sx'),
-    ).toBe(String(50 / 60));
-    expect(body(1).className).toContain('tf-joint-move');
-    expect(body(1).style.getPropertyValue('--tf-joint-x')).toBe('20cqw');
-    expect(find(pieces(host)[1], '[data-part="fill"]').className).not.toContain('tf-joint-size');
-    expect(body(2).className).toContain('tf-joint-arrive');
-    // gold fades where it lay, out of reach of a pointer and of a reader
-    const ghost = find(joint, '[data-part="ghost"]');
-    expect([ghost.style.left, ghost.style.width]).toEqual(['50%', '30%']);
-    expect(ghost.getAttribute('aria-hidden')).toBe('true');
-    // only a figure that changed drops in again, and it is the final one
-    const figure = (symbol: string) => find(rowOf(host, symbol), '[data-part="share"]');
-    expect(figure('SPY').textContent).toBe('60%');
-    expect(figure('SPY').className).toContain('tf-joint-figure');
-    expect(figure('USDC').className).not.toContain('tf-joint-figure');
-    expect(rowOf(host, 'QQQ').className).toContain('tf-joint-row');
-    expect(rowOf(host, 'USDC').className).not.toContain('tf-joint-row');
+    expect(labels(host)).toEqual(['SPY·60%', 'USDC·20%', 'QQQ·20%']);
+    expect(find(rowOf(host, 'SPY'), '[data-part="share"]').textContent).toBe('60%');
     expect(strategy.querySelector('tr[data-row="solana:gld"]')).toBeNull();
   });
 
@@ -1139,39 +1059,15 @@ describe('the proposed mix drawn as a joint', () => {
     });
     const host = await show();
     await send(host, 'Gold and cash');
-    expect(host.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="holding-legs"]')).not.toBeNull();
     fail = true;
     await send(host, 'Something else');
     // the settled rule (gate DEPOSIT-STEP): the chat says it failed, and the last mix stays usable
     expect(find(host, '[role="alert"]').textContent).toBe(en.goal.explore.failed);
-    expect(host.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="holding-legs"]')).not.toBeNull();
     expect(host.querySelector('[data-ui="goal-empty-preview"]')).toBeNull();
     expect(find(host, '[data-ui="preview-pending"]').textContent).toBe('');
     expect(find(host, '[data-action="deposit"]').getAttribute('aria-disabled')).toBeNull();
-  });
-
-  it('moves nothing for a person who asked for reduced motion: each mix is simply there', async () => {
-    vi.stubGlobal('matchMedia', (query: string) => ({
-      matches: query === '(prefers-reduced-motion: reduce)',
-      media: query,
-      addEventListener() {},
-      removeEventListener() {},
-    }));
-    answer([
-      { proposal: mixOf(['SPY', 5000], ['GLD', 3000], ['USDC', 2000]) },
-      { proposal: mixOf(['SPY', 6000], ['USDC', 2000], ['QQQ', 2000]) },
-    ]);
-    const host = await show();
-    const moving = () => host.querySelectorAll('[class*="tf-joint-"]');
-    await send(host, 'A fund, gold and cash');
-    expect(find(host, '[data-ui="mix-joint"]').getAttribute('data-motion')).toBe('still');
-    expect(moving()).toHaveLength(0);
-    await send(host, 'Swap the gold for a second fund');
-    expect(find(host, '[data-ui="mix-joint"]').getAttribute('data-motion')).toBe('still');
-    expect(moving()).toHaveLength(0);
-    expect(host.querySelector('[data-part="ghost"]')).toBeNull();
-    expect(pieces(host).map((p) => p.style.width)).toEqual(['60%', '20%', '20%']);
-    expect(find(rowOf(host, 'SPY'), '[data-part="share"]').textContent).toBe('60%');
   });
 
   it('says a question once when the message already ends with it', async () => {
@@ -1539,7 +1435,7 @@ describe('the relaxed intake’s plan on /goal (RELAXED-INTAKE)', () => {
     const host = await show();
     await send(host, 'Grow $2,000');
     expect(
-      find(host, '[data-ui="goal-strategy"]').querySelector('[data-ui="mix-joint"]'),
+      find(host, '[data-ui="goal-strategy"]').querySelector('[data-ui="holding-legs"]'),
     ).not.toBeNull();
     expect(host.querySelector('[data-ui="preview-view"]')).toBeNull();
     expect(host.querySelector('[data-ui="projection-chart"]')).toBeNull();

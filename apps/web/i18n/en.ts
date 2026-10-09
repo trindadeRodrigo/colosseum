@@ -1414,15 +1414,8 @@ export const en = {
       title: 'A vault, as its chain holds it',
       conversation: {
         proposedShare: 'Proposed share',
-        /** The drawing of a proposed mix, for a reader who cannot see it; each piece then says its own. */
-        jointLabel:
-          'The proposed strategy drawn as one joint: a piece for each asset, as wide as its share.',
-        jointHint: 'One piece per asset, as wide as its share.',
-        /** The same two when a small share is drawn wider than it is, so that it can be seen. */
-        jointLabelWidened:
-          'The proposed strategy drawn as one joint: a piece for each asset. Small shares are drawn wider than they are so they can be seen; each piece says its exact share.',
-        jointHintWidened:
-          'One piece per asset. Small shares are drawn wider so they can be seen; the figures in the list are exact.',
+        /** The bar's last leg when a draft holds more than four: the smaller holdings together. */
+        others: (count: number) => `${count} others`,
         /**
          * On the last draft while a reply is on its way. It promises no new draft: the reply may be a
          * question, and then this one stays.

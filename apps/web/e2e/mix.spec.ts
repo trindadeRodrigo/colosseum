@@ -19,8 +19,7 @@ const SHOTS = process.env.SCREENSHOTS_DIR;
 const WIDTHS = [375, 1280, 1440] as const;
 
 async function check(page: Page, name: string) {
-  // A pointer resting on the mix lights one piece and dims the others (MixJoint): the page is read
-  // with the pointer off it.
+  // The page is read with the pointer off it.
   await page.mouse.move(0, 0);
   for (const theme of ['light', 'dark'] as const) {
     await inTheme(page, theme);

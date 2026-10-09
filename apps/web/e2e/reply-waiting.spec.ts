@@ -98,7 +98,7 @@ const cardLayout = async (strategy: Locator, placed: boolean) => {
     card: placed ? card : { width: card.width, height: card.height },
     // the banner's place: the line that carries the note on the draft, or the banner
     banner: await within(strategy.locator('[data-ui="preview-pending"]').locator('..')),
-    beam: await within(strategy.getByRole('toolbar')),
+    bar: await within(strategy.locator('[data-ui="plan-legs-bar"]')),
     table: await within(strategy.locator('table')),
     action: await within(strategy.locator('[data-action="deposit"]')),
   };
@@ -171,7 +171,7 @@ for (const width of [1440, 375] as const)
       building.locator('[data-ui="draft-skeleton"] [data-ui="skeleton"]'),
     ).not.toHaveCount(0);
     // nothing is shown before the server sent it
-    await expect(strategy.locator('[data-ui="mix-joint"], [data-part="share"]')).toHaveCount(0);
+    await expect(strategy.locator('[data-ui="holding-legs"], [data-part="share"]')).toHaveCount(0);
     await expect(strategy).not.toContainText('%');
     const buildingCard = await boxOf(strategy.locator('[data-ui="goal-empty-preview"]'));
     const pendingRow = await boxOf(pending);
@@ -199,7 +199,7 @@ for (const width of [1440, 375] as const)
     const card = await boxOf(strategy.locator('[data-ui="card"]'));
     expect([card.x, card.width]).toEqual([buildingCard.x, buildingCard.width]);
     if (width === 1440) expect(card.y).toBe(buildingCard.y);
-    await expect(strategy.locator('[data-ui="mix-joint"]')).toBeVisible();
+    await expect(strategy.locator('[data-ui="holding-legs"]')).toBeVisible();
     await expect(page.locator('textarea')).toBeFocused();
     // the arrival has played out before the card is measured
     await page.evaluate(() =>
@@ -284,7 +284,7 @@ test('with reduced motion the same words stand beside a still mark', async ({ pa
   expect(await assembling(page.locator('[data-ui="composer-send"]'))).toBe(0);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/reduced-motion-pending-1440-dark.png` });
   release();
-  await expect(strategy.locator('[data-ui="mix-joint"]')).toBeVisible();
+  await expect(strategy.locator('[data-ui="holding-legs"]')).toBeVisible();
   release = await hold(page);
   await say(page, 'A little safer');
   await expect(strategy.locator('[data-ui="preview-pending"]')).toHaveText(talk.reworking);
@@ -329,6 +329,7 @@ for (const width of [1440, 375] as const)
     // the press before the amount's own check has answered: it asks, and says what it asks
     await page.getByLabel(en.buy.amount.label, { exact: true }).fill('100');
     const review = step.locator('[data-action="deposit-review"]');
+    await review.scrollIntoViewIfNeeded();
     const resting = await boxOf(review);
     await review.click();
     await expect(review).toContainText(en.mix.deposit.reviewing);
@@ -351,6 +352,7 @@ for (const width of [1440, 375] as const)
     for (let i = 0; i < (await boxes.count()); i += 1) await boxes.nth(i).check();
     const confirm = page.locator('[data-action="mix-confirm"]');
     await expect(confirm).not.toHaveAttribute('aria-disabled', 'true');
+    await confirm.scrollIntoViewIfNeeded();
     const confirmAt = await boxOf(confirm);
     const before = sent.length;
     await confirm.click();
