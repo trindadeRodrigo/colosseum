@@ -2072,7 +2072,8 @@ export type PostConversationsByChainGoalReplyResponse = {
       | 'pick_dropped'
       | 'share_unmet'
       | 'share_unread'
-      | 'share_withdrawn';
+      | 'share_withdrawn'
+      | 'pick_outside_goal';
     assetIds: string[];
     quote?: string;
   }[];
@@ -3604,7 +3605,8 @@ export type PostVaultsByChainByAddressConversationReplyResponse = {
       | 'pick_dropped'
       | 'share_unmet'
       | 'share_unread'
-      | 'share_withdrawn';
+      | 'share_withdrawn'
+      | 'pick_outside_goal';
     assetIds: string[];
     quote?: string;
   }[];
