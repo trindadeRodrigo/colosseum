@@ -54,6 +54,11 @@ export function SignInScreen({ next = AFTER_SIGN_IN, onDone, titleId }: SignInSc
   const [said, setSaid] = useState('');
   const heading = useRef<HTMLHeadingElement>(null);
   const card = useRef<HTMLDivElement>(null);
+  // In the dialog, when this panel takes the place of the landing's loading line, focus that was on
+  // that line's heading is on nothing: it goes to this heading, not to a way in.
+  useEffect(() => {
+    if (onDone && document.activeElement === document.body) heading.current?.focus();
+  }, [onDone]);
   // The person did something on this screen, and what they pressed is about to go.
   const acted = useRef(false);
 

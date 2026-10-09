@@ -12,7 +12,16 @@ import {
   signInWithSolanaWallet,
   walletAlreadyThere,
 } from './sign-in-flows';
-import { offersNewPasskey, type SignInAttempt, signInFailure, walletChoices } from './sign-in-view';
+import {
+  isCalm,
+  PROMPT_SEEN_MS,
+  passkeysUsable,
+  type SignInAttempt,
+  signInFailure,
+  twinMark,
+  walletChoices,
+  withoutPrompt,
+} from './sign-in-view';
 import { buildConfigForTest } from './test/api-config';
 import { chains, failure } from './test/fixtures';
 import { createTestDriver, TEST_WALLETS } from './test/test-driver';
@@ -137,8 +146,8 @@ describe('the sentence each failure gets', () => {
     expect(says(privy('too_many_requests', 'x'), 'wallet')).toBe('tooMany');
     for (const attempt of ['passkey-use', 'passkey-create', 'wallet'] as const)
       expect(says(privy('invalid_origin', 'Origin not allowed'), attempt)).toBe('originRefused');
-    // a new passkey would fail the same way: it is not offered
-    expect(offersNewPasskey('originRefused')).toBe(false);
+    // a real failure, said as one
+    expect(isCalm('originRefused', { usable: true, openMs: 60_000 })).toBe(false);
     expect(says(new TypeError('Failed to fetch'), 'wallet')).toBe('offline');
     expect(says(new Error('Blockhash not found'), 'wallet')).toBe('expired');
     expect(says(new Error('TypeError: cannot read properties of undefined'), 'wallet')).toBe(
@@ -419,17 +428,91 @@ describe('the wallets as the sign-in screen offers them', () => {
     ]);
   });
 
-  it('never makes a passkey on a failed use, and offers one wherever one can be made', () => {
+  it('says calmly only a passkey prompt a person had time to close, where passkeys can be used', () => {
+    const closed = { usable: true, openMs: PROMPT_SEEN_MS };
+    for (const key of ['passkeyNotUsed', 'passkeyNotCreated'] as const) {
+      expect(isCalm(key, closed), key).toBe(true);
+      // refused at once: no prompt was open (a lost press, a frame with no leave)
+      expect(isCalm(key, { usable: true, openMs: PROMPT_SEEN_MS - 1 }), key).toBe(false);
+      // passkeys cannot be used here at all, however long it took
+      expect(isCalm(key, { usable: false, openMs: 60_000 }), key).toBe(false);
+    }
     for (const key of [
-      'passkeyNotUsed',
       'passkeyUnknown',
       'passkeyNotRegistered',
+      'passkeyNotAccepted',
+      'passkeyOff',
+      'passkeyUnsupported',
+      'walletRefused',
       'tooMany',
+      'offline',
       'other',
     ] as const)
-      expect(offersNewPasskey(key), key).toBe(true);
-    for (const key of ['passkeyOff', 'passkeyUnsupported'] as const)
-      expect(offersNewPasskey(key), key).toBe(false);
+      expect(isCalm(key, closed), key).toBe(false);
+    // and the sentence of a refusal with no prompt behind it is not "the prompt was closed"
+    expect(withoutPrompt('passkeyNotUsed')).toBe('passkeyNotAccepted');
+    expect(withoutPrompt('passkeyNotCreated')).toBe('other');
+    expect(withoutPrompt('tooMany')).toBe('tooMany');
+  });
+
+  it('knows where passkeys cannot be used: no WebAuthn, or a frame not allowed to', () => {
+    const has = { PublicKeyCredential: class {} };
+    expect(passkeysUsable({})).toBe(false);
+    expect(passkeysUsable(has)).toBe(true);
+    const policy = (allowed: string[]) => ({
+      ...has,
+      document: { permissionsPolicy: { allowsFeature: (f: string) => allowed.includes(f) } },
+    });
+    expect(passkeysUsable(policy([]))).toBe(false);
+    // both are needed: using one, and making one
+    expect(passkeysUsable(policy(['publickey-credentials-get']))).toBe(false);
+    expect(
+      passkeysUsable(policy(['publickey-credentials-get', 'publickey-credentials-create'])),
+    ).toBe(true);
+    // the older name of the same policy
+    expect(
+      passkeysUsable({ ...has, document: { featurePolicy: { allowsFeature: () => false } } }),
+    ).toBe(false);
+    // a policy that cannot be asked is taken to allow: the attempt then says what happened
+    expect(
+      passkeysUsable({
+        ...has,
+        document: {
+          permissionsPolicy: {
+            allowsFeature: () => {
+              throw new Error('no');
+            },
+          },
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it('lists MetaMask once: its Solana wallet and its EVM one are the known pair, by their ids', () => {
+    const choices = walletChoices([
+      { id: 'solana:MetaMask', name: 'MetaMask', family: 'solana', icon: ICON },
+      { id: 'solana:Phantom', name: 'Phantom', family: 'solana' },
+      { id: 'evm:io.metamask', name: 'MetaMask', family: 'evm' },
+    ]);
+    expect(choices.map((c) => [c.name, c.ids])).toEqual([
+      ['MetaMask', { solana: 'solana:MetaMask', evm: 'evm:io.metamask' }],
+      ['Phantom', { solana: 'solana:Phantom' }],
+    ]);
+    expect(choices.map((c) => twinMark(c, choices))).toEqual([null, null]);
+  });
+
+  it('keeps two installs that share a name apart, each marked by its own id, and joins neither', () => {
+    // another wallet announcing itself as "MetaMask" is not MetaMask: it is not folded into it and
+    // does not take its Solana side; the two rows are told apart by what the name's owner cannot fake
+    const choices = walletChoices([
+      { id: 'solana:MetaMask', name: 'MetaMask', family: 'solana' },
+      { id: 'evm:io.metamask', name: 'MetaMask', family: 'evm' },
+      { id: 'evm:xyz.other', name: 'MetaMask', family: 'evm' },
+    ]);
+    expect(choices.map((c) => [c.key, c.ids, twinMark(c, choices)])).toEqual([
+      ['evm:xyz.other', { evm: 'evm:xyz.other' }, 'xyz.other'],
+      ['metamask', { solana: 'solana:MetaMask', evm: 'evm:io.metamask' }, 'io.metamask'],
+    ]);
   });
 });
 

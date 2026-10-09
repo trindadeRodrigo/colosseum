@@ -18,8 +18,10 @@ vi.mock('next/link', () => import('../wallet/test/mock-next'));
 // The bar is never left without a way in (Thom, Oct 7: in a browser where the sign-in service never
 // loaded, the bar kept an empty box where "Sign in" belongs, for good). A visitor nobody knows to be
 // signed in gets "Sign in" after a short wait whatever the service does; the screen it opens says the
-// service has not answered and offers to try again; after a quarter of a minute the bar says sign-in
-// is slow; and when the service loads late, everything is as if it had loaded at once.
+// service has not answered and offers to try again; and when the service loads late, everything is as
+// if it had loaded at once. Slowness is never said in the bar to a visitor, and is never the label of
+// anyone's control (Thom, Oct 9): someone the hint says was signed in keeps the chip's still box, with
+// help under it after half a minute.
 
 /** The sign-in service has not loaded: the port is loading, and names nobody. */
 const neverReady = () => fakePort({ status: 'loading' });
@@ -31,7 +33,9 @@ const later = (ms: number) =>
   });
 const control = (host: HTMLElement) => find(host, '[data-ui="account-control"]');
 const way = (host: HTMLElement) =>
-  host.querySelector<HTMLAnchorElement>('[data-ui="account-control"] a[href="/sign-in"]');
+  host.querySelector<HTMLAnchorElement>('[data-ui="account-control"] a[href^="/sign-in"]');
+const box = (host: HTMLElement) => control(host).querySelector('[data-ui="account-placeholder"]');
+const HELP = '[data-ui="account-control"] [data-ui="sign-in-slow"]';
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
 const OTHERS_ORDER = '44444444-4444-4444-8444-444444444444';
 /** The hint this app keeps while someone is signed in, as a reload finds it. */
@@ -70,10 +74,13 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
     await later(WAY_IN_MS - 1);
     expect(way(host)).toBeNull();
     expect(control(host).querySelector('button')).toBeNull();
+    // the still box of the button to come, for a visitor: nothing moves when "Sign in" takes it
+    expect(box(host)?.getAttribute('data-shape')).toBe('sign-in');
     await later(1);
     expect(way(host)?.textContent).toBe(t.shell.signIn);
+    expect(box(host)).toBeNull();
     // the visitor's controls, not an account's: the chain they look at, and no account menu
-    expect(control(host).querySelector('[data-ui="chain-switch"]')).not.toBeNull();
+    expect(host.querySelector('header [data-ui="chain-switch"]')).not.toBeNull();
     expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
     // and it stays, however long the service takes
     await later(20 * SLOW_MS);
@@ -120,21 +127,16 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
     );
   });
 
-  it('says sign-in is slow beside the way in after a quarter of a minute, and in the phone’s sheet with "Try again"', async () => {
+  it('never tells a visitor in the bar that sign-in is slow: "Sign in" stays, and the screen it opens says what is wrong', async () => {
     const host = await shell(lang);
-    await later(SLOW_MS - 1);
-    expect(host.querySelector('[data-ui="account-slow"]')).toBeNull();
-    await later(1);
-    const said = find(control(host), '[data-ui="account-slow"]');
-    expect(said.textContent).toBe(t.shell.slow.title);
-    expect(said.getAttribute('role')).toBe('status');
+    await later(20 * SLOW_MS);
     expect(way(host)?.textContent).toBe(t.shell.signIn);
-    // the phone's sheet says which side, with the way to try again and no "Sign out" for nobody
-    const block = find(host, '[data-ui="sign-in-slow"]');
-    expect(block.getAttribute('data-side')).toBe('service');
-    expect(block.textContent).toContain(t.shell.slow.service);
-    expect(block.querySelector('[data-act="sign-in-again"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="account-slow"]')).toBeNull();
+    // no help in the bar or in the phone's sheet, and no "Sign out" for nobody
+    expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
+    expect(host.textContent).not.toContain(t.shell.slow.title);
     expect(host.textContent).not.toContain(t.shell.signOut);
+    expect(find(host, '[data-ui="account-said"]').textContent).toBe('');
   });
 
   it('is as if it had loaded at once when it loads late: signed out, the two ways in', async () => {
@@ -152,7 +154,7 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
     expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
   });
 
-  it('never shows "Sign in" to someone the hint says was signed in: a neutral box, then that sign-in is slow, then their account', async () => {
+  it('never shows "Sign in" to someone the hint says was signed in: the chip’s still box, help under it after half a minute, then their account', async () => {
     portStore.setApi(async (path) =>
       path === '/v1/me'
         ? json({
@@ -167,27 +169,28 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
     // a reload by someone signed in, on a slow connection
     hint(true);
     const host = await shell(lang);
+    expect(box(host)?.getAttribute('data-shape')).toBe('account');
     await later(WAY_IN_MS);
     expect(way(host)).toBeNull();
     await later(SLOW_MS - WAY_IN_MS - 1);
-    // nothing yet: no way in that would flip to their account a moment later
+    // nothing yet: no way in that would flip to their account a moment later, and no word of slowness
     expect(way(host)).toBeNull();
-    expect(control(host).querySelector('button')).toBeNull();
+    expect(control(host).querySelector('button, a')).toBeNull();
+    expect(box(host)?.getAttribute('data-shape')).toBe('account');
     await later(1);
-    // then their account's control says sign-in is slow, with "Try again" and "Sign out" in it
+    // the box stays; the help under it has "Try again" and "Sign out"
     expect(way(host)).toBeNull();
-    const button = find(host, '[data-ui="account-menu-button"]');
-    expect(button.textContent).toBe(t.shell.slow.title);
-    await click(button);
-    const menu = find(host, '[data-ui="account-menu"]');
-    expect(find(menu, '[data-ui="sign-in-slow"] [data-act="sign-in-again"]').textContent).toBe(
-      t.shell.slow.again,
-    );
-    expect(find(menu, '[data-ui="sign-out"]').textContent).toBe(t.shell.signOut);
+    expect(box(host)).not.toBeNull();
+    expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
+    const help = find(host, HELP);
+    expect(help.getAttribute('data-side')).toBe('wallets');
+    expect(find(help, '[data-act="sign-in-again"]').textContent).toContain(t.shell.slow.again);
+    expect(find(help, '[data-act="sign-out"]').textContent).toContain(t.shell.signOut);
     // and when the service loads, it is their account
     await act(async () => portStore.set(signedInPort(EMBEDDED)));
     await later(0);
     expect(way(host)).toBeNull();
+    expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
     expect(find(host, '[data-ui="account-menu-button"]').getAttribute('data-chain')).toBe('solana');
   });
 
@@ -205,13 +208,17 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
     hint(true);
     const host = await shell(lang);
     await later(SLOW_MS);
-    await click(find(host, '[data-ui="account-menu-button"]'));
-    await click(find(host, '[data-ui="account-menu"] [data-ui="sign-out"]'));
+    const out = find(host, `${HELP} [data-act="sign-out"]`);
+    out.focus();
+    await click(out);
     // nobody to sign out at a service that names nobody: it is not asked, and nothing hangs
     expect(signOut).not.toHaveBeenCalled();
     expect(hinted()).toBe(false);
     expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
     expect(way(host)?.textContent).toBe(t.shell.signIn);
+    // focus was on "Sign out", which is gone: it is on "Sign in", and a screen reader is told
+    expect(document.activeElement).toBe(way(host));
+    expect(find(host, '[data-ui="account-said"]').textContent).toBe(t.shell.signedOut);
     // nobody is known, so every order record in the browser went with the press, whoever's it was
     expect(recallOrder(ORDER_ID, USER)).toBeNull();
     expect(recallOrder(OTHERS_ORDER, 'did:privy:other')).toBeNull();
@@ -244,21 +251,21 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
     expect(host.querySelector('[data-ui="account-slow"]')).toBeNull();
   });
 
-  it('keeps the account control for someone signed in whose provider, started again, names nobody for a while', async () => {
+  it('keeps the loading look for someone signed in whose provider, started again, names nobody for a while', async () => {
     portStore.set(fakePort({ status: 'loading', userId: 'did:privy:test' }));
     const host = await shell(lang);
     await later(SLOW_MS);
-    await click(find(host, '[data-ui="account-menu-button"]'));
-    await click(find(host, '[data-ui="account-menu"] [data-act="sign-in-again"]'));
+    await click(find(host, `${HELP} [data-act="sign-in-again"]`));
     expect(restarts.count).toBe(1);
     // the new provider knows nobody yet, for longer than a visitor waits for "Sign in"
     await act(async () => portStore.set(neverReady()));
     await later(WAY_IN_MS + 1);
     expect(way(host)).toBeNull();
-    expect(find(host, '[data-ui="account-menu-button"]').textContent).toBe(t.shell.slow.title);
+    expect(box(host)?.getAttribute('data-shape')).toBe('account');
+    expect(host.querySelector(HELP)).not.toBeNull();
     await later(SLOW_MS);
     expect(way(host)).toBeNull();
-    expect(host.querySelector('[data-ui="account-menu-button"]')).not.toBeNull();
+    expect(box(host)).not.toBeNull();
   });
 });
 
@@ -268,15 +275,15 @@ describe('a sign-in service that loads in time', () => {
     await later(WAY_IN_MS - 1);
     await act(async () => portStore.set(fakePort({ status: 'loading', userId: 'did:privy:test' })));
     await later(SLOW_MS - 1);
-    // known to be signed in: the account control, as before, and never "Sign in"
+    // known to be signed in: the chip's still box until their account is read, and never "Sign in"
     expect(way(host)).toBeNull();
-    expect(host.querySelector('[data-ui="account-menu-button"]')).not.toBeNull();
+    expect(box(host)?.getAttribute('data-shape')).toBe('account');
   });
 
   it('lets a visitor switch the chain they look at while the service is silent', async () => {
     const host = await shell('en');
     await later(WAY_IN_MS);
-    const button = find(control(host), '[data-ui="chain-switch"] button');
+    const button = find(host, 'header [data-ui="chain-switch"] button');
     expect(button.textContent).toContain('Solana');
   });
 });
