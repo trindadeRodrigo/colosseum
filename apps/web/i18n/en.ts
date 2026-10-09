@@ -2012,9 +2012,9 @@ export const en = {
     },
     hero: {
       title: 'No product fits everyone. So we make the products fit your goals.',
-      lead: 'A plan made to measure, with an exit plan before it invests, in your own vault. Every number carries its source.',
-      start: 'Start a plan',
-      see: 'See a plan',
+      lead: 'A vault made to measure, with its exit plan measured before you deposit. Every number carries its source.',
+      start: 'Start your vault',
+      see: 'See shared portfolios',
     },
     stats: {
       label: 'The platform in numbers',
