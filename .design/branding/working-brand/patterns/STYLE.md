@@ -116,7 +116,7 @@ It takes the Sage's structure (a grid, hairlines, tabular figures, signed deltas
 | stale | Hollow square pin (1.5px) **plus "stale · 3 h"**. Never without the word |
 | sample (MOCK) | No pin. The tenon is filled with a 3px-pitch hatch, `aria-label` "sample figure"; the card carries the quiet line "Sample figures" |
 | sandbox | As sample; the card's line reads "Sample figures · test network" |
-| popover | Plex Mono: `source · fetched_at (ISO, UTC) · method`, on night-3 / white with a 1px border and `--tf-shadow-popover` |
+| popover | Plain words first, in Inter: what the number is and where from, how fresh, whether it is live; a stale reading first. Under "Details": the API's `source · fetched_at (UTC) · method`, addresses only in Plex Mono, shortened, each with a copy button (gate `TOOLTIP-WORDS`). On night-3 / white with a 1px border and `--tf-shadow-popover` |
 | a11y | `<button aria-label="Source for 6.4%">` (with ", stale, 3 hours old" or ", mock data" appended), a 24×24 hit area, and Enter opens it |
 | embed | The pin takes the partner's muted text colour |
 

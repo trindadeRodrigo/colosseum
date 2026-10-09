@@ -9,15 +9,18 @@ The brand's smallest drawing: the tenon end in line mode, a rounded 3:2 outline 
 6.40% ⊡        ← figure · U+202F · glyph (18×12 viewBox, .75em tall, baseline-aligned)
       └ <button> with a transparent 24×24 ::before hit area
         ┌────────────────────────────────────────────┐
-        │ Kamino API · 2026-10-08T14:02:11Z · haircut v2 │  ← popover, Plex Mono text-source
+        │ Rate from Kamino                            │  ← what it is and where from (Inter, medium)
+        │ Updated 2 minutes ago                       │  ← how fresh (muted)
+        │ Live                                        │  ← whether it is live (muted)
         │ quoted 7.10% · after haircut 6.40%          │
+        │ Details ⌄                                   │  ← opens the API's own source, time and method
         └────────────────────────────────────────────┘
 ```
 
 - **Glyph**: `<svg viewBox="0 0 18 12" aria-hidden>`: outline `rect x=.75 y=.75 w=16.5 h=10.5 rx=2.5` stroke 1.5, `stroke: var(--tf-pin-outline)`; pin `rect x=11 y=4 w=4 h=4 rx=1`, `fill: var(--tf-pin)`. The pin sits toward the end (x 11–15 of 18), not centred: it is the mark's pin, and the offset keeps it from reading as a button.
 - **Size**: `height: .75em; width: 1.125em` (fallback when `cap` units are unsupported); scales with the figure's font size.
 - **Spacing**: U+202F narrow no-break space between figure and glyph; the pair never wraps apart (wrap them in `white-space: nowrap`).
-- **Popover**: on `--popover` (white / night-3 `#1A1D26`), 1px `--border`, 8px radius, `shadow-popover` (`0 8px 24px rgba(0,0,0,.35)`: the one shadow in the system), padding 8px 12px, max-width 44ch. Line 1: `source · fetched_at (ISO 8601, UTC) · method` in Plex Mono `text-source`. Line 2 (yields): quoted vs after-haircut, and the haircut rule. Line 3 (stale / mock / test network): the state sentence. Optional "How we measure ↗" link to docs.
+- **Popover**: on `--popover` (white / night-3 `#1A1D26`), 1px `--border`, 8px radius, `shadow-popover` (`0 8px 24px rgba(0,0,0,.35)`: the one shadow in the system), padding 8px 12px, max-width 21rem, in Inter `text-body-sm` (gate `TOOLTIP-WORDS`, Thom, Oct 9). It says, in this order: what the number is (where the screen names it) and where it comes from, in plain words ("Price from the test network's price feed"); how fresh it is ("Updated 2 minutes ago"); whether it is live ("Live", "Test network, not live", "Sample figure, not live"). A stale reading says so first ("Last updated 19 hours ago, older than this feed's 2 minute limit"), with the age the API states. Then, for a yield, quoted vs after-haircut and the haircut rule. Then **Details**, closed until asked for: the API's own `source`, the exact time (UTC) and the `method`, as words in Inter; each address shortened in the middle, in Plex Mono, with its own copy button and its explorer page where the screen knows the network's; "Copy all" copies `source · fetched_at (ISO 8601, UTC) · method` as the API wrote it. A source's plain name comes from the table in `apps/web/components/ui/source-words.ts`; one it does not know reads "Source details below" and is never guessed at. Optional "How we measure ↗" link to docs.
 
 ## States (from the API, never inferred by the UI)
 
@@ -33,10 +36,10 @@ Live and stale differ only by the pin's fill, so stale must never rely on the gl
 
 ## Behaviour
 
-- `<button type="button">` wraps the glyph; Enter/Space and click toggle the popover; Escape closes and returns focus; hover opens after 300ms on pointer devices (and the popover is hoverable, 1.4.13). Touch: tap toggles.
-- Popover is `role="dialog"` with `aria-label="Provenance"` when it contains a link, else a tooltip (`role="tooltip"`, `aria-describedby`).
+- `<button type="button">` wraps the glyph; Enter/Space and click toggle the popover; keyboard focus opens it; Escape closes and returns focus; hover opens after 300ms on pointer devices (and the popover is hoverable, 1.4.13). Touch: tap toggles. It is placed against the viewport, under the pin or above it when there is no room below, never over the pin and never past an edge; it fades in over 120ms, and not at all under reduced motion. The behaviour is the one tooltip's (`Hint.tsx`, `hover-card.ts`), which every plain tooltip shares.
+- Popover is `role="dialog"` with `aria-label="Source details"`: it holds controls (Details, copy). The pin points at its plain sentences with `aria-describedby` while it is open. A plain tooltip (`Hint`) is `role="tooltip"`.
 - Motion: on first reveal in plan-lock, the pin drops (`--animate-pin-drop`: 6px, 160ms, 120ms delay). Reduced motion: appears with no travel.
-- Copy: clicking the source line copies it (`Copy` → `Check` 1.5s).
+- Copy: under Details, each address has its own copy button and "Copy all" copies the API's line (`Copy` → `Check` 1.5s, announced).
 
 ## Colour per context
 
