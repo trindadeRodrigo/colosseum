@@ -78,6 +78,19 @@ export type Region = {
   sized?: 'by-data' | 'by-words';
 };
 
+/**
+ * The page has stopped moving: its height is the same a moment apart. A settled page can still be
+ * drawing a block that read after the rest (a chart's own history), and a box is measured once it has.
+ */
+export async function settled(page: Page) {
+  const height = () => page.evaluate(() => document.documentElement.scrollHeight);
+  await expect(async () => {
+    const was = await height();
+    await page.waitForTimeout(300);
+    expect(await height()).toBe(was);
+  }).toPass({ timeout: 15_000 });
+}
+
 /** The foot of what the regions are measured from: the page's top, or the element `under` names. */
 async function footOf(page: Page, under?: string): Promise<number> {
   if (!under) return 0;
@@ -104,6 +117,7 @@ export async function expectNoShift(
   at: string,
   under?: string,
 ) {
+  await settled(page);
   const foot = await footOf(page, under);
   for (const r of regions) {
     const was = before[r.name] as Box;
