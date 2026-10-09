@@ -20,7 +20,7 @@ import {
   writeIndex,
 } from './conversations';
 import { GoalChain, plannable } from './GoalChain';
-import { GoalConversation, goalConversationKey } from './GoalConversation';
+import { GoalConversation, goalConversationKey, LeaveDeposit } from './GoalConversation';
 
 const NONE: ConversationIndex = { current: 'main', items: [] };
 
@@ -37,8 +37,23 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
   const w = t.goal.explore.picker;
   const pickerId = useId();
   const router = useRouter();
-  const { account, chain, choose } = useAccount();
+  const { account, chain: current, choose } = useAccount();
   const port = useWalletPort();
+  // A deposit is open on the conversation's pane (approved, not every step confirmed; fresh, stopped
+  // or taken up again after a reload). The conversation then stays on the deposit's chain whatever
+  // moves the account's (the bar's switch, another tab): a plan lives on one chain, and its pane is
+  // not taken from under its steps. Every way this page itself leaves it asks first.
+  const [deposit, setDeposit] = useState<{
+    open: boolean;
+    signing: boolean;
+    chain: ChainId | null;
+  }>({ open: false, signing: false, chain: null });
+  const [pending, setPending] = useState<{ go: () => void } | null>(null);
+  const chain = deposit.open && deposit.chain ? deposit.chain : current;
+  const shown = useRef(chain);
+  shown.current = chain;
+  /** Leaves the open deposit, by the person's word: the pane goes with the conversation. */
+  const leave = () => setDeposit({ open: false, signing: false, chain: null });
   const network = chain ? port.network(chain) : null;
   const userId = port.userId;
   /** Where this browser keeps the person's conversations of one chain and its network. */
@@ -94,7 +109,12 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
   const nameOf = (on: ChainId) => port.network(on)?.name ?? t.chain.names[on];
 
   /** A new plan on `next`: the chain is stored, and an empty conversation opens there. */
-  async function startOn(next: ChainId) {
+  async function startOn(next: ChainId, sure = false) {
+    if (deposit.open && !sure) {
+      setPending({ go: () => void startOn(next, true).catch(() => {}) });
+      return;
+    }
+    if (sure) leave();
     const there = baseOf(next);
     if (there) {
       const kept = readIndex(there);
@@ -120,7 +140,10 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
     setSaid(t.chain.choice.done(nameOf(next)));
   }
 
-  function pick(value: string) {
+  function pick(value: string, sure = false) {
+    if (deposit.open && !sure && value !== 'current')
+      return setPending({ go: () => pick(value, true) });
+    if (sure) leave();
     carried.current = null;
     setMoved('');
     setProblem('');
@@ -198,6 +221,17 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
           )}
         </Select>
       </div>
+      {pending && deposit.open && (
+        <LeaveDeposit
+          signing={deposit.signing}
+          onLeave={() => {
+            const { go } = pending;
+            setPending(null);
+            go();
+          }}
+          onStay={() => setPending(null)}
+        />
+      )}
       {/* There before its words, so a screen reader hears them when they come. */}
       <p
         role="status"
@@ -226,7 +260,18 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
           });
         }}
         carried={carried}
-        chainControl={(state) => <GoalChain {...state} refocus={refocus} onChoose={startOn} />}
+        onDeposit={(state) =>
+          setDeposit((now) =>
+            state.open
+              ? { ...state, chain: now.open ? now.chain : shown.current }
+              : now.open
+                ? { open: false, signing: false, chain: null }
+                : now,
+          )
+        }
+        chainControl={(state) => (
+          <GoalChain {...state} on={chain} refocus={refocus} onChoose={startOn} />
+        )}
       />
     </div>
   );

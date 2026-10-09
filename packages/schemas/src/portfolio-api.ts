@@ -14,7 +14,7 @@ import {
 import { Provenance } from './enums';
 import { LegKind, LegTrigger, TradeExpected } from './order';
 import { VaultPlan } from './order-api';
-import { Holding, Price, VaultName, VaultView } from './vault';
+import { Holding, Price, VaultName, VaultNumber, VaultView } from './vault';
 
 // The portfolio section's routes (PORT-2): a person's plans over time, read from what the snapshot
 // worker kept (`vault_snapshots`, DESIGN-VAULT section 4) and from the order tables, never from a
@@ -215,6 +215,8 @@ export type HistoryPoint = z.infer<typeof HistoryPoint>;
 export const HistorySeries = z.object({
   address: Address,
   name: VaultName.nullable(),
+  /** Its number among the person's vaults. Left out where the server holds none for it. */
+  number: VaultNumber.optional(),
   source: z.string().min(1),
   method: z.string().min(1),
   points: z.array(HistoryPoint),
@@ -326,6 +328,11 @@ export const PortfolioPlan = z.object({
   address: Address,
   owner: Address,
   name: VaultName.nullable(),
+  /**
+   * Its number among the person's vaults, there whether or not it has a name. Left out where the
+   * server holds none for it. It is not `basketId`, which is the plan's number on the chain.
+   */
+  number: VaultNumber.optional(),
   /** The plan's number on the chain. */
   basketId: BasketId,
   plan: VaultPlan.nullable(),

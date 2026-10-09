@@ -344,7 +344,7 @@ describe('investing with one press, with the passkey wallet', () => {
     first.open();
     await settle();
     expect(find(host, '[data-ui="invest-progress"]').textContent).toContain(
-      'Deposit confirmed · Buying SPYx · 2 of 2',
+      'Deposit confirmed · Swapping into SPYx · 2 of 2',
     );
     second.open();
     await settle();

@@ -23,6 +23,10 @@ describe('a refusal of a shared portfolio’s buy or follow', () => {
     expect(
       sharedRefusal(said('solana:spyx cannot be bought on Solana', 'ASSET_NOT_ELIGIBLE'), en),
     ).toEqual({ sentence: en.shared.refusal.assetNamed('SPYx'), changed: false });
+    // the sentence our server writes since WORDS-VAULT-DEPOSIT names the asset the same way
+    expect(
+      sharedRefusal(said('solana:spyx is not available on Solana', 'ASSET_NOT_ELIGIBLE'), en),
+    ).toEqual({ sentence: en.shared.refusal.assetNamed('SPYx'), changed: false });
     for (const placed of [
       said('the price feed is down', 'ASSET_NOT_ELIGIBLE'),
       { kind: 'code', code: 'ASSET_NOT_ELIGIBLE' },

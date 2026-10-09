@@ -402,7 +402,7 @@ describe('the current chain, where new plans are made (gates ONE-CHAIN, CHAIN-SW
     const who = await picked('robinhood');
     await fund(who);
     const placed = await order(who);
-    expect(placed.summary).toBe('Buy $1,000.00 of your plan on Robinhood Chain');
+    expect(placed.summary).toBe('Deposit $1,000.00 into your plan’s vault on Robinhood Chain');
     expect([...new Set(placed.legs.map((l) => l.chain))]).toEqual(['robinhood']);
     expect((await settleAll(who, placed)).status).toBe('done');
     expect(await vaultsOf(who)).toEqual([
@@ -416,7 +416,7 @@ describe('the current chain, where new plans are made (gates ONE-CHAIN, CHAIN-SW
     // the EVM wallet, and its vault is still listed.
     expect((await pick(who, 'solana')).statusCode).toBe(200);
     const more = await order(who, { amountUsd: 100 });
-    expect(more.summary).toBe('Buy $100.00 of your plan on Robinhood Chain');
+    expect(more.summary).toBe('Deposit $100.00 into your plan’s vault on Robinhood Chain');
     expect([...new Set(more.legs.map((l) => l.chain))]).toEqual(['robinhood']);
     expect(more.owner).toEqual(who.owner);
     expect(await vaultsOf(who)).toEqual([

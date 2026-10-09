@@ -34,7 +34,7 @@ describe('what an order states for a trade', () => {
     expect(refused).toBeInstanceOf(Refusal);
     expect((refused as Refusal).status).toBe(422);
     expect((refused as Refusal).message).toMatch(
-      /buys no solana:spy that can be held to a minimum/,
+      /swaps into no solana:spy that can be held to a minimum/,
     );
   });
 });

@@ -369,6 +369,9 @@ describe('rule 3: no screen can reach a key', () => {
     // a shared portfolio's own page mounts the invest card under its holdings (gate PRODUCTS-PLAN-PANE)
     'app/(app)/indexes/[slug]/page.tsx',
     'app/(app)/vaults/[chain]/[address]/add/page.tsx',
+    // the conversation's pane mounts the invest card once the deposit is confirmed, so the steps are
+    // signed there (gate DEPOSIT-IN-PLACE, Thom, Oct 9; off this list from #195 until then)
+    'app/(app)/goal/page.tsx',
   ];
 
   /** What a file outside the seam may take from a file of the seam, by name. Types are free. */
@@ -616,8 +619,8 @@ describe('rule 3: no screen can reach a key', () => {
       'features/order/order-view.ts',
     ]);
     expect(takesRunner('features/order/order-view.ts')).toBe(false);
-    // by any path: every product route is built without the whole port, but the order's and the
-    // three that invest, which draw the order's own screen inside their card (INVEST-ONE-PRESS)
+    // by any path: every product route is built without the whole port, but the order's and those
+    // that invest, which draw the order's own screen inside their card (INVEST-ONE-PRESS)
     for (const route of SIGNING_ROUTES) expect(product).toContain(route);
     const others = product.filter((r) => !SIGNING_ROUTES.includes(r));
     expect(reach(others).files.has(SIGNING)).toBe(false);
