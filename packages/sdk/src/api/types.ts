@@ -3322,9 +3322,10 @@ export type GetPortfolioPlansResponse = {
           goal: 'grow' | 'income' | 'protect';
           amountUsd: number;
           horizonMonths: number;
+          horizonOpen?: boolean;
           risk: 'low' | 'medium' | 'high';
           themes: string[];
-          country: string;
+          country?: string;
           chains: ('solana' | 'base' | 'robinhood')[];
           incomeTargetUsdMonthly?: number;
           rules: {
@@ -3357,7 +3358,7 @@ export type GetPortfolioPlansResponse = {
         };
         card?: {
           moneyTodayUsd: number;
-          termMonths: number;
+          termMonths: number | null;
           cashFlow: 'none' | 'monthly' | 'at_end';
           expectedReturn: {
             lowPct: number;
