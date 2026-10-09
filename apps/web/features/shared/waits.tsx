@@ -1,6 +1,9 @@
 'use client';
+import type { ChainId } from '@colosseum/schemas';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { buttonClass } from '../../components/ui/button-class';
+import { ChainBadge } from '../../components/ui/ChainBadge';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { Skeleton, SkeletonLine, SkeletonListRow } from '../../components/ui/Skeleton';
 import { ScreenWait } from '../../components/waits/ScreenWait';
@@ -82,6 +85,218 @@ export function FamilyWait() {
             </div>
           </div>
           <PlanViewWait aside={2} />
+        </div>
+      }
+    />
+  );
+}
+
+/** A vault of the person's that follows a portfolio, in the grid those cards sit in. */
+export function MyVaultsWait() {
+  const t = useT();
+  return (
+    <div
+      aria-hidden="true"
+      data-ui="my-vaults-wait"
+      className="grid grid-cols-1 gap-4 min-[640px]:grid-cols-2"
+    >
+      <div className="flex min-w-0 flex-col items-start gap-3 rounded-lg border border-border bg-card p-6">
+        <Skeleton className="h-4 w-32" />
+        <SkeletonLine className="w-full text-h4" width="w-48" />
+        <div className="flex w-full min-w-0 flex-col gap-2">
+          <p className="text-caption text-muted-foreground">{t.portfolio.vault.holdings}</p>
+          <HoldingsWait />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** A screen's head as it will read: the chain's tag, the title, and the line under it. */
+function HeadWait({
+  chain,
+  title,
+  lead,
+  children,
+}: {
+  chain: ChainId | null;
+  title: string;
+  /** The line under the title, where the chain already says it; else its outline. */
+  lead: string | null;
+  children?: ReactNode;
+}) {
+  return (
+    <header className="flex flex-col items-start gap-3">
+      {chain ? <ChainBadge chain={chain} /> : <Skeleton className="h-5 w-14" />}
+      <h1 className={PAGE_TITLE}>{title}</h1>
+      {lead ? (
+        <p className="max-w-(--tf-measure-body) text-body-lg">{lead}</p>
+      ) : (
+        <SkeletonLine
+          className="w-full max-w-(--tf-measure-body) text-body-lg"
+          width="w-full"
+          lines={2}
+        />
+      )}
+      {children}
+    </header>
+  );
+}
+
+/** Withdraw (WithdrawScreen): its head, then the card of its three steps, the first one open. */
+export function WithdrawWait({ chain }: { chain: ChainId | null }) {
+  const t = useT();
+  const w = t.withdraw;
+  return (
+    <ScreenWait
+      label={w.loading}
+      skeleton={
+        <div data-ui="withdraw-wait" className="flex flex-col gap-8">
+          <HeadWait
+            chain={chain}
+            title={w.title}
+            lead={chain ? w.lead(t.chain.names[chain]) : null}
+          />
+          <div
+            aria-hidden="true"
+            data-wait="steps"
+            className="max-w-3xl rounded-lg border border-border bg-card"
+          >
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 p-6 text-body-sm sm:gap-x-5">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-[22px] w-16" />
+              ))}
+            </div>
+            <div className="border-t border-border">
+              <div className="flex items-center gap-3 px-6 py-4">
+                <SkeletonLine className="text-h4" width="w-24" />
+              </div>
+              <div className="flex flex-col gap-3 px-6 pb-6">
+                <SkeletonLine className="text-body-sm" width="w-56" />
+                <SkeletonLine className="text-body-sm" width="w-48" />
+                <SkeletonLine className="text-body-sm" width="w-52" />
+                <Skeleton className="h-10 w-24 rounded-md" />
+              </div>
+            </div>
+            {[0, 1].map((i) => (
+              <div key={i} className="flex items-center gap-3 border-t border-border px-6 py-4">
+                <SkeletonLine className="text-h4" width="w-24" />
+              </div>
+            ))}
+          </div>
+        </div>
+      }
+    />
+  );
+}
+
+/** Add money (AddMoneyScreen): its head, the amount and its card, and where the deposit goes. */
+export function AddMoneyWait({ chain }: { chain: ChainId | null }) {
+  const t = useT();
+  const words = t.portfolio.add;
+  return (
+    <ScreenWait
+      label={t.portfolio.reading}
+      skeleton={
+        <div data-ui="add-money-wait" className="flex flex-col gap-8">
+          <HeadWait
+            chain={chain}
+            title={words.title}
+            lead={chain ? words.lead(t.chain.names[chain]) : null}
+          >
+            <span aria-hidden="true" className="flex min-h-6 items-center gap-x-5">
+              <SkeletonLine className="font-mono text-source" width="w-20" />
+              <SkeletonLine className="text-body-sm" width="w-36" />
+            </span>
+          </HeadWait>
+          <div
+            aria-hidden="true"
+            className="grid min-w-0 items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
+          >
+            <div className="flex min-w-0 flex-col gap-5">
+              <div data-wait="amount" className="flex flex-col items-start gap-1.5">
+                <p className="text-caption font-medium">{t.buy.amount.label}</p>
+                <Skeleton className="h-10 w-44 rounded-md" />
+                <SkeletonLine className="text-caption" width="w-40" />
+              </div>
+              <div
+                data-wait="card"
+                className="flex max-w-3xl flex-col gap-5 rounded-lg border border-border bg-card p-6"
+              >
+                <SkeletonLine className="text-body-sm" width="w-full" lines={3} />
+                <Skeleton className="h-10 w-32 rounded-md" />
+              </div>
+            </div>
+            <div
+              data-wait="strategy"
+              className="flex min-w-0 flex-col gap-4 border-t border-border pt-5"
+            >
+              <p className="text-h3">{words.strategy}</p>
+              <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
+                <SkeletonLine className="text-body-sm" width="w-32" />
+                <HoldingsWait rows={2} />
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+    />
+  );
+}
+
+/** Publish (PublishScreen) while the account is read: its head, the source vault, the two cards. */
+export function PublishWait() {
+  const t = useT();
+  const p = t.shared.publish;
+  return (
+    <ScreenWait
+      label={t.chain.reading}
+      skeleton={
+        <div data-ui="publish-wait" className="flex flex-col gap-8">
+          <header className="flex flex-col gap-3">
+            <h1 className={PAGE_TITLE}>{p.title}</h1>
+            <SkeletonLine
+              className="max-w-(--tf-measure-body) text-body-lg"
+              width="w-full"
+              lines={2}
+            />
+          </header>
+          <div aria-hidden="true" className="grid items-start gap-6 lg:grid-cols-2 [&>*]:min-w-0">
+            <div
+              data-wait="source"
+              className="flex flex-col gap-4 rounded-lg border border-border bg-card p-6 lg:col-span-2"
+            >
+              <div className="flex flex-col gap-1.5">
+                <p className="text-caption font-medium">{p.sourceVault}</p>
+                <Skeleton className="h-10 w-full rounded-md" />
+                <SkeletonLine className="text-caption" width="w-56" />
+              </div>
+              <SkeletonLine className="text-body-sm" width="w-80" lines={2} />
+            </div>
+            <div
+              data-wait="words"
+              className="flex flex-col gap-5 rounded-lg border border-border bg-card p-6"
+            >
+              {[p.name, p.slug, p.copy].map((label, i) => (
+                <div key={label} className="flex flex-col gap-1.5">
+                  <p className="text-caption font-medium">{label}</p>
+                  <Skeleton className={`w-full rounded-md ${i === 2 ? 'h-24' : 'h-10'}`} />
+                  <SkeletonLine className="text-caption" width="w-64" />
+                </div>
+              ))}
+            </div>
+            <div data-wait="assets" className="rounded-lg border border-border bg-card">
+              <p className="p-6 text-h4 font-semibold">{p.assets}</p>
+              <div className="flex flex-col gap-4 border-t border-border p-6">
+                <p className="text-body-sm text-muted-foreground">{p.assetsHint}</p>
+                <div className="flex flex-col gap-3">
+                  {[0, 1, 2].map((i) => (
+                    <SkeletonListRow key={i} mark={false} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       }
     />

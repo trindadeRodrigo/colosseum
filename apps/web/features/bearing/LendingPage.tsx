@@ -77,7 +77,6 @@ export function LendingPage() {
 }
 
 function LendingOnSolana() {
-  const t = useWords();
   const { base, lending, reader, ui } = useBearing();
   const tol = ui.tol;
   const b = useAnswer(() => base(), [base]);

@@ -24,6 +24,7 @@ import { addMoneyPath, placeOrder } from '../order/order-api';
 import { keepOrder } from '../order/order-record';
 import { chainReady, onMock } from '../order/readiness';
 import type { SharedTerms } from '../shared/terms';
+import { AddMoneyWait } from '../shared/waits';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { sameTargets, useChainVault } from './chain-vault';
 import type { Vault } from './portfolio';
@@ -89,10 +90,13 @@ export function AddMoneyScreen({
   );
 
   if (state.kind === 'loading' || state.kind === 'reading')
-    return (
+    // On its own page the wait is the page in outline; inside another screen, that screen's card.
+    return embedded ? (
       <Card>
         <CardWait label={t.portfolio.reading} skeleton={<SkeletonSummary />} />
       </Card>
+    ) : (
+      <AddMoneyWait chain={chain} />
     );
   if (!chain || !own || !vault) {
     const signedOut = state.kind === 'signed-out';

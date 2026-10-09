@@ -3,15 +3,12 @@ import { ChainId, chainFamily, type VaultResponse } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useState } from 'react';
-import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card } from '../../components/ui/Card';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
 import { Field, Input } from '../../components/ui/Field';
 import { PAGE_TITLE } from '../../components/ui/heading';
-import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -25,6 +22,7 @@ import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { isVaultOf } from './chain-recipe';
 import { placeShared, readVault } from './shared-api';
 import type { SharedTerms, WithdrawItem } from './terms';
+import { WithdrawWait } from './waits';
 
 // Taking money out of a vault (WITHDRAW, Oct 6), for its owner only, in the buy's step pattern: what
 // leaves (everything, or chosen tokens, each in full or by amount), a review of exactly that and of
@@ -86,12 +84,7 @@ export function WithdrawScreen({ chain: chainText, address }: { chain: string; a
     </section>
   );
 
-  if (port.status === 'loading' || load.kind === 'loading')
-    return (
-      <Card>
-        <CardWait label={w.loading} skeleton={<SkeletonSummary />} />
-      </Card>
-    );
+  if (port.status === 'loading' || load.kind === 'loading') return <WithdrawWait chain={chain} />;
   if (port.status === 'signed-out')
     return page(
       t.plan.signedOut,
