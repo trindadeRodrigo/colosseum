@@ -74,6 +74,15 @@ SHA-256:
 - sol.png: 6dbe58a11a904b798faea5a0073bee2078893bcd5af9649d0b4a93bdda727665
 - sol.svg (source): 14381e02ce4a59b3811bf94522b1121f7cac67833db5a2d0c3d7561c193556fc
 
+## Chain marks
+
+Thom, 2026-10-09: a chain's own mark stands before its name (`components/ui/ChainLogo.tsx`: /goal's chain choice, the chain choice of a shared portfolio, `ChainBadge`). Open for Rodrigo, whose specs have no chain mark.
+
+| Chain | File | Official evidence | Original asset |
+|---|---|---|---|
+| Solana | sol.svg | https://solana.com/branding ("Logomark") | https://solana.com/src/img/branding/solanaLogoMark.svg, the file above, served as it is |
+| Robinhood Chain | none: its name alone | https://docs.robinhood.com/chain/brand-guidelines/ | The kit is one zip, not an image file; the guidelines also ask for the full Robinhood Chain logo over the feather except in "designated symbol spaces", at 20px high or more, and not combined with other text. Needs a person to fetch the kit and decide |
+
 ## Decision, and what is still text
 
 Thom, 2026-10-09: a token shows its issuer's own artwork where the token has it, otherwise the company's or fund's official mark; unaltered, on the neutral tile `AssetMark` draws, with the ticker as the fallback. Files are kept here and keyed by the token's name as `tokenName` gives it, so a test token (`tSPYx`) and the token it stands in for (`SPYx`) show one picture. Every screen draws a holding through `AssetMark` (`features/order/PlanView.tsx`), so a token has one face.
