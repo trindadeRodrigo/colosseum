@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LIVE_SPECIMEN, SANDBOX_OBS } from './fixtures/mock';
+import { pinSourceOfPrice } from './price-source';
 import { PIN_CLOSE_MS, PIN_OPEN_MS, type PinSource, sourceLine } from './provenance';
 import { click, find, fire, mount, press, settle, unmountAll } from './test/dom';
 import { pinOnPage, twoPins } from './test/events.cases';
@@ -255,14 +256,14 @@ describe('what the popover says (gate TOOLTIP-WORDS)', () => {
     await click(pin(host));
     expect(lines(host)).toEqual([
       'Price from the test network’s price feed',
-      'Updated 2 minutes ago',
+      'Read 2 minutes ago',
       'Test network, not live',
     ]);
     const said = find(host, '[data-ui="pin-popover"]').textContent ?? '';
     expect(said).not.toContain(ACCOUNT);
     expect(said).not.toContain('exponent');
     // the exact time is on the words, for whoever asks the element
-    expect(find(host, '[data-ui="pin-fresh"] time').getAttribute('datetime')).toBe(PRICE.fetchedAt);
+    expect(find(host, '[data-ui="pin-read"] time').getAttribute('datetime')).toBe(PRICE.fetchedAt);
   });
 
   it('reads the clock when it opens, and again the next time', async () => {
@@ -270,15 +271,15 @@ describe('what the popover says (gate TOOLTIP-WORDS)', () => {
     vi.setSystemTime(new Date('2026-10-09T18:26:40Z'));
     const host = await mount(pinOnPage(PRICE));
     await click(pin(host));
-    expect(lines(host)[1]).toBe('Updated less than a minute ago');
+    expect(lines(host)[1]).toBe('Read less than a minute ago');
     await click(pin(host));
     vi.setSystemTime(new Date('2026-10-09T21:26:20Z'));
     await click(pin(host));
-    expect(lines(host)[1]).toBe('Updated 3 hours ago');
+    expect(lines(host)[1]).toBe('Read 3 hours ago');
     await click(pin(host));
     vi.setSystemTime(new Date('2026-10-12T18:26:20Z'));
     await click(pin(host));
-    expect(lines(host)[1]).toBe('Updated 3 days ago');
+    expect(lines(host)[1]).toBe('Read 3 days ago');
   });
 
   it('says a stale reading first, with the age the API states and the feed’s own limit', async () => {
@@ -332,6 +333,38 @@ describe('what the popover says (gate TOOLTIP-WORDS)', () => {
   });
 });
 
+describe('how fresh, and only what is known (review of #214, finding 1)', () => {
+  it('says a read as a read: the time of the read is not the age of what was read', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-09T18:26:30Z'));
+    const host = await mount(pinOnPage(PRICE, { what: 'Price' }));
+    await click(pin(host));
+    expect(lines(host)[1]).toBe('Read less than a minute ago');
+    expect(find(host, '[data-ui="pin-popover"]').textContent).not.toMatch(/Updated/);
+  });
+
+  it('says a price’s own age where the API states it, however fresh the read', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-09T18:26:30Z')); // read ten seconds ago
+    // a stock price 25 hours old, inside Robinhood Chain testnet's 26 hour limit: not stale
+    const old = pinSourceOfPrice({
+      ...PRICE,
+      source: `Chainlink feed 0x52908400098527886E0F7030069857D2E4169EE7 on Robinhood Chain testnet`,
+      ageSeconds: 25 * 3600,
+      maxAgeSeconds: 93_600,
+    });
+    expect(old.staleAgeSec).toBeNull();
+    const host = await mount(pinOnPage(old, { what: 'Price' }));
+    await click(pin(host));
+    expect(lines(host)).toEqual([
+      'Price from the Chainlink price feed on Robinhood Chain testnet',
+      'Updated 25 hours ago',
+      'Test network, not live',
+    ]);
+    expect(find(host, '[data-ui="pin-popover"]').textContent).not.toContain('less than a minute');
+  });
+});
+
 describe('the details of a source', () => {
   const clipboard = () => {
     const writeText = vi.fn(async (_: string) => {});
@@ -339,7 +372,7 @@ describe('the details of a source', () => {
     return writeText;
   };
 
-  it('shortens each address in the middle, in the mono face, and nothing else is mono', async () => {
+  it('shortens each address in the words, and keeps the whole line on screen to read and select', async () => {
     const host = await mount(pinOnPage(PRICE));
     await click(pin(host));
     await click(details(host));
@@ -348,11 +381,35 @@ describe('the details of a source', () => {
     );
     expect(shown).toEqual(['HSk6…3q9g', '2tic…Kn4f']);
     const facts = find(host, '[data-ui="pin-source"]');
-    expect(facts.textContent).not.toContain(ACCOUNT);
     expect(facts.textContent).toContain('(Scope layout, owner ');
     expect(facts.textContent).toContain(PRICE.method);
-    expect(facts.querySelectorAll('.font-mono')).toHaveLength(2);
+    // the whole of it is in the page, with no clipboard needed (review of #214, finding 2)
+    const line = find(facts, '[data-ui="pin-line"]');
+    expect(line.textContent).toBe(sourceLine(PRICE));
+    expect(line.textContent).toContain(ACCOUNT);
+    expect(line.textContent).toContain(OWNER);
+    expect(line.className).toContain('select-all');
     expect(find(host, '[data-ui="pin-popover"]').className).not.toContain('font-mono');
+  });
+
+  it('says so, in sight, when the copy was refused, and points at the line', async () => {
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      clipboard: {
+        writeText: async () => {
+          throw new Error('NotAllowedError');
+        },
+      },
+    });
+    const host = await mount(pinOnPage(PRICE));
+    await click(pin(host));
+    await click(details(host));
+    expect(host.querySelector('[data-ui="pin-copy-failed"]')).toBeNull();
+    await click(find(host, '[data-ui="pin-copy"]'));
+    const failed = find(host, '[data-ui="pin-copy-failed"]');
+    expect(failed.textContent).toBe('Couldn’t copy here. The whole line is below to select.');
+    expect(failed.className).not.toContain('sr-only');
+    expect(failed.getAttribute('role')).toBe('status');
   });
 
   it('copies an address whole, and says so', async () => {
@@ -364,7 +421,7 @@ describe('the details of a source', () => {
     expect(first?.getAttribute('aria-label')).toBe('Copy address HSk6…3q9g');
     await click(first as HTMLButtonElement);
     expect(writeText).toHaveBeenCalledWith(ACCOUNT);
-    expect(find(host, '[data-ui="pin-popover"] [role="status"]').textContent).toBe('Copied');
+    expect(find(host, '[data-ui="pin-popover"] [data-ui="pin-copied"]').textContent).toBe('Copied');
   });
 
   it('copies the line the API wrote: source, time in ISO 8601 UTC, method', async () => {
@@ -377,13 +434,14 @@ describe('the details of a source', () => {
     expect(sourceLine(PRICE)).toBe(`${PRICE.source} · 2026-10-09T18:26:20Z · ${PRICE.method}`);
   });
 
-  it('claims no copy where there is no clipboard', async () => {
+  it('claims no copy where there is no clipboard, and says it could not', async () => {
     vi.stubGlobal('navigator', { ...navigator, clipboard: undefined });
     const host = await mount(pinOnPage(PRICE));
     await click(pin(host));
     await click(details(host));
     await click(find(host, '[data-ui="pin-copy"]'));
-    expect(find(host, '[data-ui="pin-popover"] [role="status"]').textContent).toBe('');
+    expect(find(host, '[data-ui="pin-popover"] [data-ui="pin-copied"]').textContent).toBe('');
+    expect(find(host, '[data-ui="pin-copy-failed"]').textContent).toMatch(/^Couldn’t copy here/);
   });
 
   it('links an address to the explorer only where the screen hands it one', async () => {

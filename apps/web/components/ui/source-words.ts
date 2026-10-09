@@ -16,6 +16,8 @@ export type SourceWords = { from: string | null };
 type Context = {
   /** The figure was read on a test network or a local copy of mainnet (`provenance: "sandbox"`). */
   test: boolean;
+  /** The figure is made up (`mock`, `fixture`, `prior_dataset`, or a label this build does not know). */
+  sample: boolean;
 };
 
 type Rule = {
@@ -35,7 +37,13 @@ const RULES: readonly Rule[] = [
   // test exchange's, written in the same layout (packages/chain-solana/src/vault/reader.ts).
   {
     test: /^(?:the )?price account \S+/i,
-    from: (_, c) => (c.test ? 'the test network’s price feed' : 'the Kamino Scope price feed'),
+    // only a live read is Kamino's own account: a sample is named a sample, whatever it copies
+    from: (_, c) =>
+      c.test
+        ? 'the test network’s price feed'
+        : c.sample
+          ? 'a sample price feed'
+          : 'the Kamino Scope price feed',
   },
   { test: /^a price account$/i, from: 'an on-chain price feed' },
   {
@@ -205,7 +213,10 @@ function nameOne(source: string, context: Context): SourceWords | null {
  * no name leaves the whole unnamed, rather than naming half of what a figure stands on.
  */
 export function sourceWords(source: string, provenance: string = 'live'): SourceWords {
-  const context = { test: provenance === 'sandbox' };
+  const context = {
+    test: provenance === 'sandbox',
+    sample: provenance !== 'live' && provenance !== 'sandbox',
+  };
   const parts = split(source);
   if (parts.length < 2 || JOINED.test(source.trim())) return nameOne(source, context) ?? NONE;
   const names: string[] = [];
@@ -252,17 +263,22 @@ export type AgoWords = {
   now: string;
   /** `{n}` the count, `{unit}` its word. */
   ago: string;
+  second: readonly string[];
   minute: readonly string[];
   hour: readonly string[];
   day: readonly string[];
+  /** Before a limit rounded down: "about 1 hour". */
+  about: string;
 };
 
 export const AGO_WORDS: AgoWords = {
   now: 'less than a minute ago',
   ago: '{n} {unit} ago',
+  second: ['second', 'seconds'],
   minute: ['minute', 'minutes'],
   hour: ['hour', 'hours'],
   day: ['day', 'days'],
+  about: 'about',
 };
 
 const span = (seconds: number): { count: number; unit: Age['unit'] } =>
@@ -282,12 +298,20 @@ export function agoWords(seconds: number, words: AgoWords = AGO_WORDS): string |
     .replace('{unit}', words[unit][count === 1 ? 0 : 1] ?? unit);
 }
 
-/** A limit as an adjective: "2 minute", "1 hour". Null when it is not a span of time. */
+/**
+ * A limit as an adjective, never rounded up into a looser one: "2 minute", "90 second", "26 hour",
+ * and "about 1 hour" for 5400 seconds, rounded down. Null when it is not a span of time.
+ */
 export function limitWords(seconds: number, words: AgoWords = AGO_WORDS): string | null {
   if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0) return null;
-  if (seconds < 60) return `${Math.round(seconds)} second`;
-  const { count, unit } = span(seconds);
-  return `${count} ${words[unit][0] ?? unit}`;
+  const whole = Math.round(seconds);
+  const said = (count: number, size: number, unit: readonly string[]) =>
+    `${whole % size === 0 ? '' : `${words.about} `}${count} ${unit[0] ?? ''}`;
+  // seconds while minutes would not be exact, up to two minutes
+  if (whole < 60 || (whole < 120 && whole % 60 !== 0)) return `${whole} ${words.second[0]}`;
+  if (whole < 3600) return said(Math.floor(whole / 60), 60, words.minute);
+  if (whole < 172_800) return said(Math.floor(whole / 3600), 3600, words.hour);
+  return said(Math.floor(whole / 86_400), 86_400, words.day);
 }
 
 const EXACT = new Intl.DateTimeFormat('en-GB', {

@@ -96,7 +96,9 @@ export function useHoverCard(defaultOpen = false): HoverCard {
       if (!at || !box) return;
       // The panel's own height, not the one a held height gave it.
       const rect = box.getBoundingClientRect();
-      const size = { width: rect.width, height: Math.max(rect.height, box.scrollHeight) };
+      // What scrolls is the box inside the panel (Hint.tsx): its full height is the panel's own.
+      const full = box.firstElementChild?.scrollHeight ?? 0;
+      const size = { width: rect.width, height: Math.max(rect.height, box.scrollHeight, full) };
       setPlace(placeFor(at, size, { width: window.innerWidth, height: window.innerHeight }));
     };
     measure();
@@ -125,6 +127,8 @@ export function useHoverCard(defaultOpen = false): HoverCard {
     };
     const onEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      // This Escape is the tooltip's: a menu or a dialog around it stays open for the next one.
+      event.stopPropagation();
       const inside = wrap.current?.contains(document.activeElement) ?? false;
       setOpen(false);
       setPinned(false);
@@ -136,11 +140,12 @@ export function useHoverCard(defaultOpen = false): HoverCard {
     };
     document.addEventListener('pointerdown', outside);
     document.addEventListener('focusin', outside);
-    document.addEventListener('keydown', onEscape);
+    // On the way down, before anything on the page hears it.
+    document.addEventListener('keydown', onEscape, true);
     return () => {
       document.removeEventListener('pointerdown', outside);
       document.removeEventListener('focusin', outside);
-      document.removeEventListener('keydown', onEscape);
+      document.removeEventListener('keydown', onEscape, true);
     };
   }, [open]);
 

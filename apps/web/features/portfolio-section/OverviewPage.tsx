@@ -284,7 +284,6 @@ function Modes({
         const on = o.id === value;
         const button = (
           <button
-            key={o.id}
             type="button"
             aria-pressed={on}
             aria-label={o.label}
@@ -301,11 +300,11 @@ function Modes({
             {on && <span aria-hidden="true">{o.label}</span>}
           </button>
         );
-        // The chosen mode shows its word; the others are an icon, whose word is one hover or focus away.
-        return on ? (
-          button
-        ) : (
-          <Hint key={o.id} tip={o.label}>
+        // The chosen mode shows its word; the others are an icon, whose word is one hover or focus
+        // away. Every mode sits in the same wrapper, chosen or not, so the button pressed is still
+        // the same button afterwards and focus stays on it.
+        return (
+          <Hint key={o.id} tip={on ? null : o.label}>
             {button}
           </Hint>
         );

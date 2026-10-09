@@ -88,6 +88,39 @@ describe('Hint, opened', () => {
     expect(panels(host)).toHaveLength(0);
   });
 
+  it('takes the Escape that closes it: a menu around it stays open for the next one', async () => {
+    const host = await mount(hintOnPage());
+    const heard = vi.fn();
+    document.addEventListener('keydown', heard);
+    try {
+      await click(trigger(host));
+      await press(trigger(host), 'Escape');
+      expect(panels(host)).toHaveLength(0);
+      expect(heard).not.toHaveBeenCalled();
+      // closed, it takes nothing
+      await press(trigger(host), 'Escape');
+      expect(heard).toHaveBeenCalledTimes(1);
+    } finally {
+      document.removeEventListener('keydown', heard);
+    }
+  });
+
+  it('keeps the 8px bridge to its trigger outside what scrolls, so nothing clips it', async () => {
+    const host = await mount(hintOnPage({ defaultOpen: true }));
+    const outer = panel(host).className.split(' ');
+    for (const bridge of ['before:-top-2', 'before:h-2', 'after:-bottom-2'])
+      expect(outer).toContain(bridge);
+    expect(outer.some((c) => c.startsWith('overflow'))).toBe(false);
+    expect(find(host, '[data-ui="hint-scroll"]').className).toContain('overflow-y-auto');
+  });
+
+  it('leaves the element as it is when there is nothing to say', async () => {
+    const host = await mount(hintOnPage({ tip: null }));
+    await click(trigger(host));
+    expect(panels(host)).toHaveLength(0);
+    expect(trigger(host).getAttribute('aria-describedby')).toBeNull();
+  });
+
   it('stays open while the pointer crosses to it and rests inside, and closes once it has left', async () => {
     const host = await mount(hintOnPage());
     await move(null, trigger(host));

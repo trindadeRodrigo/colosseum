@@ -278,6 +278,7 @@ function PinFacts({ obs, what, detail, docs, text, summaryId }: PinFactsProps) {
   const [more, setMore] = useState(false);
   const [now, setNow] = useState<number | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
   const reset = useRef<ReturnType<typeof setTimeout> | null>(null);
   const facts = useId();
   useEffect(() => {
@@ -294,8 +295,14 @@ function PinFacts({ obs, what, detail, docs, text, summaryId }: PinFactsProps) {
     try {
       await navigator.clipboard.writeText(value);
     } catch {
-      return; // no clipboard here: say nothing rather than claim a copy
+      // No clipboard here (a frame without the permission, a page not on https): claim no copy,
+      // say so in sight, and open the details, where the whole line is to select.
+      setCopied(null);
+      setFailed(true);
+      setMore(true);
+      return;
     }
+    setFailed(false);
     setCopied(value);
     if (reset.current) clearTimeout(reset.current);
     reset.current = setTimeout(() => setCopied(null), 1500);
@@ -354,11 +361,8 @@ function PinFacts({ obs, what, detail, docs, text, summaryId }: PinFactsProps) {
             data-ui={`pin-${line.key}`}
             className={i === 0 ? 'font-medium' : 'text-muted-foreground'}
           >
-            {line.key === 'fresh' || line.key === 'stale' ? (
-              <time dateTime={iso}>{line.text}</time>
-            ) : (
-              line.text
-            )}
+            {/* the read's own time is on the words that say when it was read, and on no others */}
+            {line.key === 'read' ? <time dateTime={iso}>{line.text}</time> : line.text}
           </span>
         ))}
         {detail && (
@@ -396,9 +400,22 @@ function PinFacts({ obs, what, detail, docs, text, summaryId }: PinFactsProps) {
             <Icon name={copied === sourceLine(obs) ? 'Check' : 'Copy'} size={16} />
             {text.copy}
           </button>
+          {failed && (
+            <span data-ui="pin-copy-failed" role="status" className="text-caption">
+              {text.copyFailed}
+            </span>
+          )}
+          {/* The line as the API wrote it, whole: every address in full, to read and to select
+              where there is no clipboard. The one place the popover sets words in the mono face. */}
+          <span
+            data-ui="pin-line"
+            className="w-full font-mono text-caption tracking-normal break-all text-muted-foreground select-all"
+          >
+            {sourceLine(obs)}
+          </span>
         </span>
       )}
-      <span role="status" className="sr-only">
+      <span data-ui="pin-copied" role="status" className="sr-only">
         {copied ? text.copied : ''}
       </span>
       {docs && (

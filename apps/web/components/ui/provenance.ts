@@ -29,6 +29,13 @@ export type PinSource = {
    */
   staleAgeSec?: number | null;
   /**
+   * How old the figure itself is, in seconds, where the API states it (a price's `ageSeconds`).
+   * `fetchedAt` is when the figure was read, which is not when it last changed: a price read ten
+   * seconds ago can be a day old. With an age the popover says "Updated"; without one it says only
+   * when it was read, and claims nothing about the figure's age.
+   */
+  ageSec?: number | null;
+  /**
    * The oldest the source's own rule accepts, in seconds, where the API states one (a price's
    * `maxAgeSeconds`). The popover names it beside a stale reading. Never worked out here.
    */
@@ -89,10 +96,14 @@ export type PinLabels = {
   from: string;
   /** In place of a name, for a source the table of names does not know: the details hold it. */
   unnamed: string;
-  /** `{ago}` is "2 minutes ago". */
+  /** The figure's own age, where the API states it. `{ago}` is "2 minutes ago". */
   updated: string;
-  /** Before the browser's clock is read: `{time}` is the exact time. */
-  updatedAt: string;
+  /** When it was read, where that is all that is known. */
+  read: string;
+  /** Before the browser's clock is read: `{time}` is the exact time of the read. */
+  readAt: string;
+  /** In sight when the clipboard refused: the whole line is under it. */
+  copyFailed: string;
   /** A stale reading, said first. `{ago}` from the age the API states, `{limit}` "2 minute". */
   staleOverLimit: string;
   staleNoLimit: string;
@@ -130,7 +141,9 @@ export const PIN_LABELS: PinLabels = {
   from: 'From {source}',
   unnamed: 'Source details below',
   updated: 'Updated {ago}',
-  updatedAt: 'Updated {time}',
+  read: 'Read {ago}',
+  readAt: 'Read {time}',
+  copyFailed: 'Couldn’t copy here. The whole line is below to select.',
   staleOverLimit: 'Last updated {ago}, older than this feed’s {limit} limit',
   staleNoLimit: 'Last updated {ago}, which is stale',
   staleNoAge: 'Stale, and its age is not known',
@@ -182,7 +195,8 @@ export function sourceLine(obs: PinSource): string {
   return `${obs.source} · ${isoUtc(obs.fetchedAt)} · ${obs.method}`;
 }
 
-export type PinLine = { key: 'what' | 'fresh' | 'stale' | 'state'; text: string };
+/** `fresh` is the figure's own age; `read` is when it was read, where that is all that is known. */
+export type PinLine = { key: 'what' | 'fresh' | 'read' | 'stale' | 'state'; text: string };
 
 /**
  * What the popover says before the details, in order: what the number is and where it comes from,
@@ -227,13 +241,19 @@ export function pinWords(
     const rest = state === 'mock' ? [lead, status] : [lead];
     return { lines: [{ key: 'stale', text }, ...rest], named: named.from !== null };
   }
+  // The figure's own age where the API states one. Otherwise only when it was read, said as a read:
+  // the time of a read says nothing of how old what was read is.
+  const own =
+    typeof obs.ageSec === 'number' && obs.ageSec >= 0 ? agoWords(obs.ageSec, labels.ago) : null;
   const iso = isoUtc(obs.fetchedAt) ?? obs.fetchedAt;
-  const ago = now == null ? null : agoWords((now - Date.parse(iso)) / 1000, labels.ago);
+  const read = now == null ? null : agoWords((now - Date.parse(iso)) / 1000, labels.ago);
   const fresh: PinLine = {
-    key: 'fresh',
-    text: ago
-      ? labels.updated.replace('{ago}', ago)
-      : labels.updatedAt.replace('{time}', exactTime(iso)),
+    key: own ? 'fresh' : 'read',
+    text: own
+      ? labels.updated.replace('{ago}', own)
+      : read
+        ? labels.read.replace('{ago}', read)
+        : labels.readAt.replace('{time}', exactTime(iso)),
   };
   return { lines: [lead, fresh, status], named: named.from !== null };
 }

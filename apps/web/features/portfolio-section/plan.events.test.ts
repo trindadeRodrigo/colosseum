@@ -332,6 +332,10 @@ describe('a plan’s page, for a plan made to measure with two deposits', () => 
     const said = await sourceOf(find(readout, '[data-ui="figure"]'));
     expect(said).toContain('on its second node · 2026-10-04T23:50:00Z');
     expect(pins(chart)).toHaveLength(1);
+    // the first Escape is the open source's own and closes only that; the next is the chart's
+    await press(plot, 'Escape');
+    expect(readout.querySelector('[data-ui="pin-popover"]')).toBeNull();
+    expect(text(readout)).not.toContain(en.plan.history.newest);
     await press(plot, 'Escape');
     expect(text(readout)).toContain(en.plan.history.newest);
     expect(chart.querySelector('[data-ui="chart-cross"]')).toBeNull();

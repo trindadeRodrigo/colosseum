@@ -261,6 +261,9 @@ describe('the table of source names', () => {
     const source = `price account ${ACCOUNT} (Scope layout, owner ${OWNER}), entry 484`;
     expect(sourceWords(source, 'sandbox')).toEqual({ from: 'the test network’s price feed' });
     expect(sourceWords(source, 'live').from).toBe('the Kamino Scope price feed');
+    // and a sample that copies the account's words is a sample, not Kamino's feed
+    for (const made of ['mock', 'fixture', 'prior_dataset', 'replayed'])
+      expect(sourceWords(source, made).from, made).toBe('a sample price feed');
   });
 
   it('says whose reading a test token’s price is', () => {
@@ -319,6 +322,8 @@ describe('how long ago', () => {
     const pt = {
       now: 'há menos de um minuto',
       ago: 'há {n} {unit}',
+      about: 'cerca de',
+      second: ['segundo', 'segundos'],
       minute: ['minuto', 'minutos'],
       hour: ['hora', 'horas'],
       day: ['dia', 'dias'],
@@ -331,6 +336,12 @@ describe('how long ago', () => {
     expect(limitWords(120)).toBe('2 minute');
     expect(limitWords(30)).toBe('30 second');
     expect(limitWords(3600)).toBe('1 hour');
+    // never rounded up into a looser limit than the feed's own
+    expect(limitWords(90)).toBe('90 second');
+    expect(limitWords(5400)).toBe('about 1 hour');
+    expect(limitWords(150)).toBe('about 2 minute');
+    expect(limitWords(93_600)).toBe('26 hour');
+    expect(limitWords(172_800)).toBe('2 day');
     expect(limitWords(0)).toBeNull();
     expect(limitWords(Number.NaN)).toBeNull();
   });

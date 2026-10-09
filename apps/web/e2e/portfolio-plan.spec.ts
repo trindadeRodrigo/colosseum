@@ -106,7 +106,7 @@ test.describe('a plan’s page on the stub', () => {
     await expect(said.locator('[data-ui="pin-what"]')).toHaveText(
       'Value now from the vault’s own balances on Solana devnet',
     );
-    await expect(said.locator('[data-ui="pin-fresh"]')).toHaveText('Updated 12 hours ago');
+    await expect(said.locator('[data-ui="pin-read"]')).toHaveText('Read 12 hours ago');
     await expect(said.locator('[data-ui="pin-state"]')).toHaveText('Test network, not live');
     await expect(head.locator('[data-ui="pin-source"]')).toHaveCount(0);
     await head.locator('[data-ui="pin-details"]').click();

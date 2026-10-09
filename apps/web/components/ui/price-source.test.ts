@@ -28,6 +28,8 @@ describe('what the pin is handed for a price', () => {
       fetchedAt: '2026-10-01T14:02:11Z',
       provenance: 'live',
       staleAgeSec: null,
+      // the price's own age, which is not the time of the read
+      ageSec: 30,
       // the chain's own limit, which the popover names beside a stale reading
       staleLimitSec: 120,
     });

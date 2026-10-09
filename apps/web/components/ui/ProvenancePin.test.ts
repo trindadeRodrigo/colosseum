@@ -262,12 +262,7 @@ describe('ProvenancePin (provenance-pin.md)', () => {
           one(popover, ui('pin-summary')),
           (el) => el.tag === 'span' && 'data-ui' in el.attrs,
         ).map((el) => text(el)),
-      ).toEqual([
-        'From a sample feed',
-        'Updated 1 Oct 2026, 14:02:11 UTC',
-        'Live',
-        FIGURE.rateDetail,
-      ]);
+      ).toEqual(['From a sample feed', 'Read 1 Oct 2026, 14:02:11 UTC', 'Live', FIGURE.rateDetail]);
       // the API's own words are one step away, never dumped by default (gate TOOLTIP-WORDS)
       expect(all(popover, ui('pin-source'))).toHaveLength(0);
       expect(text(popover)).not.toContain(sourceLine(LIVE_SPECIMEN));
