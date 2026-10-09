@@ -132,7 +132,7 @@ export function PlanScreenWait() {
             {/* what the plan does, then what happens next: more lines on a phone, as the words wrap */}
             <SkeletonLine className={`${LEDE} text-body-lg sm:hidden`} lines={4} />
             <SkeletonLine className={`${LEDE} hidden text-body-lg sm:block`} lines={2} />
-            <SkeletonLine className={`${LEDE} text-body sm:hidden`} lines={2} />
+            <SkeletonLine className={`${LEDE} text-body sm:hidden`} lines={3} />
             <SkeletonLine className={`${LEDE} hidden text-body sm:block`} lines={2} />
           </HeadWait>
           <div aria-hidden="true" className="flex flex-col gap-6">
@@ -157,7 +157,7 @@ export function BuyScreenWait() {
       skeleton={
         <div data-ui="buy-screen-wait" className="flex flex-col gap-8">
           <HeadWait title={t.buy.title}>
-            <SkeletonLine className={`${LEDE} text-body-lg sm:hidden`} lines={3} />
+            <SkeletonLine className={`${LEDE} text-body-lg sm:hidden`} lines={4} />
             <SkeletonLine className={`${LEDE} hidden text-body-lg sm:block`} lines={2} />
           </HeadWait>
           <div aria-hidden="true" data-wait="amount" className="flex flex-col gap-1.5">
