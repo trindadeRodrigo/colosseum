@@ -329,8 +329,8 @@ describe('what the order screen says about each answer of the executor', () => {
       legId: LEG_SWAP,
       error: {
         status: 409,
-        message: 'the plan this order buys is gone',
-        body: { error: 'the plan this order buys is gone', code: 'PLAN_GONE' },
+        message: 'the plan this order deposits into is gone',
+        body: { error: 'the plan this order deposits into is gone', code: 'PLAN_GONE' },
       },
     });
     expect([gone.sentence, gone.next.kind]).toEqual([en.order.outcome.planGone, 'none']);

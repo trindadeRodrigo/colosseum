@@ -443,8 +443,10 @@ for (const width of [1440, 375] as const)
     expect(sent.slice(before)).toEqual([true]);
     await axe(page, 'deposit-saving');
     next();
-    // stored: the buy screen, with no dead screen on the way (the button says it is opening, then
-    // the route's own loading card or the screen itself)
-    await expect(page).toHaveURL(/\/plan\/[^/]+\/buy$/);
-    await expect(page.getByLabel(en.buy.amount.label, { exact: true })).toHaveValue('100');
+    // stored: the steps to sign take the review's place in the same pane, at the amount typed, with
+    // no dead screen on the way and no other page (gate DEPOSIT-IN-PLACE)
+    await expect(page).toHaveURL(/\/goal$/);
+    const pane = page.locator('[data-ui="deposit-sign"]');
+    await expect(pane.locator('[data-ui="deposit-sign-amount"]')).toContainText('$100');
+    await expect(page.locator('[data-action="mix-confirm"]')).toHaveCount(0);
   });

@@ -93,7 +93,7 @@ export const methodology = {
       ],
       [
         'What you put in',
-        'the cash of each of your buys through this app whose deposit confirmed, counted once an order. It is gross: a withdrawal is not taken off, and money that reached the vault another way is not in it.',
+        'the cash of each of your deposits through this app that confirmed, counted once an order. It is gross: a withdrawal is not taken off, and money that reached the vault another way is not in it.',
       ],
       [
         'The status',
@@ -125,7 +125,7 @@ export const methodology = {
       'What a trade paid. The cost beside a step is the quote it was built with, and it can read as zero where there was no reference price.',
       'Our keeper’s trades one by one. Its own log isn’t in our records, so each of its lines is worked out from snapshots, with no transaction id, no quote and no reason. Several trades of one asset between two snapshots show as one.',
       'A version of a shared portfolio that our keeper adopted for you.',
-      'Your own rebalances, withdrawals and changes of settings. Those orders aren’t built yet, so your steps here are buys and versions you accepted by hand.',
+      'Your own rebalances, withdrawals and changes of settings. Those orders aren’t built yet, so your steps here are deposits and versions you accepted by hand.',
       'What you took out. What you put in is gross, and the time of a deposit is when our server learned of it.',
       'The cost of selling everything at once. Each selling cost is one asset sold alone.',
       'Which pools, or which hour of the week, a selling cost came from.',
