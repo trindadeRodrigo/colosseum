@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { PortfolioResponse } from '@colosseum/schemas';
-import { createElement } from 'react';
+import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   click,
@@ -13,9 +13,9 @@ import {
   unmountAll,
 } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
-import { ChainSwitch } from '../account/ChainSwitch';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
+import { StartChain } from '../account/test/start-chain';
 import { chainOf, robinhoodChain } from '../portfolio/test/portfolio';
 import { preview } from '../vault-conversation/test/fixtures';
 import {
@@ -99,7 +99,8 @@ function api(start: Person, refuse?: () => Response | null, portfolio?: unknown)
 const show = (withBar = false) =>
   mount(
     withAccount('en', [
-      ...(withBar ? [createElement(ChainSwitch, { key: 'bar' })] : []),
+      // what the account gives every other screen, and a choice made outside this page
+      ...(withBar ? [createElement(StartChain, { key: 'start' })] : []),
       createElement(GoalHome, { key: 'goal' }),
     ]),
   );
@@ -113,8 +114,7 @@ const send = async (host: HTMLElement, words: string) => {
   await settle();
 };
 const picker = (host: HTMLElement) => find<HTMLSelectElement>(host, '[data-ui="goal-picker"]');
-const bar = (host: HTMLElement) =>
-  find(host, '[data-ui="chain-switch"] > button').getAttribute('data-chain');
+const bar = (host: HTMLElement) => find(host, '[data-ui="start-chain"]').getAttribute('data-chain');
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/goal');
@@ -157,7 +157,7 @@ describe('the chain of a new plan, chosen on /goal', () => {
     expect(host.querySelector('[data-act="chain-change"]')).toBeNull();
   });
 
-  it('changes before the first message with no question, keeps the focus, and the bar agrees', async () => {
+  it('changes before the first message with no question, keeps the focus, and every other screen reads the same chain', async () => {
     api(passkey('solana'));
     const host = await show(true);
     await settle();
@@ -177,12 +177,11 @@ describe('the chain of a new plan, chosen on /goal', () => {
     );
   });
 
-  it('follows the bar’s switch while the bar still has one', async () => {
+  it('follows where new plans start when it is chosen outside this page', async () => {
     api(passkey('solana'));
     const host = await show(true);
     await settle();
-    await click(find(host, '[data-ui="chain-switch"] > button'));
-    await click(find(host, '[data-ui="chain-switch-panel"] button[data-chain="robinhood"]'));
+    await click(find(host, '[data-ui="start-chain"] [data-start="robinhood"]'));
     await settle();
     expect([checked(host), bar(host)]).toEqual(['robinhood', 'robinhood']);
   });
@@ -440,6 +439,60 @@ describe('the chain of a new plan, chosen on /goal', () => {
     await settle();
     expect(radios(host)).toEqual([]);
     expect(find(host, '[data-ui="goal-chain"]').textContent).toContain(c.onlyOn('Solana'));
+  });
+
+  it('gives a person whose start chain is switched off the way to the one that runs, with why', async () => {
+    // new plans start on Robinhood Chain, which our server has switched off; Solana runs. The bar's
+    // list was the way out and is gone: the way out is here, where a plan starts
+    const port = signedInPort(EMBEDDED, { userId });
+    portStore.set({
+      ...port,
+      network: (chain) => ({ ...port.network(chain), on: chain === 'solana' }) as never,
+    });
+    api(passkey('robinhood'));
+    const host = await show();
+    await settle();
+    const control = find(host, '[data-ui="goal-chain"]');
+    expect(control.getAttribute('data-chain')).toBe('robinhood');
+    expect(control.textContent).toContain(c.off('Robinhood Chain'));
+    const move = find(control, '[data-act="chain-move"]');
+    expect(move.textContent).toContain(c.start('Solana'));
+    await click(move);
+    await settle();
+    expect(puts).toEqual(['solana']);
+    // on Solana now, the one chain our server runs, and a plan can start
+    expect(find(host, '[data-ui="goal-chain"]').getAttribute('data-chain')).toBe('solana');
+    expect(find(host, '[data-ui="goal-chain"]').textContent).toContain(c.onlyOn('Solana'));
+    expect(host.querySelector('[data-act="chain-move"]')).toBeNull();
+  });
+
+  it('says why and offers nothing when no chain of theirs runs', async () => {
+    const port = signedInPort(EMBEDDED, { userId });
+    portStore.set({
+      ...port,
+      network: (chain) => ({ ...port.network(chain), on: false }) as never,
+    });
+    api(passkey('robinhood'));
+    const host = await show();
+    await settle();
+    const control = find(host, '[data-ui="goal-chain"]');
+    expect(control.textContent).toContain(c.off('Robinhood Chain'));
+    expect(control.querySelector('button, input')).toBeNull();
+  });
+
+  it('sends one switch for two presses in one go', async () => {
+    api(passkey('solana'));
+    const host = await show();
+    await settle();
+    const other = find<HTMLInputElement>(host, 'label[data-chain="robinhood"] input');
+    // two presses in one task, before the first is drawn
+    await act(async () => {
+      other.click();
+      other.click();
+    });
+    await settle();
+    expect(puts).toEqual(['robinhood']);
+    expect(checked(host)).toBe('robinhood');
   });
 
   it('signed out, keeps the choice in this browser and names no wallet', async () => {

@@ -112,7 +112,7 @@ What Colosseum's form needs: a live app, a public GitHub repo, a 2–3 minute pi
 
 What must work, on the test networks since Oct 2 (gates `SHOW` and `SPEND`; first written as "live on mainnet, with real small amounts"). These nine things are the MVP:
 
-1. **Sign in two ways.** Connect a wallet, or create one with just a passkey (no seed phrase). Nobody is asked for a chain: a person starts on the chain the bar shows, or on their outside wallet's, and switches it from the bar. A plan lives on the chain it was made on. The product shows what the chain needs in cash and gas, and does not bridge.
+1. **Sign in two ways.** Connect a wallet, or create one with just a passkey (no seed phrase). Nobody is asked for a chain at sign-in: a person starts on Solana, or on their outside wallet's chain, and chooses the chain of a plan where they start it. A plan lives on the chain it was made on. The product shows what the chain needs in cash and gas, and does not bridge.
 2. **Shared portfolios.** At least six on the shelf with real assets, at least two published on more than one chain. A person is offered the ones with a recipe on their chain.
 3. **A plan from a conversation,** with a reason on every line. Three test people must get three visibly different plans.
 4. **Deposit in one step.** One confirmation places the swaps on the plan's chain, with a status per leg and a retry if one fails.

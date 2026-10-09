@@ -17,7 +17,7 @@ import { SignInSilent } from './SignInSilent';
 
 // Sign-in as a product screen: the two ways in. Nobody is asked for a chain here (gate CHAIN-SWITCH): a
 // person who connected a wallet starts on its chain, one who made their wallets here on the chain they
-// were looking at, and either switches from the bar. Once the chain is known the person goes on to
+// were looking at, and either chooses the chain of a plan where they start one. Once the chain is known the person goes on to
 // where they were headed.
 
 /**

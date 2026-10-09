@@ -6,7 +6,7 @@ import { Select } from '../../components/ui/Field';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
-import { switchFailure } from '../account/ChainSwitch';
+import { switchFailure } from '../account/chain-failure';
 import type { PortfolioState } from '../portfolio/use-portfolio';
 import { shortAddress } from '../shared/use-person';
 import { readLocal } from '../vault-conversation/storage';
@@ -43,7 +43,7 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
   const port = useWalletPort();
   // A deposit is open on the conversation's pane (approved, not every step confirmed; fresh, stopped
   // or taken up again after a reload). The conversation then stays on the deposit's chain whatever
-  // moves the account's (the bar's switch, another tab): a plan lives on one chain, and its pane is
+  // moves the account's (another tab, the person read again): a plan lives on one chain, and its pane is
   // not taken from under its steps. Every way this page itself leaves it asks first.
   const [deposit, setDeposit] = useState<{
     open: boolean;
