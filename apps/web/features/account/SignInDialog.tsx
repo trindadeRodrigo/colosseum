@@ -19,7 +19,7 @@ import { nextOf, SignInFrame, signInLink } from './sign-in-frame';
 // panel as `/sign-in`, the two ways in, the wallet list and the chain question inside it, then back to
 // the page, where what they started carries on. Every link to `/sign-in` in the product opens it: the
 // bar's "Sign in", the guarded pages, Buy, Publish. The landing opens the same dialog, loading it on
-// the first press (features/landing/LandingSignIn.tsx). A link opened in a new tab and a page loaded
+// the first press (features/landing/LandingAccount.tsx). A link opened in a new tab and a page loaded
 // at `/sign-in` still get the page. The frame and its modal rules are in sign-in-frame.tsx.
 
 type Opened = { next: string | null; trigger: HTMLElement | null };

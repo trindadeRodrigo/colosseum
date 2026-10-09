@@ -37,7 +37,7 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
   const w = t.goal.explore.picker;
   const pickerId = useId();
   const router = useRouter();
-  const { account, chain: current, choose } = useAccount();
+  const { account, chain: current, choose, view } = useAccount();
   const port = useWalletPort();
   // A deposit is open on the conversation's pane (approved, not every step confirmed; fresh, stopped
   // or taken up again after a reload). The conversation then stays on the deposit's chain whatever
@@ -247,6 +247,7 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
       )}
       <GoalConversation
         key={`${port.userId}:${chain}:${network?.provenance}:${index.current}`}
+        account={view}
         userId={port.userId}
         chain={chain}
         provenance={network?.provenance ?? null}
