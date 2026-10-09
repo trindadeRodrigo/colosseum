@@ -7,10 +7,9 @@ import { check, openSignedIn, pinned } from './portfolio-steps';
 // in with the throwaway wallet, against the e2e stub's sample answers. The income plan's vault is the
 // one the stub has an exposure of its own for: two deposits, a part outside its band, a measured
 // selling cost. The page is checked with axe in light and in dark at 375 px and at 1280 px, for no
-// sideways scroll and for a pin on every figure; then once more in Portuguese. Nothing here signs.
+// sideways scroll and for a pin on every figure; then once more for a reader who asked for Portuguese, in English (ENGLISH-ONLY). Nothing here signs.
 
 const w = portfolioDictionary('en');
-const pt = portfolioDictionary('pt');
 
 /** The income plan's vault of the stub's sample answers, on Solana's test network. */
 const INCOME = 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4';
@@ -135,31 +134,23 @@ test.describe('a plan’s page on the stub', () => {
     await check(page, 'no plan at the address');
   });
 
-  test('in Portuguese, its figures in Brazil’s format, axe clean', async ({
+  // The app is English only (ENGLISH-ONLY): a reader whose browser asked for Portuguese (the old
+  // cookie) is answered in English, with the figures as English writes them. This test was the
+  // Portuguese reading of the section.
+  test('a reader who asked for Portuguese reads it in English, axe clean', async ({
     page,
     context,
     baseURL,
   }) => {
     await context.addCookies([{ name: 'tf-lang', value: 'pt', url: baseURL as string }]);
-    await openSignedIn(page, '/portfolio', 'pt');
-    await toPlan(page, INCOME, 'pt');
-    await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR');
+    await openSignedIn(page, '/portfolio');
+    await toPlan(page, INCOME);
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
     const head = page.locator('main [data-ui="plan-head"]');
-    await expect(head.locator('[data-ui="status"]')).toHaveText(pt.status.words.watch);
-    await expect(head.locator('[data-ui="plan-figures"]')).toContainText(/US\$\s81\.243,55/);
-    await expect(
-      page.getByRole('heading', { level: 2 }).filter({ hasText: pt.plan.exit.heading }),
-    ).toBeVisible();
-    await expect(page.locator('main [data-ui="plan-parts"] [data-ui="status"]:visible')).toHaveText(
-      pt.plan.parts.outside,
-    );
-    await expect(
-      page.locator('main [data-ui="plan-exit"] [data-ui="exit-cost"] [data-ui="figure"]'),
-    ).toHaveText(/7,1 pontos-base/);
-    await expect(page.locator('main [data-ui="plan-back"]')).toHaveText(pt.plan.back);
-    await expect(page.locator('main')).not.toContainText(w.plan.history.lead);
-    await expect(page.locator('[data-ui="disclaimer"]:visible')).toHaveCount(1);
-    await pinned(page, 'a plan in Portuguese');
-    await check(page, 'a plan in Portuguese');
+    await expect(head.locator('[data-ui="status"]')).toHaveText(w.status.words.watch);
+    await expect(head.locator('[data-ui="plan-figures"]')).toContainText('$81,243.55');
+    await expect(page.locator('main [data-ui="plan-back"]')).toHaveText(w.plan.back);
+    await pinned(page, 'a plan, Portuguese asked');
+    await check(page, 'a plan, Portuguese asked');
   });
 });

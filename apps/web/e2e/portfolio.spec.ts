@@ -6,11 +6,10 @@ import { check, openSignedIn, pinned, toPage } from './portfolio-steps';
 // The portfolio section end to end (PORT-3): its overview and its methodology, for a person signed
 // in with the throwaway wallet, against the e2e stub's sample answers of the section's routes. Every
 // page is checked with axe in light and in dark at 375 px and at 1280 px, for no sideways scroll, and
-// for a pin on every figure; then once more in Portuguese. Nothing here signs.
+// for a pin on every figure; then once more for a reader who asked for Portuguese, in English (ENGLISH-ONLY). Nothing here signs.
 
 const t = dictionary('en');
 const w = portfolioDictionary('en');
-const pt = portfolioDictionary('pt');
 
 /** A vault of the stub's sample answers: the plan to grow, on Solana's test network. */
 const GROW = 'EPjFWdd5AufqSSqeM2qtbKqmnzN6gRLfV9YzcVz8kGDw';
@@ -116,25 +115,22 @@ test.describe('the portfolio section on the stub', () => {
     );
   });
 
-  test('in Portuguese for a Portuguese reader, its figures in Brazil’s format, axe clean', async ({
+  // The app is English only (ENGLISH-ONLY): a reader whose browser asked for Portuguese (the old
+  // cookie) is answered in English, with the figures as English writes them. This test was the
+  // Portuguese reading of the section.
+  test('a reader who asked for Portuguese reads it in English, axe clean', async ({
     page,
     context,
     baseURL,
   }) => {
     await context.addCookies([{ name: 'tf-lang', value: 'pt', url: baseURL as string }]);
-    await openSignedIn(page, '/portfolio', 'pt');
-    await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(pt.overview.title);
+    await openSignedIn(page, '/portfolio');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(w.overview.title);
     const grow = page.locator(`main [data-ui="overview-vault"][data-address="${GROW}"]`);
-    await expect(grow.locator('[data-ui="status"]')).toHaveText(pt.status.words.on_track);
-    // the same figure, written as Brazil writes it
-    await expect(grow).toContainText(/US\$\s2\.051,37/);
-    await expect(page.locator('main')).toContainText(pt.overview.table.heading);
-    await pinned(page, 'overview in Portuguese');
-    await check(page, 'overview in Portuguese');
-    await toPage(page, '/portfolio/methodology', 'pt');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(pt.methodology.title);
-    await expect(page.locator('main [data-ui="rule-lines"] > li')).toHaveCount(13);
-    await check(page, 'methodology in Portuguese');
+    await expect(grow.locator('[data-ui="status"]')).toHaveText(w.status.words.on_track);
+    await expect(grow).toContainText('$2,051.37');
+    await pinned(page, 'overview, Portuguese asked');
+    await check(page, 'overview, Portuguese asked');
   });
 });

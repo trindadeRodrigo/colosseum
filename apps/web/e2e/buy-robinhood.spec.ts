@@ -81,10 +81,11 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   await named(page);
 
   // the monitor: the vault the buy opened, badged with its chain, its cash in tUSDG
-  await page.getByRole('button', { name: en.shell.menu }).click();
+  // The bar's Portfolio is the portfolio section's board (/portfolio, PORT-1); the monitor is where
+  // the order's own next step leads.
   await page
-    .locator('[data-ui="compact-nav-sheet"]')
-    .getByRole('link', { name: en.shell.portfolio })
+    .locator('[data-ui="order-next"]')
+    .getByRole('link', { name: en.order.outcome.seePortfolio })
     .click();
   await expect(page).toHaveURL(/\/monitor$/);
   const vault = page.locator('[data-ui="vault"]');

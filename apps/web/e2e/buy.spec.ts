@@ -106,6 +106,8 @@ test('his landing page: the hero alone, its faces, its numbers, and "Start a pla
       );
     }
   }
+  // back to the phone, which is what check() measures against
+  await page.setViewportSize({ width: 375, height: 812 });
   await check(page, 'landing');
   const automaticPosts: string[] = [];
   page.on('request', (request) => {
@@ -213,8 +215,12 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   ).toBeVisible();
 
   // The monitor reads the vault the buy opened, with a pin on its value, its card saying it is sample.
-  // at 375 px his bar keeps its links in the sheet under the menu button
-  await go(page, en.shell.portfolio);
+  // The bar's Portfolio is the portfolio section's board (/portfolio, PORT-1); the monitor is where
+  // the order's own next step leads.
+  await page
+    .locator('[data-ui="order-next"]')
+    .getByRole('link', { name: en.order.outcome.seePortfolio })
+    .click();
   await expect(page).toHaveURL(/\/monitor$/);
   const summary = page.locator('[data-ui="vault-summary"]');
   await expect(summary).toHaveCount(1);
@@ -350,7 +356,12 @@ test('a withdrawal: part of the cash, then everything, to the owner’s own wall
   };
 
   // 1. Part of the cash: the plan keeps 5% of $40 in cash, and $1 of it leaves.
-  await go(page, en.shell.portfolio);
+  // The bar's Portfolio is the portfolio section's board (/portfolio, PORT-1); the monitor is where
+  // the order's own next step leads.
+  await page
+    .locator('[data-ui="order-next"]')
+    .getByRole('link', { name: en.order.outcome.seePortfolio })
+    .click();
   await open();
   await check(page, 'withdraw');
   await page.getByLabel(w.what.some).check();

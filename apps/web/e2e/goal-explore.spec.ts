@@ -17,7 +17,15 @@ test('new-goal exploration opens a responsive preview-only workbench', async ({ 
       financialPosts.push(request.url());
   });
   await page.goto('/goal');
-  await expect(page.locator('[data-ui="goal-mode"]')).toHaveCount(0);
+  // The one picker over the conversation chooses a conversation (GOAL-CHAT-PORT), never a guided
+  // mode: this one, or a new one.
+  const picker = page.locator('[data-ui="goal-mode"]');
+  await expect(picker).toHaveValue('current');
+  expect(
+    await picker
+      .locator('option')
+      .evaluateAll((options) => options.map((o) => (o as HTMLOptionElement).value)),
+  ).toEqual(['current', 'new']);
   await expect(page.locator('[data-ui="goal-conversation"]')).toBeVisible();
   await expect(page.locator('[data-ui="goal-empty-preview"]')).toContainText(
     en.goal.explore.previewOnly,

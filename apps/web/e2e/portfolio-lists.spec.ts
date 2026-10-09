@@ -6,11 +6,10 @@ import { check, openSignedIn, pinned, toPage } from './portfolio-steps';
 // The rebalancing and exposure pages of the portfolio section end to end (PORT-3), for a person
 // signed in with the throwaway wallet, against the e2e stub's sample answers: each reached from the
 // side menu, checked with axe in light and in dark at 375 px and at 1280 px, for no sideways scroll
-// and for a pin on every figure; then once more in Portuguese. Nothing here signs.
+// and for a pin on every figure; then once more for a reader who asked for Portuguese, in English (ENGLISH-ONLY). Nothing here signs.
 
 const t = dictionary('en');
 const w = portfolioDictionary('en');
-const pt = portfolioDictionary('pt');
 
 /** Vaults of the stub's sample answers, on Solana's test network and on the sample chain. */
 const INCOME = 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4';
@@ -183,39 +182,26 @@ test.describe('the lists of the portfolio section on the stub', () => {
     );
   });
 
-  test('in Portuguese for a Portuguese reader, the figures in Brazil’s format, axe clean', async ({
+  // The app is English only (ENGLISH-ONLY): a reader whose browser asked for Portuguese (the old
+  // cookie) is answered in English, with the figures as English writes them. This test was the
+  // Portuguese reading of the section.
+  test('a reader who asked for Portuguese reads them in English, axe clean', async ({
     page,
     context,
     baseURL,
   }) => {
     await context.addCookies([{ name: 'tf-lang', value: 'pt', url: baseURL as string }]);
-    await openSignedIn(page, '/portfolio', 'pt');
-    await toPage(page, '/portfolio/rebalancing', 'pt');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(pt.rebalancing.title);
-    const own = page
-      .locator(`main [data-ui="vault-steps"][data-vault="${INCOME}"] [data-ui="step"]`)
-      .nth(1);
-    await expect(own.locator('[data-ui="step-by"]')).toHaveText(pt.rebalancing.by.owner);
-    await expect(own.locator('[data-ui="step-outcome"]')).toHaveText(
-      pt.rebalancing.outcome.confirmed,
-    );
-    await expect(own.locator('dd[data-row="put"]').first()).toContainText('18.000 USDC');
-    await expect(page.locator('main [data-ui="steps-note"] h2')).toHaveText(
-      pt.rebalancing.note.heading,
-    );
-    await pinned(page, 'rebalancing in Portuguese');
-    await check(page, 'rebalancing in Portuguese');
-    await toPage(page, '/portfolio/exposure', 'pt');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(pt.exposure.title);
+    await openSignedIn(page, '/portfolio');
+    await toPage(page, '/portfolio/rebalancing');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(w.rebalancing.title);
+    await pinned(page, 'rebalancing, Portuguese asked');
+    await check(page, 'rebalancing, Portuguese asked');
+    await toPage(page, '/portfolio/exposure');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(w.exposure.title);
     const solana = page.locator('main [data-ui="chain-exposure"][data-chain="solana"]');
-    await expect(solana.locator('[data-ui="exposure-total"]')).toContainText(/US\$\s84\.047,10/);
-    await expect(
-      solana.locator('[data-ui="exit"][data-asset="solana:usdy"] [data-ui="exit-cost"]'),
-    ).toContainText('7,25 bps');
-    await expect(page.locator('main [data-ui="exposure-notes"]')).toContainText(
-      pt.exposure.notes.chains,
-    );
-    await pinned(page, 'exposure in Portuguese');
-    await check(page, 'exposure in Portuguese');
+    await expect(solana.locator('[data-ui="exposure-total"]')).toContainText('$84,047.10');
+    await pinned(page, 'exposure, Portuguese asked');
+    await check(page, 'exposure, Portuguese asked');
   });
 });

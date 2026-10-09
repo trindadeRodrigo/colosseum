@@ -152,10 +152,10 @@ test('the bar keeps its height: signed out, on /sign-in, and signed in', async (
 test('on the landing, "Sign in" opens the dialog over it, the URL stays /, and Escape gives focus back', async ({
   page,
 }) => {
-  // with reduced motion the landing's bar is compact at once, with its call to action
+  // The landing's bar is its own static bar (LANDING-HERO), with "Sign in" as its one action.
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
-  const cta = page.locator('[data-ui="compact-nav"] a[href^="/sign-in"]').first();
+  const cta = page.locator('[data-ui="landing-bar"] a[href^="/sign-in"]').first();
   await expect(cta).toBeVisible({ timeout: 60_000 });
   await cta.click();
   const dialog = page.getByRole('dialog');
