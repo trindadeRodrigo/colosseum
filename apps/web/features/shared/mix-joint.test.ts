@@ -80,7 +80,16 @@ describe('a reply said as one text', () => {
     expect(replyText('Here it is.\n\nHow  long? ', 'how long?')).toBe('Here it is.\n\nHow  long? ');
     // the same question without its mark, or inside quotes or emphasis, is the same question
     expect(replyText('Here it is. How long?', 'How long')).toBe('Here it is. How long?');
-    expect(replyText('Here it is. How long', 'How long?')).toBe('Here it is. How long');
+    // a statement that ends in the question's words has not asked it
+    expect(replyText('The right mix depends on how long.', 'How long?')).toBe(
+      'The right mix depends on how long.\n\nHow long?',
+    );
+    expect(replyText('It depends on which chain.', 'Which chain?')).toBe(
+      'It depends on which chain.\n\nWhich chain?',
+    );
+    expect(replyText('Here it is. How long', 'How long?')).toBe(
+      'Here it is. How long\n\nHow long?',
+    );
     expect(replyText('Here it is. “How long?”', 'How long?')).toBe('Here it is. “How long?”');
     expect(replyText('Here it is. **How long?**', '"How long?"')).toBe('Here it is. **How long?**');
     // a question of marks alone is no question to match

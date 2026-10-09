@@ -95,21 +95,23 @@ const texts = (value: unknown, max: number): value is string[] =>
 
 /**
  * What a reply says, as one text: its message, then its question. A model often ends its message with
- * the very question it also sends on its own, and then the question is said once. The two are compared
- * as words: case, spacing, quotes or emphasis round the question and its closing mark do not make it
- * a second question. A question the message does not end with is always said.
+ * the very question it also sends on its own, and then the question is said once. That is so only when
+ * the message itself ends by asking, with a question mark: "It depends on how long." has not asked
+ * "How long?". Past that the two are compared as words: case, spacing, and quotes or emphasis round
+ * the question do not make it a second one. A question the message does not end with is always said.
  */
 export function replyText(message: string, question?: string | null): string {
   if (!question) return message;
+  const bare = (text: string) => text.replace(/["'“”‘’«»*_`()[\]]/g, '').trim();
   const words = (text: string) =>
-    text
+    bare(text)
       .toLowerCase()
-      .replace(/["'“”‘’«»*_`()[\]]/g, '')
       .replace(/\s+/g, ' ')
-      .replace(/[\s?.!:]+$/, '')
-      .trim();
+      .replace(/[\s?.!:]+$/, '');
   const asked = words(question);
-  return asked && words(message).endsWith(asked) ? message : `${message}\n\n${question}`;
+  return asked && bare(message).endsWith('?') && words(message).endsWith(asked)
+    ? message
+    : `${message}\n\n${question}`;
 }
 
 /** A provider reply is plain data. A preview grants no signing or funded-vault update capability. */

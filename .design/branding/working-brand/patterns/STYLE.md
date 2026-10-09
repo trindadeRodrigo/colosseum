@@ -198,7 +198,7 @@ It takes the Sage's structure (Swiss grid discipline, hairlines, tabular figures
 - **plan-lock:** legs fade in at their exploded positions (160ms, 60ms stagger), slide and seat (280–360ms), and then the pin drops 120ms later over 160ms.
 - **part-and-close ("Why this plan?"):** pieces part 12–24px on their axes, callouts fade in, then the pieces close back to locked.
 - **loader ("the lattice assembles"):** a 3×3 P1-medium lattice. The horizontals slide in on x, then the verticals drop on y, 240ms each with a 60ms stagger, then a 400ms hold. Only for waits over 400ms, with a text label and `role="status"`.
-- **reduced motion:** every slide becomes a 120ms crossfade, the pin appears without travel, and the loader is a static lattice with its label. The mix joint is the exception (plan-leg.md, "The mix joint"; gate `MIX-JOINT`): there nothing moves or fades, and each mix is simply in place.
+- **reduced motion:** every slide becomes a 120ms crossfade, the pin appears without travel, and the loader is a static lattice with its label. As built today the mix joint (plan-leg.md, "The mix joint") neither moves nor fades under reduced motion; whether that stays or becomes this crossfade is open for Rodrigo (gate `MIX-JOINT`).
 
 ---
 

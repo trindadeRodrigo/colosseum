@@ -32,8 +32,6 @@ export const fillOf = (index: number) => FILL[index % FILL.length] as string;
 
 /** The narrowest a piece is drawn, in percent of the beam: a sliver still shows and can be pointed at. */
 const NARROWEST = 3;
-/** The narrowest piece with room for its asset's mark (24px, on a phone's beam). */
-const MARKED = 12;
 /** The narrowest piece that carries a tenon, or takes one: in a sliver a tenon is all there would be. */
 const TENONED = 7;
 /** A piece slides in after it has faded in apart (STYLE.md, plan-lock): 160ms, then 320ms. */
@@ -344,16 +342,21 @@ export function MixJoint({
                     )}
                   />
                 )}
-                {slot.width >= MARKED && (
+                {/* Its asset's mark, wherever the piece is 36px wide or more on this screen: the
+                    piece measures itself, so a tenth of a desk's beam has its mark and a tenth of a
+                    phone's does not, with nothing moved to make room. */}
+                <span className="@container absolute inset-0 flex items-center justify-center">
                   <span
+                    data-part="mark"
                     style={vars({
-                      '--tf-joint-x': `${from ? (from.width - slot.width) / 2 : 0}cqw`,
+                      // half the change in width, in hundredths of the piece's own width
+                      '--tf-joint-x': `${from ? ((from.width - slot.width) / 2 / slot.width) * 100 : 0}cqw`,
                     })}
-                    className={cn('relative flex', from && 'tf-joint-move')}
+                    className={cn('hidden @min-[36px]:flex', from && 'tf-joint-move')}
                   >
                     <AssetMark asset={piece.key} />
                   </span>
-                )}
+                </span>
               </span>
             </button>
           );

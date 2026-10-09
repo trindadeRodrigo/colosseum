@@ -397,6 +397,20 @@ for (const [name, mix] of [
             expect(box.right).toBeLessThanOrEqual((beam?.x ?? 0) + (beam?.width ?? 0) + 0.5);
             expect(box.width).toBeGreaterThan(4);
           }
+          // a piece carries its asset's mark where it is 36px wide or more on this screen, and
+          // only there: a tenth of a desk's beam has it, a tenth of a phone's does not
+          const marks = await joint.locator('[data-part="piece"]').evaluateAll((els) =>
+            els.map((el) => {
+              const mark = el.querySelector('[data-part="mark"]');
+              return [
+                el.getBoundingClientRect().width >= 36,
+                mark !== null && getComputedStyle(mark).display !== 'none',
+              ];
+            }),
+          );
+          for (const [wide, marked] of marks) expect(marked).toBe(wide);
+          if (name === 'many')
+            expect(marks.filter(([, marked]) => marked)).toHaveLength(width === 1440 ? 7 : 2);
           await shot(page, `${name}-${lang}-${theme}-${width}`);
         }
         await page.setViewportSize({ width: 375, height: 812 });
