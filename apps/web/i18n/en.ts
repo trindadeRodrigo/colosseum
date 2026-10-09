@@ -70,6 +70,8 @@ export const en = {
     testNetworkLine: 'Test network',
     /** Under a stock or fund price while its market is closed (components/ui/MarketNote.tsx). */
     marketClosed: 'Market closed · last price',
+    /** The same, as a sentence in the price's own popover. */
+    marketClosedWhy: 'The market for this asset is closed. This is its last price.',
     /**
      * Beside a chain's name where no figure stands with it (the account menu's wallets; Thom, Oct 9):
      * how the chain is run, in words alone, with no glyph. `shown` is what is read on the screen,

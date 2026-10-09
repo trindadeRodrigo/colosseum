@@ -53,6 +53,7 @@ export const pt: Dictionary = {
     testNetwork: 'rede de teste',
     testNetworkLine: 'Rede de teste',
     marketClosed: 'Mercado fechado · último preço',
+    marketClosedWhy: 'O mercado deste ativo está fechado. Este é o último preço.',
     chainRun: {
       shown: { sandbox: 'Rede de teste', mock: 'Exemplo' },
       said: { sandbox: 'rede de teste', mock: 'exemplo' },

@@ -1433,6 +1433,12 @@ describe('a vault’s public page', () => {
         '$1.10',
       );
     }
+    // the price's own popover says it as a sentence
+    const closedFigure = notes[0]?.parentElement?.querySelector('[data-ui="figure"]');
+    await click(find<HTMLElement>(closedFigure as Element, 'button[data-ui="pin"]'));
+    expect(find(closedFigure as Element, '[data-ui="pin-detail"]').textContent).toBe(
+      en.shell.marketClosedWhy,
+    );
     // and under no open one
     const open = [...host.querySelectorAll('[data-ui="figure"]')].filter((f) =>
       f.textContent?.includes('$2,600'),
@@ -1440,6 +1446,8 @@ describe('a vault’s public page', () => {
     expect(open.length).toBeGreaterThan(0);
     for (const figure of open)
       expect(figure.parentElement?.querySelector('[data-ui="market-closed"]')).toBeNull();
+    await click(find<HTMLElement>(open[0] as Element, 'button[data-ui="pin"]'));
+    expect((open[0] as Element).querySelector('[data-ui="pin-detail"]')).toBeNull();
   });
 
   it('pins the vault’s value to the read and the prices it stands on', async () => {

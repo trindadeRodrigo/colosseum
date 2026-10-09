@@ -102,6 +102,7 @@ export function VaultPanel({
                 provenance: worst(vault.provenance, price.provenance),
               })}
               what={words.columns.price}
+              {...(price.market === 'closed' ? { detail: t.shell.marketClosedWhy } : {})}
               labels={t.pin}
             />
             <MarketNote market={price.market} label={t.shell.marketClosed} />
