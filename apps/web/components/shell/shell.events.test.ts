@@ -515,6 +515,14 @@ describe('the account control of someone signed in (Thom, Oct 6 and Oct 9)', () 
       'Solana',
       'Robinhood Chain',
     ]);
+    // the chain's own mark before its name, 16px, and silent: the name is written beside it
+    for (const row of rows) {
+      const logo = find<HTMLImageElement>(row, '[data-ui="chain-logo"]');
+      expect(logo.getAttribute('data-chain')).toBe(row.getAttribute('data-chain'));
+      expect([logo.getAttribute('alt'), logo.getAttribute('aria-hidden')]).toEqual(['', 'true']);
+      expect([logo.getAttribute('width'), logo.getAttribute('height')]).toEqual(['16', '16']);
+      expect(logo.nextElementSibling).toBe(find(row, '[data-ui="account-wallet-chain"]'));
+    }
     // each on a test network here: said beside the chain's name in words alone, with no glyph (no
     // figure stands here); a screen reader hears "Solana, test network"
     for (const row of rows) {

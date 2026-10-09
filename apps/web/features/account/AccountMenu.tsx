@@ -1,6 +1,7 @@
 'use client';
 import { type ChainId, chainFamily } from '@colosseum/schemas';
 import { useId, useRef } from 'react';
+import { ChainLogo } from '../../components/ui/ChainLogo';
 import { CopyButton } from '../../components/ui/CopyButton';
 import { shorten } from '../../components/ui/format';
 import { Icon } from '../../components/ui/Icon';
@@ -9,7 +10,6 @@ import { explorerAddressUrlFor, onMock } from '../order/readiness';
 import { useWalletPort } from '../wallet/WalletProvider';
 import { useAccount } from './AccountProvider';
 import { AccountBars, CHIP_BOX, LABEL_BOX } from './account-control-parts';
-import { ChainLogo } from './ChainLogo';
 import { useKeepInWindow } from './keep-in-window';
 import { usePopover } from './use-popover';
 
@@ -18,8 +18,8 @@ import { usePopover } from './use-popover';
 // bar never shifts, named "Your account". A chain is not a mode a person is in, and a person with a
 // wallet on each chain has two addresses: showing one in the bar would say otherwise.
 //
-// Its menu lists the person's wallets, one row for each chain they have a wallet on: the chain's
-// mark and name, how it is run where it is not live ("Test network", "Sample": words, no glyph), the short
+// Its menu lists the person's wallets, one row for each chain they have a wallet on: the chain's own
+// mark (ChainLogo, silent beside the name) and name, how it is run where it is not live ("Test network", "Sample": words, no glyph), the short
 // address with a copy icon beside it, and its page on the explorer. Then "Sign out" as a plain last
 // item. The same block heads the phone's sheet. Nothing in it switches a chain: where a plan starts
 // is chosen on /goal. It is a disclosure, not a menu of commands.
