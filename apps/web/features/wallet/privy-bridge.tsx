@@ -414,63 +414,37 @@ function PrivyDriver({
       walletsOwed,
 
       async signIn(method, choice) {
-        // LOCAL: print Privy's own reason when a sign-in fails (the screen only says it failed).
-        try {
-          return await signInInner(method, choice);
-        } catch (e) {
-          const err = e as {
-            privyErrorCode?: string;
-            message?: string;
-            status?: number;
-            cause?: unknown;
-          };
-          console.error(
-            'LOCAL sign-in failed',
-            method,
-            choice?.wallet ?? '',
-            err?.privyErrorCode ?? '',
-            err?.status ?? '',
-            err?.message ?? String(e),
-            JSON.stringify(err?.cause ?? null),
-          );
-          throw e;
+        const now = ref.current;
+        if (now.privy.authenticated) return;
+        if (!now.privy.ready) throw fail('not_connected', 'the wallet is still loading');
+        if (method === 'passkey') {
+          // Two calls: a person with no passkey for this site yet has to be able to make one.
+          // A provider mounted again while the prompt is open never answers this call: it ends here.
+          await Promise.race([
+            choice?.create ? now.signupWithPasskey() : now.loginWithPasskey(),
+            left.current,
+          ]);
+          return;
         }
-        async function signInInner(
-          method: Parameters<WalletDriver['signIn']>[0],
-          choice: Parameters<WalletDriver['signIn']>[1],
-        ) {
-          const now = ref.current;
-          if (now.privy.authenticated) return;
-          if (!now.privy.ready) throw fail('not_connected', 'the wallet is still loading');
-          if (method === 'passkey') {
-            // Two calls: a person with no passkey for this site yet has to be able to make one.
-            // A provider mounted again while the prompt is open never answers this call: it ends here.
-            await Promise.race([
-              choice?.create ? now.signupWithPasskey() : now.loginWithPasskey(),
-              left.current,
-            ]);
-            return;
-          }
-          const evmWallet = now.announced.find((w) => evmWalletId(w.rdns) === choice?.wallet);
-          if (evmWallet)
-            return Promise.race([
-              signInWithEvmWallet(evmWallet, {
-                generate: now.generateSiweMessage,
-                login: now.loginWithSiwe,
-              }),
-              left.current,
-            ]);
-          const solanaWallet = now.outside.find((w) => solanaWalletId(w.name) === choice?.wallet);
-          if (solanaWallet)
-            return Promise.race([
-              signInWithSolanaWallet(solanaWallet, {
-                generate: now.generateSiwsMessage,
-                login: now.loginWithSiws,
-              }),
-              left.current,
-            ]);
-          throw fail('wallet_gone', 'that wallet is not in this browser');
-        }
+        const evmWallet = now.announced.find((w) => evmWalletId(w.rdns) === choice?.wallet);
+        if (evmWallet)
+          return Promise.race([
+            signInWithEvmWallet(evmWallet, {
+              generate: now.generateSiweMessage,
+              login: now.loginWithSiwe,
+            }),
+            left.current,
+          ]);
+        const solanaWallet = now.outside.find((w) => solanaWalletId(w.name) === choice?.wallet);
+        if (solanaWallet)
+          return Promise.race([
+            signInWithSolanaWallet(solanaWallet, {
+              generate: now.generateSiwsMessage,
+              login: now.loginWithSiws,
+            }),
+            left.current,
+          ]);
+        throw fail('wallet_gone', 'that wallet is not in this browser');
       },
       signOut: () => ref.current.privy.logout(),
       ensureWallets() {

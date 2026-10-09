@@ -232,25 +232,8 @@ export function useOrderRunner(): { run: (input: RunInput) => Promise<RunOutcome
           signed: localSigned,
           chainRead: chainReadFor(chain, mock),
           ...(input.approvedAgain ? { approvedAgain: input.approvedAgain } : {}),
-          onEvent: (event) => {
-            // LOCAL: each step of the run, to see where a buy stops.
-            console.warn('LOCAL run event', JSON.stringify(event).slice(0, 300));
-            input.onEvent?.(event);
-          },
+          onEvent: input.onEvent,
           signal: input.signal,
-        }).then((result) => {
-          // LOCAL: why the run stopped.
-          console.warn(
-            'LOCAL run result',
-            JSON.stringify({
-              status: result.status,
-              why: (result as { why?: unknown }).why ?? null,
-              legId: (result as { legId?: unknown }).legId ?? null,
-              wallet: (result as { wallet?: unknown }).wallet ?? null,
-              error: (result as { error?: unknown }).error ?? null,
-            }).slice(0, 600),
-          );
-          return result;
         });
       // The wallet provider is not mounted again while this runs: the step is signed by this port.
       const release = hold();

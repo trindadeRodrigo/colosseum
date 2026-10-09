@@ -222,19 +222,8 @@ export function createWalletPort(
     } catch {
       throw fail('changed', 'the wallet did not return a transaction');
     }
-    if (!sameBytes(wire.message, sent.wire.message)) {
-      // LOCAL: how the wallet changed it (size of the message before and after, signers).
-      console.error(
-        'LOCAL wallet changed the transaction',
-        JSON.stringify({
-          sentBytes: sent.wire.message.length,
-          backBytes: wire.message.length,
-          sentSigners: sent.wire.signers,
-          backSigners: wire.signers,
-        }),
-      );
+    if (!sameBytes(wire.message, sent.wire.message))
       throw fail('changed', 'the wallet signed a different transaction from the one it was given');
-    }
     // The message is the one sent, so the account is among its signers as it was there.
     const signature = wire.signatures[wire.signers.indexOf(account.address)] as Uint8Array;
     if (isZero(signature)) throw fail('changed', 'the wallet returned the transaction unsigned');
@@ -403,25 +392,11 @@ export function createWalletPort(
         if (account.family === 'solana') {
           const sent = txs.map((tx) => solanaBytes(account, tx));
           const cluster = solanaCluster(chains[chain]);
-          let signed: Uint8Array[];
-          try {
-            signed = await driver.signSolana(
-              rawOf(account),
-              sent.map((s) => s.bytes),
-              cluster,
-            );
-          } catch (e) {
-            // LOCAL: the wallet's own reason for not signing.
-            const err = e as { code?: unknown; message?: string; name?: string };
-            console.error(
-              'LOCAL wallet sign failed',
-              cluster,
-              err?.name ?? '',
-              String(err?.code ?? ''),
-              err?.message ?? String(e),
-            );
-            throw e;
-          }
+          const signed = await driver.signSolana(
+            rawOf(account),
+            sent.map((s) => s.bytes),
+            cluster,
+          );
           if (signed.length !== sent.length)
             throw fail('changed', 'the wallet returned a different number of transactions');
           // One for one and in order: the first that came back is checked against the first sent.
