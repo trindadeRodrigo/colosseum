@@ -731,7 +731,7 @@ export const en = {
       openPage: 'Open this vault’s page',
       parts: 'Its parts, by weight',
       planTitle: (parts: number) =>
-        parts === 1 ? 'Your vault · 1 part' : `Your vault · ${parts} parts`,
+        parts === 1 ? 'Its targets · 1 part' : `Its targets · ${parts} parts`,
       tooMany: 'More parts than a bar can show: each one is in the table below.',
       target: (share: string) => `planned ${share}`,
       onlyCash: 'Only cash so far: none of it is in the vault’s assets yet.',
