@@ -29,7 +29,7 @@ import {
   vaultValueUsd,
 } from '../../orders/mix';
 import type { PlanInputs } from '../../orders/personalize';
-import { plansOf } from '../../orders/plan-join';
+import { planSheetOf } from '../../orders/plan-join';
 import { ORDER_POLICY } from '../../orders/prepare';
 import { insertOrder, insertProposal, loadProposal } from '../../orders/store';
 import { resolveVaultConversationOwner } from '../../orders/vault-conversation-owner';
@@ -59,10 +59,7 @@ export const dbMixStore = (deps: OrderDeps): MixStore => ({
   saveProposal: (proposal, privyId) => insertProposal(deps.db, proposal, privyId),
   loadProposal: (id) => loadProposal(deps.db, id),
   saveOrder: (order, request) => insertOrder(deps.db, order, request),
-  async planOf(chain, address, privyId) {
-    const sheet = (await plansOf(deps.db, chain, [address], privyId)).get(address)?.plan.sheet;
-    return sheet ? { goal: sheet.goal, risk: sheet.risk } : null;
-  },
+  planOf: (chain, address, privyId) => planSheetOf(deps.db, chain, address, privyId),
 });
 
 /** A wallet of the signed-in person's that signs on this chain, as the conversation routes ask. */

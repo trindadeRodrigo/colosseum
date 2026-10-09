@@ -165,9 +165,18 @@ describe('a refusal, a question, a withdrawal or an everyday word is not a reque
         )
       : expected.map(symbol);
     expect(requested).toEqual(want);
-    // The fixture's model adds a stock the person did not name: refused unless they asked for stocks.
-    if (!requested.includes(symbol('NVDA')))
-      expect(out).toMatchObject({ detail: 'allocation_ineligible' });
+    // The fixture's model adds a stock the person did not name: left out, and said, unless they asked
+    // for stocks.
+    if (!requested.includes(symbol('NVDA'))) {
+      if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+      expect(out.reply.proposal?.allocations.map((line) => line.assetId)).not.toContain(
+        symbol('NVDA'),
+      );
+      expect(
+        out.reply.weightNotes.find((note) => note.code === 'pick_outside_goal')?.assetIds,
+      ).toContain(symbol('NVDA'));
+      expect(out.repair?.failed).toBe('allocation_ineligible');
+    }
   });
 });
 
