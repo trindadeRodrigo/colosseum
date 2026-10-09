@@ -72,6 +72,12 @@ export const en = {
       over: 'Our server didn’t answer in time, so nothing is shown here yet.',
       retry: 'Try again',
     },
+    /** An address no page answers (app/(app)/not-found.tsx). */
+    missing: {
+      title: 'There is no page at this address',
+      body: 'The link may be old, or the address mistyped. Nothing of yours is affected.',
+      action: 'Go to Invest',
+    },
   },
 
   signIn: {

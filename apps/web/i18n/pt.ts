@@ -58,6 +58,11 @@ export const pt: Dictionary = {
       over: 'Nosso servidor não respondeu a tempo, então nada aparece aqui ainda.',
       retry: 'Tentar de novo',
     },
+    missing: {
+      title: 'Não há página neste endereço',
+      body: 'O link pode ser antigo, ou o endereço foi digitado errado. Nada seu foi afetado.',
+      action: 'Ir para Investir',
+    },
   },
 
   signIn: {
