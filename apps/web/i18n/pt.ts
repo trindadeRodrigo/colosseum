@@ -222,8 +222,8 @@ export const pt: Dictionary = {
     explore: {
       picker: {
         label: 'Conversa',
-        current: 'Esta conversa',
-        fresh: 'Nova conversa',
+        current: 'Nova conversa',
+        fresh: 'Começar uma nova conversa',
         vaults: 'Seus cofres',
         saved: 'Conversas salvas',
         untitled: 'Conversa anterior',

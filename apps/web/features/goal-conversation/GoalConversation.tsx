@@ -70,7 +70,7 @@ export function GoalConversation({
   /** Which saved conversation of this browser is on screen (conversations.ts). */
   conversationId?: string;
   /** Called with the person's first words each time the transcript is saved. */
-  onSaved?: (title: string) => void;
+  onSaved?: (first: string) => void;
   /**
    * Called as a deposit is open on the pane (approved, its steps not all confirmed) whichever way the
    * pane came to show it, with whether a step is being signed now, and as it no longer is.
@@ -275,7 +275,7 @@ export function GoalConversation({
     const saved = writeLocal(key, { revision: 0, transcript: next });
     if (!saved) setError(copy.notSaved);
     const first = next.find((turn) => turn.who === 'person')?.text.trim();
-    if (saved && first) onSaved?.(first.length > 60 ? `${first.slice(0, 59)}…` : first);
+    if (saved) onSaved?.(first ?? '');
     return saved;
   }
   function startOver(sure = false) {

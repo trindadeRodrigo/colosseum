@@ -271,11 +271,15 @@ export const en = {
 
   goal: {
     explore: {
-      /** The conversation picker (GoalEntry): this conversation, a new one, the saved ones, the vaults. */
+      /**
+       * The conversation picker (GoalEntry): the one on screen, a new one, the saved ones, the vaults.
+       * A conversation is named by its person's first request; `current` and `untitled` are what one
+       * with no words yet is called, on screen and in the saved list.
+       */
       picker: {
         label: 'Conversation',
-        current: 'This conversation',
-        fresh: 'New conversation',
+        current: 'New conversation',
+        fresh: 'Start a new conversation',
         vaults: 'Your vaults',
         saved: 'Saved conversations',
         untitled: 'Earlier conversation',
