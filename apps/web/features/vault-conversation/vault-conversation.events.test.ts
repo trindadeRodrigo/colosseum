@@ -394,7 +394,7 @@ describe('a continuous conversation for one vault', () => {
     );
     await settle();
     expect(find<HTMLDetailsElement>(host, '[data-ui="vault-details"]').open).toBe(false);
-    expect(host.querySelector('[data-ui="vault-withdraw"]')).not.toBeNull();
+    expect(host.querySelector('[data-action="vault-withdraw"]')).not.toBeNull();
     await send(host, 'Consider a change for my vault.');
     portStore.set(signedInPort(EMBEDDED, { userId: 'another-person' }));
     await settle();

@@ -340,15 +340,20 @@ export function OrderScreen({
   }
 
   // The card that holds this screen is told how far the steps are, and how they ended.
+  // An approved order read back with every step confirmed (the card took it up again after a reload) is
+  // told as done too: no run of this screen will say so.
   const told = useRef<string | null>(null);
+  const readDone = load.kind === 'read' && load.order.status === 'done';
   useEffect(() => {
-    if (!embed || !record?.approved || running || !outcome) return;
-    const key = `${record.orderId}:${outcome.status}`;
+    if (!embed || !record?.approved || running) return;
+    const status = outcome?.status ?? (readDone ? 'done' : null);
+    if (!status) return;
+    const key = `${record.orderId}:${status}`;
     if (told.current === key) return;
     told.current = key;
-    if (outcome.status === 'done') embed.onDone?.({ orderId: record.orderId });
+    if (status === 'done') embed.onDone?.({ orderId: record.orderId });
     else embed.onStopped?.({ orderId: record.orderId });
-  }, [embed, record, running, outcome]);
+  }, [embed, record, running, outcome, readDone]);
 
   // Leaving the page stops the run between steps; what was signed is still reported. The signal is
   // the one of the run under way, read as the screen goes: each press hands the executor a new one.
@@ -990,9 +995,12 @@ export function OrderScreen({
                 )}
               </p>
             )}
-            <Link href="/monitor" className={buttonClass({ variant: 'secondary' })}>
-              {t.withdraw.back}
-            </Link>
+            {/* a host that holds this screen (the vault's own page) has its own way back */}
+            {!embed?.hostEnds && (
+              <Link href="/monitor" className={buttonClass({ variant: 'secondary' })}>
+                {t.withdraw.back}
+              </Link>
+            )}
           </div>
         )}
         {trustAsked && check.ok && !done && (
@@ -1167,7 +1175,7 @@ export function OrderScreen({
           </p>
         )}
         {/* The order is done: the next step is the portfolio it filled, and another buy beside it. */}
-        {done && !running && terms?.kind !== 'publish' && (
+        {done && !running && terms?.kind !== 'publish' && !embed?.hostEnds && (
           <div data-ui="order-next" className="flex flex-wrap items-center gap-3">
             <Link href="/monitor" className={buttonClass({ variant: 'primary' })}>
               {t.order.outcome.seePortfolio}

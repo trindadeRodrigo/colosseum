@@ -722,8 +722,12 @@ describe('a vault’s own page, which anybody can open', () => {
     expect(find(host, '#vault-conversation').getAttribute('data-workbench')).not.toBeNull();
     expect(host.querySelector('a[href="#vault-conversation"]')).toBeNull();
     expect(find(host, '[data-ui="vault-name"]').textContent).toBe('Rent');
-    expect(find(host, '[data-ui="vault-add-money"]').getAttribute('href')).toBe(
-      `/vaults/solana/${VAULT}/add`,
+    // the page's own Deposit, which opens in its pane, in place of the link to the add-money page
+    // (gate VAULT-PAGE-ACTIONS); the name's own section keeps "Rename" alone
+    expect(host.querySelectorAll('[data-action="vault-deposit"]')).toHaveLength(1);
+    expect(host.querySelector('[data-ui="vault-add-money"]')).toBeNull();
+    expect(find(host, '[data-ui="vault-actions"] [data-action="rename"]').textContent).toBe(
+      en.portfolio.actions.rename,
     );
   });
 

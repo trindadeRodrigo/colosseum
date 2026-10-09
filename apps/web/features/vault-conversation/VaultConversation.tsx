@@ -38,6 +38,10 @@ import {
  * Owner-only caller keys this component by the complete current identity/context. Laid out (Rodrigo,
  * Oct 8) as the invest page is, the chat on one side and the plan on the other, so the owner comes
  * back to a plan where it was made; `heading` is the page's own header, `aside` what follows the plan.
+ *
+ * The vault's own page (VaultScreen, gate VAULT-PAGE-ACTIONS) draws what the vault holds itself
+ * (`current`), and takes the right pane for a deposit, a withdrawal or an order's steps (`action`):
+ * while one is open the box is inert and says why, and no message is sent.
  */
 export function VaultConversation({
   read,
@@ -46,6 +50,10 @@ export function VaultConversation({
   showValue = true,
   heading,
   aside,
+  current,
+  starters,
+  action = null,
+  onOrder,
 }: {
   read: VaultResponse;
   userId: string;
@@ -53,6 +61,14 @@ export function VaultConversation({
   showValue?: boolean;
   heading?: ReactNode;
   aside?: ReactNode;
+  /** What the vault holds, drawn by the page in place of this component's own card. */
+  current?: ReactNode;
+  /** The first things to ask, where the page knows better ones (an empty vault has no holdings to explain). */
+  starters?: readonly { label: string; prompt: string }[];
+  /** An action open on the page: its pane takes the plan's place, and `why` is said over the inert box. */
+  action?: { pane: ReactNode; why: string } | null;
+  /** The page shows an order's steps itself: handed the order that applies a proposal. */
+  onOrder?: (orderId: string) => void;
 }) {
   const t = useT();
   const copy = t.shared.vault.conversation;
@@ -90,6 +106,9 @@ export function VaultConversation({
   );
   const localKey = useRef(key);
   localKey.current = context;
+  const locked = action !== null;
+  const lockedNow = useRef(locked);
+  lockedNow.current = locked;
 
   // A reply under way when the vault is read again was asked of the read before: it is set aside, and
   // said so. One under way for another person, vault or network is that conversation's, and goes quietly.
@@ -175,7 +194,7 @@ export function VaultConversation({
   }
 
   async function send(typed: string) {
-    if (sending.current || busy || loading || storage === 'conflict') return;
+    if (sending.current || busy || loading || storage === 'conflict' || lockedNow.current) return;
     // every message is kept as our server keeps it: one character it refuses would block later saves
     const words = plainText(typed);
     if (!words.trim()) return;
@@ -282,7 +301,7 @@ export function VaultConversation({
       className="grid min-w-0 gap-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring md:min-h-0 md:flex-1 md:grid-cols-12 md:grid-rows-[auto_minmax(0,1fr)] md:items-stretch"
     >
       <header className="flex flex-wrap items-start justify-between gap-3 md:col-span-12">
-        <div className="flex min-w-0 flex-col gap-2">{heading}</div>
+        <div className="flex min-w-0 flex-1 flex-col gap-2">{heading}</div>
         <Button
           variant="link"
           aria-expanded={chatOpen}
@@ -314,27 +333,27 @@ export function VaultConversation({
           </p>
         </div>
         {turns.length === 0 ? (
-          <div className="flex flex-col items-start gap-4 py-4">
+          <div className="flex flex-col items-start gap-4 py-4 md:flex-1">
             <p className="max-w-(--tf-measure-body) text-body text-muted-foreground">
               {copy.empty}
             </p>
             <div className="flex flex-wrap gap-2">
-              <Button
-                variant="secondary"
-                size="dense"
-                disabled={loading || storage === 'conflict'}
-                onClick={() => draftMessage(copy.explainPrompt)}
-              >
-                {copy.explain}
-              </Button>
-              <Button
-                variant="secondary"
-                size="dense"
-                disabled={loading || storage === 'conflict'}
-                onClick={() => draftMessage(copy.changePrompt)}
-              >
-                {copy.considerChange}
-              </Button>
+              {(
+                starters ?? [
+                  { label: copy.explain, prompt: copy.explainPrompt },
+                  { label: copy.considerChange, prompt: copy.changePrompt },
+                ]
+              ).map((starter) => (
+                <Button
+                  key={starter.label}
+                  variant="secondary"
+                  size="dense"
+                  disabled={loading || storage === 'conflict' || locked}
+                  onClick={() => draftMessage(starter.prompt)}
+                >
+                  {starter.label}
+                </Button>
+              ))}
             </div>
           </div>
         ) : (
@@ -367,7 +386,16 @@ export function VaultConversation({
             ))}
           </ol>
         )}
-        <div ref={composer} className="min-w-0 border-t border-border pt-4">
+        {action && (
+          <p role="status" data-ui="vault-chat-waits" className="text-body-sm">
+            {action.why}
+          </p>
+        )}
+        <div
+          ref={composer}
+          inert={locked}
+          className={`min-w-0 border-t border-border pt-4 ${locked ? 'opacity-60' : ''}`}
+        >
           <Composer
             label={copy.title}
             labelHidden
@@ -384,10 +412,19 @@ export function VaultConversation({
           />
         </div>
       </div>
+      {action && (
+        <div
+          data-ui="vault-action"
+          className={`tf-scroll-thin flex min-w-0 flex-col gap-4 md:min-h-0 md:overflow-y-auto md:pr-2 ${chatOpen ? 'md:col-span-7' : 'md:col-span-12'}`}
+        >
+          {action.pane}
+        </div>
+      )}
       <div
         data-ui="vault-plan"
         aria-busy={busy}
-        className={`tf-scroll-thin flex min-w-0 flex-col gap-4 md:min-h-0 md:overflow-y-auto md:pr-2 ${chatOpen ? 'md:col-span-7' : 'md:col-span-12'}`}
+        hidden={locked}
+        className={`tf-scroll-thin min-w-0 flex-col gap-4 md:min-h-0 md:overflow-y-auto md:pr-2 ${locked ? 'hidden' : 'flex'} ${chatOpen ? 'md:col-span-7' : 'md:col-span-12'}`}
       >
         {/* The proposal leads when there is one: it is what the person is working on. */}
         {reply?.notes && !proposal && <WeightNotes notes={reply.notes} />}
@@ -415,80 +452,83 @@ export function VaultConversation({
                     ),
                   )}
                   onClose={() => setApplying(null)}
+                  onOrder={onOrder}
                 />
               </div>
             )}
           </section>
         )}
-        <Card
-          as="section"
-          aria-labelledby={`${id}-held`}
-          mock={read.provenance !== 'live'}
-          mockLabels={{
-            announce:
-              read.provenance === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
-          }}
-        >
-          <CardHeader id={`${id}-held`} title={copy.current} />
-          <CardBody className="flex min-w-0 flex-col gap-4">
-            {showValue && (
-              <ProvenancePin
-                value={dollars(language, read.vault.valueUsd)}
-                obs={vaultValueSource(
-                  { ...read, vaults: [read.vault] },
-                  read.vault,
-                  t.portfolio.vault.valueMethod,
-                )}
-                labels={t.pin}
-              />
-            )}
-            {unpriced(read.vault) > 0 && (
-              <p className="text-caption text-muted-foreground">
-                {t.portfolio.vault.unpriced(unpriced(read.vault))}
-              </p>
-            )}
-            {shares.length > 0 && (
-              <HoldingsBar
-                shares={shares.map((row) => ({ key: row.asset, shareBps: row.weightBps }))}
-              />
-            )}
-            {rows.length === 0 ? (
-              <p>{copy.noHoldings}</p>
-            ) : (
-              <ul className="flex flex-col gap-2">
-                {rows.map((row) => (
-                  <li key={row.asset} className="flex min-w-0 items-center gap-2 text-body-sm">
-                    <AssetMark asset={row.asset} />
-                    <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-                      {displayName(row.asset, t.plan)}
-                    </span>
-                    <span className="shrink-0 tabular-nums">
-                      {row.valueUsd === null ? '—' : share(language, row.weightBps)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <details className="border-t border-border pt-4">
-              <summary className="cursor-pointer text-body-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-                {copy.targets}
-              </summary>
-              <div className="flex flex-col gap-2 pt-3">
-                <p className="text-caption text-muted-foreground">{copy.targetsNote}</p>
-                <ul className="flex flex-col gap-1 text-body-sm">
-                  {targets.map((row) => (
-                    <li key={row.asset} className="flex min-w-0 gap-2">
+        {current ?? (
+          <Card
+            as="section"
+            aria-labelledby={`${id}-held`}
+            mock={read.provenance !== 'live'}
+            mockLabels={{
+              announce:
+                read.provenance === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
+            }}
+          >
+            <CardHeader id={`${id}-held`} title={copy.current} />
+            <CardBody className="flex min-w-0 flex-col gap-4">
+              {showValue && (
+                <ProvenancePin
+                  value={dollars(language, read.vault.valueUsd)}
+                  obs={vaultValueSource(
+                    { ...read, vaults: [read.vault] },
+                    read.vault,
+                    t.portfolio.vault.valueMethod,
+                  )}
+                  labels={t.pin}
+                />
+              )}
+              {unpriced(read.vault) > 0 && (
+                <p className="text-caption text-muted-foreground">
+                  {t.portfolio.vault.unpriced(unpriced(read.vault))}
+                </p>
+              )}
+              {shares.length > 0 && (
+                <HoldingsBar
+                  shares={shares.map((row) => ({ key: row.asset, shareBps: row.weightBps }))}
+                />
+              )}
+              {rows.length === 0 ? (
+                <p>{copy.noHoldings}</p>
+              ) : (
+                <ul className="flex flex-col gap-2">
+                  {rows.map((row) => (
+                    <li key={row.asset} className="flex min-w-0 items-center gap-2 text-body-sm">
+                      <AssetMark asset={row.asset} />
                       <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                         {displayName(row.asset, t.plan)}
                       </span>
-                      <span className="tabular-nums">{share(language, row.targetBps)}</span>
+                      <span className="shrink-0 tabular-nums">
+                        {row.valueUsd === null ? '—' : share(language, row.weightBps)}
+                      </span>
                     </li>
                   ))}
                 </ul>
-              </div>
-            </details>
-          </CardBody>
-        </Card>
+              )}
+              <details className="border-t border-border pt-4">
+                <summary className="cursor-pointer text-body-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+                  {copy.targets}
+                </summary>
+                <div className="flex flex-col gap-2 pt-3">
+                  <p className="text-caption text-muted-foreground">{copy.targetsNote}</p>
+                  <ul className="flex flex-col gap-1 text-body-sm">
+                    {targets.map((row) => (
+                      <li key={row.asset} className="flex min-w-0 gap-2">
+                        <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                          {displayName(row.asset, t.plan)}
+                        </span>
+                        <span className="tabular-nums">{share(language, row.targetBps)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </details>
+            </CardBody>
+          </Card>
+        )}
         {aside}
       </div>
     </section>

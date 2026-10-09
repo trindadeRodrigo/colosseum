@@ -21,7 +21,7 @@ import {
   MIN_USD,
 } from '../order/InvestCard';
 import { addMoneyPath, placeOrder } from '../order/order-api';
-import { keepOrder } from '../order/order-record';
+import { keepOrder, recallOrder } from '../order/order-record';
 import { chainReady, onMock } from '../order/readiness';
 import type { SharedTerms } from '../shared/terms';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
@@ -55,7 +55,8 @@ export function AddMoneyScreen({
 }: {
   chain: string;
   address: string;
-  embedded?: InvestEmbedded;
+  /** `bare`: the host's own screen shows the vault's parts (its page), so they are not drawn again. */
+  embedded?: InvestEmbedded & { bare?: boolean };
 }) {
   const t = useT();
   const lang = useLang();
@@ -217,6 +218,16 @@ export function AddMoneyScreen({
     return { orderId: outcome.order.id, expiresAt: outcome.order.expiresAt };
   }
 
+  // An add approved on this card before it was lost (the vault's page, opened again in the middle of
+  // its steps), as this browser kept it for this person and this vault: the card takes it up again.
+  const kept = embedded?.resumeOrder ? recallOrder(embedded.resumeOrder, port.userId) : null;
+  const approved =
+    kept?.terms?.kind === 'vault' &&
+    kept.chain === chain &&
+    sameAddress(chain, kept.terms.vault, vault.address)
+      ? kept.approved
+      : null;
+
   // The wallet that is signed in when it is not the vault's owner: nothing is asked of it.
   const card = (
     <InvestCard
@@ -238,13 +249,17 @@ export function AddMoneyScreen({
       onDone={embedded?.onDone}
       onStopped={embedded?.onStopped}
       onAmount={embedded ? embedded.onAmount : (next) => setText(String(next))}
+      {...(embedded?.hostEnds ? { hostEnds: true } : {})}
+      {...(approved
+        ? { resume: { orderId: approved.order.id, expiresAt: approved.order.expiresAt } }
+        : {})}
     />
   );
 
   // What the add is held to, over the card: the vault's parts and where they were read.
   const context = (
     <div className="flex max-w-3xl flex-col gap-3">
-      <PlanParts vault={vault} />
+      {!embedded?.bare && <PlanParts vault={vault} />}
       {owner && (
         <p
           data-ui="source-mark"

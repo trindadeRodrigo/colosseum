@@ -115,13 +115,24 @@ export type InvestCardProps = {
    * cannot be typed. Said when the wallet is short by more than test funds send.
    */
   amountFrom?: 'field' | 'goal';
+  /**
+   * An order the person already approved on this card, taken up again after the card was lost (a
+   * reload of /goal in the middle of its steps): the card opens on that order, as the order's own
+   * record and our server have it, and makes no other. Nothing about it is read from the host.
+   */
+  resume?: { orderId: string; expiresAt: number; basketId?: string };
+  /** The host says where to go once every step is confirmed: no link of the card's own. */
+  hostEnds?: boolean;
 };
 
 /** What a host that mounts a buy inside its own screen passes: the amount, and what it is told. */
 export type InvestEmbedded = Pick<
   InvestCardProps,
-  'amount' | 'onProgress' | 'onDone' | 'onStopped' | 'onVersionChanged' | 'onAmount'
->;
+  'amount' | 'onProgress' | 'onDone' | 'onStopped' | 'onVersionChanged' | 'onAmount' | 'hostEnds'
+> & {
+  /** The id of an order approved on this card before it was lost: the card takes it up again. */
+  resumeOrder?: string;
+};
 
 type Made = {
   key: string;
@@ -150,6 +161,8 @@ export function InvestCard({
   onVersionChanged,
   onAmount,
   amountFrom = 'field',
+  resume,
+  hostEnds,
 }: InvestCardProps) {
   const t = useT();
   const lang = useLang();
@@ -159,12 +172,14 @@ export function InvestCard({
   const [funding, setFunding] = useState<Funding>({ kind: 'idle' });
   const [fundsRound, setFundsRound] = useState(0);
   const [ticked, setTicked] = useState(false);
-  const [made, setMade] = useState<Made | null>(null);
+  const [made, setMade] = useState<Made | null>(
+    resume ? { key: 'resume', again: false, ...resume } : null,
+  );
   const [placing, setPlacing] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [orderRound, setOrderRound] = useState(0);
   // The person pressed: from then on the card is that order's, whatever is typed or read after.
-  const [started, setStarted] = useState(false);
+  const [started, setStarted] = useState(Boolean(resume));
   const [mockBusy, setMockBusy] = useState(false);
   const [testBusy, setTestBusy] = useState(false);
   const [testOutcome, setTestOutcome] = useState<TestFundsOutcome | null>(null);
@@ -637,6 +652,7 @@ export function InvestCard({
                   runOf.current = null;
                   onStopped?.(stopped);
                 },
+                ...(hostEnds ? { hostEnds: true } : {}),
               }}
             />
           ) : (

@@ -125,4 +125,9 @@ export type OrderEmbed = {
   onProgress?: (progress: InvestProgress) => void;
   onDone?: (done: { orderId: string }) => void;
   onStopped?: (stopped: { orderId: string }) => void;
+  /**
+   * The host says where to go once every step is confirmed (the vault's own page, from /goal): the
+   * order's screen then draws no link of its own under the steps.
+   */
+  hostEnds?: boolean;
 };

@@ -74,6 +74,8 @@ function api(
     family?: () => Response;
     vaults?: ReturnType<typeof vaultOf>[];
     publicOwner?: string;
+    /** The vault's page reads it with a target: a strategy there is to share. */
+    targeted?: boolean;
   } = {},
 ) {
   let chain = 'solana';
@@ -116,7 +118,27 @@ function api(
     if (path.startsWith('/v1/vaults/'))
       return json({
         ...snapshots().value,
-        vault: { ...snapshots().value.vault, owner: options.publicOwner ?? SOLANA },
+        vault: {
+          ...snapshots().value.vault,
+          owner: options.publicOwner ?? SOLANA,
+          ...(options.targeted
+            ? {
+                positions: [
+                  {
+                    asset: 'solana:spyx',
+                    raw: '0',
+                    multiplier: '1',
+                    display: '0',
+                    targetBps: 10_000,
+                    lastKeeperAt: null,
+                    valueUsd: '0',
+                    weightBps: 0,
+                    driftBps: -10_000,
+                  },
+                ],
+              }
+            : {}),
+        },
       });
     if (path === '/v1/orders') return options.order?.() ?? json(publishOrder());
     return json({ error: 'missing' }, 404);
@@ -153,7 +175,7 @@ afterEach(unmountAll);
 
 describe('sharing a selected vault strategy', () => {
   it('offers Share strategy only to the vault owner on its active chain', async () => {
-    api();
+    api({ targeted: true });
     const host = await mount(
       withAccount(
         'en',
@@ -177,8 +199,17 @@ describe('sharing a selected vault strategy', () => {
     });
     expect(host.querySelector('[data-ui="vault-share-strategy"]')).toBeNull();
   });
+  it('offers none for a vault with no targets: a strategy is its targets (gate VAULT-PAGE-ACTIONS)', async () => {
+    api();
+    const host = await mount(
+      withAccount('en', createElement(VaultScreen, { chain: 'solana', address: first })),
+    );
+    await settle(30);
+    expect(host.querySelector('[data-ui="vault-more"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="vault-share-strategy"]')).toBeNull();
+  });
   it('does not offer Share strategy on another person’s public vault', async () => {
-    api({ publicOwner: '11111111111111111111111111111111' });
+    api({ publicOwner: '11111111111111111111111111111111', targeted: true });
     const host = await mount(
       withAccount('en', createElement(VaultScreen, { chain: 'solana', address: first })),
     );

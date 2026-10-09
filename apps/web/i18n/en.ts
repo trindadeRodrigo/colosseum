@@ -652,6 +652,8 @@ export const en = {
       label: 'This vault',
       /** A vault with no name and no goal to name it by. */
       unnamed: (chain: string) => `Your vault on ${chain}`,
+      /** A vault with no name, by its number among the person's vaults, where the server gives one. */
+      numbered: (number: number) => `Vault #${number}`,
       addMoney: 'Add money',
       rename: 'Rename',
       newPlan: 'New plan',
@@ -1475,6 +1477,87 @@ export const en = {
         proposed: 'Proposed strategy',
         previewOnly:
           'Preview only. Your vault has not changed. Applying a strategy update is not available here yet.',
+      },
+      /** The owner's page (gate VAULT-PAGE-ACTIONS): the head, the pair of actions, and the pane they take. */
+      page: {
+        /** A vault with no name, until the server numbers it ("Vault #2"): the chain is said beside the value. */
+        yourVault: 'Your vault',
+        deposit: 'Deposit',
+        more: 'More',
+        editWeights: 'Edit weights by hand',
+        holdings: 'What it holds',
+        /** The bar's leg for the smaller holdings, past the three largest. */
+        others: (count: number) => `${count} others`,
+        /** Under a share: how far it is from the planned share, for a reader who cannot see the colour. */
+        against: (difference: string) => `${difference} against the plan`,
+        onPlan: 'on plan',
+        change:
+          'To change what this vault holds, say it in the conversation: more of one asset, less of another.',
+        details: 'Details',
+        priceSources: 'Price sources',
+        read: 'Read from the chain',
+        copyVault: 'vault address',
+        copyOwner: 'owner address',
+        /** A vault that holds nothing: said once, with the one thing to do next. */
+        empty: {
+          title: 'This vault is empty',
+          withTargets:
+            'Nothing is held in it now. A deposit goes into these assets, at these planned shares.',
+          noTargets:
+            'Nothing is held in it now, and it has no targets yet. Deposit to fund it, and tell the conversation what it should hold.',
+          targets: 'What a deposit goes into',
+          choose: 'Choose what it holds',
+          choosePrompt: 'Help me choose what this vault should hold.',
+          explain: 'Explain its targets',
+          explainPrompt: 'Explain this vault’s targets and what a deposit would go into.',
+        },
+        backToHoldings: 'Back to your holdings',
+        backToVault: 'Back to your vault',
+        amount: 'Deposit amount',
+        /** The pane of each action: its heading before the press, while signing, and once done. */
+        panes: {
+          deposit: {
+            title: 'Deposit into your vault',
+            signTitle: 'Sign your deposit',
+            doneTitle: 'Your deposit is done',
+            lead: 'The whole amount goes into this vault, then into each of its assets by its planned share, one step at a time. You sign each step here.',
+            done: 'Your deposit is in your vault.',
+            resumed:
+              'You approved this deposit before this page was opened again. Its steps are where they were.',
+            stopped: 'This deposit stopped, and its order is kept.',
+          },
+          withdraw: {
+            title: 'Withdraw from your vault',
+            signTitle: 'Sign your withdrawal',
+            doneTitle: 'Your withdrawal is done',
+            lead: 'You sign each step here. The tokens go to your own wallet and nowhere else.',
+            done: 'What you withdrew is in your wallet.',
+            resumed:
+              'You approved this withdrawal before this page was opened again. Its steps are where they were.',
+            stopped: 'This withdrawal stopped, and its order is kept.',
+          },
+          change: {
+            title: 'Edit weights by hand',
+            signTitle: 'Sign the change to your vault',
+            doneTitle: 'Your vault’s targets are changed',
+            lead: 'The first step sets the new targets on chain; the steps after it swap to reach them. You sign each step here.',
+            done: 'Your vault follows its new targets.',
+            resumed:
+              'You approved this change before this page was opened again. Its steps are where they were.',
+            stopped: 'This change stopped, and its order is kept.',
+          },
+        },
+        /** Over the conversation's box while an action has the pane. */
+        waits: {
+          deposit:
+            'The conversation waits while this deposit is open. Finish it, or go back to your holdings.',
+          withdraw:
+            'The conversation waits while this withdrawal is open. Finish it, or go back to your holdings.',
+          change:
+            'The conversation waits while this change is open. Finish it, or go back to your holdings.',
+          signing: 'The conversation waits while the steps are signed.',
+          done: 'Go back to your vault to carry on the conversation.',
+        },
       },
       address: 'Vault address',
       workspaceLead: (chain: string) =>

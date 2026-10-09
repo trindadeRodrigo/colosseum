@@ -78,7 +78,12 @@ const DRAWINGS = new Set([
 ]);
 
 /** The only places the popover's shadow may sit: popovers, and the composer. */
-const SHADOWED = new Set(['components/ui/ProvenancePin.tsx', 'components/ui/Composer.tsx']);
+const SHADOWED = new Set([
+  'components/ui/ProvenancePin.tsx',
+  'components/ui/Composer.tsx',
+  // the popover behind "More" on a vault's own page
+  'features/shared/VaultScreen.tsx',
+]);
 
 /** Uppercase is for captions and column heads at 12px or less (STYLE.md): it sits beside that size. */
 const CAPTION =

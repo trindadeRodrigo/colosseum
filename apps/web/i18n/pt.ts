@@ -571,6 +571,7 @@ export const pt: Dictionary = {
     actions: {
       label: 'Este cofre',
       unnamed: (chain: string) => `Seu cofre na ${chain}`,
+      numbered: (number: number) => `Cofre #${number}`,
       addMoney: 'Adicionar dinheiro',
       rename: 'Renomear',
       newPlan: 'Novo plano',
@@ -1351,6 +1352,81 @@ export const pt: Dictionary = {
         proposed: 'Estratégia proposta',
         previewOnly:
           'Somente uma prévia. Seu cofre não mudou. Aplicar uma atualização de estratégia ainda não está disponível aqui.',
+      },
+      /** A página de quem é dono (gate VAULT-PAGE-ACTIONS). */
+      page: {
+        yourVault: 'Seu cofre',
+        deposit: 'Depositar',
+        more: 'Mais',
+        editWeights: 'Editar pesos à mão',
+        holdings: 'O que ele guarda',
+        others: (count: number) => `${count} outros`,
+        against: (difference: string) => `${difference} em relação ao plano`,
+        onPlan: 'no plano',
+        change:
+          'Para mudar o que este cofre guarda, diga na conversa: mais de um ativo, menos de outro.',
+        details: 'Detalhes',
+        priceSources: 'Fontes dos preços',
+        read: 'Lido da rede',
+        copyVault: 'endereço do cofre',
+        copyOwner: 'endereço de quem é dono',
+        empty: {
+          title: 'Este cofre está vazio',
+          withTargets:
+            'Nada está guardado nele agora. Um depósito entra nestes ativos, nestas fatias planejadas.',
+          noTargets:
+            'Nada está guardado nele agora, e ele ainda não tem metas. Deposite para abastecê-lo e diga na conversa o que ele deve guardar.',
+          targets: 'Para onde vai um depósito',
+          choose: 'Escolher o que ele guarda',
+          choosePrompt: 'Me ajude a escolher o que este cofre deve guardar.',
+          explain: 'Explicar as metas',
+          explainPrompt: 'Explique as metas deste cofre e para onde iria um depósito.',
+        },
+        backToHoldings: 'Voltar ao que você tem',
+        backToVault: 'Voltar ao seu cofre',
+        amount: 'Valor do depósito',
+        panes: {
+          deposit: {
+            title: 'Depositar no seu cofre',
+            signTitle: 'Assine seu depósito',
+            doneTitle: 'Seu depósito está feito',
+            lead: 'O valor inteiro entra neste cofre e depois em cada ativo dele, pela fatia planejada, um passo de cada vez. Você assina cada passo aqui.',
+            done: 'Seu depósito está no seu cofre.',
+            resumed:
+              'Você aprovou este depósito antes de esta página ser aberta de novo. Os passos estão onde estavam.',
+            stopped: 'Este depósito parou, e a ordem dele está guardada.',
+          },
+          withdraw: {
+            title: 'Sacar do seu cofre',
+            signTitle: 'Assine seu saque',
+            doneTitle: 'Seu saque está feito',
+            lead: 'Você assina cada passo aqui. Os tokens vão para a sua própria carteira e para nenhum outro lugar.',
+            done: 'O que você sacou está na sua carteira.',
+            resumed:
+              'Você aprovou este saque antes de esta página ser aberta de novo. Os passos estão onde estavam.',
+            stopped: 'Este saque parou, e a ordem dele está guardada.',
+          },
+          change: {
+            title: 'Editar pesos à mão',
+            signTitle: 'Assine a mudança no seu cofre',
+            doneTitle: 'As metas do seu cofre mudaram',
+            lead: 'O primeiro passo grava as novas metas na rede; os seguintes trocam para chegar a elas. Você assina cada passo aqui.',
+            done: 'Seu cofre segue as novas metas.',
+            resumed:
+              'Você aprovou esta mudança antes de esta página ser aberta de novo. Os passos estão onde estavam.',
+            stopped: 'Esta mudança parou, e a ordem dela está guardada.',
+          },
+        },
+        waits: {
+          deposit:
+            'A conversa espera enquanto este depósito está aberto. Termine, ou volte ao que você tem.',
+          withdraw:
+            'A conversa espera enquanto este saque está aberto. Termine, ou volte ao que você tem.',
+          change:
+            'A conversa espera enquanto esta mudança está aberta. Termine, ou volte ao que você tem.',
+          signing: 'A conversa espera enquanto os passos são assinados.',
+          done: 'Volte ao seu cofre para continuar a conversa.',
+        },
       },
       address: 'Endereço do cofre',
       workspaceLead: (chain: string) =>
