@@ -260,19 +260,19 @@ export const en = {
       /** The API would not start them on the chain asked for (409, 422). */
       refused:
         'Our server didn’t take a chain for the wallets you signed in with, so I can’t build for you yet. Sign out, then sign in again.',
-      body: 'I can’t tell yet which chain your plan lives on: our server didn’t answer. Nothing is wrong with your wallet.',
+      body: 'I can’t tell yet which chain your vault lives on: our server didn’t answer. Nothing is wrong with your wallet.',
       retry: 'Ask again',
       asking: 'Asking…',
       /** The API answered 401: it does not know this sign-in any more. */
       signedOut:
-        'Our server doesn’t recognise your sign-in any more, so I can’t tell which chain your plan lives on. Sign out, then sign in again.',
+        'Our server doesn’t recognise your sign-in any more, so I can’t tell which chain your vault lives on. Sign out, then sign in again.',
       /** The API answered 401 because the identity token was not sent, even after asking for a new one. */
       noIdentity:
-        'I can’t tell yet which chain your plan lives on: the sign-in service didn’t give me the part of your sign-in that lists your wallets, so our server can’t check them. Nothing is wrong with your wallet. Wait a minute, then ask again.',
+        'I can’t tell yet which chain your vault lives on: the sign-in service didn’t give me the part of your sign-in that lists your wallets, so our server can’t check them. Nothing is wrong with your wallet. Wait a minute, then ask again.',
     },
     noWallet:
-      'You’re signed in, but no wallet is linked to this sign-in yet, so there is no chain for your plan.',
-    reading: 'Reading where your plan lives…',
+      'You’re signed in, but no wallet is linked to this sign-in yet, so there is no chain for your vault.',
+    reading: 'Reading where your vault lives…',
     /** The chain of a new plan, chosen on the page where it starts (gate CHAIN-AT-THE-PLAN). */
     choice: {
       legend: 'Chain for this vault',

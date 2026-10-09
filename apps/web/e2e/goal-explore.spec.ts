@@ -74,3 +74,28 @@ test('new-goal exploration opens a responsive preview-only workbench', async ({ 
   }
   expect(financialPosts).toEqual([]);
 });
+
+// An address no route has (gate WORDS-ONE-NAME, row 1 of its audit): 404, in the product's shell and
+// in its words, never the first structurer's page.
+test('an unknown address answers 404 in the product’s shell, with one way on', async ({ page }) => {
+  for (const path of ['/no-such-page', '/a/b/c']) {
+    const answer = await page.goto(path);
+    expect(answer?.status(), path).toBe(404);
+    const missing = page.locator('[data-ui="not-found"]');
+    await expect(missing.getByRole('heading', { level: 1 })).toHaveText(en.shell.missing.title);
+    await expect(page).toHaveTitle(`${en.shell.missing.title} · tenonfi`);
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+    // the product's own bar, and nothing of the first shell
+    await expect(page.locator('header a[href="/goal"]').first()).toBeAttached();
+    await expect(page.getByText('Select Wallet')).toHaveCount(0);
+    await expect(page.getByText('Structurer')).toHaveCount(0);
+    await expect(missing.getByRole('link', { name: en.shell.missing.action })).toHaveAttribute(
+      'href',
+      '/goal',
+    );
+  }
+  const result = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze();
+  expect(result.violations.map((v) => v.id)).toEqual([]);
+});

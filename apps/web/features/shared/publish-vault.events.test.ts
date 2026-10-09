@@ -156,7 +156,7 @@ beforeEach(() => {
 afterEach(unmountAll);
 
 describe('sharing a selected vault strategy', () => {
-  it('offers Share strategy to the vault’s owner on the vault’s own chain, whatever chain new plans start on', async () => {
+  it('offers Publish as a portfolio to the vault’s owner on the vault’s own chain, whatever chain new plans start on', async () => {
     api();
     const host = await mount(
       withAccount(
@@ -182,7 +182,7 @@ describe('sharing a selected vault strategy', () => {
     });
     expect(host.querySelector('[data-ui="vault-share-strategy"]')).toBeNull();
   });
-  it('does not offer Share strategy where no wallet of the person signs on the vault’s chain', async () => {
+  it('does not offer Publish as a portfolio where no wallet of the person signs on the vault’s chain', async () => {
     api({ chainOptions: ['robinhood'] });
     const host = await mount(
       withAccount('en', createElement(VaultScreen, { chain: 'solana', address: first })),
@@ -202,7 +202,7 @@ describe('sharing a selected vault strategy', () => {
     expect(find<HTMLSelectElement>(host, 'select').value).toBe(second);
     expect(host.querySelectorAll('[data-ui="publish-row"]')).toHaveLength(3);
   });
-  it('does not offer Share strategy on another person’s public vault', async () => {
+  it('does not offer Publish as a portfolio on another person’s public vault', async () => {
     api({ publicOwner: '11111111111111111111111111111111' });
     const host = await mount(
       withAccount('en', createElement(VaultScreen, { chain: 'solana', address: first })),

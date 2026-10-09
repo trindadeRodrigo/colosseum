@@ -73,7 +73,7 @@ export const bearingEn = {
     us_holiday: 'holiday',
   },
   reasons: {
-    no_samples_in_regime: 'not measured yet',
+    no_samples_in_regime: 'not measured at this time of week yet',
     insufficient_samples: 'too few samples to fit',
     not_a_number: 'the stored value could not be used',
     beyond_measured_size: 'beyond the largest size measured',
