@@ -43,7 +43,7 @@ That starts the API on `:3002` and the web on `:3010`; Ctrl-C stops both. `pnpm 
 
 Chrome or Safari, at `http://localhost:3010`.
 
-1. **Sign in** with "Continue with a passkey" (or "Create a new passkey" the first time). Use the passkey, not Phantom: Phantom adds instructions of its own to a devnet transaction and the guard refuses them. Choose **Solana** as the chain your plan lives on. The bar shows your Solana address.
+1. **Sign in** with "Use my passkey" (or "Create a passkey" the first time). Use the passkey, not Phantom: Phantom adds instructions of its own to a devnet transaction and the guard refuses them. Choose **Solana** as the chain your plan lives on. The bar shows your Solana address.
 2. **Invest** (`/goal`): say the goal (about $20 is plenty), answer what is asked, confirm the sheet, "Build my plan".
 3. **See your plan** (`/plan/<id>`): the holdings with their pins, the card's line "Sample figures · test network", the disclaimer. "Buy this plan".
 4. **Fund** (`/plan/<id>/buy`): "What your wallet needs" with tUSDC and SOL. Short: press "Get test funds" (with the faucet key), or fund by hand and "Read my wallet again".
