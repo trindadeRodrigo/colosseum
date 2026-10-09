@@ -1223,7 +1223,7 @@ const wholeBps = (share: Pick<PersonShare, 'bps'>) =>
   Number.isInteger(share.bps) && share.bps >= 0 && share.bps <= 10_000;
 /** A share and where it sits in its piece. */
 type Found = PersonShare & { start: number; end: number };
-type PersonShare = {
+export type PersonShare = {
   assetIds: string[];
   kind: 'exact' | 'min' | 'max';
   bps: number;
@@ -1421,7 +1421,7 @@ const replaces = (next: PersonShare, earlier: PersonShare) =>
  * reports). For the latest message: `withdrawn` the shares it withdrew, `unread` the pieces that read
  * as a share and set none, and `rest` where it said the rest should go, with the assets it named.
  */
-function personShares(
+export function personShares(
   messages: VaultAgentRequest['messages'],
   language: 'en' | 'pt',
   assets: BasketAsset[],

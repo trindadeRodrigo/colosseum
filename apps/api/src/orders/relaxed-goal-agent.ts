@@ -17,6 +17,7 @@ import {
   FIGURE_REMOVED,
   type GoalAgentContext,
   hasFinancialFigure,
+  personShares,
   requestedStocks,
   statedPurposeIn,
   trimFigureSentences,
@@ -188,7 +189,7 @@ What you are free to do: read intent, including people, companies, themes, nickn
 
 Four rules, which the code after you also enforces:
 1. You may only name holdings that appear on the table, by their exact id. If a thing they named is not there (a private company, a stock not on this chain), say so instead of substituting.
-2. You never choose weights yourself. When the person gives a share for a pot or for a holding ("80% in yield", "all of the income part in syrupUSDC", "20% in big tech"), you pass it on as that pot's or that line's "share" (0 to 1, of the pot for a line, of the money for a pot) and the code applies it exactly. Lines with no share stated split equally. Each holding has a cap on the table: the most of the money the vault lets it hold today. A cap never stops you: if the person asks for more, pass their share on as asked; the code applies it and shows a warning that the vault would refuse that split until the cap is lifted. Mention it in one short sentence, no more.
+2. You never choose weights yourself. When the person gives a share for a pot or for a holding ("80% in yield", "all of the income part in syrupUSDC", "20% in big tech"), you pass it on as that pot's or that line's "share" (0 to 1, of the pot for a line, of the money for a pot). The code applies a share only where it reads the same number in the person's own words beside the same holding or kind of holding; a share you report that it does not find there is not applied, so never describe a share as applied unless the person stated it plainly. Lines with no share stated split equally. Each holding has a cap on the table: the most of the money the vault lets it hold today. A cap never stops you: if the person asks for more, pass their share on as asked; the code applies it and shows a warning that the vault would refuse that split until the cap is lifted. Mention it in one short sentence, no more.
 3. You never compute or estimate a return, a projection, a price or how long money lasts, and you never promise a return. Write no figure in "say", in a "why" or in a pot's name: no digit, no percent or currency sign, no price, yield, return or date, not as words either ("five percent"), and never "guaranteed" or "risk-free". The code cuts every sentence that does. The person's numbers go in the sheet ("stated", "share"), where the code reads them and shows them; to repeat what they said, quote them exactly: You said “...”. A holding's yield is on the plan beside your message, with its source; point to it instead of stating it. The code computes every projection from the table's readings and prints it under your message as soon as the amount and the date or the monthly withdrawals are in the sheet; refer to it ("the projection below") instead of doing sums. A holding with no yield on the table earns nothing in that projection.
 4. Nothing is built until the person confirms. Before that, you need: the amount for any plan; when they will need the money for a plan to grow or to protect; the monthly income they want for an income plan; the shares for a split, if not stated. Ask for what is missing while you work, never for what they already said, and never guess a number. Propose lines as soon as you know enough of the intent; the person sees the plan build beside the chat.
 
@@ -589,6 +590,45 @@ export function createRelaxedGoalAgent(options: {
         }
       } else
         pots.push({ name: r.shape, shape: r.shape, given: null, lines: keep(r.lines, r.shape) });
+      // ---- code: no weight from the model (CLAUDE.md, RELAXED-INTAKE, ANY-COMPOSITION) ----
+      // A share sets a weight only where the server reads it in the person's own messages
+      // (`personShares`, the reader the vault conversation uses): what the model reports as "share" is
+      // its reading and never applied by itself. One pot: each holding takes the exact share the person
+      // gave that holding, whatever the model wrote. Several pots: a pot's share stands only where the
+      // person gave that number for what the pot holds, and a holding's share in its pot only where the
+      // two together are the share the person gave that holding. Everything else splits equally.
+      const exact = personShares(messages, language, assets, companies).standing.filter(
+        (share) => share.kind === 'exact',
+      );
+      const ofHolding = (id: string) =>
+        exact.find((share) => share.assetIds.length === 1 && share.assetIds[0] === id);
+      const same = (bps: number, fraction: number) => Math.abs(bps - fraction * 10_000) <= 1;
+      if (pots.length === 1)
+        for (const pot of pots)
+          for (const l of pot.lines) {
+            const read = ofHolding(l.asset.id);
+            l.share = read ? read.bps / 10_000 : null;
+          }
+      else
+        for (const pot of pots) {
+          const ids = pot.lines.map((l) => l.asset.id);
+          const given = pot.given;
+          const stands =
+            given != null &&
+            ids.length > 0 &&
+            exact.some(
+              (share) => ids.every((id) => share.assetIds.includes(id)) && same(share.bps, given),
+            );
+          pot.given = stands ? given : null;
+          for (const l of pot.lines) {
+            const read = ofHolding(l.asset.id);
+            const share = l.share;
+            l.share =
+              stands && given != null && share != null && read && same(read.bps, given * share)
+                ? share
+                : null;
+          }
+        }
       if (dropped.length) log('ids not on the catalog', dropped.length);
       if (dropped.length)
         notes.push(

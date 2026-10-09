@@ -238,7 +238,11 @@ describe('relaxed intake: what a plan for its goal may hold', () => {
       'half a reserve, half growth',
     );
     expect(weights(reply).TSLAx).toBeUndefined();
-    expect(weights(reply).NVDAx).toBe(5000);
+    // "half" is not a share the server reads, so the model's 0.5 sets nothing: the one pot left holds it all
+    expect(weights(reply).NVDAx).toBe(10_000);
+    expect(notes(reply)).toContain(
+      'The reserve pot has no holding left, so it is not in this draft.',
+    );
   });
 
   it('the goal the server read wins over the model’s shape (protect read, grow said)', async () => {
@@ -347,7 +351,7 @@ describe('relaxed intake: the split', () => {
   it('a stated share and an unstated one: the rest goes to the unstated one', async () => {
     const reply = await run(
       { shape: 'pick', lines: [line('solana:usdy', 0.25), line('solana:paxg')] },
-      '25% USDY and PAXG',
+      'I want 25% USDY, the rest in PAXG',
     );
     expect(weights(reply)).toEqual({ USDY: 2500, PAXG: 7500 });
   });
@@ -362,7 +366,7 @@ describe('relaxed intake: the split', () => {
           { name: 'trash', shape: 'pick', share: 0.2, lines: [line('solana:nothing')] },
         ],
       },
-      'split it',
+      'I want 40% USDY and 40% NVDA',
     );
     expect(weights(reply)).toEqual({ USDY: 4000, NVDAx: 4000, USDC: 2000 });
     expect(notes(reply)).toContain(
@@ -377,6 +381,76 @@ describe('relaxed intake: the split', () => {
       'The deposit step buys exactly these holdings and shares, after the server checks every line again.',
     );
     expect(notes(reply)).not.toContain('solver');
+  });
+});
+
+describe('relaxed intake: the model never sets a weight on its own', () => {
+  const APPLIED = 'The shares you gave are applied exactly.';
+  it('splits equally when the person gave no share, whatever the model reports', async () => {
+    const reply = await run(
+      { shape: 'pick', lines: [line('solana:tslax', 0.9), line('solana:usdy', 0.1)] },
+      'I like Tesla and some yield',
+    );
+    expect(weights(reply)).toEqual({ TSLAx: 5000, USDY: 5000 });
+    expect(notes(reply)).not.toContain('The shares you gave');
+    expect(notes(reply)).toContain('Equal split until you say otherwise.');
+  });
+  it('applies the shares the server reads in the person’s words, not the model’s version of them', async () => {
+    const reply = await run(
+      { shape: 'pick', lines: [line('solana:tslax', 0.9), line('solana:nvdax', 0.1)] },
+      'I want 70% TSLA and 30% NVDA',
+    );
+    expect(weights(reply)).toEqual({ TSLAx: 7000, NVDAx: 3000 });
+    expect(notes(reply)).toContain(APPLIED);
+  });
+  it('applies them when the model reports none', async () => {
+    const reply = await run(
+      { shape: 'pick', lines: [line('solana:tslax'), line('solana:nvdax')] },
+      'I want 70% TSLA and 30% NVDA',
+    );
+    expect(weights(reply)).toEqual({ TSLAx: 7000, NVDAx: 3000 });
+  });
+  it('does not read a return or someone else’s view as a share', async () => {
+    for (const words of [
+      'Tesla and Nvidia, I hope for 70% a year',
+      'My friend says 70% TSLA and 30% NVDA is too risky',
+    ]) {
+      const reply = await run(
+        { shape: 'pick', lines: [line('solana:tslax', 0.7), line('solana:nvdax', 0.3)] },
+        words,
+      );
+      expect(weights(reply), words).toEqual({ TSLAx: 5000, NVDAx: 5000 });
+      expect(notes(reply), words).not.toContain('The shares you gave');
+    }
+  });
+  it('a share the person withdrew no longer holds', async () => {
+    const reply = await run(
+      { shape: 'pick', lines: [line('solana:tslax', 0.7), line('solana:nvdax', 0.3)] },
+      ['I want 70% TSLA and 30% NVDA', 'Split it equally'],
+    );
+    expect(weights(reply)).toEqual({ TSLAx: 5000, NVDAx: 5000 });
+  });
+  it('takes a pot’s share only where the server reads it for what the pot holds', async () => {
+    const pots = (share: number) => ({
+      shape: 'split' as const,
+      lines: [],
+      buckets: [
+        {
+          name: 'Stocks',
+          shape: 'grow' as const,
+          share,
+          lines: [line('solana:tslax'), line('solana:nvdax')],
+        },
+        { name: 'Yield', shape: 'pick' as const, share: null, lines: [line('solana:usdy')] },
+      ],
+    });
+    const read = await run(pots(0.4), 'I want 40% stocks');
+    expect(weights(read)).toEqual({ TSLAx: 2000, NVDAx: 2000, USDY: 6000 });
+    const unread = await run(pots(0.9), 'Mostly stocks, some yield');
+    expect(weights(unread)).toEqual({ TSLAx: 2500, NVDAx: 2500, USDY: 5000 });
+    expect(notes(unread)).not.toContain('The shares you gave');
+    const other = await run(pots(0.9), 'I want 40% stocks');
+    expect(weights(other)).toEqual({ TSLAx: 2500, NVDAx: 2500, USDY: 5000 });
   });
 });
 
@@ -550,15 +624,15 @@ describe('relaxed intake: the most a vault holds', () => {
     );
     expect(reply.proposal?.allocations).toHaveLength(16);
   });
-  it('sixteen and the cash line the shares left: cash is not counted', async () => {
+  it('sixteen and a cash line: cash is not counted', async () => {
     const stocks = many(16);
     const reply = await run(
-      { shape: 'pick', lines: stocks.map((a) => line(a.id, 0.05)) },
-      'all the tech you have',
+      { shape: 'pick', lines: [...stocks.map((a) => line(a.id)), line('solana:usdc')] },
+      'all the tech you have, and some cash',
       ctx(stocks),
     );
     expect(reply.proposal?.allocations).toHaveLength(17);
-    expect(weights(reply).USDC).toBe(2000);
+    expect(weights(reply).USDC).toBeGreaterThan(0);
   });
   it('previews nothing for more than sixteen, and says why', async () => {
     const stocks = many(18);
