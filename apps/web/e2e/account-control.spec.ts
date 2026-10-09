@@ -58,13 +58,14 @@ test('from the landing: "Sign in" opens the dialog over it, and the bar is the p
   await expect(dialog).toHaveCount(0);
   // still on the landing, and the same chip as the product's bar: the chain, and the menu
   await expect(page).toHaveURL(/\/$/);
-  await expect(chip(page)).toHaveAttribute('data-chain', 'solana');
+  await expect(chip(page)).toHaveAttribute('data-ready', '');
   await expect(chip(page)).toBeFocused();
   await expect(bar.getByRole('link', { name: en.shell.signIn })).toHaveCount(0);
   await check(page, 'landing, signed in');
   await chip(page).click();
   const menu = page.locator('[data-ui="account-menu"]');
-  await expect(menu.getByRole('button', { name: en.shell.copyAddress })).toBeVisible();
+  await expect(menu.getByRole('button', { name: en.shell.copyAddress })).toHaveCount(2);
+  await expect(chip(page)).toHaveText(en.shell.accountLabel);
   await check(page, 'landing, the account menu');
   // signed out from the menu, the bar's way in is back, with focus
   await menu.locator('[data-ui="sign-out"]').click();
@@ -88,7 +89,7 @@ test('from /goal: the page’s "Sign in" is the bar’s, and both are the person
   await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click({ timeout: 60_000 });
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/goal$/);
-  await expect(chip(page)).toHaveAttribute('data-chain', 'solana');
+  await expect(chip(page)).toHaveAttribute('data-ready', '');
   await expect(page.getByText(en.goal.explore.signIn)).toHaveCount(0);
   await expect(mine).toHaveCount(0);
   await expect(page.locator('[data-ui="goal-conversation"] textarea')).toBeEnabled();

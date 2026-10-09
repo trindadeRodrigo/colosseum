@@ -21,7 +21,17 @@ describe('EmbedShell (embed-shell.md)', () => {
   it('has no navigation, no wallet and nothing to sign', () => {
     expect(all(root, (e) => role(e) === 'navigation')).toHaveLength(0);
     const buttons = all(root, tag('button')).filter(
-      (b) => !['pin', 'copy-button', 'pin-source'].includes(b.attrs['data-ui'] ?? ''),
+      // a pin, what its popover holds (its details, a copy of the source or of an address), and the
+      // tooltip of a signature cut short
+      (b) =>
+        ![
+          'pin',
+          'copy-button',
+          'pin-details',
+          'pin-copy',
+          'pin-copy-address',
+          'hint-trigger',
+        ].includes(b.attrs['data-ui'] ?? ''),
     );
     expect(buttons).toHaveLength(0);
     expect(html(embed.ready)).not.toMatch(/wallet|Sign in|Connect/i);
@@ -96,7 +106,7 @@ describe('EmbedShell (embed-shell.md)', () => {
     expect(all(loading, ui('embed-slow'))).toHaveLength(0);
     const slow = render(embed.slow);
     expect(text(one(slow, (e) => e.attrs.role === 'status'))).toBe(
-      'Loading plan…Waking the data service: this can take up to a minute the first time.',
+      'Loading plan…Still loading. The server may be waking up.',
     );
   });
 

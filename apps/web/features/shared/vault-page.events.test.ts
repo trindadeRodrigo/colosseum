@@ -3,7 +3,7 @@ import type { OrderDetail, VaultView } from '@colosseum/schemas';
 import { type ExecutionResult, type ExecutorDeps, solanaVaultAddress } from '@colosseum/sdk';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
+import { click, find, hintOf, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
@@ -385,9 +385,12 @@ describe('the owner’s page at rest', () => {
     expect(find(details, 'summary').textContent).toBe(p.details);
     const address = find(details, '[data-ui="vault-address"]');
     expect(address.textContent).not.toContain(MY_VAULT);
-    expect(find(address, 'span[title]').getAttribute('title')).toBe(MY_VAULT);
+    // the first hint is the address's own; the copy button has one too
+    expect(await hintOf(address.querySelector('[data-ui="hint"]') as Element)).toBe(MY_VAULT);
     expect(address.querySelector('[data-ui="copy-button"]')).not.toBeNull();
-    expect(find(details, '[data-ui="vault-owner"] span[title]').getAttribute('title')).toBe(SOLANA);
+    expect(
+      await hintOf(details.querySelector('[data-ui="vault-owner"] [data-ui="hint"]') as Element),
+    ).toBe(SOLANA);
     // the auto-follow note is beside the setting, not among the actions
     const note = find(host, '[data-ui="vault-auto-follow-off"]');
     expect(details.contains(note)).toBe(true);
@@ -502,7 +505,9 @@ describe('the pane’s states, and the way out of each', () => {
     );
     expect(host.querySelectorAll('h1')).toHaveLength(1);
     expect(pane(host).querySelector('h1')).toBeNull();
-    expect(pane(host).querySelector('a[href="/monitor"]')).toBeNull();
+    // the one way to the portfolio is the page's own, to the board: nothing leads to the monitor
+    expect(find(host, '[data-ui="vault-back"]').getAttribute('href')).toBe('/portfolio');
+    expect(host.querySelector('a[href="/monitor"]')).toBeNull();
     expect(pane(host).querySelector('[data-action="leave-action"]')).not.toBeNull();
   });
 
@@ -550,7 +555,8 @@ describe('the pane’s states, and the way out of each', () => {
     );
     // done: the page's own way on, and no link of the order's
     expect(pane(again).querySelector('[data-ui="order-next"]')).toBeNull();
-    expect(pane(again).querySelector('a[href="/monitor"]')).toBeNull();
+    expect(find(again, '[data-ui="vault-back"]').getAttribute('href')).toBe('/portfolio');
+    expect(again.querySelector('a[href="/monitor"]')).toBeNull();
     expect(pane(again).querySelectorAll('[data-variant="primary"]')).toHaveLength(1);
     expect(find(again, '[data-ui="vault-chat-waits"]').textContent).toBe(p.waits.done);
     expect(recallAction(USER, 'solana', MY_VAULT)).toBeNull();

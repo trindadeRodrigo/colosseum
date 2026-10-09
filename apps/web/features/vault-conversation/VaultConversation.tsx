@@ -18,12 +18,15 @@ import { DraftBuilding, PendingReply, ReplyAnnouncer, useChatScroll } from '../s
 import { useApiFetch } from '../wallet/WalletProvider';
 import {
   agentReplyOf,
+  figuredOf,
+  referencesIn,
   replyText,
   type VaultAgent,
   VaultAgentError,
   type VaultAgentReply,
   vaultAgent,
 } from './agent';
+import { FiguredText } from './Figures';
 import { StrategyPreview, WeightNotes } from './StrategyPreview';
 import {
   conversationKey,
@@ -33,6 +36,8 @@ import {
   serverConversation,
   type Turn,
   transcriptOf,
+  withinFigureBudget,
+  withoutFigures,
   writeLocal,
 } from './storage';
 
@@ -83,6 +88,16 @@ export function VaultConversation({
   const key = conversationKey(userId, read.chain, read.vault.address, read.provenance, network);
   const context = `${key}:${read.vault.observedAt}`;
   const [turns, setTurns] = useState<Turn[]>([]);
+  // The reader's clock, read when the messages change: a kept figure says how old it is by it.
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    if (turns.length > 0) setNow(Date.now());
+  }, [turns]);
+  // and once a minute after, so an age appears in a tab left open
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(tick);
+  }, []);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -251,7 +266,33 @@ export function VaultConversation({
         plainText(result.message),
         result.question ? plainText(result.question) : undefined,
       );
-      const completed = [...next, { id: crypto.randomUUID(), who: 'app' as const, text: message }];
+      // A reply that stated figures is kept with them as served: its words with each figure's place
+      // held, and what each figure was then. Read again later, it shows that, never today's.
+      const facts = result.figures?.facts ?? [];
+      const kept = (text: string, template: string): Turn => {
+        const figures = template.length <= 8000 ? figuredOf(template, facts) : undefined;
+        // Figures that cannot be kept are never kept as bare values: their places say so.
+        const stated = referencesIn(template).length > 0;
+        return {
+          id: crypto.randomUUID(),
+          who: 'app',
+          text: stated && !figures ? withoutFigures(template, copy.figureNotKept) : text,
+          ...(figures ? { figures } : {}),
+        };
+      };
+      const prose = result.figures?.prose;
+      let completed = [
+        ...next,
+        kept(
+          message,
+          prose
+            ? replyText(
+                plainText(prose.message),
+                prose.question ? plainText(prose.question) : undefined,
+              )
+            : message,
+        ),
+      ];
       if (result.proposal) {
         const lines = [
           result.proposal.objective,
@@ -260,16 +301,23 @@ export function VaultConversation({
               `${line.symbol ?? line.assetId} (${line.assetId}): ${share(language, line.weightBps)} [${line.evidenceIds.join(', ')}]`,
           ),
         ].map(plainText);
+        // the same lines with the objective's figures in their places
+        const held = [plainText(prose?.proposal?.objective ?? lines[0] ?? ''), ...lines.slice(1)];
         let chunk = copy.draftIntro;
-        for (const line of lines) {
-          if (chunk.length + line.length + 1 > 8000) {
-            completed.push({ id: crypto.randomUUID(), who: 'app', text: chunk });
+        let template = copy.draftIntro;
+        lines.forEach((line, at) => {
+          const place = held[at] ?? line;
+          if (Math.max(chunk.length + line.length, template.length + place.length) + 1 > 8000) {
+            completed.push(kept(chunk, template));
             chunk = copy.draftIntro;
+            template = copy.draftIntro;
           }
           chunk += `\n${line}`;
-        }
-        completed.push({ id: crypto.randomUUID(), who: 'app', text: chunk });
+          template += `\n${place}`;
+        });
+        completed.push(kept(chunk, template));
       }
+      completed = withinFigureBudget(completed, copy.figureNotKept);
       if (!transcriptOf({ revision: revision.current, transcript: completed })) {
         setAnnounced('');
         setError(copy.capacity);
@@ -396,8 +444,12 @@ export function VaultConversation({
                 ].some((prefix) => turn.who === 'app' && turn.text.startsWith(prefix)) ? (
                   <details data-ui="vault-draft-record">
                     <summary className="cursor-pointer text-body-sm">{copy.proposed}</summary>
-                    <p className="pt-2 text-caption">{turn.text}</p>
+                    <p className="pt-2 text-caption">
+                      {turn.figures ? <FiguredText {...turn.figures} now={now} /> : turn.text}
+                    </p>
                   </details>
+                ) : turn.figures ? (
+                  <FiguredText {...turn.figures} now={now} />
                 ) : (
                   turn.text
                 )}
@@ -477,6 +529,7 @@ export function VaultConversation({
           <section data-ui="vault-proposal">
             <StrategyPreview
               proposal={proposal}
+              {...(reply?.figures ? { figures: reply.figures, now } : {})}
               targets={targets}
               onDiscuss={() => draftMessage(copy.discussPrompt)}
               {...(applying !== reply && reply

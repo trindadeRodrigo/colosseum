@@ -63,7 +63,12 @@ async function toVault(page: Page): Promise<string> {
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await expect(dialog).toHaveCount(0);
-  const shownWallet = page.locator('[data-ui="account-menu-button"] span[title]').first();
+  // the person's Solana wallet, as the account menu lists it (the phone's sheet holds the same block)
+  const shownWallet = page
+    .locator(
+      '[data-ui="compact-nav-sheet"] [data-ui="account-wallet"][data-chain="solana"] [data-ui="account-address"]',
+    )
+    .first();
   await expect(shownWallet).toHaveAttribute('title', /.+/);
   const owner = await shownWallet.getAttribute('title');
   const source = await page.request.post(`${STUB}/__stub/source-vault`, {

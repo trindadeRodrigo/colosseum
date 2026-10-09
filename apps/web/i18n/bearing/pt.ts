@@ -91,6 +91,31 @@ export const bearingPt: BearingDictionary = {
     no_price_source: 'sem fonte de preço',
     no_quote_price: 'sem preço em dólar para a moeda de cotação',
   },
+  why: {
+    no_samples_in_regime:
+      'Sem número: a Bearing ainda não tem leituras para este período da semana.',
+    insufficient_samples: 'Sem número: há poucas leituras para medir isto.',
+    not_a_number: 'Sem número: o valor guardado não pôde ser usado.',
+    beyond_measured_size: 'Sem número: este tamanho está acima do maior que a Bearing mediu.',
+    no_reference_price:
+      'Sem número: a Bearing não tem preço de referência deste ativo naquele momento.',
+    no_external_source:
+      'Sem número: isto precisa de uma fonte externa de preço que não está conectada.',
+    chain_not_covered: 'Sem número: a Bearing não coleta isto nesta rede.',
+    not_collected: 'Sem número: isto está na rede, e a Bearing ainda não coleta.',
+    not_imported: 'Sem número: isto foi coletado e ainda não está nas tabelas da Bearing.',
+    not_followed: 'Sem número: estas liquidações não foram acompanhadas depois da transação.',
+    before_routed_curves: 'Sem número: esta leitura é de antes de a Bearing medir saídas roteadas.',
+    gate_open: 'Sem número: ainda não está definido como medir isto.',
+    not_applicable: 'Sem número: isto não se aplica a este ativo ou pool.',
+    not_served: 'Sem número: isto ainda não é medido aqui.',
+    api_error: 'Sem número: a API não respondeu.',
+    nothing_selected: 'Sem número: nada está selecionado.',
+    no_price_source: 'Sem número: este ativo não tem fonte de preço.',
+    no_quote_price:
+      'Sem número: a moeda de cotação do pool não tem preço em dólar, então o valor não pode ser calculado.',
+    no_oracle: 'Sem número: este ativo não tem oráculo de preço que o cofre possa conferir.',
+  },
   filter: {
     all: (n: number) => `Todos (${n})`,
     none: 'Nenhum',

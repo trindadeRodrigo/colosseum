@@ -86,7 +86,12 @@ async function publish(page: Page, name: string, weights: [string, string][], ph
   await expect(page.getByText(en.shared.publish.noVaults, { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: en.shared.publish.review })).toBeDisabled();
   await expect(page.locator('[data-ui="publish-row"]')).toHaveCount(0);
-  const shownWallet = page.locator('[data-ui="account-menu-button"] span[title]').first();
+  // the person's Solana wallet, as the account menu lists it (the phone's sheet holds the same block)
+  const shownWallet = page
+    .locator(
+      '[data-ui="compact-nav-sheet"] [data-ui="account-wallet"][data-chain="solana"] [data-ui="account-address"]',
+    )
+    .first();
   await expect(shownWallet).toHaveAttribute('title', /.+/);
   const owner = await shownWallet.getAttribute('title');
   const source = await page.request.post(`${STUB}/__stub/source-vault`, {

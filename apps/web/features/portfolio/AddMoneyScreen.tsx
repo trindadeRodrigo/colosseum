@@ -7,6 +7,7 @@ import { buttonClass } from '../../components/ui/button-class';
 import { Card } from '../../components/ui/Card';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { shorten } from '../../components/ui/format';
+import { Hint } from '../../components/ui/Hint';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
@@ -335,8 +336,10 @@ export function AddMoneyScreen({
         )}
         <p className="max-w-(--tf-measure-body) text-body-lg">{words.lead(chainName)}</p>
         <p className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          <span className="font-mono text-source text-muted-foreground" title={vault.address}>
-            {shorten(vault.address)}
+          <span className="font-mono text-source text-muted-foreground">
+            <Hint tip={<span className="font-mono text-source break-all">{vault.address}</span>}>
+              {shorten(vault.address)}
+            </Hint>
           </span>
           <Link href="/monitor" className={buttonClass({ variant: 'link' })}>
             {words.back}

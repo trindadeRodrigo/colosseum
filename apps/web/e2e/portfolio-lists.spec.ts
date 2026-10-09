@@ -97,10 +97,19 @@ test.describe('the lists of the portfolio section on the stub', () => {
       '/portfolio/rebalancing',
     );
     await pinned(page, 'rebalancing');
-    // a pin opens on the entry's own stamp
+    // a pin opens on the entry's own stamp: plain words first, the stamp itself under "Details"
     await own.locator('[data-ui="figure"] button[data-ui="pin"]').first().click();
-    await expect(own.locator('[data-ui="pin-source"]')).toContainText('2026-10-05T09:29:40Z');
+    await own.locator('[data-ui="pin-details"]').click();
+    await expect(own.locator('[data-ui="pin-source"]')).toContainText('5 Oct 2026, 09:29:40 UTC');
     await page.keyboard.press('Escape');
+    // a time's UTC is a tooltip the keyboard opens, with no native title; axe with it open
+    const when = own.locator('[data-ui="step-when"] [data-ui="hint-trigger"]').first();
+    await when.focus();
+    await expect(own.locator('[role="tooltip"]')).toHaveText(/UTC$/);
+    await expect(when).toHaveAttribute('aria-describedby', /.+/);
+    await check(page, 'rebalancing, a tooltip open');
+    await page.keyboard.press('Escape');
+    await expect(own.locator('[role="tooltip"]')).toHaveCount(0);
     await expect(page.locator('main .font-display')).toHaveCount(1);
     await expect(page.locator('[data-ui="disclaimer"]:visible')).toHaveCount(1);
     await expect(page.locator('main [data-variant="primary"]')).toHaveCount(0);

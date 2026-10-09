@@ -3,8 +3,10 @@ import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { Wait } from '../../components/shell/Wait';
 import { CHAIN_NAMES } from '../../components/ui/ChainBadge';
 import { cn } from '../../components/ui/cn';
+import { Hint } from '../../components/ui/Hint';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { Skeleton, SkeletonChart, SkeletonRows } from '../../components/ui/Skeleton';
+import { ScreenWait } from '../../components/waits/ScreenWait';
 import { type BearingDictionary, bearingDictionary } from '../../i18n/bearing';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useBearing } from './BearingProvider';
@@ -54,15 +56,43 @@ export function NotOnChain() {
   );
 }
 
-export function Reason({ code, detail }: { code?: string | null; detail?: string }) {
+/**
+ * Why a figure is missing: the short words on the page, and the same reason as a sentence one hover,
+ * focus or tap away (`why` in the dictionary), with what the API added. `whyCode` is the reason behind
+ * the words where the page says less than the API does (the chains side by side).
+ */
+export function Reason({
+  code,
+  detail,
+  whyCode,
+}: {
+  code?: string | null;
+  detail?: string;
+  whyCode?: string | null;
+}) {
   const say = useReason();
+  const t = useWords();
+  const why = t.why[(whyCode ?? code ?? 'not_served') as keyof typeof t.why];
+  const words = say(code);
   return (
     <span
       data-ui="bearing-reason"
-      title={detail}
       className="font-sans text-caption font-normal whitespace-nowrap text-muted-foreground"
     >
-      {say(code)}
+      {why || detail ? (
+        <Hint
+          tip={
+            <>
+              {why && <span>{why}</span>}
+              {detail && <span className="text-muted-foreground">{detail}</span>}
+            </>
+          }
+        >
+          {words}
+        </Hint>
+      ) : (
+        words
+      )}
     </span>
   );
 }
@@ -364,10 +394,45 @@ export function Card({
 }
 
 /** A part of a page waiting for its data: the frame of the chart or table to come, and what it waits for. */
-export function Loading({ children }: { children: string }) {
+export function Loading({ children, skeleton }: { children: string; skeleton?: ReactNode }) {
   const { retry } = useBearing();
-  return <Wait label={children} onRetry={retry} skeleton={<SkeletonChart />} />;
+  return <Wait label={children} onRetry={retry} skeleton={skeleton ?? <SkeletonChart />} />;
 }
+
+/** A figure to come: its label and its note as the page will write them, over a still bar. */
+export type KpiWait = { label: string; note?: string };
+
+/**
+ * A row of figures waiting, with their labels (already known, so they are written). A note is laid
+ * out unseen under its bar, so it wraps where the real one will and the row keeps its height. It
+ * names no time read from a clock: the server and the browser would write different words.
+ */
+export function KpisWait({ kpis }: { kpis: readonly KpiWait[] }) {
+  return (
+    <Kpis>
+      {kpis.map(({ label, note }, i) => (
+        <Kpi
+          // biome-ignore lint/suspicious/noArrayIndexKey: the figures to come, in the page's order
+          key={i}
+          label={label}
+          note={
+            note ? (
+              <span aria-hidden="true" className="relative block">
+                <span className="invisible">{note}</span>
+                <Skeleton className="absolute inset-x-0 top-1 h-2.5 w-3/4" />
+              </span>
+            ) : undefined
+          }
+        >
+          <Skeleton className="inline-block h-5 w-28 align-middle" />
+        </Kpi>
+      ))}
+    </Kpis>
+  );
+}
+
+/** The frame of a chart card while it waits: about as tall as the card's chart, legend and source. */
+const CHART_FRAME = 'h-[26rem]';
 
 /**
  * A page waiting for its data, in the page's own boxes: its filters, its row of figures with their
@@ -378,60 +443,53 @@ export function PageWait({
   label,
   kpis,
   filters = 2,
+  lead,
+  charts = true,
 }: {
   label: string;
   /**
    * The page's figures, in order: each label, and its note as the page will write it (the words are
-   * known before the data; a count or a time in them is a stand-in). The note is laid out unseen
-   * under its bar, so it wraps where the real one will and the row keeps its height. It names no
-   * time read from a clock: the server and the browser would write different words.
+   * known before the data; a count or a time in them is a stand-in).
    */
-  kpis: readonly { label: string; note?: string }[];
+  kpis: readonly KpiWait[];
   /** How many selectors the page has above its figures. */
   filters?: number;
+  /** What the page opens with above its figures, where that is not a row of selectors: a form. */
+  lead?: ReactNode;
+  /** The two chart cards under the figures; a page without them has its table next. */
+  charts?: boolean;
 }) {
   const { retry } = useBearing();
   return (
-    <Wait
+    <ScreenWait
       label={label}
       onRetry={retry}
       className="mt-6"
       skeleton={
         <div data-ui="bearing-skeleton">
-          <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-            {Array.from({ length: filters }, (_, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: still boxes with no identity of their own
-              <Skeleton key={i} className="h-8 w-36" />
-            ))}
-            <Skeleton className="h-3 w-48" />
+          {lead}
+          {filters > 0 && (
+            <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+              {Array.from({ length: filters }, (_, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: still boxes with no identity of their own
+                <Skeleton key={i} className="h-8 w-36" />
+              ))}
+              <Skeleton className="h-4 w-48" />
+            </div>
+          )}
+          <div className={lead ? 'mt-4' : undefined}>
+            <KpisWait kpis={kpis} />
           </div>
-          <Kpis>
-            {kpis.map(({ label, note }, i) => (
-              <Kpi
-                // biome-ignore lint/suspicious/noArrayIndexKey: the figures to come, in the page's order
-                key={i}
-                label={label}
-                note={
-                  note ? (
-                    <span aria-hidden="true" className="relative block">
-                      <span className="invisible">{note}</span>
-                      <Skeleton className="absolute inset-x-0 top-1 h-2.5 w-3/4" />
-                    </span>
-                  ) : undefined
-                }
-              >
-                <Skeleton className="inline-block h-5 w-28 align-middle" />
-              </Kpi>
-            ))}
-          </Kpis>
-          <div className="mt-4 grid grid-cols-[minmax(0,1fr)] items-stretch gap-4 min-[1100px]:grid-cols-[minmax(260px,1fr)_minmax(0,2.6fr)]">
-            <Card>
-              <SkeletonChart />
-            </Card>
-            <Card>
-              <SkeletonChart />
-            </Card>
-          </div>
+          {charts && (
+            <div className="mt-4 grid grid-cols-[minmax(0,1fr)] items-stretch gap-4 min-[1100px]:grid-cols-[minmax(260px,1fr)_minmax(0,2.6fr)]">
+              <Card>
+                <SkeletonChart frame={CHART_FRAME} />
+              </Card>
+              <Card>
+                <SkeletonChart frame={CHART_FRAME} />
+              </Card>
+            </div>
+          )}
           <div className="mt-8">
             <SkeletonRows rows={5} columns={5} />
           </div>
@@ -500,7 +558,7 @@ export function Pie({
   });
   const share = (v: number) => fm.pct(v / whole);
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the titles, the legend and the table
+    // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the readout, the legend and the table
     <div data-ui="bearing-pie" onMouseLeave={() => setOn(null)}>
       <div className="mb-2">
         <div className="font-condensed text-caption font-medium text-muted-foreground">{title}</div>
@@ -520,7 +578,7 @@ export function Pie({
             >
               {paths.map(({ s, i, color, d, full }) =>
                 full ? (
-                  // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the titles, the legend and the table
+                  // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the readout, the legend and the table
                   <circle
                     key={s.label}
                     cx={c}
@@ -531,11 +589,9 @@ export function Pie({
                     strokeWidth={R - r}
                     opacity={on != null && on !== i ? 0.35 : 1}
                     onMouseEnter={() => setOn(i)}
-                  >
-                    <title>{`${s.label} · ${fm.usd1(s.value)} · ${share(s.value)}`}</title>
-                  </circle>
+                  ></circle>
                 ) : (
-                  // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the titles, the legend and the table
+                  // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the readout, the legend and the table
                   <path
                     key={s.label}
                     d={d}
@@ -545,9 +601,7 @@ export function Pie({
                     strokeLinejoin="round"
                     opacity={on != null && on !== i ? 0.35 : 1}
                     onMouseEnter={() => setOn(i)}
-                  >
-                    <title>{`${s.label} · ${fm.usd1(s.value)} · ${share(s.value)}`}</title>
-                  </path>
+                  ></path>
                 ),
               )}
               <text

@@ -25,7 +25,12 @@ export const en = {
     /** Said to a screen reader once the person is signed out. */
     signedOut: 'You’re signed out.',
     signOutFailed: 'I couldn’t sign you out: the sign-in service didn’t answer. Try again.',
-    account: 'Your wallet',
+    /** The name of the bar's account control: the person, not a chain. */
+    account: 'Your account',
+    /** What it shows. */
+    accountLabel: 'Account',
+    /** The name of the list in its menu: one wallet for each chain the person has one on. */
+    wallets: 'Your wallets',
     /** The bar's account control before it is known who is here: said once, politely. */
     accountLoading: 'Loading your account…',
     /**
@@ -48,8 +53,7 @@ export const en = {
       /** "Try again" pressed while a step of an order is being signed. */
       held: 'A step of your order is being signed. Finish or cancel that step first, then try again.',
     },
-    /** The account menu in the bar: its items under the chains. */
-    address: 'Address',
+    /** The account menu in the bar: beside each wallet's address. */
     copyAddress: 'Copy address',
     copied: 'Copied',
     viewOn: (explorer: string) => `View on ${explorer}`,
@@ -64,6 +68,15 @@ export const en = {
     testNetwork: 'test network',
     /** A card whose figures are read from a test network says only that: they are not samples. */
     testNetworkLine: 'Test network',
+    /**
+     * Beside a chain's name where no figure stands with it (the account menu's wallets; Thom, Oct 9):
+     * how the chain is run, in words alone, with no glyph. `shown` is what is read on the screen,
+     * `said` what a screen reader hears after the chain's name: "Solana, test network".
+     */
+    chainRun: {
+      shown: { sandbox: 'Test network', mock: 'Sample' },
+      said: { sandbox: 'test network', mock: 'sample' },
+    },
     /** When the server answers that it is being asked too often. */
     slowDown: 'Our server asked me to slow down. Wait a minute, then try again.',
     /** A sample card's one quiet line (MOCK-QUIET). */
@@ -72,7 +85,7 @@ export const en = {
     sampleFigure: 'sample figure',
     /** A wait for data (components/ui/Skeleton.tsx). */
     wait: {
-      slow: 'Waking the data service: this can take up to a minute the first time.',
+      slow: 'Still loading. The server may be waking up.',
       over: 'Our server didn’t answer in time, so nothing is shown here yet.',
       retry: 'Try again',
     },
@@ -211,24 +224,14 @@ export const en = {
     short: { solana: 'Solana', robinhood: 'Robinhood', base: 'Base' },
     /** The explorer each chain's transaction links open, named beside the link. */
     explorers: { solana: 'Solscan', robinhood: 'Robinhood explorer', base: 'Basescan' },
-    /** The bar's chain switcher (gate CHAIN-SWITCH). */
+    /** What is left of the bar's switch, which is gone (CHAIN-AT-THE-PLAN): words pages still say. */
     switch: {
-      /** The button's name: what it is, and the chain it shows. */
-      current: (chain: string) => `Chain: ${chain}`,
-      group: 'Choose a chain',
-      /** Signed in: what a switch changes, and what it doesn't. */
-      plansStay:
-        'New plans are built on the chain you choose. Plans you already have stay on their own chain.',
-      /** Signed out: what the chain changes. */
-      browsing: 'Shows the shared portfolios of that chain.',
       noWallet: (chain: string) => `The wallet you signed in with doesn’t sign on ${chain}.`,
-      off: (chain: string) => `${chain} is switched off on our server for now.`,
       saving: 'Switching…',
-      done: (chain: string) => `You’re on ${chain} now.`,
     },
     is: {
       picked: (chain: string) =>
-        `New plans are built on ${chain}. You can switch chain from the bar at the top.`,
+        `New plans are built on ${chain}. You choose the chain where you start a plan, on Invest.`,
       wallet: (chain: string) =>
         `New plans are built on ${chain}, the chain of the wallet you connected.`,
     },
@@ -275,6 +278,15 @@ export const en = {
       /** One chain to start on, because the other is switched off on our server. */
       onlyOn: (chain: string) =>
         `This plan will live on ${chain}: it is the only chain our server runs for now.`,
+      /**
+       * The chain new plans start on cannot take one: our server has it switched off. Said with the
+       * way to the chain that runs, where there is one.
+       */
+      off: (chain: string) =>
+        `${chain} is switched off on our server for now, so a plan can’t start there.`,
+      /** No wallet of the person's signs on the chain new plans start on. */
+      notYours: (chain: string) =>
+        `The wallet you signed in with doesn’t sign on ${chain}, so a plan can’t start there.`,
       /** Before the chain's badge, once the conversation has words. */
       on: 'This plan is on',
       change: 'Change',
@@ -295,11 +307,15 @@ export const en = {
 
   goal: {
     explore: {
-      /** The conversation picker (GoalEntry): this conversation, a new one, the saved ones, the vaults. */
+      /**
+       * The conversation picker (GoalEntry): the one on screen, a new one, the saved ones, the vaults.
+       * A conversation is named by its person's first request; `current` and `untitled` are what one
+       * with no words yet is called, on screen and in the saved list.
+       */
       picker: {
         label: 'Conversation',
-        current: 'This conversation',
-        fresh: 'New conversation',
+        current: 'New conversation',
+        fresh: 'Start a new conversation',
         vaults: 'Your vaults',
         saved: 'Saved conversations',
         untitled: 'Earlier conversation',
@@ -484,7 +500,9 @@ export const en = {
       choose: 'Choose the chain',
     },
     blocked: {
-      chainNotChosen: 'Choose a chain from the bar at the top first.',
+      /** The account could not be read, or has no wallet: there is no chain to choose anywhere yet. */
+      chainNotChosen:
+        'I couldn’t read your account, so I can’t tell which chain to use. Try again in a moment, or sign out and in again.',
       chainUnknown:
         'I can’t tell yet which chain your plan lives on, so I can’t build for it. Ask again, above.',
       refused: 'Our server didn’t accept these limits. Check each field, then try again.',
@@ -572,16 +590,45 @@ export const en = {
       day: ['day', 'days'],
     },
     missing: 'no source yet',
-    provenance: 'Provenance',
-    copy: 'Copy source',
+    provenance: 'Source details',
+    copy: 'Copy all',
     copied: 'Copied',
     kinds: {
-      mock: 'sample data, not live',
-      sandbox: 'test network, not live',
-      fixture: 'a fixture, not live',
-      prior_dataset: 'an earlier dataset, not live',
+      mock: 'Sample figure, not live',
+      sandbox: 'Test network, not live',
+      fixture: 'Sample figure, not live',
+      prior_dataset: 'From an earlier dataset, not live',
     },
-    unknownKind: 'not live',
+    unknownKind: 'Not live',
+    // What the popover says before its details (gate TOOLTIP-WORDS): what the number is and where it
+    // comes from, how fresh it is, whether it is live. The source's name is from
+    // components/ui/source-words.ts.
+    whatFrom: '{what} from {source}',
+    from: 'From {source}',
+    unnamed: 'Source details below',
+    updated: 'Updated {ago}',
+    read: 'Read {ago}',
+    readAt: 'Read {time}',
+    copyFailed: 'Couldn’t copy here. The whole line is below to select.',
+    staleOverLimit: 'Last updated {ago}, older than this feed’s {limit} limit',
+    staleNoLimit: 'Last updated {ago}, which is stale',
+    staleNoAge: 'Stale, and its age is not known',
+    live: 'Live',
+    ago: {
+      now: 'less than a minute ago',
+      ago: '{n} {unit} ago',
+      second: ['second', 'seconds'],
+      minute: ['minute', 'minutes'],
+      hour: ['hour', 'hours'],
+      day: ['day', 'days'],
+      about: 'about',
+    },
+    details: 'Details',
+    sourceLabel: 'Source',
+    timeLabel: 'Read at',
+    methodLabel: 'How it is worked out',
+    copyAddress: 'Copy address {address}',
+    explorer: 'View {address} on the explorer',
   },
 
   /** The monitor (/monitor), and the line about it on the home page. */
@@ -687,6 +734,9 @@ export const en = {
         drift: 'Difference',
       },
       noPrice: 'no price',
+      /** The tooltip on the dash where a holding has no price (gate TOOLTIP-WORDS). */
+      noPriceWhy:
+        'No price: this read of the network gave none for this asset, so it has no value or share here.',
       unpriced: (n: number) =>
         n === 1
           ? '1 holding has no price, so the value leaves it out.'
@@ -1541,6 +1591,11 @@ export const en = {
         removed: 'Removed from the proposed strategy',
         details: 'Vault details and price sources',
         draftIntro: 'Draft proposal, not applied:',
+        /** A figure stated in a reply, named for screen readers: the value, what it is, how old. */
+        figureSaid: '{value}, a measured figure',
+        figureSaidAged: '{value}, a measured figure, {age}',
+        /** In a figure's place, in a kept reply whose figures are no longer kept. No number. */
+        figureNotKept: '(figure no longer kept)',
         comparison: 'Current target → proposed share',
         reasons: 'Tradeoffs and sources',
         tradeoffs: 'Tradeoffs',

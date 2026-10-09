@@ -80,6 +80,7 @@ export function PlanHead({ chain, plan }: { chain: PlansChain; plan: Plan }) {
               <ProvenancePin
                 value={dollars(lang, newest.valueUsd)}
                 obs={snapshotPin(newest, chain.provenance, plan.provenance)}
+                what={words.value}
                 labels={t.pin}
               />
             ) : (

@@ -2,7 +2,7 @@
 import { type ReactNode, useId, useRef } from 'react';
 import { buttonClass } from '../../components/ui/button-class';
 import { Icon } from '../../components/ui/Icon';
-import { usePopover } from '../account/ChainSwitch';
+import { usePopover } from '../account/use-popover';
 
 // The few things a page keeps out of its main actions, behind one quiet control: a button that says
 // whether its list is open, and the list as a popover under it. Escape closes it and gives the focus

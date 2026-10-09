@@ -10,6 +10,7 @@ import { Card, CardEmpty } from '../../components/ui/Card';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { SkeletonCards } from '../../components/ui/Skeleton';
 import { Status } from '../../components/ui/StatusMark';
+import { ScreenWait } from '../../components/waits/ScreenWait';
 import type { Dictionary } from '../../i18n';
 import { useT } from '../../i18n/I18nProvider';
 import { useWalletPort } from '../wallet/WalletProvider';
@@ -112,9 +113,12 @@ export function ChainsOut({ unavailable }: { unavailable: readonly ChainOut[] })
  */
 export function SectionGate<T>({
   read,
+  skeleton,
   children,
 }: {
   read: Reading<T>;
+  /** The page's own shape while its answer is on its way (waits.tsx). */
+  skeleton?: ReactNode;
   children: (answer: T) => ReactNode;
 }) {
   const t = useT();
@@ -135,7 +139,9 @@ export function SectionGate<T>({
       />
     );
   if (person === 'loading' || read.kind === 'idle' || read.kind === 'reading')
-    return (
+    return skeleton ? (
+      <ScreenWait label={w.shell.reading} skeleton={skeleton} onRetry={again} />
+    ) : (
       <Card>
         <CardWait label={w.shell.reading} skeleton={<SkeletonCards count={2} />} onRetry={again} />
       </Card>

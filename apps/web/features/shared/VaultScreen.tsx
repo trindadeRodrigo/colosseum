@@ -143,6 +143,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
         <ProvenancePin
           value={dollars(lang, vault.valueUsd)}
           obs={vaultValueSource({ ...read, vaults: [vault] }, vault, t.portfolio.vault.valueMethod)}
+          what={v.value}
           labels={t.pin}
         />
       </span>

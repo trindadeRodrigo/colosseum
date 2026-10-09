@@ -1,17 +1,19 @@
 'use client';
 import type { ChainId } from '@colosseum/schemas';
 import { useRouter } from 'next/navigation';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Select } from '../../components/ui/Field';
-import { useT } from '../../i18n/I18nProvider';
+import { LOCALE } from '../../i18n';
+import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
-import { switchFailure } from '../account/ChainSwitch';
+import { switchFailure } from '../account/chain-failure';
 import type { PortfolioState } from '../portfolio/use-portfolio';
 import { shortAddress } from '../shared/use-person';
 import { readLocal } from '../vault-conversation/storage';
 import { useWalletPort } from '../wallet/WalletProvider';
 import {
   type ConversationIndex,
+  conversationName,
   conversationStoreKey,
   newConversationId,
   readIndex,
@@ -28,7 +30,7 @@ const NONE: ConversationIndex = { current: 'main', items: [] };
  * `/goal` is the strategy conversation, keyed to the person, the chain of the plan and its network. A
  * picker above it (Rodrigo, Oct 8) holds the conversation on screen, a new one, the person's saved
  * conversations in this browser and their vaults, each with its chain as text: the list mixes chains
- * (gate CHAIN-AT-THE-PLAN). A vault opens its own page, where its owner-only conversation is
+ * (gate CHAIN-AT-THE-PLAN). A conversation is named by its person's first request (title.ts). A vault opens its own page, where its owner-only conversation is
  * (VaultScreen). The chain of a new plan is chosen beside the box (GoalChain). Guided investing is not
  * offered here (staging #195).
  */
@@ -41,7 +43,7 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
   const port = useWalletPort();
   // A deposit is open on the conversation's pane (approved, not every step confirmed; fresh, stopped
   // or taken up again after a reload). The conversation then stays on the deposit's chain whatever
-  // moves the account's (the bar's switch, another tab): a plan lives on one chain, and its pane is
+  // moves the account's (another tab, the person read again): a plan lives on one chain, and its pane is
   // not taken from under its steps. Every way this page itself leaves it asks first.
   const [deposit, setDeposit] = useState<{
     open: boolean;
@@ -73,22 +75,51 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
   });
   const index = held.base === base ? held.index : base ? readIndex(base) : NONE;
   const setIndex = (next: ConversationIndex) => setHeld({ base, index: next });
-  const [elsewhere, setElsewhere] = useState<{ chain: ChainId; item: SavedConversation }[]>([]);
+  const [elsewhere, setElsewhere] = useState<
+    { chain: ChainId; base: string; item: SavedConversation }[]
+  >([]);
   useEffect(() => {
     setHeld({ base, index: base ? readIndex(base) : NONE });
     setElsewhere(
       otherBases.split('|').flatMap((pair) => {
         const [on, key] = pair.split('=') as [ChainId, string | undefined];
-        return key ? readIndex(key).items.map((item) => ({ chain: on, item })) : [];
+        return key ? readIndex(key).items.map((item) => ({ chain: on, base: key, item })) : [];
       }),
     );
   }, [base, otherBases]);
-  const saved = [
-    ...(chain
-      ? index.items.filter((item) => item.id !== index.current).map((item) => ({ chain, item }))
-      : []),
-    ...elsewhere,
-  ];
+  // Each conversation is named by its person's first request, read from its own turns in this
+  // browser (Thom, Oct 9): the one on screen too, "New conversation" until it has words. Two saved
+  // ones that would read the same also say when they were last written.
+  const lang = useLang();
+  const names = useMemo(() => {
+    const rows = [
+      ...(chain && base
+        ? index.items
+            .filter((item) => item.id !== index.current)
+            .map((item) => ({ chain, base, item }))
+        : []),
+      ...elsewhere,
+    ].map(({ chain: on, base: at, item }) => ({
+      value: `conversation:${on}:${item.id}`,
+      label: `${conversationName(at, item.id, w.untitled)} · ${t.chain.names[on]}`,
+      written: Date.parse(item.updatedAt),
+    }));
+    const alike = (label: string) => rows.filter((row) => row.label === label).length > 1;
+    const when = new Intl.DateTimeFormat(LOCALE[lang], {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    return {
+      current: base ? conversationName(base, index.current, w.current) : w.current,
+      saved: rows.map(({ value, label, written }) => ({
+        value,
+        label:
+          alike(label) && Number.isFinite(written) ? `${label} · ${when.format(written)}` : label,
+      })),
+    };
+  }, [base, chain, index, elsewhere, lang, t, w]);
   const vaults =
     portfolio.kind === 'answered' && portfolio.outcome.kind === 'read'
       ? portfolio.outcome.chains.flatMap((entry) => entry.vaults)
@@ -192,17 +223,17 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
           id={pickerId}
           data-ui="goal-picker"
           value="current"
-          width="22ch"
-          className="min-w-0"
+          width="34ch"
+          className="min-w-0 [&>select]:text-ellipsis"
           onChange={(event) => pick(event.target.value)}
         >
-          <option value="current">{w.current}</option>
+          <option value="current">{names.current}</option>
           <option value="new">{w.fresh}</option>
-          {saved.length > 0 && (
+          {names.saved.length > 0 && (
             <optgroup label={w.saved}>
-              {saved.map(({ chain: on, item }) => (
-                <option key={`${on}:${item.id}`} value={`conversation:${on}:${item.id}`}>
-                  {`${item.title || w.untitled} · ${t.chain.names[on]}`}
+              {names.saved.map(({ value, label }) => (
+                <option key={value} value={value}>
+                  {label}
                 </option>
               ))}
             </optgroup>

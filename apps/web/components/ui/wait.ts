@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 // 400ms, the loader and its words, a calm line after 4 seconds (the hosted API may be waking), and after
 // a minute the failure with a retry.
 
-/** After this long a wait says the data service may be waking. */
+/** After this long a wait says the server may be waking. */
 export const SLOW_AFTER_MS = 4_000;
 /** After this long a wait gives up and offers to try again. */
 export const GIVE_UP_AFTER_MS = 60_000;

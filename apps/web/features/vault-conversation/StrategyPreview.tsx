@@ -13,7 +13,8 @@ import { AssetMark } from '../order/PlanView';
 import { displayName } from '../order/plain';
 import { dollars } from '../portfolio/figures';
 import { HoldingLegs, legFill, legsOf } from '../shared/HoldingLegs';
-import type { VaultStrategyPreview } from './agent';
+import { type ReplyFigures, referencesIn, type VaultStrategyPreview } from './agent';
+import { FiguredText } from './Figures';
 import { ProjectionChart } from './ProjectionChart';
 
 export function sourceValue(lang: Lang, value: number | null | undefined, unit?: string): string {
@@ -37,6 +38,8 @@ export function sourceValue(lang: Lang, value: number | null | undefined, unit?:
  */
 export function StrategyPreview({
   proposal,
+  figures,
+  now = null,
   targets,
   previewOnly,
   wait,
@@ -45,6 +48,12 @@ export function StrategyPreview({
   use,
 }: {
   proposal: VaultStrategyPreview;
+  /**
+   * The proposal's prose with the figures it states in their places (FIGURES-BY-REFERENCE): each is
+   * then drawn with its pin instead of read from the plain words. `now` is the reader's clock.
+   */
+  figures?: ReplyFigures;
+  now?: number | null;
   targets?: { asset: string; targetBps: number }[];
   previewOnly?: string;
   /**
@@ -67,6 +76,14 @@ export function StrategyPreview({
   use?: { label: string; onUse: () => void; primary?: boolean };
 }) {
   const pending = waiting && wait !== undefined;
+  // A field of the proposal: its figures drawn where the reply states any, else its plain words.
+  const placed = figures?.prose.proposal;
+  const said = (plain: string, template: string | undefined) =>
+    figures && template !== undefined && referencesIn(template).length > 0 ? (
+      <FiguredText template={template} facts={figures.facts} now={now} />
+    ) : (
+      plain
+    );
   const t = useT();
   const copy = t.shared.vault.conversation;
   const language = useLang();
@@ -169,8 +186,12 @@ export function StrategyPreview({
               pending && 'text-muted-foreground',
             )}
           >
-            <p className="text-body font-medium [overflow-wrap:anywhere]">{proposal.objective}</p>
-            <p className="text-body-sm [overflow-wrap:anywhere]">{proposal.summary}</p>
+            <p className="text-body font-medium [overflow-wrap:anywhere]">
+              {said(proposal.objective, placed?.objective)}
+            </p>
+            <p className="text-body-sm [overflow-wrap:anywhere]">
+              {said(proposal.summary, placed?.summary)}
+            </p>
             {monthly && (
               <fieldset
                 aria-label={copy.view.label}
@@ -250,7 +271,7 @@ export function StrategyPreview({
                         </span>
                       </span>
                       <span className="mt-2 block text-caption text-muted-foreground [overflow-wrap:anywhere]">
-                        {row.why}
+                        {said(row.why, placed?.why[row.asset])}
                       </span>
                     </th>
                     <td className="py-3 pr-1 text-end tabular-nums">
@@ -335,9 +356,9 @@ export function StrategyPreview({
                 <div>
                   <h3 className="text-caption font-medium">{copy.tradeoffs}</h3>
                   <ul className="list-inside list-disc text-body-sm">
-                    {proposal.tradeoffs.map((word) => (
+                    {proposal.tradeoffs.map((word, at) => (
                       <li key={word} className="[overflow-wrap:anywhere]">
-                        {word}
+                        {said(word, placed?.tradeoffs[at])}
                       </li>
                     ))}
                   </ul>
@@ -347,9 +368,9 @@ export function StrategyPreview({
                 <div>
                   <h3 className="text-caption font-medium">{copy.unknowns}</h3>
                   <ul className="list-inside list-disc text-body-sm">
-                    {proposal.unknowns.map((word) => (
+                    {proposal.unknowns.map((word, at) => (
                       <li key={word} className="[overflow-wrap:anywhere]">
-                        {word}
+                        {said(word, placed?.unknowns[at])}
                       </li>
                     ))}
                   </ul>

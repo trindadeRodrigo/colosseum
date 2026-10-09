@@ -232,7 +232,7 @@ tokens:
     live:
       light: { outline: "#C9C4B9", pin: "#9D5A00 solid square" }
       dark: { outline: "#6E7282", pin: "#F5A83A solid square" }
-      paired: "popover: source · fetched_at · method (Plex Mono)"
+      paired: "popover: plain words first; source · fetched_at · method under Details (TOOLTIP-WORDS)"
     stale:
       light: { outline: "#C9C4B9", pin: "#9D5A00 hollow square, stroke 1.5" }
       dark: { outline: "#6E7282", pin: "#F5A83A hollow square" }
@@ -347,7 +347,7 @@ patterns:
     placement: "after every yield, price and FX figure, at cap height, U+202F thin no-break space between"
     states: "live = solid square pin · stale = hollow pin + 'stale · 3 h' · sample (mock) = hatched tenon, no pin, named 'sample figure', with the card's quiet line · sandbox = the same line with 'test network'"
     colour: "pin in honey (night) / honey-l (day); outline in muted-2 / line-l2; partner muted in the embed"
-    popover: "Plex Mono source line: source · fetched_at (ISO, UTC) · method; on night-3 / white, 1px border, shadow-popover"
+    popover: "plain words in Inter (what and where from, how fresh, whether live; stale first); under Details the API's source · fetched_at (UTC) · method, addresses only in Plex Mono; on night-3 / white, 1px border, shadow-popover (gate TOOLTIP-WORDS)"
   sample:
     rule: "gate MOCK-QUIET: the hatched left edge + one quiet line ('Sample figures', or '… · test network') + a hatched pin or glyph named 'sample figure'. Never a boxed MOCK word. Never styled like a live figure"
     surface: "hatch fills a 6px edge band; the line sits in the card's own text, muted"

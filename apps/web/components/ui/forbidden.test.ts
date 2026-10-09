@@ -78,10 +78,12 @@ const DRAWINGS = new Set([
 ]);
 
 /** The only places the popover's shadow may sit: popovers, and the composer. */
+// Hint.tsx holds the one popover surface: the pin's popover and every tooltip are drawn by it.
 const SHADOWED = new Set([
-  'components/ui/ProvenancePin.tsx',
+  'components/ui/Hint.tsx',
   'components/ui/Composer.tsx',
-  // the popover behind "More" on a vault's own page
+  // the list behind "More" on a vault's own page: a disclosure of links and buttons that opens on a
+  // press and stays, which the hover card (Hint) is not
   'features/shared/MoreMenu.tsx',
 ]);
 

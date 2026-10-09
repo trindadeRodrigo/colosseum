@@ -3,9 +3,13 @@ import { BasketSheet } from './basket-sheet';
 import { ChainId } from './chain';
 import { Network } from './chain-config';
 import { Language, Provenance } from './enums';
+import { FIGURE_REFERENCE, VaultAgentFigure } from './vault-agent';
 
 // Private user data, never an executable sheet, confirmation, or source of financial figures.
-// App text is displayed as plain text history; reopening must ask intake for a fresh reading.
+// App text is displayed as plain text history; reopening must ask intake for a fresh reading. A reply
+// that stated figures by reference (FIGURES-BY-REFERENCE) is kept with them as they were served, each
+// with its own source and time, so an old answer shows what was measured then and how old it is. They
+// are history to display: nothing reads a current figure from them.
 export const VAULT_CONVERSATION_LIMITS = {
   personMax: 200,
   personTextMax: 2000,
@@ -13,6 +17,8 @@ export const VAULT_CONVERSATION_LIMITS = {
   transcriptMax: 400,
   appTextMax: 8000,
   transcriptChars: 220_000,
+  /** The kept figures of every reply together, as JSON. */
+  figuresChars: 200_000,
   bodyBytes: 512 * 1024,
 } as const;
 const plain = z.string().refine(
@@ -94,6 +100,16 @@ export const VaultConversationTranscript = z
         ...row,
         who: z.literal('app'),
         text: plain.min(1).max(VAULT_CONVERSATION_LIMITS.appTextMax),
+        /**
+         * The figures the reply stated, as served: `template` is `text` with each figure a
+         * `{{fact:<id>}}` placeholder, and `facts` what each one was, with its source and time.
+         */
+        figures: z
+          .strictObject({
+            template: plain.min(1).max(VAULT_CONVERSATION_LIMITS.appTextMax),
+            facts: z.array(VaultAgentFigure).min(1).max(64),
+          })
+          .optional(),
       }),
     ]),
   )
@@ -109,6 +125,17 @@ export const VaultConversationTranscript = z
     if (rows.reduce((n, r) => n + r.text.length, 0) > VAULT_CONVERSATION_LIMITS.transcriptChars)
       issue('history exceeds display capacity');
     if (new Set(rows.map((r) => r.id)).size !== rows.length) issue('message ids must be unique');
+    const kept = rows.flatMap((r) => (r.who === 'app' && r.figures ? [r.figures] : []));
+    if (JSON.stringify(kept).length > VAULT_CONVERSATION_LIMITS.figuresChars)
+      issue('kept figures exceed conversation capacity');
+    for (const figures of kept) {
+      const known = new Set(figures.facts.map((fact) => fact.id));
+      if (
+        known.size !== figures.facts.length ||
+        [...figures.template.matchAll(FIGURE_REFERENCE)].some((m) => !known.has(m[1] ?? ''))
+      )
+        issue('a placeholder names one of the kept figures');
+    }
   });
 export type VaultConversationTranscript = z.infer<typeof VaultConversationTranscript>;
 export const VaultConversationParams = z.strictObject({

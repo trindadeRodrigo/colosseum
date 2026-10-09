@@ -8,12 +8,14 @@ import { CopyButton } from '../../components/ui/CopyButton';
 import { cn } from '../../components/ui/cn';
 import { DataTable } from '../../components/ui/DataTable';
 import { shorten } from '../../components/ui/format';
+import { Hint } from '../../components/ui/Hint';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { pinSourceOfPrice } from '../../components/ui/price-source';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { AssetMark } from '../order/PlanView';
 import { displayName } from '../order/plain';
+import { explorerAddressTemplateFor } from '../order/readiness';
 import { dollars, drift, share, shareTenths, tokens, utc } from '../portfolio/figures';
 import { type HoldingRow, holdingsOf, unpriced } from '../portfolio/portfolio';
 import { HoldingLegs } from './HoldingLegs';
@@ -39,6 +41,7 @@ export function VaultHoldings({
   const titleId = useId();
   const { vault } = read;
   const priceOf = (asset: string): Price | undefined => read.prices.find((p) => p.asset === asset);
+  const addressPage = explorerAddressTemplateFor(read.chain, read.provenance === 'mock');
   const rows = holdingsOf(vault);
   const at = (asset: string) => rows.findIndex((r) => r.asset === asset);
   const nowTenths = shareTenths(rows.map((r) => r.weightBps));
@@ -179,11 +182,16 @@ export function VaultHoldings({
                 return price ? (
                   <ProvenancePin
                     value={dollars(lang, price.usdPerToken)}
-                    obs={pinSourceOfPrice(price)}
+                    // each address in the price's details links to this network's explorer
+                    obs={{ ...pinSourceOfPrice(price), explorer: addressPage }}
+                    what={v.columns.price}
                     labels={t.pin}
                   />
                 ) : (
-                  '—'
+                  // a missing price says why, one hover, focus or tap away
+                  <Hint tip={t.portfolio.vault.noPriceWhy} label={t.portfolio.vault.noPrice}>
+                    —
+                  </Hint>
                 );
               },
             },
@@ -238,9 +246,10 @@ export function VaultHoldings({
 function Address({ value, what }: { value: string; what: string }) {
   return (
     <span className="inline-flex items-center gap-1">
-      <span className="font-mono text-source" title={value}>
-        {shorten(value, 6, 6)}
-      </span>
+      {/* the whole address one hover, focus or tap away, as every tooltip is (Hint) */}
+      <Hint tip={value} label={what}>
+        <span className="font-mono text-source">{shorten(value, 6, 6)}</span>
+      </Hint>
       <CopyButton value={value} what={what} />
     </span>
   );

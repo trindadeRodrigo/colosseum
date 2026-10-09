@@ -109,4 +109,70 @@ describe('private vault conversation data', () => {
           .success,
       ).toBe(false);
   });
+  it('keeps a reply with the figures it stated, each with its source and time, and nothing loose', () => {
+    const measured = {
+      id: 'exit:solana:nvdax:worst',
+      assetId: 'solana:nvdax',
+      label: 'Exit cost at the reference size, worst measured regime (weekend)',
+      text: '0.4%',
+      value: 0.004,
+      unit: 'fraction',
+      source: 'Bearing',
+      method: 'exit-cost curve (facts-0.1)',
+      fetchedAt: '2026-10-07T19:00:00.000Z',
+      provenance: 'sandbox',
+      staleAgeSec: null,
+    };
+    const missing = {
+      id: 'weekend:solana:nvdax',
+      text: 'not measured (no samples in that regime yet)',
+      value: null,
+      reason: 'no_samples_in_regime',
+    };
+    const row = (figures: unknown) => ({
+      ...body,
+      transcript: [{ id: '1', who: 'app', text: 'It costs 0.4% to sell.', figures }],
+    });
+    const kept = row({
+      template: 'It costs {{fact:exit:solana:nvdax:worst}} to sell.',
+      facts: [measured, missing],
+    });
+    expect(VaultConversationWrite.parse(kept)).toEqual(kept);
+    const refused = [
+      // a placeholder that names no kept figure
+      { template: 'It costs {{fact:price:solana:nvdax}} to sell.', facts: [measured] },
+      // a measured figure with no source, or no time
+      { template: 'x', facts: [{ ...measured, source: '' }] },
+      { template: 'x', facts: [{ ...measured, fetchedAt: 'yesterday' }] },
+      // a figure that is not measured and still carries a number
+      { template: 'x', facts: [{ ...missing, value: 1 }] },
+      { template: 'x', facts: [measured, measured] },
+      { template: 'x', facts: [] },
+      { template: 'bad\u202e', facts: [measured] },
+    ];
+    for (const figures of refused)
+      expect(VaultConversationWrite.safeParse(row(figures)).success, JSON.stringify(figures)).toBe(
+        false,
+      );
+    // a person's row never carries figures
+    expect(
+      VaultConversationWrite.safeParse({
+        ...body,
+        transcript: [
+          { id: '1', who: 'person', text: 'hello', figures: kept.transcript[0]?.figures },
+        ],
+      }).success,
+    ).toBe(false);
+    // every reply's figures together stay within the conversation's capacity
+    const many = {
+      ...body,
+      transcript: Array.from({ length: 400 }, (_, i) => ({
+        id: String(i),
+        who: 'app',
+        text: 'It costs 0.4% to sell.',
+        figures: { template: 'x', facts: [{ ...measured, method: 'm'.repeat(600) }] },
+      })),
+    };
+    expect(VaultConversationWrite.safeParse(many).success).toBe(false);
+  });
 });

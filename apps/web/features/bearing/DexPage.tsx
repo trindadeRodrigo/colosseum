@@ -75,6 +75,24 @@ export function usePageState(page: string) {
 
 export const picked = (set: readonly string[] | null, id: string) => !set || set.includes(id);
 
+/** The stocks and commodities pages while their data is read: five figures by their labels. */
+export function DexWait() {
+  const t = useWords();
+  const k = t.dex.kpi;
+  return (
+    <PageWait
+      label={t.dex.reading}
+      kpis={[
+        { label: k.tvl, note: k.tvlNote },
+        { label: k.pools, note: k.poolsNote('0') },
+        { label: k.capacity, note: k.capacityNote(t.regimes.us_market_hours) },
+        { label: k.volume, note: k.volumeNote('2026-01-01 00:00') },
+        { label: k.lp, note: k.lpNote },
+      ]}
+    />
+  );
+}
+
 export function DexPage({ page }: { page: 'stocks' | 'commodities' }) {
   const { base, dex, chain } = useBearing();
   const b = useAnswer(() => base(), [base]);
@@ -104,19 +122,7 @@ export function DexPage({ page }: { page: 'stocks' | 'commodities' }) {
   }, [asked, b, page, router, state, chain]);
 
   const k = t.dex.kpi;
-  if (!b || (b.assets.ok && !dd))
-    return (
-      <PageWait
-        label={t.dex.reading}
-        kpis={[
-          { label: k.tvl, note: k.tvlNote },
-          { label: k.pools, note: k.poolsNote('0') },
-          { label: k.capacity, note: k.capacityNote(t.regimes.us_market_hours) },
-          { label: k.volume, note: k.volumeNote('2026-01-01 00:00') },
-          { label: k.lp, note: k.lpNote },
-        ]}
-      />
-    );
+  if (!b || (b.assets.ok && !dd)) return <DexWait />;
   if (!b.assets.ok)
     return (
       <p className="mt-6">

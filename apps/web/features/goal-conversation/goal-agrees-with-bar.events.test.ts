@@ -129,8 +129,8 @@ describe('the goal page and the bar', () => {
       expect(dialog()).toBeNull();
       expect(router.push).not.toHaveBeenCalled();
       expect(bar(host).getAttribute('data-state')).toBe('signed-in');
-      expect(find(host, 'header [data-ui="account-menu-button"]').getAttribute('data-chain')).toBe(
-        'solana',
+      expect(find(host, 'header [data-ui="account-menu-button"]').hasAttribute('data-ready')).toBe(
+        true,
       );
       expect(host.textContent).not.toContain(copy.signIn);
       expect(host.querySelector('a[href^="/sign-in"]')).toBeNull();

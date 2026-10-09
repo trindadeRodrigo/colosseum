@@ -2,7 +2,7 @@
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import GoalPage from '../../app/(app)/goal/page';
-import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
+import { click, find, mount, pinLine, settle, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary, type Lang } from '../../i18n';
@@ -334,7 +334,8 @@ describe('home', () => {
     expect(
       Array.from(host.querySelectorAll('img')).every(
         (image) =>
-          image.getAttribute('src') === '/assets/tokens/paxg.png' && !image.hasAttribute('onerror'),
+          /^\/assets\/tokens\/[a-z]+\.(png|svg)$/.test(image.getAttribute('src') ?? '') &&
+          !image.hasAttribute('onerror'),
       ),
     ).toBe(true);
     expect(calls.filter((path) => path === PORTFOLIO_PATH)).toHaveLength(1);
@@ -382,9 +383,20 @@ describe('home', () => {
     expect(find(card, '[data-ui="figure"]').textContent).toBe('$380.00\u202f');
     const pin = find(card, '[data-ui="figure"]').querySelector('button') as HTMLElement;
     await click(pin);
-    expect(card.textContent).toContain('Pyth Hermes');
-    expect(card.textContent).toContain('2026-10-05');
-    expect(card.textContent).toContain(en.portfolio.vault.valueMethod);
+    // the price it stands on is ten minutes old, past its two: said first, in plain words, with the
+    // test network named, and the value is not called a price
+    expect(
+      [...find(card, '[data-ui="pin-summary"]').children].map((line) => line.textContent),
+    ).toEqual([
+      'Last updated 10 minutes ago, which is stale',
+      'From the Pyth price feed',
+      'Test network, not live',
+    ]);
+    // the source, the time and the method as the API wrote them are one step further
+    const line = await pinLine(find(card, '[data-ui="figure"]'));
+    expect(line).toContain('Pyth Hermes');
+    expect(line).toContain('2026-10-05');
+    expect(line).toContain(en.portfolio.vault.valueMethod);
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
 

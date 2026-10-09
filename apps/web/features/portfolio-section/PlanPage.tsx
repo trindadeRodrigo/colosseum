@@ -17,6 +17,7 @@ import { PlanHead } from './PlanHead';
 import { PlanHistory } from './PlanHistory';
 import { PlanPositions } from './PlanPositions';
 import { PlanTrades } from './PlanTrades';
+import { PlanBlocksWait } from './PlanWait';
 import { usePortfolioSection, useSectionRead } from './PortfolioProvider';
 import { SECTION } from './pages';
 import { ChainsOut, ReadAgain, Say, SectionGate, useChainName } from './parts';
@@ -50,7 +51,7 @@ export function PlanPage({ chain, address }: { chain: string; address: string })
   const w = useWords();
   const lang = useLang();
   const nameOf = useChainName();
-  const { plans } = usePortfolioSection();
+  const { plans, person } = usePortfolioSection();
   const found = plans.kind === 'read' ? planIn(plans.answer, chain, addressOf(address)) : null;
   const goal = found
     ? goalOf(found.plan, t, w.overview.card, lang, nameOf(found.plan.chain))
@@ -63,7 +64,9 @@ export function PlanPage({ chain, address }: { chain: string; address: string })
       className="flex flex-col gap-8"
     >
       <header className="flex flex-col gap-3">
-        {found && (
+        {/* The way back keeps its line while the plans are read, so the title under it does not move. */}
+        {(found ||
+          (person !== 'signed-out' && (plans.kind === 'idle' || plans.kind === 'reading'))) && (
           <p>
             <Link href={SECTION} data-ui="plan-back" className={buttonClass({ variant: 'link' })}>
               {w.plan.back}
@@ -79,7 +82,7 @@ export function PlanPage({ chain, address }: { chain: string; address: string })
           </p>
         ))}
       </header>
-      <SectionGate read={plans}>
+      <SectionGate read={plans} skeleton={<PlanBlocksWait />}>
         {(answer) =>
           found ? (
             <Found chain={found.chain} plan={found.plan} />

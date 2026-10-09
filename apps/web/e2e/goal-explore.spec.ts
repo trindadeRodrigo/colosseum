@@ -4,6 +4,7 @@ import { dictionary } from '../i18n';
 import { inTheme } from './theme';
 
 const en = dictionary('en');
+const STUB = `http://localhost:${process.env.E2E_API_PORT ?? 3901}`;
 
 // The new default has a real conversation endpoint, but an unopened strategy has no financial data.
 // This check does not stub a model reply or produce a funded plan.
@@ -73,4 +74,47 @@ test('new-goal exploration opens a responsive preview-only workbench', async ({ 
     expect(result.violations.flatMap((v) => v.nodes.map((n) => `${v.id}: ${n.html}`))).toEqual([]);
   }
   expect(financialPosts).toEqual([]);
+});
+
+// Thom, Oct 9: a conversation is named by its person's first request, shortened, in the picker; the
+// name is read from the turns this browser keeps, and a long one never pushes the page sideways. (A
+// reload is in the events test: the test wallet does not keep its sign-in across one.)
+test('the picker names a conversation by its first request', async ({ page }) => {
+  // signed in, as a person who can send is; the stub answers, no model is called
+  await page.request.post(`${STUB}/__stub/reset`);
+  await page.goto('/goal');
+  await page.locator('header a[href^="/sign-in"]').click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(/\/goal$/);
+  const picker = page.locator('[data-ui="goal-picker"]');
+  const shown = () => picker.locator('option:checked');
+  await expect(picker).toHaveValue('current');
+  await expect(shown()).toHaveText(en.goal.explore.picker.current);
+  const send = async (words: string) => {
+    await page.locator('[data-ui="goal-chat"] textarea').fill(words);
+    await page.locator('[data-ui="composer-send"]').click();
+  };
+  await send("I want to explore technology stocks with low risk for my daughter's college fund");
+  const title = 'I want to explore technology stocks with low…';
+  await expect(shown()).toHaveText(title);
+  await expect(page.getByLabel(en.goal.explore.picker.label)).toHaveValue('current');
+  // a second one: the first is saved under its name, with its chain as text
+  await picker.selectOption('new');
+  await expect(shown()).toHaveText(en.goal.explore.picker.current);
+  await expect(picker.locator('optgroup option')).toHaveText([
+    /^I want to explore technology stocks with low… · \S/,
+  ]);
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 812 });
+    await picker.selectOption({ index: 2 });
+    await expect(shown()).toHaveText(title);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    );
+    const box = await picker.boundingBox();
+    expect(box && box.x + box.width).toBeLessThanOrEqual(width);
+    await picker.selectOption('new');
+  }
 });

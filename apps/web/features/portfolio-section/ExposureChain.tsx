@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useId } from 'react';
 import { Card } from '../../components/ui/Card';
 import { shorten } from '../../components/ui/format';
+import { Hint } from '../../components/ui/Hint';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import type { PinSource } from '../../components/ui/provenance';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -304,14 +305,19 @@ export function ExposureChainBlock({ chain }: { chain: ExposureChain }) {
                       )}
                       <span className="text-muted-foreground">
                         {words.unvalued.vault}{' '}
-                        <Link
-                          href={planHref(chain.chain, held.vault)}
-                          title={held.vault}
-                          aria-label={words.unvalued.open(shorten(held.vault))}
-                          className="font-mono text-source text-honey-text underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                        <Hint
+                          tip={
+                            <span className="font-mono text-source break-all">{held.vault}</span>
+                          }
                         >
-                          {shorten(held.vault)}
-                        </Link>
+                          <Link
+                            href={planHref(chain.chain, held.vault)}
+                            aria-label={words.unvalued.open(shorten(held.vault))}
+                            className="font-mono text-source text-honey-text underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                          >
+                            {shorten(held.vault)}
+                          </Link>
+                        </Hint>
                       </span>
                     </li>
                   );

@@ -156,8 +156,8 @@ describe('the landing’s account control, with the wallet loaded', () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(router.push).not.toHaveBeenCalled();
     const chip = find(host, '[data-ui="account-menu-button"]');
-    expect(chip.getAttribute('data-chain')).toBe('solana');
-    expect(chip.textContent).toContain('So11…1112');
+    expect(chip.hasAttribute('data-ready')).toBe(true);
+    expect(chip.textContent).toBe(en.shell.accountLabel);
     expect(host.querySelector('a[href^="/sign-in"]')).toBeNull();
     expect(document.activeElement).toBe(chip);
     // and out again, from the chip's menu

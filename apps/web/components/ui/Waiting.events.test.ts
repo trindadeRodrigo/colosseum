@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { dictionary } from '../../i18n';
 import { SkeletonStats } from './Skeleton';
 import { GLOBALS } from './test/css';
 import { click, find, mount, unmountAll } from './test/dom';
@@ -12,7 +13,11 @@ import { GIVE_UP_AFTER_MS, LOADER_AFTER_MS, SLOW_AFTER_MS } from './wait';
 // 4 seconds (the hosted API may be waking), and after a minute the failure and a retry that waits
 // again. The loader holds still under reduced motion.
 
-const words = { slow: 'Waking the data service.', over: 'Nothing came.', retry: 'Try again' };
+const words = {
+  slow: 'Still loading. The server may be waking up.',
+  over: 'Nothing came.',
+  retry: 'Try again',
+};
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -74,6 +79,49 @@ describe('Waiting', () => {
     expect(find(host, '[data-ui="waiting"]').getAttribute('aria-busy')).toBe('true');
     await later(SLOW_AFTER_MS);
     expect(find(host, '[data-ui="waiting"]').getAttribute('data-phase')).toBe('slow');
+  });
+
+  it('floats its line over a tall skeleton: the region is exactly its skeleton, said once', async () => {
+    const host = await mount(
+      createElement(Waiting, {
+        float: true,
+        label: 'Reading your plans…',
+        words,
+        skeleton: createElement(SkeletonStats, { count: 3 }),
+      }),
+    );
+    const region = find(host, '[data-ui="waiting"]');
+    expect(region.getAttribute('aria-busy')).toBe('true');
+    // the skeleton is the region's one child in the flow; the line's holder has no height
+    const [skeleton, holder] = [...region.children] as HTMLElement[];
+    expect(skeleton?.getAttribute('data-ui')).toBe('skeleton-stats');
+    expect(holder?.classList).toContain('h-0');
+    expect(holder?.classList).toContain('sticky');
+    expect(host.querySelectorAll('[role="status"]')).toHaveLength(1);
+    const status = find(host, '[role="status"]');
+    expect(status.getAttribute('aria-live')).toBe('polite');
+    expect(status.textContent).toBe('');
+    await later(LOADER_AFTER_MS);
+    expect(status.textContent).toBe('Reading your plans…');
+    // a few seconds in, one honest line; never a bar that pretends to know how far along it is
+    await later(SLOW_AFTER_MS - LOADER_AFTER_MS);
+    expect(find(host, '[role="status"] [data-ui="waiting-slow"]').textContent).toBe(words.slow);
+    expect(host.querySelectorAll('[role="progressbar"], progress')).toHaveLength(0);
+    await later(GIVE_UP_AFTER_MS - SLOW_AFTER_MS);
+    // a wait does not run for ever: the skeleton gives way to the failure and a retry
+    expect(host.querySelector('[data-ui="skeleton"]')).toBeNull();
+    expect(find(host, '[role="alert"]').textContent).toBe(words.over);
+    expect(find(host, 'button').textContent).toBe(words.retry);
+  });
+
+  it('the app’s own line for a long wait is honest about what it knows', () => {
+    for (const lang of ['en', 'pt'] as const) {
+      const said = dictionary(lang).shell.wait;
+      // what may be happening, never how long is left
+      expect(said.slow).not.toMatch(/\d|%/);
+      expect(said.over).not.toMatch(/\d|%/);
+    }
+    expect(dictionary('en').shell.wait.slow).toBe('Still loading. The server may be waking up.');
   });
 
   it('holds the loader still under reduced motion, and moves nothing else', () => {

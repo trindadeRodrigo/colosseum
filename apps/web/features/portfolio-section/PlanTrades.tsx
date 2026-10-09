@@ -3,7 +3,6 @@ import Link from 'next/link';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody } from '../../components/ui/Card';
 import { ExplorerLink } from '../../components/ui/ExplorerLink';
-import { SkeletonRows } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { displayName } from '../order/plain';
@@ -11,6 +10,7 @@ import { explorerUrlFor, onMock } from '../order/readiness';
 import { utc } from '../portfolio/figures';
 import { useWalletPort } from '../wallet/WalletProvider';
 import type { Plan, PlansChain, RebalancesAnswer, RebalancesChain } from './api';
+import { TradesWait } from './PlanWait';
 import { REBALANCES_ASKED, type Reading } from './PortfolioProvider';
 import { href } from './pages';
 import { ChainsOut, sampleLine } from './parts';
@@ -58,7 +58,7 @@ export function PlanTrades({
 
   return (
     <Block ui="plan-trades" heading={words.heading} lead={words.lead}>
-      <BlockRead read={read} label={words.reading} skeleton={<SkeletonRows rows={3} columns={3} />}>
+      <BlockRead read={read} label={words.reading} skeleton={<TradesWait />}>
         {(answer) => {
           const out = answer.unavailable.find((u) => u.chain === plan.chain);
           if (out) return <ChainsOut unavailable={[out]} />;
