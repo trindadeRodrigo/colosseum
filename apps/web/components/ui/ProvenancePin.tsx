@@ -1,8 +1,10 @@
 'use client';
 import {
+  createContext,
   type PointerEvent,
   type ReactNode,
   type Ref,
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -104,6 +106,20 @@ export function PinGlyph({ state, drop = false, className }: PinGlyphProps) {
   );
 }
 
+// Quiet pins (gate PIN-QUIET, Rodrigo, Oct 8: the little square beside every number in the portfolio
+// and in the analytics "adds nothing, just pollution"). Inside a section that says so, a figure keeps
+// its source, still one press or one hover away, but the figure itself is the control: no glyph is
+// drawn beside it. Two things still show: a stale figure keeps its word, and a sample figure keeps its
+// hatched glyph, so nothing made up ever reads as live (MOCK-QUIET). A test-network figure relies on the
+// section's own "Test network" plate.
+
+const Quiet = createContext(false);
+
+/** Marks a section's figures as quiet: the figure is the control, with no glyph beside it. */
+export function QuietPins({ children }: { children: ReactNode }) {
+  return <Quiet.Provider value>{children}</Quiet.Provider>;
+}
+
 export type ProvenancePinProps = {
   /** The figure as shown, already formatted: "6.40%". */
   value: string;
@@ -147,6 +163,8 @@ export function ProvenancePin({
     kinds: { ...PIN_LABELS.kinds, ...labels?.kinds },
   };
   const state = pinState(obs);
+  // In a quiet section the figure is the control and no glyph is drawn, unless it is a sample.
+  const quiet = useContext(Quiet) && state !== 'mock';
   const [open, setOpen] = useState(defaultOpen);
   const [pinned, setPinned] = useState(defaultOpen);
   const [copied, setCopied] = useState(false);
@@ -277,8 +295,12 @@ export function ProvenancePin({
       // its own layer, so a later one would otherwise be painted over this one's popover.
       className={cn('relative inline-block whitespace-nowrap', open ? 'z-30' : 'z-10', className)}
     >
-      <span className="tf-figure">{value}</span>
-      {' '}
+      {!quiet && (
+        <>
+          <span className="tf-figure">{value}</span>
+          {' '}
+        </>
+      )}
       <button
         ref={button}
         type="button"
@@ -288,9 +310,18 @@ export function ProvenancePin({
         aria-controls={dialog && open ? popover : undefined}
         aria-describedby={!dialog && open ? popover : undefined}
         onClick={toggle}
-        className="relative inline-flex cursor-pointer align-baseline before:absolute before:top-1/2 before:left-1/2 before:size-6 before:-translate-1/2 before:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        data-quiet={quiet ? '' : undefined}
+        className={
+          quiet
+            ? 'cursor-help decoration-muted-foreground decoration-dotted underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring'
+            : "relative inline-flex cursor-pointer align-baseline before:absolute before:top-1/2 before:left-1/2 before:size-6 before:-translate-1/2 before:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        }
       >
-        <PinGlyph state={state} drop={drop} />
+        {quiet ? (
+          <span className="tf-figure">{value}</span>
+        ) : (
+          <PinGlyph state={state} drop={drop} />
+        )}
       </button>
       {stale && (
         <span

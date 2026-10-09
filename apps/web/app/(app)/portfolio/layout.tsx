@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { QuietPins } from '../../../components/ui/ProvenancePin';
 import { PortfolioProvider } from '../../../features/portfolio-section/PortfolioProvider';
 import { PortfolioShell } from '../../../features/portfolio-section/PortfolioShell';
 
@@ -9,7 +10,9 @@ import { PortfolioShell } from '../../../features/portfolio-section/PortfolioShe
 export default function PortfolioLayout({ children }: { children: ReactNode }) {
   return (
     <PortfolioProvider>
-      <PortfolioShell>{children}</PortfolioShell>
+      <QuietPins>
+        <PortfolioShell>{children}</PortfolioShell>
+      </QuietPins>
     </PortfolioProvider>
   );
 }
