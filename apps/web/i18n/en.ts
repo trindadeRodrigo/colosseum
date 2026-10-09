@@ -243,9 +243,9 @@ export const en = {
     },
     is: {
       picked: (chain: string) =>
-        `New plans are built on ${chain}. You choose the chain where you start a plan, on Invest.`,
+        `New vaults are built on ${chain}. You choose the chain where you start a vault, on Invest.`,
       wallet: (chain: string) =>
-        `New plans are built on ${chain}, the chain of the wallet you connected.`,
+        `New vaults are built on ${chain}, the chain of the wallet you connected.`,
     },
     /** Why a switch was not saved. */
     failure: {
@@ -653,7 +653,7 @@ export const en = {
       partial:
         'This overview includes only the chains that answered. Unavailable chains are not counted.',
       open: 'Open vault',
-      details: 'Holdings and plan details',
+      details: 'Holdings and target details',
       actions: 'Vault actions',
     },
     /** A chain of the person's that could not be read this time; the others are shown all the same. */
@@ -664,7 +664,7 @@ export const en = {
       vaults > 1 ? 'What your vaults hold' : 'What your vault holds',
     planDetails: 'Goal and target details',
     /** The page's description in its metadata; the screen itself does not show it. */
-    lead: 'Your vaults, their holdings and their targets. Open a vault to continue its conversation or add money.',
+    lead: 'Your vaults, their holdings and their targets. Open a vault to continue its conversation or deposit.',
     chain: 'Chain',
     reading: 'Reading your vault…',
     signedOut:
@@ -709,7 +709,7 @@ export const en = {
       title: 'Your vault',
       /** Over a vault left with cash by a buy that stopped after its deposit. */
       unfinished:
-        'A deposit stopped after the cash reached the vault, so more of this vault is cash than its plan holds. The cash is safe here.',
+        'A deposit stopped after the cash reached the vault, so more of this vault is cash than its targets hold. The cash is safe here.',
       address: 'Vault address',
       /** The link from a vault's panel to its own page. */
       page: (address: string) => `Open the page of vault ${address}`,
@@ -731,7 +731,7 @@ export const en = {
       openPage: 'Open this vault’s page',
       parts: 'Its parts, by weight',
       planTitle: (parts: number) =>
-        parts === 1 ? 'Your plan · 1 part' : `Your plan · ${parts} parts`,
+        parts === 1 ? 'Your vault · 1 part' : `Your vault · ${parts} parts`,
       tooMany: 'More parts than a bar can show: each one is in the table below.',
       target: (share: string) => `planned ${share}`,
       onlyCash: 'Only cash so far: none of it is in the vault’s assets yet.',
@@ -800,7 +800,7 @@ export const en = {
       numbered: (number: number) => `Vault #${number}`,
       addMoney: 'Deposit',
       rename: 'Rename',
-      newPlan: 'New plan',
+      newPlan: 'New vault',
       nameLabel: 'Name of this vault',
       nameHint: 'Up to 60 characters. Only you see it.',
       save: 'Save the name',
@@ -821,38 +821,38 @@ export const en = {
     /** More money into a vault the person has (/vaults/{chain}/{address}/add). */
     add: {
       strategy: 'Where this deposit goes',
-      title: 'Add money to your vault',
+      title: 'Deposit into your vault',
       lead: (chain: string) =>
-        `Add to this vault on ${chain} at its current targets. Review the deposit and its steps before your wallet signs.`,
+        `Deposit into this vault on ${chain} at its current targets. Review the deposit and its steps before your wallet signs.`,
       amountHint: 'From $10 to $1,000,000.',
       missing:
         'I can’t find this vault among yours. Open your portfolio, then choose the vault there.',
       back: 'Back to your portfolio',
       otherWallet: (address: string) =>
-        `This vault belongs to another wallet of yours (${address}). Sign in with that wallet to add money to it.`,
+        `This vault belongs to another wallet of yours (${address}). Sign in with that wallet to deposit into it.`,
       noVault:
         'Our server doesn’t list this vault as yours any more. Read your portfolio again, then try again.',
       /** Auto-follow is on: the add is the deposit alone. */
       keeper:
-        'Auto-follow is on for this vault, so this add only deposits the cash. Our keeper puts it into the vault’s assets when it next rebalances this vault.',
+        'Auto-follow is on for this vault, so this only deposits the cash. Our keeper puts it into the vault’s assets when it next rebalances this vault.',
       /** The portfolio the vault follows has a version the owner has not accepted. */
       newerVersion: (version: number) =>
-        `The portfolio this vault follows has a newer version, version ${version}. This add goes into the vault’s current targets; accepting the new version is a separate step.`,
+        `The portfolio this vault follows has a newer version, version ${version}. This deposit goes into the vault’s current targets; accepting the new version is a separate step.`,
       /** Where the targets an add is held to come from. */
       source: {
         read: (chain: string) =>
-          `Read from ${chain} by this app, not from our server: the targets this add goes into are the chain’s.`,
+          `Read from ${chain} by this app, not from our server: the targets this deposit goes into are the chain’s.`,
         mock: 'Sample chain: there is no chain to read, so the targets are our server’s words, not checked.',
         notRead: (chain: string) =>
           `Not checked against ${chain}: this app has no node of its own to read it from. The targets are our server’s words.`,
         failed: (chain: string) =>
-          `I couldn’t read this vault on ${chain}: the node this app reads from didn’t answer, or what our server named isn’t the vault the chain holds. I won’t offer to add money until I can.`,
+          `I couldn’t read this vault on ${chain}: the node this app reads from didn’t answer, or what our server named isn’t the vault the chain holds. I won’t offer a deposit until I can.`,
         missing: (chain: string) =>
-          `I read ${chain}, and it holds no such vault for your wallet, so I won’t offer to add money to it.`,
+          `I read ${chain}, and it holds no such vault for your wallet, so I won’t offer a deposit into it.`,
         differs: (chain: string) =>
-          `Our server’s answer differs from the targets ${chain} holds for this vault, so I won’t offer to add money now. Read your portfolio again in a moment.`,
+          `Our server’s answer differs from the targets ${chain} holds for this vault, so I won’t offer a deposit now. Read your portfolio again in a moment.`,
         unlisted:
-          'This vault has a target on a token this app doesn’t list, so I can’t hold an add to it and won’t offer one.',
+          'This vault has a target on a token this app doesn’t list, so I can’t hold a deposit to it and won’t offer one.',
       },
     },
     /** On the home page, under the goal. */
@@ -864,7 +864,7 @@ export const en = {
       manyChains: (vaults: number, chains: string) => `You have ${vaults} vaults, on ${chains}.`,
       see: 'See your portfolio',
       /** The way to the portfolio section: the same plans, over time. */
-      overTime: 'See your plans over time',
+      overTime: 'See your vaults over time',
     },
   },
 
@@ -1215,8 +1215,7 @@ export const en = {
       short: (chain: string) =>
         `Your wallet is short of what this deposit needs. Add what is missing to your wallet on ${chain}, then read it again.`,
       address: (address: string) => `Your address there: ${address}`,
-      newVault:
-        'This deposit opens your vault for this plan, which costs a little more in fees the first time.',
+      newVault: 'This deposit opens your vault, which costs a little more in fees the first time.',
       readAgain: 'Read my wallet again',
       mockFund: 'Add sample cash and fees',
       mockFunding: 'Adding…',
@@ -1443,7 +1442,7 @@ export const en = {
       following: 'Follows this portfolio',
       notFollowing: 'Follows another portfolio',
       /** A vault bought from a goal: it follows no shared portfolio. */
-      ownPlan: 'Holds your own plan',
+      ownPlan: 'Holds your own targets',
       followWith: 'Follow with this vault',
       noFollowers: 'None of your vaults on this chain follows this portfolio yet.',
       noHoldings: 'No holdings yet.',
@@ -1656,8 +1655,8 @@ export const en = {
         /** The bar's leg for the smaller holdings, past the three largest. */
         others: (count: number) => `${count} others`,
         /** Under a share: how far it is from the planned share, for a reader who cannot see the colour. */
-        against: (difference: string) => `${difference} against the plan`,
-        onPlan: 'on plan',
+        against: (difference: string) => `${difference} against its target`,
+        onPlan: 'on target',
         change:
           'To change what this vault holds, say it in the conversation: more of one asset, less of another.',
         details: 'Details',
@@ -1914,7 +1913,7 @@ export const en = {
       fromVault: 'From your vault’s cash',
       /** The first order was reviewed in another browser. */
       unseen:
-        'This device didn’t see the first order’s review. What is left to swap into is as our server lists it, and I hold it to the assets of your plan.',
+        'This device didn’t see the first order’s review. What is left to swap into is as our server lists it, and I hold it to the assets of your vault.',
       deposit: 'Deposit',
       steps: 'Steps',
       expires: 'Sign before',
@@ -2071,7 +2070,7 @@ export const en = {
       finishWorking: 'Another request is working on this order. Try again in a moment.',
       finishNothing: 'Nothing is left to do in this order: every step it had is done.',
       finishShort:
-        'Your vault now holds less cash than the steps left would spend: some was spent or withdrawn since. Nothing was made. Add money to the vault for what you still want it to hold.',
+        'Your vault now holds less cash than the steps left would spend: some was spent or withdrawn since. Nothing was made. Deposit into the vault for what you still want it to hold.',
       finishUnsupported: 'This order isn’t one that can be finished this way. Make a new order.',
       /** A stopped add into a vault whose auto-follow is on now: no order is made for the cash. */
       keeperBuys:
@@ -2413,7 +2412,7 @@ export const en = {
         case 'NO_PRICE':
           return `${asset} has no usable price just now.`;
         case 'NOT_FOR_GOAL':
-          return `${asset} can’t go in a plan for monthly income or for keeping money safe: it can fall in value. Take it out, or choose another goal.`;
+          return `${asset} can’t go in a vault for monthly income or for keeping money safe: it can fall in value. Take it out, or choose another goal.`;
         case 'ALL_CASH':
           return 'An open vault keeps at least one asset of its own.';
         case 'OVER_ORDER_LIMIT':

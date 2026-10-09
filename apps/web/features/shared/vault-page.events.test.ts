@@ -721,7 +721,7 @@ describe('a funded vault with no targets', () => {
     const plan = find(host, '[data-ui="vault-plan"]');
     expect(plan.querySelector('table')?.textContent).toContain('45%');
     expect(plan.querySelector('[data-ui="holding-drift"]')).toBeNull();
-    expect(plan.textContent).not.toContain('against the plan');
+    expect(plan.textContent).not.toContain('against its target');
   });
 });
 
