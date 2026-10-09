@@ -25,13 +25,26 @@ const FOUND = [
 ];
 const en = dictionary('en').signIn;
 
+/** Each look at the clock is a second later: a prompt was open for a person's time before it answered. */
+const aPersonsTime = () => {
+  let now = 0;
+  vi.spyOn(Date, 'now').mockImplementation(() => {
+    now += 1_000;
+    return now;
+  });
+};
+/** The clock stands still: what answers, answers at once, with no prompt behind it. */
+const atOnce = () => vi.spyOn(Date, 'now').mockImplementation(() => 0);
+
 beforeEach(() => {
   window.localStorage.clear();
   portStore.set(fakePort({ found: FOUND }));
+  aPersonsTime();
 });
 afterEach(async () => {
   await unmountAll();
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 const screen = (lang: Lang = 'en', onSignedIn?: () => void) =>
@@ -44,7 +57,7 @@ const button = (host: HTMLElement, label: string) => {
 const alert = (host: HTMLElement) => host.querySelector('[role="alert"]')?.textContent ?? null;
 /** The calm note after a passkey prompt that was closed. */
 const note = (host: HTMLElement) =>
-  host.querySelector('[data-ui="sign-in-note"]')?.textContent ?? null;
+  host.querySelector('[data-ui="sign-in-note"]')?.textContent || null;
 
 /** What a wallet or the provider throws, as the port hands it on. */
 const privy = (code: string, message: string) =>
@@ -94,13 +107,7 @@ describe('the sign-in panel: someone new and someone who has a passkey, as a pai
     const order = [...host.querySelectorAll('button')].map(
       (b) => b.getAttribute('data-act') ?? b.getAttribute('data-wallet'),
     );
-    expect(order).toEqual([
-      'passkey-create',
-      'passkey-continue',
-      'metamask',
-      'phantom',
-      'wallet-other',
-    ]);
+    expect(order).toEqual(['passkey-create', 'passkey-continue', 'metamask', 'phantom']);
   });
 
   it('draws them as equals when nothing is known about this device: same weight, same width, no primary', async () => {
@@ -153,7 +160,9 @@ describe('the sign-in panel: someone new and someone who has a passkey, as a pai
     // the warning is on the screen from the start, right under the button that makes one
     const said = find(host, '[data-ui="passkey-create-note"]');
     expect(said.textContent).toMatch(/new, empty wallet/);
-    expect(said.textContent).toMatch(/doesn’t open a wallet you already have/);
+    // a second account, said as that, not only as a wallet
+    expect(said.textContent).toMatch(/new account/);
+    expect(said.textContent).toMatch(/doesn’t open an account you already have/);
     expect(create(host).nextElementSibling).toBe(said);
     await click(create(host));
     expect(signIn.mock.calls).toEqual([['passkey', { create: true }]]);
@@ -183,7 +192,7 @@ describe('the sign-in panel: someone new and someone who has a passkey, as a pai
     // one call, nothing made, nobody signed in
     expect(signIn.mock.calls).toEqual([['passkey']]);
     expect(onSignedIn).not.toHaveBeenCalled();
-    // a note, not an alert: no red, no failure mark
+    // a note, not an alert: no red, no failure mark. The region was there, empty, before the press
     expect(alert(host)).toBeNull();
     const said = find(host, '[data-ui="sign-in-note"]');
     expect(said.getAttribute('role')).toBe('status');
@@ -199,24 +208,104 @@ describe('the sign-in panel: someone new and someone who has a passkey, as a pai
     expect(note(host)).toBeNull();
   });
 
-  it('speaks first to the one who has an account, and says what a new passkey opens before pointing to it', () => {
+  it('keeps the note’s region on the page from the start, empty, and fills it', async () => {
+    portStore.set(
+      fakePort({
+        found: FOUND,
+        signIn: vi.fn(async () => {
+          throw THROWN.closed;
+        }),
+      }),
+    );
+    const host = await screen();
+    const region = find(host, '[data-ui="sign-in-note"]');
+    expect([region.getAttribute('role'), region.textContent]).toEqual(['status', '']);
+    await click(use(host));
+    // the same element, now with its words
+    expect(find(host, '[data-ui="sign-in-note"]')).toBe(region);
+    expect(region.textContent).toBe(en.failure.passkeyNotUsed);
+  });
+
+  it('says a closed prompt in words about finding the passkey the person has, and never about making one', () => {
+    // read by exactly the person whose passkey is on another device: a word about a new passkey
+    // there sends them to a second account (review of #87, restored after the review of #209)
     for (const lang of ['en', 'pt'] as const) {
       const sentence = dictionary(lang).signIn.failure.passkeyNotUsed;
-      const other = sentence.search(lang === 'en' ? /another device/ : /outro aparelho/);
-      const phone = sentence.search(lang === 'en' ? /use a phone/ : /usar um celular/);
-      const make = sentence.search(
-        lang === 'en' ? /Create a passkey/ : /Criar uma chave de acesso/,
-      );
-      expect(other).toBeGreaterThan(-1);
-      expect(phone).toBeGreaterThan(other);
-      expect(make).toBeGreaterThan(phone);
-      expect(sentence.slice(make)).toMatch(lang === 'en' ? /new, empty wallet/ : /nova e vazia/);
+      expect(sentence).toMatch(lang === 'en' ? /another device/ : /outro aparelho/);
+      expect(sentence).toMatch(lang === 'en' ? /use a phone/ : /usar um celular/);
+      expect(sentence).toMatch(lang === 'en' ? /password manager/ : /gerenciador de senhas/);
+      expect(sentence).not.toMatch(/create|crie|criar|new passkey|nova/i);
     }
-    // the sentences of a passkey that is known to be wrong send nobody to make a new one
-    for (const key of ['passkeyUnknown', 'passkeyNotRegistered', 'passkeyNotAccepted'] as const)
+    // no sentence of a failed passkey sends someone who has an account to make a new one
+    for (const key of [
+      'passkeyNotUsed',
+      'passkeyUnknown',
+      'passkeyNotRegistered',
+      'passkeyNotAccepted',
+    ] as const)
       for (const words of [en, dictionary('pt').signIn])
         expect(words.failure[key]).not.toMatch(/create|crie|criar/i);
   });
+
+  it('says a refusal with no prompt behind it as a failure, not as a closed prompt', async () => {
+    // a frame with no leave to use passkeys, or a browser that lost the press, is refused with the
+    // same error as a closed prompt, at once: nobody closed anything
+    atOnce();
+    const signIn = vi.fn(async () => {
+      throw THROWN.closed;
+    });
+    portStore.set(fakePort({ found: FOUND, signIn }));
+    const host = await screen();
+    await click(use(host));
+    expect(note(host)).toBeNull();
+    expect(find(host, '[data-ui="sign-in-failure"]').textContent).toBe(
+      en.failure.passkeyNotAccepted,
+    );
+    await click(create(host));
+    expect(note(host)).toBeNull();
+    expect(find(host, '[data-ui="sign-in-failure"]').textContent).toBe(en.failure.other);
+    expect(en.failure.other).not.toMatch(/prompt was closed/);
+  });
+
+  it.each([
+    ['a browser with no passkeys', () => vi.stubGlobal('PublicKeyCredential', undefined)],
+    [
+      'a frame not allowed to use them',
+      () =>
+        Object.defineProperty(document, 'permissionsPolicy', {
+          value: { allowsFeature: () => false },
+          configurable: true,
+        }),
+    ],
+  ])(
+    'shows the pair unavailable in %s, with the reason once, and asks for no passkey',
+    async (_, take) => {
+      take();
+      try {
+        const signIn = vi.fn(async () => {});
+        portStore.set(fakePort({ found: FOUND, signIn }));
+        const host = await screen();
+        for (const button of [create(host), use(host)]) {
+          expect(button.getAttribute('aria-disabled')).toBe('true');
+          await click(button);
+        }
+        // nothing was asked for, so nothing fails in red on every press
+        expect(signIn).not.toHaveBeenCalled();
+        expect(alert(host)).toBeNull();
+        expect(find(host, '[data-ui="passkey-unavailable"]').textContent).toBe(
+          en.passkey.unavailable,
+        );
+        expect(host.querySelectorAll('[data-ui="passkey-unavailable"]')).toHaveLength(1);
+        expect(host.querySelectorAll('[data-variant="primary"]')).toHaveLength(0);
+        // the wallets are still a way in
+        await click(button(host, 'MetaMask'));
+        expect(signIn.mock.calls).toEqual([['wallet', { wallet: 'evm:io.metamask' }]]);
+      } finally {
+        vi.unstubAllGlobals();
+        Reflect.deleteProperty(document, 'permissionsPolicy');
+      }
+    },
+  );
 
   it('says a closed prompt to make one calmly too, and makes nothing', async () => {
     const signIn = vi.fn(async () => {
@@ -336,20 +425,21 @@ describe('the sign-in panel: the wallets as one list', () => {
     ).toEqual(['io.metamask', 'xyz.other']);
   });
 
-  it('ends with "Other wallet", which says what to do about one not listed and connects nothing', async () => {
+  it('says what to do about a wallet not listed in a quiet disclosure under the list, not as a wallet', async () => {
     const signIn = vi.fn(async () => {});
     portStore.set(fakePort({ found: FOUND, signIn }));
     const host = await screen();
-    const other = find(host, '[data-act="wallet-other"]');
-    expect(other.textContent).toBe(en.wallet.other);
-    expect(other.closest('li')).toBe(find(host, '[data-ui="wallet-list"]').lastElementChild);
-    expect(other.getAttribute('aria-expanded')).toBe('false');
-    expect(host.querySelector('[data-ui="wallet-other-body"]')).toBeNull();
-    await click(other);
-    expect(other.getAttribute('aria-expanded')).toBe('true');
-    const body = find(host, '[data-ui="wallet-other-body"]');
-    expect(body.textContent).toBe(en.wallet.otherBody);
-    expect(other.getAttribute('aria-controls')).toBe(body.id);
+    const other = find<HTMLDetailsElement>(host, '[data-ui="wallet-other"]');
+    // words under the list: not a row of it, not a button, no icon
+    const list = find(host, '[data-ui="wallet-list"]');
+    expect(list.contains(other)).toBe(false);
+    expect(list.nextElementSibling).toBe(other);
+    expect(other.querySelector('button, img, [data-ui="wallet-name"]')).toBeNull();
+    expect(list.querySelectorAll('li')).toHaveLength(rows(host).length);
+    expect(other.open).toBe(false);
+    expect(find(other, 'summary').textContent).toBe(en.wallet.other);
+    expect(find(other, '[data-ui="wallet-other-body"]').textContent).toBe(en.wallet.otherBody);
+    await click(find(other, 'summary'));
     expect(signIn).not.toHaveBeenCalled();
   });
 
@@ -433,7 +523,7 @@ describe('the sign-in panel: the wallets as one list', () => {
     expect(signIn).not.toHaveBeenCalled();
   });
 
-  it('says so when no wallet is in the browser, and keeps "Other wallet", which points to the passkey', async () => {
+  it('says so when no wallet is in the browser, and keeps the disclosure, which points to the passkey', async () => {
     portStore.set(fakePort({ found: [] }));
     const host = await screen();
     expect(find(host, '[data-ui="wallet-none"]').textContent).toBe(en.wallet.none);
@@ -442,8 +532,8 @@ describe('the sign-in panel: the wallets as one list', () => {
     expect([...host.querySelectorAll('button')].map((b) => b.getAttribute('data-act'))).toEqual([
       'passkey-create',
       'passkey-continue',
-      'wallet-other',
     ]);
+    expect(host.querySelector('[data-ui="wallet-other"]')).not.toBeNull();
   });
 
   it('says a wallet’s failure in the wallet card, as an alert', async () => {
@@ -494,7 +584,7 @@ describe('the sign-in panel: while a prompt or a connection is in flight', () =>
     expect(loader.querySelector('[data-ui="lattice-loader"]')).not.toBeNull();
     expect(find(host, '[data-ui="passkey-pair"]').parentElement?.contains(loader)).toBe(true);
     // every other way in is set aside while one is in flight, and a second press asks nothing
-    for (const other of [create(host), button(host, 'Phantom'), button(host, en.wallet.other)])
+    for (const other of [create(host), button(host, 'Phantom'), button(host, 'MetaMask')])
       expect(other.getAttribute('aria-disabled')).toBe('true');
     await click(passkey);
     await click(create(host));
@@ -609,7 +699,7 @@ describe('the sign-in panel: when sign-in is off', () => {
     // it comes back by itself when the API answers
     portStore.set(fakePort({ found: FOUND }));
     await settle();
-    expect(host.querySelectorAll('button')).toHaveLength(5);
+    expect(host.querySelectorAll('button')).toHaveLength(4);
   });
 
   it('says this copy is not set up, in words a person can use, for every other reason', async () => {

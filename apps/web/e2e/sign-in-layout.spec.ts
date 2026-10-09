@@ -93,17 +93,20 @@ for (const size of SIZES)
         await expect(dialog.locator('[data-variant="primary"]')).toHaveCount(0);
         // what a new passkey opens is on the screen before the button is pressed
         await expect(dialog.locator('[data-ui="passkey-create-note"]')).toBeVisible();
-        // the wallets are one list with no name twice, ending with "Other wallet"
+        // the wallets are one list with no name twice; a wallet not listed is words under it
         const names = await dialog.locator('[data-ui="wallet-name"]').allTextContents();
         expect(new Set(names).size).toBe(names.length);
-        await expect(dialog.locator('[data-ui="wallet-list"] button').last()).toHaveAttribute(
-          'data-act',
-          'wallet-other',
-        );
-        // focus opens on the first way in, and the keys reach "Close" last
-        await expect(dialog.locator('[data-act="passkey-create"]')).toBeFocused();
+        await expect(dialog.locator('[data-ui="wallet-list"] button')).toHaveCount(names.length);
+        await expect(
+          dialog.locator('[data-ui="wallet-list"] + [data-ui="wallet-other"]'),
+        ).toBeVisible();
+        // focus opens on the heading, never on a way in; back from it is "Close", the last control,
+        // and forward from "Close" is the first way in
+        await expect(dialog.locator('[data-ui="sign-in-screen"] > header h2')).toBeFocused();
         await page.keyboard.press('Shift+Tab');
         await expect(dialog.getByRole('button', { name: 'Close sign-in' })).toBeFocused();
+        await page.keyboard.press('Tab');
+        await expect(dialog.locator('[data-act="passkey-create"]')).toBeFocused();
         // nothing scrolls sideways, and the page behind does not scroll
         expect(
           await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),

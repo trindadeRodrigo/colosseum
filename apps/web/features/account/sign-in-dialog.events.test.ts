@@ -44,6 +44,13 @@ const button = (root: ParentNode, label: string) => {
 };
 
 beforeEach(() => {
+  window.localStorage.removeItem('tf-passkey');
+  // a prompt is open for a person's time before it answers
+  let now = 0;
+  vi.spyOn(Date, 'now').mockImplementation(() => {
+    now += 1_000;
+    return now;
+  });
   location.pathname = '/goal';
   router.push.mockClear();
   router.replace.mockClear();
@@ -67,6 +74,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   await unmountAll();
+  vi.restoreAllMocks();
   document.documentElement.style.overflow = '';
 });
 
@@ -84,7 +92,7 @@ describe('the sign-in dialog', () => {
     // the same panel: the passkey pair, the wallets, and the disclaimer
     expect(button(box as HTMLElement, en.signIn.passkey.create)).toBeTruthy();
     expect(button(box as HTMLElement, en.signIn.passkey.continue)).toBeTruthy();
-    expect(button(box as HTMLElement, en.signIn.wallet.other)).toBeTruthy();
+    expect(box?.querySelector('[data-ui="wallet-other"]')).not.toBeNull();
     expect(box?.querySelector('[data-ui="disclaimer"]')).not.toBeNull();
     // the page stays: no navigation, and nothing behind can be reached or scrolled
     expect(router.push).not.toHaveBeenCalled();
@@ -93,14 +101,51 @@ describe('the sign-in dialog', () => {
     expect(document.documentElement.style.overflow).toBe('hidden');
     // the page keeps its scrollbar's room, so nothing behind shifts sideways
     expect(document.documentElement.style.scrollbarGutter).toBe('stable');
-    // focus is in the dialog, on the first way in; the keys go new, returning, the wallets, and
-    // "Close" last, though it is drawn at the top
-    expect(document.activeElement).toBe(button(box as HTMLElement, en.signIn.passkey.create));
+    // focus is in the dialog, on its heading: never on a way in. The keys then go new, returning,
+    // the wallets, and "Close" last, though it is drawn at the top
+    expect(document.activeElement).toBe(title);
     const order = [...(box as HTMLElement).querySelectorAll('button')].map(
       (b) => b.getAttribute('data-act') ?? b.getAttribute('aria-label'),
     );
-    expect(order).toEqual(['passkey-create', 'passkey-continue', 'wallet-other', en.signIn.close]);
+    expect(order).toEqual(['passkey-create', 'passkey-continue', en.signIn.close]);
   });
+
+  it.each([
+    ['nothing is known about this browser', false],
+    ['a passkey has signed in here before, and "Use my passkey" leads', true],
+  ])(
+    'starts nothing on Enter when it opens: no passkey is made or used, when %s',
+    async (_, seen) => {
+      if (seen) window.localStorage.setItem('tf-passkey', '1');
+      const signIn = vi.fn(async () => {});
+      portStore.set(fakePort({ signIn }));
+      const host = await shell();
+      const trigger = find<HTMLAnchorElement>(host, 'header a[href^="/sign-in"]');
+      trigger.focus();
+      await click(trigger);
+      const box = dialog() as HTMLElement;
+      expect(find(box, '[data-ui="passkey-pair"]').getAttribute('data-leads')).toBe(
+        seen ? 'continue' : 'neither',
+      );
+      // focus rests on the heading, which does nothing: not on "Create a passkey", the first button
+      const focused = document.activeElement as HTMLElement;
+      expect(focused.tagName).toBe('H2');
+      expect(focused.id).toBe(box.getAttribute('aria-labelledby'));
+      expect(focused).not.toBe(find(box, '[data-act="passkey-create"]'));
+      for (const type of ['keydown', 'keyup'] as const)
+        await fire(
+          focused,
+          new KeyboardEvent(type, { key: 'Enter', bubbles: true, cancelable: true }),
+        );
+      // an Enter that reached a button would have clicked it
+      if (focused instanceof HTMLButtonElement) await click(focused);
+      expect(signIn).not.toHaveBeenCalled();
+      expect(dialog()).not.toBeNull();
+      // back from the heading is the last control, inside the dialog
+      await press(focused, 'Tab', { shiftKey: true });
+      expect(document.activeElement).toBe(find(box, `button[aria-label="${en.signIn.close}"]`));
+    },
+  );
 
   it('closes with Escape, the scrim and its close button, and gives focus back to what opened it', async () => {
     const host = await shell();

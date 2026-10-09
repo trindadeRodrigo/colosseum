@@ -12,7 +12,16 @@ import {
   signInWithSolanaWallet,
   walletAlreadyThere,
 } from './sign-in-flows';
-import { isCalm, type SignInAttempt, signInFailure, twinMark, walletChoices } from './sign-in-view';
+import {
+  isCalm,
+  PROMPT_SEEN_MS,
+  passkeysUsable,
+  type SignInAttempt,
+  signInFailure,
+  twinMark,
+  walletChoices,
+  withoutPrompt,
+} from './sign-in-view';
 import { buildConfigForTest } from './test/api-config';
 import { chains, failure } from './test/fixtures';
 import { createTestDriver, TEST_WALLETS } from './test/test-driver';
@@ -138,7 +147,7 @@ describe('the sentence each failure gets', () => {
     for (const attempt of ['passkey-use', 'passkey-create', 'wallet'] as const)
       expect(says(privy('invalid_origin', 'Origin not allowed'), attempt)).toBe('originRefused');
     // a real failure, said as one
-    expect(isCalm('originRefused')).toBe(false);
+    expect(isCalm('originRefused', { usable: true, openMs: 60_000 })).toBe(false);
     expect(says(new TypeError('Failed to fetch'), 'wallet')).toBe('offline');
     expect(says(new Error('Blockhash not found'), 'wallet')).toBe('expired');
     expect(says(new Error('TypeError: cannot read properties of undefined'), 'wallet')).toBe(
@@ -419,11 +428,15 @@ describe('the wallets as the sign-in screen offers them', () => {
     ]);
   });
 
-  it('says a closed passkey prompt calmly, and everything else as a failure', () => {
-    // Privy reports a closed prompt, a timeout and "no passkey here" as one refusal: for someone new
-    // that is the expected answer to "Use my passkey", not something that went wrong
-    for (const key of ['passkeyNotUsed', 'passkeyNotCreated'] as const)
-      expect(isCalm(key), key).toBe(true);
+  it('says calmly only a passkey prompt a person had time to close, where passkeys can be used', () => {
+    const closed = { usable: true, openMs: PROMPT_SEEN_MS };
+    for (const key of ['passkeyNotUsed', 'passkeyNotCreated'] as const) {
+      expect(isCalm(key, closed), key).toBe(true);
+      // refused at once: no prompt was open (a lost press, a frame with no leave)
+      expect(isCalm(key, { usable: true, openMs: PROMPT_SEEN_MS - 1 }), key).toBe(false);
+      // passkeys cannot be used here at all, however long it took
+      expect(isCalm(key, { usable: false, openMs: 60_000 }), key).toBe(false);
+    }
     for (const key of [
       'passkeyUnknown',
       'passkeyNotRegistered',
@@ -435,7 +448,44 @@ describe('the wallets as the sign-in screen offers them', () => {
       'offline',
       'other',
     ] as const)
-      expect(isCalm(key), key).toBe(false);
+      expect(isCalm(key, closed), key).toBe(false);
+    // and the sentence of a refusal with no prompt behind it is not "the prompt was closed"
+    expect(withoutPrompt('passkeyNotUsed')).toBe('passkeyNotAccepted');
+    expect(withoutPrompt('passkeyNotCreated')).toBe('other');
+    expect(withoutPrompt('tooMany')).toBe('tooMany');
+  });
+
+  it('knows where passkeys cannot be used: no WebAuthn, or a frame not allowed to', () => {
+    const has = { PublicKeyCredential: class {} };
+    expect(passkeysUsable({})).toBe(false);
+    expect(passkeysUsable(has)).toBe(true);
+    const policy = (allowed: string[]) => ({
+      ...has,
+      document: { permissionsPolicy: { allowsFeature: (f: string) => allowed.includes(f) } },
+    });
+    expect(passkeysUsable(policy([]))).toBe(false);
+    // both are needed: using one, and making one
+    expect(passkeysUsable(policy(['publickey-credentials-get']))).toBe(false);
+    expect(
+      passkeysUsable(policy(['publickey-credentials-get', 'publickey-credentials-create'])),
+    ).toBe(true);
+    // the older name of the same policy
+    expect(
+      passkeysUsable({ ...has, document: { featurePolicy: { allowsFeature: () => false } } }),
+    ).toBe(false);
+    // a policy that cannot be asked is taken to allow: the attempt then says what happened
+    expect(
+      passkeysUsable({
+        ...has,
+        document: {
+          permissionsPolicy: {
+            allowsFeature: () => {
+              throw new Error('no');
+            },
+          },
+        },
+      }),
+    ).toBe(true);
   });
 
   it('lists MetaMask once: its Solana wallet and its EVM one are the known pair, by their ids', () => {

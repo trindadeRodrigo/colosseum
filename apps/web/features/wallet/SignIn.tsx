@@ -12,12 +12,14 @@ import {
   isCalm,
   keepPasskeySeen,
   passkeySeenHere,
+  passkeysUsable,
   type SignInAttempt,
   type SignInFailure,
   signInFailure,
   twinMark,
   type WalletChoice,
   walletChoices,
+  withoutPrompt,
 } from './sign-in-view';
 import { useWalletPort } from './WalletProvider';
 
@@ -30,12 +32,14 @@ import { useWalletPort } from './WalletProvider';
 // press, so the browser has a gesture for it. The one this browser can vouch for leads: once a passkey
 // has signed in here, "Use my passkey" is the primary; until then nothing is known and they are equals.
 //
-// A prompt that was closed, or found no passkey, is no failure: it is said calmly, as a note that
-// points to the other button. Red is kept for what went wrong.
+// A prompt that the person closed, or that found no passkey, is no failure: it is said calmly, as a
+// note about finding the passkey they have, and never about making one (that is the button above,
+// with its warning). Red is kept for what went wrong, a refusal with no prompt behind it included.
+// Where passkeys cannot be used at all the pair is off, with the reason said once.
 //
 // The wallet side is the list of the wallets found in this browser, one entry per wallet with its own
-// name and icon and, under the name, where a plan made with it lives; then "Other wallet", which says
-// what to do about one that is not listed. A wallet that signs on both families asks first which chain
+// name and icon and, under the name, where a plan made with it lives; under it a quiet disclosure
+// says what to do about a wallet that is not listed (it connects nothing, and is not drawn as one). A wallet that signs on both families asks first which chain
 // the plan lives on, since that is the family it signs in with. Nothing of the wallet provider's is
 // drawn: its hooks run behind `signIn()` of the wallet port. No spinner: a busy button changes its
 // label, and a wait over 400ms shows the loader with its words. A failure is a sentence that says what
@@ -66,7 +70,7 @@ const NOTE = 'text-body-sm text-muted-foreground';
 /** A wallet's row: its icon, its name, and under the name where a plan made with it lives. */
 const ROW = 'h-auto min-h-12 w-full justify-start py-2 text-left';
 
-type Said = { failure: SignInFailure; side: 'passkey' | 'wallet' };
+type Said = { failure: SignInFailure; side: 'passkey' | 'wallet'; calm: boolean };
 
 export function SignIn({ onAttempt, onFailed, onSignedIn, silent }: SignInProps) {
   const t = useT();
@@ -77,10 +81,10 @@ export function SignIn({ onAttempt, onFailed, onSignedIn, silent }: SignInProps)
   const walletId = useId();
   const createNoteId = useId();
   const continueNoteId = useId();
-  const otherId = useId();
-  const [other, setOther] = useState(false);
   // A passkey has signed in on this browser before: the one thing known about this device.
   const [seen] = useState(passkeySeenHere);
+  // Whether this browser, in this frame, can use passkeys at all.
+  const [usable] = useState(() => passkeysUsable());
   // The wallet that signs on both families, while the person chooses which.
   const [asking, setAsking] = useState<WalletChoice | null>(null);
   // The question takes the place of the wallet that was pressed: focus goes to it, not to the page.
@@ -109,6 +113,7 @@ export function SignIn({ onAttempt, onFailed, onSignedIn, silent }: SignInProps)
     setBusy(what);
     setSaid(null);
     onAttempt?.();
+    const opened = Date.now();
     try {
       await action();
       if (attempt !== 'wallet') keepPasskeySeen();
@@ -116,9 +121,14 @@ export function SignIn({ onAttempt, onFailed, onSignedIn, silent }: SignInProps)
       onSignedIn?.();
     } catch (e) {
       if (!here.current) return;
+      const failure = signInFailure(e, attempt);
+      // Calm only for a prompt a person had time to close; a refusal with none behind it is said
+      // as what it is, not as "the prompt was closed".
+      const calm = isCalm(failure, { usable, openMs: Date.now() - opened });
       setSaid({
-        failure: signInFailure(e, attempt),
+        failure: attempt === 'wallet' || calm ? failure : withoutPrompt(failure),
         side: attempt === 'wallet' ? 'wallet' : 'passkey',
+        calm,
       });
       onFailed?.();
     } finally {
@@ -189,17 +199,10 @@ export function SignIn({ onAttempt, onFailed, onSignedIn, silent }: SignInProps)
         ? t.signIn.wallet.lives(chainName(CHAIN_OF[open[0]]))
         : null;
   const passkeyBusy = busy === 'passkey' || busy === 'create';
-  /** What a side says after a try: a calm note for a closed prompt, an alert for what went wrong. */
+  /** What went wrong on a side, as an alert. A closed prompt is not one: it is the note below. */
   const outcome = (side: Said['side']) =>
-    said?.side !== side ? null : isCalm(said.failure) ? (
-      <p
-        role="status"
-        data-ui="sign-in-note"
-        className="max-w-(--tf-measure-body) text-body-sm text-foreground"
-      >
-        {t.signIn.failure[said.failure]}
-      </p>
-    ) : (
+    said?.side === side &&
+    !said.calm && (
       <p
         role="alert"
         data-ui="sign-in-failure"
@@ -247,7 +250,7 @@ export function SignIn({ onAttempt, onFailed, onSignedIn, silent }: SignInProps)
                   aria-describedby={createNoteId}
                   busy={busy === 'create'}
                   busyLabel={t.signIn.passkey.waiting}
-                  disabled={resting('create')}
+                  disabled={!usable || resting('create')}
                   onClick={() =>
                     run('create', 'passkey-create', () => port.signIn('passkey', { create: true }))
                   }
@@ -263,11 +266,11 @@ export function SignIn({ onAttempt, onFailed, onSignedIn, silent }: SignInProps)
               <div className={CHOICE}>
                 <Button
                   data-act="passkey-continue"
-                  variant={seen ? 'primary' : 'secondary'}
+                  variant={seen && usable ? 'primary' : 'secondary'}
                   aria-describedby={continueNoteId}
                   busy={busy === 'passkey'}
                   busyLabel={t.signIn.passkey.waiting}
-                  disabled={resting('passkey')}
+                  disabled={!usable || resting('passkey')}
                   onClick={() => run('passkey', 'passkey-use', () => port.signIn('passkey'))}
                   className="w-full"
                 >
@@ -278,7 +281,23 @@ export function SignIn({ onAttempt, onFailed, onSignedIn, silent }: SignInProps)
                 </p>
               </div>
             </div>
+            {/* Passkeys cannot be used here: the two buttons are off, and why is said once. */}
+            {!usable && (
+              <p data-ui="passkey-unavailable" className="text-body-sm text-foreground">
+                {t.signIn.passkey.unavailable}
+              </p>
+            )}
             {waiting(passkeyBusy, t.signIn.passkey.waiting)}
+            {/* The calm note of a closed prompt. The region is on the page from the start, empty,
+                and filled when there is something to say: a screen reader hears a region change,
+                where it may pass over one that arrives already filled. */}
+            <p
+              role="status"
+              data-ui="sign-in-note"
+              className="max-w-(--tf-measure-body) text-body-sm text-foreground empty:absolute"
+            >
+              {said?.side === 'passkey' && said.calm ? t.signIn.failure[said.failure] : null}
+            </p>
             {outcome('passkey')}
             <details data-ui="passkey-what" className="mt-auto text-body-sm">
               <summary className="cursor-pointer rounded-sm text-foreground underline decoration-1 underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
@@ -401,28 +420,20 @@ export function SignIn({ onAttempt, onFailed, onSignedIn, silent }: SignInProps)
                       </li>
                     );
                   })}
-                  {/* A wallet that is not listed: what to do about it. It connects nothing itself. */}
-                  <li className="flex flex-col gap-1">
-                    <Button
-                      data-act="wallet-other"
-                      aria-expanded={other}
-                      aria-controls={other ? otherId : undefined}
-                      disabled={busy !== null}
-                      onClick={() => setOther((open) => !open)}
-                      className={ROW}
-                    >
-                      <span className="inline-flex items-center gap-3">
-                        <WalletIcon />
-                        {t.signIn.wallet.other}
-                      </span>
-                    </Button>
-                    {other && (
-                      <p id={otherId} data-ui="wallet-other-body" className={NOTE}>
-                        {t.signIn.wallet.otherBody}
-                      </p>
-                    )}
-                  </li>
                 </ul>
+                {/* A wallet that is not listed: what to do about it, as words. Not a wallet's row:
+                    it connects nothing. */}
+                <details data-ui="wallet-other" className="text-body-sm">
+                  <summary className="cursor-pointer rounded-sm text-foreground underline decoration-1 underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+                    {t.signIn.wallet.other}
+                  </summary>
+                  <p
+                    data-ui="wallet-other-body"
+                    className="mt-2 max-w-(--tf-measure-body) text-muted-foreground"
+                  >
+                    {t.signIn.wallet.otherBody}
+                  </p>
+                </details>
               </>
             )}
             {waiting(busy?.startsWith('wallet:') === true, t.signIn.wallet.waiting)}

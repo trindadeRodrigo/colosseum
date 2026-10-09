@@ -99,13 +99,71 @@ export function walletChoices(found: readonly FoundWallet[]): WalletChoice[] {
 }
 
 /**
- * A passkey prompt that was closed, timed out or found no passkey is no failure: it is what someone
- * new gets from "Use my passkey", and what anyone gets by changing their mind. It is said calmly, as a
- * note, and red is kept for what went wrong. Privy 3.46 reports every WebAuthn refusal as one error,
- * so the screen cannot tell "none here" from "closed": the note speaks to both.
+ * How long a passkey prompt has to have been open for its refusal to be the person's own: nobody
+ * reads and closes a system sheet faster. A refusal that comes back sooner had no prompt behind it.
  */
-export function isCalm(failure: SignInFailure): boolean {
-  return failure === 'passkeyNotUsed' || failure === 'passkeyNotCreated';
+export const PROMPT_SEEN_MS = 800;
+
+/** What the screen knows about a passkey attempt beside what was thrown. */
+export type PromptSeen = {
+  /** Passkeys can be used here at all (`passkeysUsable`). */
+  usable: boolean;
+  /** How long the call was open. */
+  openMs: number;
+};
+
+/**
+ * A passkey prompt that the person closed, that timed out, or that found no passkey is no failure:
+ * it is what someone new gets from "Use my passkey", and what anyone gets by changing their mind. It
+ * is said calmly, as a note, and red is kept for what went wrong. Privy 3.46 reports every WebAuthn
+ * refusal as one error, so the sentence alone does not say which it was: a frame with no leave to use
+ * passkeys, or a browser that lost the press (Safari), is refused the same way with no prompt shown.
+ * So calm is only a refusal that came after a prompt was open for a person's time, where passkeys can
+ * be used; anything else is a failure.
+ */
+export function isCalm(failure: SignInFailure, seen: PromptSeen): boolean {
+  if (failure !== 'passkeyNotUsed' && failure !== 'passkeyNotCreated') return false;
+  return seen.usable && seen.openMs >= PROMPT_SEEN_MS;
+}
+
+/**
+ * The sentence for a passkey refusal that had no prompt behind it: not "the prompt was closed".
+ * Everything else keeps its own sentence.
+ */
+export function withoutPrompt(failure: SignInFailure): SignInFailure {
+  if (failure === 'passkeyNotUsed') return 'passkeyNotAccepted';
+  if (failure === 'passkeyNotCreated') return 'other';
+  return failure;
+}
+
+type PolicyDocument = {
+  featurePolicy?: { allowsFeature?: (feature: string) => boolean };
+  permissionsPolicy?: { allowsFeature?: (feature: string) => boolean };
+};
+
+/**
+ * Whether passkeys can be used on this page at all: the browser has WebAuthn, and where the page can
+ * ask (a frame's permissions policy) it is allowed to use and to make them. Where it cannot ask, it
+ * is taken to be allowed: the attempt then says what happened.
+ */
+export function passkeysUsable(
+  win: { PublicKeyCredential?: unknown; document?: PolicyDocument } | undefined = typeof window ===
+  'undefined'
+    ? undefined
+    : (window as never),
+): boolean {
+  if (!win) return true;
+  if (typeof win.PublicKeyCredential === 'undefined') return false;
+  const policy = win.document?.permissionsPolicy ?? win.document?.featurePolicy;
+  if (typeof policy?.allowsFeature !== 'function') return true;
+  try {
+    return (
+      policy.allowsFeature('publickey-credentials-get') &&
+      policy.allowsFeature('publickey-credentials-create')
+    );
+  } catch {
+    return true;
+  }
 }
 
 /**

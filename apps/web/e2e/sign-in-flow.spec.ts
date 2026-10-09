@@ -41,7 +41,13 @@ test('someone new: "Create a passkey" is there from the start with what it opens
   const dialog = page.getByRole('dialog');
   const create = dialog.getByRole('button', { name: en.signIn.passkey.create });
   await expect(create).toBeVisible({ timeout: 60_000 });
-  // the first thing the keys reach, with its warning beside it before any press
+  // focus opens on the heading, so Enter starts nothing: nobody is signed in and the dialog stays
+  await expect(dialog.locator('[data-ui="sign-in-screen"] > header h2')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(dialog).toHaveCount(1);
+  await expect(page.locator('header [data-ui="account-menu-button"]')).toHaveCount(0);
+  // the first thing Tab reaches, with its warning beside it before any press
+  await page.keyboard.press('Tab');
   await expect(create).toBeFocused();
   await expect(dialog.locator('[data-ui="passkey-create-note"]')).toHaveText(
     en.signIn.passkey.createNote,
@@ -49,7 +55,7 @@ test('someone new: "Create a passkey" is there from the start with what it opens
   await expect(dialog.getByRole('alert')).toHaveCount(0);
   await check(page, 'the sign-in dialog, first open');
   await dialog.locator('[data-ui="passkey-what"] summary').click();
-  await dialog.getByRole('button', { name: en.signIn.wallet.other }).click();
+  await dialog.locator('[data-ui="wallet-other"] summary').click();
   await check(page, 'the sign-in dialog, with its two disclosures open');
   await create.click();
   await expect(dialog).toHaveCount(0);
@@ -108,8 +114,9 @@ test('a wallet: one list with where each plan lives, and the chain asked for a w
   await expect(list.locator('[data-ui="wallet-lives"]')).toHaveText(
     en.signIn.wallet.livesEither('Solana', 'Robinhood Chain'),
   );
-  const other = list.getByRole('button', { name: en.signIn.wallet.other });
-  await other.click();
+  // under the list, as words: what to do about a wallet that is not in it
+  await expect(list.getByRole('button')).toHaveCount(1);
+  await dialog.locator('[data-ui="wallet-other"] summary').click();
   await expect(dialog.locator('[data-ui="wallet-other-body"]')).toHaveText(
     en.signIn.wallet.otherBody,
   );

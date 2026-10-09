@@ -96,9 +96,12 @@ export const en = {
        */
       create: 'Create a passkey',
       createNote:
-        'I’m new here. This opens a new account with a new, empty wallet. It doesn’t open a wallet you already have.',
+        'New here? This opens a new account with a new, empty wallet. It doesn’t open an account you already have.',
       continue: 'Use my passkey',
-      continueNote: 'I’ve signed in here before.',
+      continueNote: 'Signed in here before? Use the passkey you made then.',
+      /** Where passkeys cannot be used at all: said once, under the pair, whose buttons are off. */
+      unavailable:
+        'Passkeys can’t be used in this browser or in this frame, so these two are off. Open the page in a current browser, or connect a wallet.',
       /** The disclosure under the pair. */
       what: 'What is a passkey?',
       body: 'A key this device keeps for this site, opened the way you open the device: a fingerprint, a face or a code. There is no seed phrase to write down. A wallet is made for you that only that passkey opens.',
@@ -114,8 +117,8 @@ export const en = {
       lives: (chain: string) => `Your plan lives on ${chain}`,
       livesEither: (a: string, b: string) => `Your plan lives on ${a} or ${b}`,
       none: 'No wallet was found in this browser.',
-      /** The last entry: a wallet that is not in the list. Only wallets in this browser can sign in. */
-      other: 'Other wallet',
+      /** Under the list, a quiet disclosure: a wallet that is not in it. It connects nothing. */
+      other: 'Wallet not listed?',
       otherBody:
         'Only wallets in this browser are listed. Install yours, or open this page inside your wallet’s own browser. Or use a passkey: it needs nothing installed.',
       /** A wallet that signs on both families: the chain is asked before it signs. */
@@ -152,12 +155,13 @@ export const en = {
       passkeyNotCreated:
         'No passkey was created: the prompt was closed or ran out of time. Nothing was saved. Try again when you’re ready.',
       /**
-       * The prompt to use a passkey was closed, or this device has none: the expected result for
-       * someone new. Nothing is made unless the person asks (SIGN-IN-FLOW); the one who has an account
-       * is spoken to first, and the way to a new one says what it opens.
+       * The prompt to use a passkey was closed, or found none on this device. Said calmly, and only
+       * about finding the passkey the person has: this is read by exactly the person whose passkey is
+       * elsewhere, and a word about making one would send them to a second account (review of #87,
+       * and of #209). The way to a new one is the button above, with its own warning.
        */
       passkeyNotUsed:
-        'No passkey was used. If you made one on another device, use that device or choose “use a phone” in the prompt. No passkey yet? “Create a passkey” makes one, with a new, empty wallet.',
+        'No passkey was used. If you made yours on another device, use that device or choose “use a phone” in the prompt. It may also be kept by another browser or a password manager: open this page there.',
       passkeyUnknown:
         'I don’t know that passkey: no account here was opened with it. Try the one you signed up with.',
       /** A passkey sign-in that failed with nothing more said: no passkey was taken. */

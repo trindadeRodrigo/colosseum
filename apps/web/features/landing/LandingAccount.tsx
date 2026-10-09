@@ -31,7 +31,11 @@ function Loading({ titleId, failed }: { titleId: string; failed: boolean }) {
   const t = useT();
   return (
     <div data-ui="sign-in-loading" className="mx-auto flex w-full max-w-[860px] flex-col gap-6">
-      <h2 id={titleId} className="max-w-(--tf-measure-display) font-display text-h2 font-normal">
+      <h2
+        id={titleId}
+        tabIndex={-1}
+        className="max-w-(--tf-measure-display) font-display text-h2 font-normal outline-none"
+      >
         {t.signIn.title}
       </h2>
       {/* The panel's code did not arrive (offline, or a deploy moved it): the page still works. */}

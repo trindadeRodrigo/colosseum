@@ -72,9 +72,11 @@ export const pt: Dictionary = {
       title: 'Chave de acesso',
       create: 'Criar uma chave de acesso',
       createNote:
-        'É minha primeira vez. Isso abre uma conta nova, com uma carteira nova e vazia. Não abre uma carteira que você já tem.',
+        'Primeira vez aqui? Isso abre uma conta nova, com uma carteira nova e vazia. Não abre uma conta que você já tem.',
       continue: 'Usar minha chave de acesso',
-      continueNote: 'Já entrei aqui antes.',
+      continueNote: 'Já entrou aqui antes? Use a chave de acesso daquela vez.',
+      unavailable:
+        'Chaves de acesso não funcionam neste navegador ou neste quadro, então estas duas opções estão indisponíveis. Abra a página em um navegador atual ou conecte uma carteira.',
       what: 'O que é uma chave de acesso?',
       body: 'Uma chave que este aparelho guarda para este site, aberta do jeito que você abre o aparelho: digital, rosto ou código. Não há frase de recuperação para anotar. A carteira que criamos para você só abre com essa chave.',
       waiting: 'Aguardando sua chave de acesso…',
@@ -87,7 +89,7 @@ export const pt: Dictionary = {
       lives: (chain: string) => `Seu plano fica na ${chain}`,
       livesEither: (a: string, b: string) => `Seu plano fica na ${a} ou na ${b}`,
       none: 'Nenhuma carteira foi encontrada neste navegador.',
-      other: 'Outra carteira',
+      other: 'Sua carteira não está na lista?',
       otherBody:
         'Só aparecem as carteiras deste navegador. Instale a sua ou abra esta página no navegador da própria carteira. Ou use uma chave de acesso: não precisa instalar nada.',
       both: (wallet: string) =>
@@ -116,7 +118,7 @@ export const pt: Dictionary = {
       passkeyNotCreated:
         'A chave de acesso não foi criada: a janela foi fechada ou o tempo acabou. Nada foi salvo. Tente de novo quando quiser.',
       passkeyNotUsed:
-        'Nenhuma chave de acesso foi usada. Se você criou uma em outro aparelho, use esse aparelho ou escolha “usar um celular” na janela. Ainda não tem uma? “Criar uma chave de acesso” faz uma, com uma carteira nova e vazia.',
+        'Nenhuma chave de acesso foi usada. Se você fez a sua em outro aparelho, use esse aparelho ou escolha “usar um celular” na janela. Ela também pode estar em outro navegador ou em um gerenciador de senhas: abra esta página lá.',
       passkeyUnknown:
         'Não reconheço essa chave de acesso: nenhuma conta aqui foi aberta com ela. Tente a chave com que você se cadastrou.',
       passkeyNotAccepted:
