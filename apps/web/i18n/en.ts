@@ -799,6 +799,8 @@ export const en = {
 
   plan: {
     title: 'Your plan',
+    /** The page's description in its metadata; the screen itself does not show it. */
+    description: 'A plan built from your limits: what it holds, and its exit plan.',
     signedOut: 'Sign in to see this plan. A plan is one person’s, on the chain of their wallet.',
     fromLink:
       'This plan came from a link: our engine made it from the limits the link carried, which someone else may have set. Check the goal, the amount and the limits above before you deposit.',

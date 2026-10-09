@@ -65,7 +65,7 @@ describe('the title and description of each product page', () => {
       const t = dictionary(lang);
       const pages = [await planMetadata(), await buyMetadata(), await orderMetadata()];
       expect(pages).toEqual([
-        { title: t.plan.title, description: t.plan.buy },
+        { title: t.plan.title, description: t.plan.description },
         { title: t.buy.title, description: t.buy.funding.title },
         { title: t.order.title, description: t.order.review.title },
       ]);

@@ -695,6 +695,7 @@ export const pt: Dictionary = {
 
   plan: {
     title: 'Seu plano',
+    description: 'Um plano feito dos seus limites: o que ele tem, e o plano de saída.',
     signedOut: 'Entre para ver este plano. Um plano é de uma pessoa, na rede da carteira dela.',
     fromLink:
       'Este plano veio de um link: nosso motor o montou com os limites que o link trazia, que outra pessoa pode ter definido. Confira o objetivo, o valor e os limites acima antes de comprar.',

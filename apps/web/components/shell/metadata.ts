@@ -34,7 +34,7 @@ export async function signInMetadata() {
 export async function planMetadata() {
   const { lang } = await readPreferences();
   const t = dictionary(lang);
-  return { title: t.plan.title, description: t.plan.buy };
+  return { title: t.plan.title, description: t.plan.description };
 }
 
 export async function buyMetadata() {
