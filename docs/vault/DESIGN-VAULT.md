@@ -1324,7 +1324,7 @@ The roll-up states the share of the plan that is measured.
 5. Write the leg row, build, simulate, compare the simulated balance changes with the plan, sign and send. Vaults go serially in random order.
 6. When a vault has every position inside the band, set `synced_version`. The keeper then leaves it alone until the next version. Drift rebalancing later is this pass without step 6.
 
-- Solana send: blockhash just before signing; compute limit = units used × 1.2; priority fee from recent fees, clamped; the same signed bytes go to Helius Sender and the RPC, rebroadcast every 2 s until confirmed or past `lastValidBlockHeight`.
+- Solana send: blockhash just before signing; compute limit = units used × 1.2; priority fee from recent fees, clamped to its cap, and at least 1 micro-lamport a unit where the cap allows it (with no price instruction, a wallet such as Phantom adds its own and the guard refuses the changed transaction; devnet's recent fees are 0), none where the cap is 0 or too small for the limit; the same signed bytes go to Helius Sender and the RPC, rebroadcast every 2 s until confirmed or past `lastValidBlockHeight`.
 - EVM send: `pending` nonce stored on the attempt; `simulateContract` first; `maxFeePerGas` at twice the base fee (memory).
 - Retries: a reverted leg is never sent again. A leg that expired without landing is re-planned from chain state in the next pass, at most 3 times per vault and version, then an alert.
 - Alerts go to a Discord webhook: a rejected leg, three expired attempts, low gas, a stale feed in session, a vault past half its loss budget, a failed authority check. The keeper holds no guardian key; it only alerts. Each pass pings healthchecks.io.
