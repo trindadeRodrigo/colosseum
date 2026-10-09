@@ -70,27 +70,36 @@ export function parseQuotes(text: string): StoredQuote[] {
 }
 
 export const ROUTER_USAGE =
-  'usage: routing-gap.ts --router <capture file or folder> [more ...] [--quotes <file>] [--chunks <n>]';
+  'usage: routing-gap.ts --router <capture file or folder> [more ...] [--quotes <file>] [--chunks <n>]\n       [--byreal] routes the Byreal pools of the captures taken with `pnpm risk:split-capture --byreal`';
 
 /**
  * The arguments of `--router`: the captures named, the quotes file if one is named, and the number of chunks both
  * routes are cut in (`--chunks`, an integer of 1 or more; the router's own `ROUTE_CHUNKS` when not given). A pool
  * wins a whole chunk or none: at $100,000 one chunk of 32 is $3,125, and a stock-to-stock pool too small to take that
  * much at a better price wins nothing. Another number of chunks shows how much of a measured gain depends on it.
+ * `--byreal` (PLAN-UNIVERSE RU.15; off unless given) routes the Byreal pools of the captures that hold them
+ * (`pnpm risk:split-capture --byreal`); without it they are passed over and the report is what it was. The result
+ * carries `byreal` only when the flag was given.
  * Throws the usage on anything else: no capture, a flag with no value, a flag it does not know.
  */
 export function parseRouterArgs(args: readonly string[]): {
   paths: string[];
   quotesFile: string | null;
   chunks: number;
+  byreal?: true;
 } {
   const paths: string[] = [];
   let quotesFile: string | null = null;
   let chunks = ROUTE_CHUNKS;
+  let byreal = false;
   for (let i = 0; i < args.length; i++) {
     const a = args[i] as string;
     // pnpm hands the script the bare "--" that separates its own arguments
     if (a === '--router' || a === '--') continue;
+    if (a === '--byreal') {
+      byreal = true;
+      continue;
+    }
     if (a === '--quotes' || a === '--chunks') {
       const value = args[++i];
       if (value === undefined || value.startsWith('--')) throw new Error(ROUTER_USAGE);
@@ -106,7 +115,7 @@ export function parseRouterArgs(args: readonly string[]): {
     else paths.push(a);
   }
   if (!paths.length) throw new Error(ROUTER_USAGE);
-  return { paths, quotesFile, chunks };
+  return { paths, quotesFile, chunks, ...(byreal ? { byreal: true as const } : {}) };
 }
 
 /** A capture the report leaves out, with the reason. */

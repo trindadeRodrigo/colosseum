@@ -27,6 +27,11 @@ export const USD_MINTS: ReadonlySet<string> = new Set([
   'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
 ]);
 export const SOL = 'So11111111111111111111111111111111111111112';
+/** Byreal's pools (PLAN-UNIVERSE RU.15): never in the registry, added to a capture only by `--byreal`. */
+export const BYREAL_VENUE = 'byreal_clmm';
+// A pool account with Raydium's layout names its fee config: Raydium's own pools, and Byreal's.
+const namesFeeConfig = (p: { venue: string }) =>
+  p.venue === 'raydium_clmm' || p.venue === BYREAL_VENUE;
 
 /** One pool as the collector's registry holds it (`~/.colosseum/risk/registry.json`). */
 export type RegPool = PoolRef & {
@@ -122,11 +127,32 @@ export type SplitCapture = {
   source: string;
   method: string;
   provenance: 'live';
+  /**
+   * Only on a capture taken with `pnpm risk:split-capture --byreal` (PLAN-UNIVERSE RU.15): the Byreal pools added to
+   * `direct`, and the pools of the table that were left out, each with its reason. Absent on every other capture.
+   * Nothing routes those pools unless it is asked to (`buildSplit`'s `byreal`).
+   */
+  byreal?: ByrealInCapture;
+};
+
+/** What `--byreal` added to a capture, and what it left out. */
+export type ByrealInCapture = {
+  /** The table the pools were taken from: a file of `pnpm risk:byreal-pools`. */
+  table: { file: string; fetchedAt: string; method: string };
+  /** The floor a pool's measured money has to reach, in dollars (DU1 of PLAN-UNIVERSE). */
+  minUsd: number;
+  pools: string[];
+  leftOut: Array<{ pool: string; stocks: string[]; reason: string }>;
+  /** Slot of the read of the pools' fee configs and vaults, before the listings and the capture's own read. */
+  slot: number;
+  /** RPC calls made for Byreal before the capture's own read: the batch reads and one listing a pool. */
+  rpcCalls: number;
+  source: string;
 };
 
 export type AccountReader = (
   keys: string[],
-) => Promise<{ slot: number; accounts: Map<string, { data: Uint8Array } | null> }>;
+) => Promise<{ slot: number; accounts: Map<string, { data: Uint8Array; owner?: string } | null> }>;
 
 /**
  * Reads one run's accounts: every selected pool, then the Raydium fee configs and the tick or bin arrays the
@@ -142,6 +168,7 @@ export async function readSplitCapture(
     tracked: string[];
     trackedSource: string | null;
     registry: { fetchedAt: string | null; methodVersion: string | null };
+    byreal?: ByrealInCapture;
   },
   deps: {
     read: AccountReader;
@@ -158,11 +185,13 @@ export async function readSplitCapture(
   // read before the rows every reader depends on. A dollar or SOL pool that does not decode throws, as it always has.
   const stockPairs = new Set(sel.twoHop.map((p) => p.address));
   const cfgKeys = pools
-    .filter((p) => p.venue === 'raydium_clmm')
+    .filter(namesFeeConfig)
     .map((p) => {
       const h = heads.accounts.get(p.address)?.data;
       if (!h) return null;
-      if (!stockPairs.has(p.address)) return decodeClmmPool(h).ammConfig;
+      // a Byreal pool whose account does not decode is named when the pools are built, like a stock-to-stock one
+      if (!stockPairs.has(p.address) && p.venue !== BYREAL_VENUE)
+        return decodeClmmPool(h).ammConfig;
       try {
         return decodeClmmPool(h).ammConfig;
       } catch {
@@ -205,6 +234,7 @@ export async function readSplitCapture(
       'Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)',
     method: 'split_inputs_frozen',
     provenance: 'live',
+    ...(meta.byreal ? { byreal: meta.byreal } : {}),
   };
 }
 
@@ -278,7 +308,7 @@ const readGap = (c: SplitCapture, p: RegPool, head: Uint8Array): string | null =
     if (read < kids.length)
       return `${kids.length - read} of ${kids.length} tick or bin arrays not read`;
   }
-  if (p.venue === 'raydium_clmm' && captureBytes(c, decodeClmmPool(head).ammConfig) === undefined)
+  if (namesFeeConfig(p) && captureBytes(c, decodeClmmPool(head).ammConfig) === undefined)
     return 'no fee config read';
   return null;
 };
@@ -286,8 +316,7 @@ const readGap = (c: SplitCapture, p: RegPool, head: Uint8Array): string | null =
 // One pool's simulator from a capture's bytes: the Raydium fee config named by the pool account, and the tick or bin
 // arrays the capture lists for the pool. Throws what the decoders throw.
 const simFromCapture = (c: SplitCapture, p: RegPool, head: Uint8Array): BuiltPool => {
-  const cfg =
-    p.venue === 'raydium_clmm' ? captureBytes(c, decodeClmmPool(head).ammConfig) : undefined;
+  const cfg = namesFeeConfig(p) ? captureBytes(c, decodeClmmPool(head).ammConfig) : undefined;
   const kids = (c.children[p.address] ?? [])
     .map((k) => captureBytes(c, k))
     .filter((d): d is Uint8Array => !!d);
@@ -336,15 +365,34 @@ export function readWholeIn(c: SplitCapture, pools: readonly RoutePool[]): boole
  *
  * Nothing is taken from another snapshot: every account, array, config and price is the capture's own, and a second
  * hop that is missing, was not read or was read with a gap is not routed.
+ *
+ * Byreal's pools (a capture taken with `--byreal`) are passed over, with no line, unless `opts.byreal` is true: a
+ * capture that holds them routes what it routed without them. When asked for, each is built and routed as a Raydium
+ * pool is, with one difference: a Byreal pool read with a gap, with a fee its own accounts do not give, or whose
+ * arrays do not add up to its liquidity exactly is not built at all, and `failures` names it (`buildPoolSim`).
  */
-export function buildSplit(c: SplitCapture): BuiltSplit {
+export function buildSplit(c: SplitCapture, opts: { byreal?: boolean } = {}): BuiltSplit {
   const byAsset = new Map<string, SplitAsset>();
   const failures: string[] = [];
   for (const p of c.direct) {
+    if (p.venue === BYREAL_VENUE && !opts.byreal) continue;
     const head = captureBytes(c, p.address);
     if (!head) {
       failures.push(`${p.address}: head missing`);
       continue;
+    }
+    // a Byreal pool read with a gap is named and not built; one of the registry's is built as it always was
+    if (p.venue === BYREAL_VENUE) {
+      let gap: string | null;
+      try {
+        gap = readGap(c, p, head);
+      } catch (e) {
+        gap = String(e).slice(0, 80);
+      }
+      if (gap) {
+        failures.push(`${p.address}: ${gap}`);
+        continue;
+      }
     }
     const quoteUsd = USD_MINTS.has(p.quoteMint) ? 1 : p.quoteMint === SOL ? c.solUsd : null;
     if (!quoteUsd) {
@@ -488,7 +536,7 @@ export function oneHopView(c: SplitCapture): SplitCapture {
     children[p.address] = kids;
     keep.add(p.address);
     for (const k of kids) keep.add(k);
-    const head = p.venue === 'raydium_clmm' ? captureBytes(c, p.address) : undefined;
+    const head = namesFeeConfig(p) ? captureBytes(c, p.address) : undefined;
     if (head) keep.add(decodeClmmPool(head).ammConfig);
   }
   const accounts: Record<string, string | null> = {};
@@ -505,10 +553,41 @@ export function oneHopView(c: SplitCapture): SplitCapture {
   };
 }
 
+/**
+ * A capture seen as one taken without `--byreal`: no Byreal pool, none of the accounts read for them, no `byreal`
+ * key. What the split snapshot replays when its Byreal setting is off.
+ */
+export function withoutByreal(c: SplitCapture): SplitCapture {
+  const gone = new Set<string>();
+  for (const p of [...c.direct, ...c.twoHopPools]) {
+    if (p.venue !== BYREAL_VENUE) continue;
+    gone.add(p.address);
+    for (const k of c.children[p.address] ?? []) gone.add(k);
+    const head = captureBytes(c, p.address);
+    try {
+      if (head) gone.add(decodeClmmPool(head).ammConfig);
+    } catch {
+      // an account that is not a pool names no config
+    }
+  }
+  if (!gone.size && !c.byreal) return c;
+  const { byreal: _dropped, ...rest } = c;
+  const keep = (p: RegPool) => p.venue !== BYREAL_VENUE;
+  return {
+    ...rest,
+    direct: c.direct.filter(keep),
+    twoHopPools: c.twoHopPools.filter(keep),
+    children: Object.fromEntries(Object.entries(c.children).filter(([k]) => !gone.has(k))),
+    accounts: Object.fromEntries(Object.entries(c.accounts).filter(([k]) => !gone.has(k))),
+  };
+}
+
 /** The sizes every run routes, in dollars, each as a sale and as a purchase. */
 export const SPLIT_NOTIONALS = [100, 500, 2_500, 10_000, 50_000, 250_000, 1_000_000, 5_000_000];
 export const SPLIT_METHOD_VERSION = 'split-0.1';
 export const SPLIT_TWO_HOP_METHOD_VERSION = 'split-0.2';
+/** Rows routed with Byreal's pools offered beside the registry's (PLAN-UNIVERSE RU.15): SPLIT_DIR/byreal/. */
+export const SPLIT_BYREAL_METHOD_VERSION = 'split-0.3';
 const SPLIT_SOURCE =
   'Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)';
 
