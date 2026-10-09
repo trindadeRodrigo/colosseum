@@ -92,19 +92,24 @@ export type StatusProps = {
    */
   children: ReactNode;
   className?: string;
+  /**
+   * The pill sits on its own tint already (a tinted table row): it draws no second tint, which
+   * would darken the ground under the word below AA.
+   */
+  onTint?: boolean;
 };
 
 /** The pill: 22px tall, the tint behind the mark and the word (STYLE.md, "Chip and badge"). */
 const PILL = 'inline-flex h-[22px] items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold';
 
 /** The mark and its word on one line, in the status colour, on its tint: a status pill. */
-export function Status({ status, children, className }: StatusProps) {
+export function Status({ status, children, className, onTint = false }: StatusProps) {
   if (!says(children)) throw new Error(NO_WORD);
   return (
     <span
       data-ui="status"
       data-status={status}
-      className={cn(PILL, COLOUR[status], TINT[status], className)}
+      className={cn(PILL, COLOUR[status], !onTint && TINT[status], className)}
     >
       <StatusMark status={status} />
       <span>{children}</span>

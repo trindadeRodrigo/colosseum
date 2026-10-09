@@ -308,7 +308,7 @@ export function ExposureChainBlock({ chain }: { chain: ExposureChain }) {
                           href={planHref(chain.chain, held.vault)}
                           title={held.vault}
                           aria-label={words.unvalued.open(shorten(held.vault))}
-                          className="font-mono text-source text-primary underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                          className="font-mono text-source text-honey-text underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                         >
                           {shorten(held.vault)}
                         </Link>

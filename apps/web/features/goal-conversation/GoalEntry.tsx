@@ -66,8 +66,9 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
   }
   return (
     <div className="flex min-w-0 flex-col gap-4 md:min-h-0 md:flex-1">
-      <div className="flex items-center gap-3 self-start">
-        <label htmlFor={pickerId} className="text-caption text-muted-foreground">
+      {/* On a phone the picker gives way, so the row never pushes the page sideways. */}
+      <div className="flex max-w-full items-center gap-3 self-start">
+        <label htmlFor={pickerId} className="shrink-0 text-caption text-muted-foreground">
           {w.label}
         </label>
         <Select
@@ -75,6 +76,7 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
           data-ui="goal-mode"
           value="current"
           width="22ch"
+          className="min-w-0"
           onChange={(event) => choose(event.target.value)}
         >
           <option value="current">{w.current}</option>

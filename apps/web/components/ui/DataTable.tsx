@@ -175,7 +175,11 @@ export function DataTable<Row>({
                   })}
                   {rowStatus && (
                     <td className={cn('px-3 py-1 align-middle whitespace-nowrap', height)}>
-                      {state && <Status status={state.status}>{state.word}</Status>}
+                      {state && (
+                        <Status status={state.status} onTint>
+                          {state.word}
+                        </Status>
+                      )}
                     </td>
                   )}
                 </tr>
@@ -235,7 +239,9 @@ export function DataTable<Row>({
                       <div className="contents">
                         <dt className="text-caption text-muted-foreground">{statusHeader}</dt>
                         <dd className="text-right">
-                          <Status status={state.status}>{state.word}</Status>
+                          <Status status={state.status} onTint>
+                            {state.word}
+                          </Status>
                         </dd>
                       </div>
                     )}
