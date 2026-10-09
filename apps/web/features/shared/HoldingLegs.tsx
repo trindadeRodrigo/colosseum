@@ -5,8 +5,10 @@ import { type PlanLeg, PlanLegs } from '../../components/ui/PlanLegs';
 // the four leg colours, a direct label under the bar for each leg, a rule over the part whose label is
 // pointed at, and nothing dimmed. The bar takes at most four legs ("more than 4 legs: group them",
 // color-system.md). A draft may hold up to seventeen, so with five or more the three largest are a leg
-// each and the rest are one leg, named for how many they are, with their shares added up. The rows
-// under the bar still list every holding with its exact share; a row's swatch is its leg's colour.
+// each and the rest are one leg, named for how many they are, with their shares added up. The legs
+// lie largest first, as his spec has them, the grouped one where its sum puts it. The rows under the
+// bar still list every holding, in the draft's order, with its exact share; a row's swatch is its
+// leg's colour.
 //
 // It supersedes the mix joint (Thom, 2026-10-09: the preview uses Rodrigo's plan bar).
 
@@ -16,8 +18,9 @@ export type HeldShare = { key: string; name: string; bps: number };
 const MOST = 4;
 
 /**
- * Which leg each holding is drawn in. Four or fewer: one each, in the order given. More: the three
- * largest, in the order given (the earlier of two equal shares first), then one leg for the rest.
+ * Which leg each holding is drawn in, the legs largest first (the earlier of two equal ones first).
+ * Four holdings or fewer: one each. More: the three largest one each, and one leg for the rest,
+ * placed by the sum of its shares.
  */
 export function legsOf(shares: readonly HeldShare[]): {
   /** The holdings of each leg, in leg order. */
@@ -41,6 +44,11 @@ export function legsOf(shares: readonly HeldShare[]): {
       held.filter((s) => !largest.has(s.key)),
     ];
   }
+  const sum = (leg: HeldShare[]) => leg.reduce((total, s) => total + s.bps, 0);
+  legs = legs
+    .map((leg, at) => ({ leg, at }))
+    .sort((a, b) => sum(b.leg) - sum(a.leg) || a.at - b.at)
+    .map(({ leg }) => leg);
   return {
     legs,
     legOf: new Map(legs.flatMap((leg, index) => leg.map((s) => [s.key, index] as const))),

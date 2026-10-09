@@ -159,15 +159,14 @@ export function StrategyPreview({
             </p>
           </div>
           {/* The draft from before, set back as a whole while a reply is on its way: its ink goes
-              grey and its bar and swatches recede. Every word and figure stays readable, and so do
-              the letters on an asset's mark, which are text and are not faded. */}
+              grey. Nothing is dimmed: the bar keeps its colours (plan-leg.md) and every word and
+              figure stays readable. */}
           <div
             data-ui="preview-draft"
             data-set-back={pending ? true : undefined}
             className={cn(
               'flex min-w-0 flex-col gap-4 motion-safe:transition-colors motion-safe:duration-(--tf-dur-fade)',
-              pending &&
-                'text-muted-foreground [&_[data-part=swatch]]:opacity-60 [&_[data-ui=plan-legs-bar]]:opacity-70',
+              pending && 'text-muted-foreground',
             )}
           >
             <p className="text-body font-medium [overflow-wrap:anywhere]">{proposal.objective}</p>

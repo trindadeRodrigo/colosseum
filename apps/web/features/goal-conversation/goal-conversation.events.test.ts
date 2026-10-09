@@ -200,7 +200,8 @@ describe('private strategy exploration for a new goal', () => {
         [...find(host, '[data-ui="plan-legs-bar"]').children].map(
           (e) => (e as HTMLElement).style.width,
         ),
-      ).toEqual(['40%', '60%']);
+        // the bar's legs lie largest first (plan-leg.md), whatever the draft's order
+      ).toEqual(['60%', '40%']);
       expect(host.querySelector('[data-ui="buy-card"]')).toBeNull();
       // The preview's one primary button is "Deposit" (gate DEPOSIT-STEP, Thom, Oct 8): it opens the
       // deposit step, and neither buys, funds nor signs anything.
@@ -828,7 +829,8 @@ describe('the draft drawn on the plan bar', () => {
   it.each(['en', 'pt'] as const)(
     'draws four legs at most: the three largest holdings and the rest as one, with every holding in the rows (%s)',
     async (lang) => {
-      // six holdings, the first four a hair larger: SPY, QQQ and NVDA are a leg each, the other three one
+      // six holdings, the first four a hair larger: SPY, QQQ and NVDA are a leg each, the other three
+      // one; the legs lie largest first, so the grouped one, which is the largest, leads
       answer([{ proposal: mixOf(...SIX) }]);
       const host = await show(lang);
       await send(host, 'Six things');
@@ -836,23 +838,23 @@ describe('the draft drawn on the plan bar', () => {
       const share = (bps: number) => sourceValue(lang, bps / 10000, 'fraction');
       expect(find(host, '[data-ui="holding-legs"]').getAttribute('data-legs')).toBe('4');
       expect(legs(host)).toEqual([
-        ['16.67%', 'bg-leg-1'],
+        ['49.99%', 'bg-leg-1'],
         ['16.67%', 'bg-leg-2'],
         ['16.67%', 'bg-leg-3'],
-        ['49.99%', 'bg-leg-4'],
+        ['16.67%', 'bg-leg-4'],
       ]);
       // each leg is labelled right under the bar; the grouped one says how many it holds and their sum
       expect(labels(host)).toEqual([
+        `${others}·${share(4999)}`,
         `SPY·${share(1667)}`,
         `QQQ·${share(1667)}`,
         `NVDA·${share(1667)}`,
-        `${others}·${share(4999)}`,
       ]);
       // every holding has its own row with its exact share, and the swatch of the leg it is drawn in
       for (const [i, [symbol, bps]] of SIX.entries()) {
         expect(find(rowOf(host, symbol), '[data-part="share"]').textContent).toBe(share(bps));
         expect(find(rowOf(host, symbol), '[data-part="swatch"]').className).toContain(
-          `bg-leg-${Math.min(i, 3) + 1}`,
+          `bg-leg-${i < 3 ? i + 2 : 1}`,
         );
       }
       expect(find(host, '[data-ui="goal-strategy"]').querySelectorAll('tbody tr')).toHaveLength(6);
@@ -867,7 +869,7 @@ describe('the draft drawn on the plan bar', () => {
     ]);
     const host = await show();
     await send(host, 'Five things');
-    // the three largest in the order the draft gives them, then the two small ones together
+    // the three largest, largest first, then the two small ones together; the rows keep the draft's order
     expect(labels(host)).toEqual([
       'SPY·40%',
       'GLD·30%',
@@ -1004,13 +1006,13 @@ describe('the draft drawn on the plan bar', () => {
       pendingLine.parentElement,
     );
     // The whole draft is set back, not the bar alone: the objective, the bar, the rows and their
-    // figures are inside it, in grey ink. No word is faded: only the bar and the swatches,
-    // which are drawings, lose opacity.
+    // figures are inside it, in grey ink. Nothing is faded or dimmed.
     const back = find(strategy, '[data-set-back]');
     expect(back.className).toContain('text-muted-foreground');
     expect(back.className).not.toMatch(/(^| )opacity-/);
     expect(back.contains(find(strategy, '[data-ui="plan-legs-bar"]'))).toBe(true);
-    expect(back.className).toContain('[&_[data-ui=plan-legs-bar]]:opacity-70');
+    // nothing is dimmed, the bar included (plan-leg.md): no opacity anywhere in what is set back
+    expect(`${back.className} ${back.innerHTML}`).not.toMatch(/opacity-/);
     expect(back.contains(find(strategy, 'table'))).toBe(true);
     expect(back.textContent).toContain(preview.objective);
     // the banner and the action are not set back
@@ -1232,7 +1234,7 @@ describe('waiting for a reply, in the conversation and on the card', () => {
     expect(host.querySelector('[data-ui="goal-unanswered"]')).toBeNull();
   });
 
-  it('brings the pending row and the box into view on send, and scrolls nothing when the reply lands', async () => {
+  it('brings the pending row and the box into view on send, and a failure with its actions when it lands', async () => {
     const seen: string[] = [];
     const proto = Element.prototype as { scrollIntoView?: unknown };
     const before = proto.scrollIntoView;
@@ -1250,7 +1252,22 @@ describe('waiting for a reply, in the conversation and on the card', () => {
       expect(seen).toEqual(['reply-pending:nearest', 'composer:nearest']);
       expect(document.activeElement).toBe(box);
       await release();
+      // a reply starts where the pending row was, which is in view: nothing more to bring in
       expect(seen).toHaveLength(2);
+      expect(document.activeElement).toBe(box);
+      // a failure is taller than the row it replaces: it and its actions are brought in, then the box
+      portStore.setApi(async (url, init) =>
+        init?.method === 'POST' ? json({}, 500) : baseApi(url),
+      );
+      seen.length = 0;
+      await say(host, 'More gold');
+      await settle();
+      expect(seen).toEqual([
+        'reply-pending:nearest',
+        'composer:nearest',
+        'goal-unanswered:nearest',
+        'composer:nearest',
+      ]);
       expect(document.activeElement).toBe(box);
     } finally {
       proto.scrollIntoView = before;

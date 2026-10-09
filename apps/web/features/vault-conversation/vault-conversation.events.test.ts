@@ -218,7 +218,7 @@ describe('a continuous conversation for one vault', () => {
     const waiting: (() => void)[] = [];
     let fail = false;
     let posts = 0;
-    portStore.setApi(async (url, init) => {
+    portStore.setApi(async (_url, init) => {
       if (init?.method !== 'POST') return json({}, 404);
       posts += 1;
       await new Promise<void>((done) => waiting.push(done));

@@ -140,20 +140,27 @@ const labels = (page: Page) =>
   page
     .locator('[data-ui="goal-strategy"] [data-ui="plan-legs"] ol > li')
     .evaluateAll((items) => items.map((item) => item.textContent));
-/** What the bar draws: the three largest holdings a leg each, and the rest as one. */
+/** What the bar draws: the three largest holdings a leg each and the rest as one, largest first. */
 const legsOf = (mix: Mix) => {
-  if (mix.length <= 4) return mix.map(([symbol, bps]) => `${symbol}·${shareOf(bps)}`);
-  const largest = [...mix.entries()]
-    .sort(([a, [, x]], [b, [, y]]) => y - x || a - b)
-    .slice(0, 3)
-    .map(([at]) => at);
-  const rest = mix.filter((_, at) => !largest.includes(at));
-  return [
-    ...mix
-      .filter((_, at) => largest.includes(at))
-      .map(([symbol, bps]) => `${symbol}·${shareOf(bps)}`),
-    `${en.shared.vault.conversation.others(rest.length)}·${shareOf(rest.reduce((sum, [, bps]) => sum + bps, 0))}`,
-  ];
+  let legs = mix.map(([symbol, bps]) => ({ name: symbol as string, bps }));
+  if (mix.length > 4) {
+    const largest = [...mix.entries()]
+      .sort(([a, [, x]], [b, [, y]]) => y - x || a - b)
+      .slice(0, 3)
+      .map(([at]) => at);
+    const rest = mix.filter((_, at) => !largest.includes(at));
+    legs = [
+      ...legs.filter((_, at) => largest.includes(at)),
+      {
+        name: en.shared.vault.conversation.others(rest.length),
+        bps: rest.reduce((sum, [, bps]) => sum + bps, 0),
+      },
+    ];
+  }
+  return legs
+    .map((leg, at) => ({ leg, at }))
+    .sort((a, b) => b.leg.bps - a.leg.bps || a.at - b.at)
+    .map(({ leg }) => `${leg.name}·${shareOf(leg.bps)}`);
 };
 
 test('a draft arrives on the plan bar with its rows, and the next one takes its place', async ({
@@ -212,13 +219,14 @@ test('a draft arrives on the plan bar with its rows, and the next one takes its 
   expect(drawn).toMatchObject({ height: 24, gap: '2px', left: true, right: true, inner: '0px' });
   expect(new Set(drawn.colours).size).toBe(4);
   const all = drawn.widths.reduce((sum, w) => sum + w, 0);
-  expect((drawn.widths[0] ?? 0) / all).toBeCloseTo(0.1667, 2);
-  expect((drawn.widths[3] ?? 0) / all).toBeCloseTo(0.4999, 2);
+  // largest first: the three grouped holdings lead, then the three largest
+  expect((drawn.widths[0] ?? 0) / all).toBeCloseTo(0.4999, 2);
+  expect((drawn.widths[3] ?? 0) / all).toBeCloseTo(0.1667, 2);
   // a row's swatch is the colour of the leg it is drawn in: the three grouped holdings share one
   const swatches = await strategy
     .locator('tbody [data-part="swatch"]')
     .evaluateAll((els) => els.map((el) => getComputedStyle(el).backgroundColor));
-  expect(swatches).toEqual([...drawn.colours.slice(0, 3), ...Array(3).fill(drawn.colours[3])]);
+  expect(swatches).toEqual([...drawn.colours.slice(1), ...Array(3).fill(drawn.colours[0])]);
   // pointing at a label rules its segment and dims nothing; the bar itself is not a control
   await expect(bar).toHaveAttribute('aria-hidden', 'true');
   await strategy.locator('[data-ui="plan-legs"] ol > li').nth(1).hover();
@@ -250,6 +258,13 @@ test('a draft arrives on the plan bar with its rows, and the next one takes its 
     en.shared.vault.conversation.waitingAction,
   );
   expect(await shownShares(page)).toEqual(final);
+  // nothing is dimmed while it waits: the bar keeps its colours (plan-leg.md)
+  expect(
+    await bar.evaluate((el) => [
+      getComputedStyle(el).opacity,
+      ...[...el.children].map((leg) => getComputedStyle(leg).backgroundColor),
+    ]),
+  ).toEqual(['1', ...drawn.colours]);
   // a wait can be long: every word and figure on the waiting card stays readable, in both themes
   for (const theme of ['light', 'dark'] as const) {
     await inTheme(page, theme);
