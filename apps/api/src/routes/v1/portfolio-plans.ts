@@ -12,6 +12,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { OrderDeps } from '../../orders/legs';
 import { plansOf } from '../../orders/plan-join';
 import { vaultNames } from '../../orders/store';
+import { numbered, type VaultNumbers, vaultNumbersOf } from '../../portfolio/numbers';
 import { familiesOf, followsOf, newestOf, openedForOf, putInOf } from '../../portfolio/plans';
 import { frame, personScope, type ScopedChain } from '../../portfolio/scope';
 import { chainAnsweredAt, knownVaults, trackSnapshotOf } from '../../portfolio/snapshots';
@@ -27,7 +28,7 @@ async function chainPlans(
   deps: OrderDeps,
   scoped: ScopedChain,
   principal: Principal,
-  a: { now: Date; address?: string },
+  a: { now: Date; address?: string; numbers: VaultNumbers },
 ): Promise<PortfolioPlansResponse['chains'][number]> {
   const { entry } = scoped;
   const answeredAt = (await chainAnsweredAt(deps.db, entry))?.toISOString() ?? null;
@@ -62,6 +63,7 @@ async function chainPlans(
         address,
         owner,
         name: names.get(address) ?? null,
+        ...numbered(a.numbers, entry.chain, address),
         basketId,
         plan: plans.get(address)?.plan ?? null,
         openedFor: openedFor.get(address) ?? null,
@@ -91,7 +93,7 @@ export function registerPortfolioPlansRoute(scope: FastifyInstance, deps: OrderD
         summary:
           "The signed-in person's plans, each with what was put in, its value and its status",
         description:
-          'One entry for each vault of the signed-in person, on every chain this server runs that they hold a wallet for, each chain on its own and in the server’s order: the vault’s address and owner, the plan’s number on the chain (`basketId`) and the name its owner gave it. It is read from the database alone, never from a chain: the vaults are the ones the vault cache names for the person’s wallets and the ones the snapshot worker read in the last seven days, and `answeredAt` is when a pass of that worker last went through on the chain. `plan` is the plan the vault was opened for, as the server joined it, and null for a vault no order of the person’s opened; what a plan says (its goal, its card, its verdict) is answered to the person who made it, to a buyer of a plan made from a link, and to nobody else. `openedFor` is the shared portfolio the vault was opened to follow, as that join holds it, with the id, slug and name of the server’s own row; it is null for a plan made to measure, for a vault with no plan, and where the server holds no row for the portfolio. `putIn` is what the person put in through this app: the cash of each buy of theirs whose deposit confirmed on that chain, counted once an order and listed in `deposits`, oldest first, each with the time the server learned of it. It is gross: a withdrawal is not taken off, and money that reached the vault any other way is not in it. It is null where no deposit of theirs is confirmed. `newest` is the newest snapshot of the vault, whole, with its age in `ageSeconds` and `stale` once it is more than an hour old; it is null where the worker has not read the vault yet. `status` is `on_track`, `watch` or `off_track`, or null where the rule gives none yet, always with the rule that gave it (`ON-TRACK-V1`), the line of the rule that holds and its sentence in `text`. The verdict stored with a plan is a figure from when the plan was built and never changes the status. `follows` is the shared portfolio the vault follows now, as its newest snapshot says, with the family’s name where the server holds one, and null where the snapshot shows none. `openedFor` says what the vault was opened as and `follows` what the chain shows, and the two can differ. `chain` narrows the answer to one chain and `address` to one vault; an address that is not a vault of the person’s narrows it to nothing and is never an error. A chain of the person’s that is switched off here is in `unavailable` (`CHAIN_UNAVAILABLE`), never shown as empty. Every chain, every entry, every snapshot with its prices, and `putIn` carry `provenance`: `mock` is the mock chain, `sandbox` a test network, and only `live` is mainnet. A call with no sign-in is answered 401, and a `chain` that is no chain, or an `address` that is empty or longer than 64 characters, 400.',
+          'One entry for each vault of the signed-in person, on every chain this server runs that they hold a wallet for, each chain on its own and in the server’s order: the vault’s address and owner, the plan’s number on the chain (`basketId`), the name its owner gave it, and its `number` among the person’s vaults, a count from 1 across every chain that is given once and never changed, and left out where the server holds none. It is read from the database alone, never from a chain: the vaults are the ones the vault cache names for the person’s wallets and the ones the snapshot worker read in the last seven days, and `answeredAt` is when a pass of that worker last went through on the chain. `plan` is the plan the vault was opened for, as the server joined it, and null for a vault no order of the person’s opened; what a plan says (its goal, its card, its verdict) is answered to the person who made it, to a buyer of a plan made from a link, and to nobody else. `openedFor` is the shared portfolio the vault was opened to follow, as that join holds it, with the id, slug and name of the server’s own row; it is null for a plan made to measure, for a vault with no plan, and where the server holds no row for the portfolio. `putIn` is what the person put in through this app: the cash of each buy of theirs whose deposit confirmed on that chain, counted once an order and listed in `deposits`, oldest first, each with the time the server learned of it. It is gross: a withdrawal is not taken off, and money that reached the vault any other way is not in it. It is null where no deposit of theirs is confirmed. `newest` is the newest snapshot of the vault, whole, with its age in `ageSeconds` and `stale` once it is more than an hour old; it is null where the worker has not read the vault yet. `status` is `on_track`, `watch` or `off_track`, or null where the rule gives none yet, always with the rule that gave it (`ON-TRACK-V1`), the line of the rule that holds and its sentence in `text`. The verdict stored with a plan is a figure from when the plan was built and never changes the status. `follows` is the shared portfolio the vault follows now, as its newest snapshot says, with the family’s name where the server holds one, and null where the snapshot shows none. `openedFor` says what the vault was opened as and `follows` what the chain shows, and the two can differ. `chain` narrows the answer to one chain and `address` to one vault; an address that is not a vault of the person’s narrows it to nothing and is never an error. A chain of the person’s that is switched off here is in `unavailable` (`CHAIN_UNAVAILABLE`), never shown as empty. Every chain, every entry, every snapshot with its prices, and `putIn` carry `provenance`: `mock` is the mock chain, `sandbox` a test network, and only `live` is mainnet. A call with no sign-in is answered 401, and a `chain` that is no chain, or an `address` that is empty or longer than 64 characters, 400.',
         querystring: PortfolioPlansQuery,
         response: { 200: PortfolioPlansResponse, default: OrderError },
       },
@@ -104,8 +106,15 @@ export function registerPortfolioPlansRoute(scope: FastifyInstance, deps: OrderD
       const { chain, address } = req.query;
       const mine = personScope(deps.chains, principal, chain);
       const now = deps.now();
+      // The numbers are the person's over every chain of theirs, whatever this request narrows to.
+      const numbers = await vaultNumbersOf(
+        deps.db,
+        chain === undefined ? mine : personScope(deps.chains, principal),
+        principal,
+        req.log,
+      );
       const chains = await Promise.all(
-        mine.chains.map((scoped) => chainPlans(deps, scoped, principal, { now, address })),
+        mine.chains.map((scoped) => chainPlans(deps, scoped, principal, { now, address, numbers })),
       );
       return { chains, unavailable: mine.unavailable, disclaimer: DISCLAIMER.en };
     },
