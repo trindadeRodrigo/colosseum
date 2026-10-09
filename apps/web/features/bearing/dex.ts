@@ -113,20 +113,24 @@ export function dexCounters(
   let poolT: string | null = null;
   for (const p of pools) poolT = maxT(poolT, p.fetchedAt);
   const noPools = selIds.some((id) => !dd[id]?.pools.ok);
-  const tvl: Fact = pools.length
+  // a pool with no TVL is not a zero: the sum is of the pools that have one, and says so
+  const sized = pools.filter((p) => p.tvlUsd != null);
+  const tvl: Fact = sized.length
     ? mk(
-        pools.reduce((s, p) => s + (p.tvlUsd || 0), 0),
+        sized.reduce((s, p) => s + (p.tvlUsd as number), 0),
         {
+          measured: sized.length,
+          of: pools.length,
           source: 'risk_pools.tvl_usd (GET /risk/pools), read when each pool was registered',
           fetchedAt: poolT,
-          quality: noPools ? 'lower_bound' : 'measured',
+          quality: noPools || sized.length < pools.length ? 'lower_bound' : 'measured',
           method: `sum of the TVL of the selected pools (GET /risk/pools?asset= per asset)${
             noPools ? '; some assets’ pool lists did not load, so this is a lower bound' : ''
           }`,
           methodVersion: 'registry-0.1',
         },
       )
-    : none(!selIds.length || poolsChosen ? 'nothing_selected' : 'not_collected');
+    : none(pools.length || !(!selIds.length || poolsChosen) ? 'not_collected' : 'nothing_selected');
   const cap = sumFact(
     selIds.map((id) => capFact(byId.get(id), r, body)),
     {
@@ -243,12 +247,16 @@ export function capacitySeries(
 }
 
 /**
- * The dollars one pool's liquidity holds, both sides, as its answer gives them. An answer with no
- * dollar figure (its quote token has no price in dollars) is that reason, never a measured $0.
+ * The dollars in a pool's liquidity chart: both sides, or no figure. A side with no dollar figure
+ * (the quote token has no price in dollars) is never a zero, and half a pool is not shown as the
+ * pool. The reason is the API's own where it names one (`no_quote_price`); an answer that names
+ * none is `no_reference_price`.
  */
 export function liquidityTotal(d: LiquidityBody): Fact {
   if (d.totalAssetUsd == null || d.totalQuoteUsd == null)
-    return none(d.usdNullReason ?? 'not_served');
+    return d.usdNullReason
+      ? none(d.usdNullReason)
+      : none('no_reference_price', "the pool's quote token has no dollar price");
   return mk(d.totalAssetUsd + d.totalQuoteUsd, {
     source: d.source,
     fetchedAt: d.fetchedAt,

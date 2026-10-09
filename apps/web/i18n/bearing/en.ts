@@ -75,6 +75,7 @@ export const bearingEn = {
   reasons: {
     no_samples_in_regime: 'no samples in this regime yet',
     insufficient_samples: 'too few samples to fit',
+    not_a_number: 'the stored value could not be used',
     beyond_measured_size: 'beyond the largest size measured',
     no_reference_price: 'no reference price',
     no_external_source: 'no external source for this',
@@ -98,7 +99,14 @@ export const bearingEn = {
     selectAll: 'All',
     selectNone: 'None',
   },
+  /** Beside a figure made of parts when some have no figure: it is of the measured ones only. */
+  partial: (n: number) => `of the ${n} measured`,
   pie: {
+    /** Under the legend: the pools with no figure, which get no slice. */
+    missing: (n: number) =>
+      n === 1
+        ? '1 pool has no figure and is not drawn.'
+        : `${n} pools have no figure and are not drawn.`,
     others: (n: number) => `${n} other pool${n === 1 ? '' : 's'}`,
     point: 'Point at a slice or a row for its value.',
   },

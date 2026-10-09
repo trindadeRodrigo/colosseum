@@ -215,8 +215,11 @@ export function groupBy(parts: ReadonlyArray<readonly Part[]>): Group[] {
     }
   const out = [...by.values()];
   for (const g of out) {
-    g.collV = g.colls.reduce((a, f) => a + (f.value || 0), 0);
-    g.missing = g.colls.filter((f) => f.value == null).length;
+    // of the positions with a figure only: one without is not a zero, it is counted in `missing`,
+    // and every figure made from this sum says it is of the measured ones (covFacts)
+    const have = g.colls.filter(has);
+    g.collV = have.reduce((a, f) => a + f.value, 0);
+    g.missing = g.colls.length - have.length;
   }
   return out;
 }
@@ -252,6 +255,8 @@ export function covFacts(groups: readonly Group[], r: Regime, body: AssetsBody) 
     t = maxT(t, g.cap.fetchedAt);
     for (const f of g.colls) t = maxT(t, f.fetchedAt);
   }
+  /** The positions with a collateral figure, of all of them: said beside each figure when some lack one. */
+  const counted = { measured: colls.filter(has).length, of: colls.length };
   const lb =
     missingColl || have.length < priced.length || have.some((g) => g.cap.quality === 'lower_bound');
   const note = `${have.length} of ${priced.length} assets with a capacity${
@@ -264,6 +269,7 @@ export function covFacts(groups: readonly Group[], r: Regime, body: AssetsBody) 
     regime: r,
     methodVersion: body.methodVersion,
     quality: lb ? 'lower_bound' : 'measured',
+    ...counted,
   };
   const covUsd = have.reduce((a, g) => a + Math.min(g.cap.value as number, g.collV), 0);
   const empty = none(
@@ -297,6 +303,7 @@ export function covFacts(groups: readonly Group[], r: Regime, body: AssetsBody) 
     fetchedAt: lt,
     regime: r,
     methodVersion: 'facts-0.1',
+    ...counted,
     quality:
       missingColl ||
       lossHave.length < losses.length ||
