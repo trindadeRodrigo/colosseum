@@ -444,7 +444,7 @@ describe('the vault’s own state as figures', () => {
     });
     expect(got.get(`holding:${stock.id}:amount`)).toMatchObject({
       value: 10,
-      unit: 'tokens',
+      unit: 'units',
       source: 'offline adapter',
       fetchedAt: now,
     });
@@ -545,5 +545,289 @@ describe('what the model is sent', () => {
     }
     expect(one[2]?.text).toContain(`holding:${stock.id}:value`);
     expect(other[2]?.text).not.toBe(one[2]?.text);
+  });
+});
+
+// The review of #216: every input here was served with a pin before the fix.
+describe('a reference stands alone, as the figure it is', () => {
+  const tesla = assets.find((asset) => asset.id === 'solana:tslax');
+  const fund = assets.find((asset) => asset.id === 'solana:spyx');
+  if (!tesla || !fund) throw new Error('Incomplete offline catalog fixture');
+  const yielded = `yield:${reserve.id}:0:quoted`;
+  const ctx = () => {
+    const base = built({
+      analytics: sheet({
+        assets: [
+          {
+            assetId: stock.id,
+            modelledOn: null,
+            figures: [
+              { metric: 'exit_worst', regime: 'us_offhours_weekday', value: 0.004, ...pin },
+              { metric: 'volatility', value: 0.35, ...pin },
+              { metric: 'drawdown', value: 0.35, ...pin },
+            ],
+          },
+        ],
+      }),
+      prepared: {
+        shelf,
+        figures: {
+          yields: [
+            {
+              assetId: reserve.id,
+              quotedYield: 0.05,
+              haircutYield: 0.04,
+              source: 'offline yield fixture',
+              method: 'fixture',
+              fetchedAt: now,
+              provenance: 'mock',
+            },
+          ],
+        },
+      } as Built['prepared'],
+    });
+    // a listed fund whose registered name holds digits
+    return {
+      ...base,
+      stockAttributes: {
+        stocks: [{ symbol: fund.symbol, company: 'SPDR S&P 500 ETF Trust', sources: [] }],
+      },
+    } as unknown as typeof base;
+  };
+  const A = ref(`holding:${stock.id}:amount`);
+  const S = ref(`holding:${stock.id}:share`);
+  const V = ref(`holding:${stock.id}:value`);
+  const W = ref('vault:value');
+  const Y = ref(yielded);
+  const X = ref(exit);
+  const sym = stock.symbol;
+  const reply = async (
+    sentence: string,
+    person = 'What is it worth?',
+    language: 'en' | 'pt' = 'en',
+  ) => {
+    const model = fake(said(`${sentence} A reserve helps.`));
+    const out = served(await replyToVaultConversation(request(person, language), ctx(), model));
+    return out.reply.message;
+  };
+  const CUT = `A reserve helps.\n${FIGURE_CUT}`;
+
+  it.each([
+    // inside quotation marks: a quote is the person's words, and a figure is never theirs
+    [`You said “${A}70% in ${sym}”.`, `I want 70% in ${sym}`],
+    [`You said “I want${A}70% in ${sym}”.`, `I want 70% in ${sym}`],
+    [`You said “${W}”.`, `{{fact:vault:value}}`],
+    [`You asked: "${W}".`, 'x'],
+    [`It is «${W}».`, 'x'],
+    // inside or touching a catalog name that holds digits
+    [`It tracks the SPDR S&P${A}500 ETF Trust.`, 'x'],
+    [`It tracks the SPDR S&P ${A} 500 ETF Trust.`, 'x'],
+    [`You hold ${A} SPDR S&P 500 ETF Trust.`, 'x'],
+    [`The SPDR S&P 500 ETF Trust: ${A}.`, 'x'],
+  ])('refuses a reference in a quote or at a name with digits: %s', async (sentence, person) => {
+    expect(await reply(sentence, person)).toBe(CUT);
+  });
+
+  it.each([
+    `Your vault is worth ${W}B.`,
+    `Your holding is down -${V}.`,
+    `Your holding is down - ${V}.`,
+    `Your holding moved +${V}.`,
+    `Worth ${A}e${A}.`,
+    `You hold ${A}OO shares.`,
+    `You hold ${A}x more.`,
+    `You hold ${A}\u200bmillion.`,
+    `You hold **${A}** tokens.`,
+    `Worth ${A}**${A}.`,
+    `It costs ${V}/day.`,
+    `It costs ${V} /day.`,
+    `You hold ${A}, ${A} tokens.`,
+    `You hold ${A} ${A} tokens.`,
+    `Between ${A}\u3164${A} tokens.`,
+    `Between ${A} \u3164 ${A} tokens.`,
+    `Worth ${A}.${A} tokens.`,
+    `Worth ${A},${A} tokens.`,
+    `It is ~${V} today.`,
+    `It is #${A} today.`,
+    `It is ${A}th today.`,
+    `Worth \uff5b\uff5bfact:vault:value\uff5d\uff5d today.`,
+  ])('refuses a reference something touches, or two with no word between: %s', async (sentence) => {
+    expect(await reply(sentence)).toBe(CUT);
+  });
+
+  it.each([
+    `You hold ${A} hundred shares.`,
+    `You hold ${A} dozen shares.`,
+    `Your vault is worth ${A} grand.`,
+    `Your vault is worth ${W} bi.`,
+    `Your vault is worth ${W} mi.`,
+    `Your vault is worth ${W} (million).`,
+    `Your vault is worth ${W}, million.`,
+    `Your vault is worth ${W} k.`,
+    `Seu cofre vale ${W} mil.`,
+    `Seu cofre vale ${W} milhões.`,
+    `Three thousand, like ${W}.`,
+    `Weekend capacity is ${A} percent.`,
+    `Weekend capacity is ${A} pp.`,
+    `Weekend capacity is ${A} bp.`,
+    `It is up to ${A} cents.`,
+    `You hold ${A} dollars of it.`,
+    `It could be ten ${W}.`,
+    `It could be ${W} ten.`,
+    // a multiplier, a fraction or arithmetic in words
+    `A fifth of ${W} is in the stock.`,
+    `Quadruple ${W} is possible.`,
+    `Um quarto de ${W}.`,
+    `About half of all ${W} is cash.`,
+    `It is worth ${A} point ${A} tokens.`,
+    `It is ${A} to the power of ${A}.`,
+    `It is worth ${A} times that.`,
+    `It is worth double: ${W}.`,
+    `It is minus ${V}.`,
+    `The sum is ${V} and ${W}.`,
+  ])('cuts a sentence that scales a reference or works on it in words: %s', async (sentence) => {
+    expect(await reply(sentence)).toBe(CUT);
+  });
+
+  it.each([
+    `It should return about ${S} a year.`,
+    `It pays ${S} APY.`,
+    `It pays out ${S}.`,
+    `You will earn ${V} per month.`,
+    `You earn ${V} monthly.`,
+    `${sym} fell ${S} last week.`,
+    `Your holding lost ${V}.`,
+    `Your holding is up ${S}.`,
+    `Its yield is ${S}.`,
+    `It grows ${S} annually.`,
+    `It moves ${S} a year.`,
+    `Rende ${S} ao ano.`,
+    `O retorno é de ${S}.`,
+    // a real yield, but promised
+    `It will pay ${Y} a year.`,
+    `You should earn ${Y}.`,
+    `It always yields ${Y}.`,
+    `Vai render ${Y} ao ano.`,
+    `Renderá ${Y} ao ano.`,
+    // a forecast, with any figure
+    `Your vault will be worth ${W}.`,
+    `It is expected to reach ${W}.`,
+    `Seu cofre vai valer ${W}.`,
+  ])(
+    'cuts a rate, a return or a forecast pinned to a figure that is not one: %s',
+    async (sentence) => {
+      expect(await reply(sentence)).toBe(CUT);
+    },
+  );
+
+  it.each([
+    [`${tesla.symbol} trades at ${ref(`price:${stock.id}`)}.`],
+    [`Your ${tesla.symbol} is worth ${V}.`],
+  ])(
+    'cuts a sentence that names one asset and references another\u2019s figure: %s',
+    async (sentence) => {
+      expect(await reply(sentence)).toBe(CUT);
+    },
+  );
+
+  it.each([
+    [`Selling it all today would cost about ${X}.`, 'Selling it all today would cost about 0.4%.'],
+    [
+      `You hold ${A} tokens (${V}), which is ${S} of the vault.`,
+      'You hold 10 tokens ($1,000.00), which is 50% of the vault.',
+    ],
+    [`Its value: ${V}; the vault's: ${W}.`, "Its value: $1,000.00; the vault's: $2,000.00."],
+    [
+      `Its quoted yield is ${Y} a year, measured from past rates.`,
+      'Its quoted yield is 5% a year, measured from past rates.',
+    ],
+    [
+      `Its annualised volatility is ${ref(`vol:${stock.id}`)}.`,
+      'Its annualised volatility is 35%.',
+    ],
+    [
+      `Its largest fall so far was ${ref(`drawdown:${stock.id}`)}.`,
+      'Its largest fall so far was 35%.',
+    ],
+    [
+      `Compared with ${tesla.symbol}, ${sym} costs ${X} to sell.`,
+      `Compared with ${tesla.symbol}, ${sym} costs 0.4% to sell.`,
+    ],
+    [
+      `${sym} is ${S} of the vault.\nIts price is ${ref(`price:${stock.id}`)}`,
+      `${sym} is 50% of the vault.\nIts price is $100.00`,
+    ],
+    // marks that reorder or hide text are taken out of what is served
+    [`Worth \u202e${V}\u202c today.`, 'Worth $1,000.00 today.'],
+  ])('serves a reference that stands alone: %s', async (sentence, shown) => {
+    const model = fake(said(`${sentence} A reserve helps.`));
+    const out = served(await replyToVaultConversation(request(), ctx(), model));
+    expect(model.read).toHaveBeenCalledTimes(1);
+    expect(out.reply.message).toBe(`${shown} A reserve helps.`);
+  });
+
+  it('tells the model what was wrong on the repair call, by kind', async () => {
+    const model = fake(said(`It pays ${S} APY. A reserve helps.`));
+    await replyToVaultConversation(request(), ctx(), model);
+    const problems = vi.mocked(model.read).mock.calls[1]?.[2]?.problems.join('\n') ?? '';
+    expect(problems).toContain('a rate or a return');
+  });
+});
+
+describe('a measured value that is not zero is never written as zero', () => {
+  it.each([
+    [0.004, 'USD', '$0.004', 'pelo menos US$ 0,004'],
+    [0.00002, 'USD', '$0.00002', 'pelo menos US$ 0,00002'],
+    [-0.004, 'USD', '-$0.004', 'pelo menos -US$ 0,004'],
+    [0.0000004, 'fraction', '0.00004%', 'pelo menos 0,00004%'],
+    [0.004, 'ratio', '0.004', 'pelo menos 0,004'],
+    [0.0000001, 'units', '0.0000001', 'pelo menos 0,0000001'],
+    [0.4, 'count', '0.4', 'pelo menos 0,4'],
+    [0.01, 'hours', '0.01 hours', 'pelo menos 0,01 horas'],
+    [0.0000001, 'bps', '0.0000001 bps', 'pelo menos 0,0000001 bps'],
+    // a true zero stays one, and an ordinary value keeps its fixed format
+    [0, 'USD', '$0.00', 'pelo menos US$ 0,00'],
+    [0, 'fraction', '0%', 'pelo menos 0%'],
+    [1234.5, 'USD', '$1,234.50', 'pelo menos US$ 1.234,50'],
+  ])('%s %s', (value, unit, en, ptAtLeast) => {
+    expect(figureText(value, unit, 'en')).toBe(en);
+    expect(figureText(value, unit, 'en', true)).toBe(`at least ${en}`);
+    expect(figureText(value, unit, 'pt', true)).toBe(ptAtLeast);
+    if (value !== 0) expect(figureText(value, unit, 'en')).toMatch(/[1-9]/u);
+  });
+
+  it('serves dust and a small ratio with their digits', async () => {
+    const ctx = built({
+      prices: priced({ usdPerToken: '0.0004' }),
+      analytics: sheet({
+        assets: [
+          {
+            assetId: stock.id,
+            modelledOn: null,
+            figures: [
+              { metric: 'cap_variation', value: 0.004, ...pin, unit: 'ratio' },
+              { metric: 'exit_worst', regime: 'weekend', value: 0.0000004, ...pin },
+            ],
+          },
+        ],
+      }),
+    });
+    const model = fake(
+      said(
+        `Its price is ${ref(`price:${stock.id}`)} and your holding is worth ${ref(`holding:${stock.id}:value`)}. Its capacity varies by ${ref(`capvar:${stock.id}`)} between snapshots. Selling would cost about ${ref(exit)}.`,
+      ),
+    );
+    const out = served(await replyToVaultConversation(request(), ctx, model));
+    expect(out.reply.message).toBe(
+      'Its price is $0.0004 and your holding is worth $0.004. Its capacity varies by 0.004 between snapshots. Selling would cost about 0.00004%.',
+    );
+  });
+
+  it('says what the amount is: units of the underlying, the balance times its multiplier', () => {
+    const amount = built().evidence.find((row) => row.id === `holding:${stock.id}:amount`);
+    expect(amount).toMatchObject({ unit: 'units' });
+    expect(amount?.label).toContain('underlying');
+    expect(amount?.method).toContain('multiplier');
+    expect(amount?.label).not.toContain('tokens');
   });
 });

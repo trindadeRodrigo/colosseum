@@ -411,7 +411,7 @@ describe('private model-led vault reply route', () => {
     const id = `price:${stock.id}`;
     vi.mocked(s.model.read).mockResolvedValueOnce({
       reply: {
-        message: `Its reference price is {{fact:${id}}}. A made-up one is {{fact:price:nothing}}.`,
+        message: `Its reference price is {{fact:${id}}}. An invented one is {{fact:price:nothing}}.`,
         question: null,
         proposal: null,
       },

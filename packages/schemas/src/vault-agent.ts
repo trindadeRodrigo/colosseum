@@ -312,7 +312,8 @@ export type VaultAgentRepairNote = { failed: string; outcome: string; sentencesC
 /**
  * What became of the references in the model's prose, for the server log: counts only. `resolved` and
  * `missing` (a figure that is not measured, said with its reason) are in the served reply; `unknown`
- * counts the references, over both attempts, that named no figure of the request or were malformed.
+ * counts, over both attempts, what was found wrong with a reference: one that named no figure of the
+ * request, a malformed one, or one that did not stand alone as the figure it is.
  */
 export type VaultAgentFigureCounts = { resolved: number; missing: number; unknown: number };
 export type VaultAgentResult =

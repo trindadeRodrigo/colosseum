@@ -30,10 +30,12 @@ import type { ChainEntry } from './chains';
 import type { PlanInputs } from './personalize';
 import { statedPurpose } from './stated-purpose';
 import {
+  cleanProse,
   type FigureReferences,
   figureResolver,
   NULL_REASONS,
   vaultFacts,
+  withoutMark,
   withoutReferences,
 } from './vault-figures';
 
@@ -828,7 +830,7 @@ const REPAIR_HINTS: Record<string, string> = {
   prose_figure:
     'Prose contained a financial figure, percentage, price, yield, date or written-out number. Numbers may appear in prose only inside an exact catalog name or an exact quote of the person in attributed quotation marks. The server sets the weights. Rewrite every prose field with no digit, no percent or currency sign and no "guaranteed" or "risk-free": when kind is vault, state a measured figure only as its reference, {{fact:<id>}} with an id given in this request; otherwise describe it in words and cite its id in evidenceIds. Never repeat its value.',
   figure_reference:
-    'Prose held a figure reference the server could not resolve: a {{fact:<id>}} whose id is not an evidence id with a value given in this request (an id in evidence that carries a value, or a key of analytics.assets[].values), a brace that is not part of one well-formed reference, or a reference made into another number: two references with no word between them, a magnitude or unit word after one (million, percent, dollars), or a multiplier before one (half, double, times). When kind is new_goal no reference is allowed. Copy the id exactly, or write the sentence without the figure. Never type the number instead.',
+    'Prose held a figure reference, {{fact:<id>}}, that the server will not serve. Either its id is not one given in this request with a value (an id in evidence that carries a value, or a key of analytics.assets[].values; when kind is new_goal no reference is allowed), or it does not stand alone as the figure it is. A reference stands alone when: it is outside quotation marks; a space and a word, or plain sentence punctuation, is on each side of it, so no sign, symbol, letter or digit touches it and two references have a word between them; and its sentence has no magnitude or percent word (hundred, thousand, million, k, percent), no multiplier, fraction, sign or arithmetic in words (double, half, a fifth, times, minus, sum), no number or currency word beside it, no rate or return word unless every reference in the sentence is a yield: figure (return, yield, APY, earn, pays, a year, monthly), no rise or fall unless it is a drawdown: figure, no forecast (will, expected), no promise beside a yield (should, always), and names no other asset than the one the figure is of. Rewrite the sentence so the reference stands alone, or write it without the figure. Never type the number instead.',
   prose_claims_applied:
     'Prose said something was applied, created, funded, traded or approved. A proposal is only a private preview; nothing has been applied.',
   allocation_unlisted: "An allocation named an assetId that is not in this chain's catalog.",
@@ -1230,6 +1232,8 @@ const CLASS_WORDS: Array<[(asset: BasketAsset) => boolean, string[]]> = [
   [(asset) => asset.cls === 'gold', ['gold', 'ouro']],
   [(asset) => asset.cls === 'crypto', ['crypto', 'cripto', 'criptomoedas?']],
 ];
+/** A word that names a class of assets, not one asset. */
+const CLASS_NAME = new RegExp(`^(?:${CLASS_WORDS.flatMap(([, words]) => words).join('|')})$`, 'iu');
 // Tickers that are everyday words in English or Portuguese ("na minha meta", "pump"): beside a number
 // they name the asset only as written (META, METAx) or as the company is capitalised (Meta).
 const EVERYDAY = new Set([
@@ -1761,13 +1765,30 @@ export async function replyToVaultConversation(
   });
   // Sentences the repair attempt lost for stating a figure; a count for the log, never their words.
   let sentencesCut = 0;
+  const personWords = parsed.data.messages
+    .filter((message) => message.who === 'person')
+    .map((message) => withoutMark(message.text));
+  const catalogNames = [
+    ...[...catalog.values()].flatMap((asset) => [asset.symbol, asset.underlying]),
+    ...(context.stockAttributes?.stocks ?? [])
+      .filter((row) => [...catalog.values()].some((asset) => asset.symbol === row.symbol))
+      .map((row) => row.company),
+  ].map(withoutMark);
   // Figures by reference (vault-figures.ts): only the vault's own conversation states one.
+  const namer = assetNamer([...catalog.values()], companies);
   const references = figureResolver({
     enabled: context.kind !== 'new_goal',
     sources: sourceById,
     references: context.references,
     lowerBound: new Set((context.analytics?.assets ?? []).flatMap((row) => row.lowerBound ?? [])),
     language: parsed.data.language,
+    sentences: (text) => sentencesOf(text, catalogNames),
+    digitNames: catalogNames,
+    // a name that is one asset's: a class word ("stocks") names no single one
+    named: (text) =>
+      namer(text).flatMap((span) =>
+        span.ids.length === 1 && !CLASS_NAME.test(text.slice(span.start, span.end)) ? span.ids : [],
+      ),
   });
   // References over both attempts that named no figure of this request; a count for the log.
   let unknownReferences = 0;
@@ -1843,17 +1864,9 @@ export async function replyToVaultConversation(
       };
     const candidate = VaultAgentModelReply.safeParse(output.reply);
     if (!candidate.success) return rejected('reply_schema', where(candidate.error.issues));
-    const personWords = parsed.data.messages
-      .filter((message) => message.who === 'person')
-      .map((message) => message.text);
-    const catalogNames = [
-      ...[...catalog.values()].flatMap((asset) => [asset.symbol, asset.underlying]),
-      ...(context.stockAttributes?.stocks ?? [])
-        .filter((row) => [...catalog.values()].some((asset) => asset.symbol === row.symbol))
-        .map((row) => row.company),
-    ];
-    // The model's own words, with its references taken out, are read for a figure exactly as before;
-    // a reference that names nothing the server measured is an unbacked figure all the same.
+    // The model's own words, with a mark where each reference stood, are read for a figure exactly as
+    // before; a reference that names nothing the server measured, or that does not stand alone as the
+    // figure it is, is an unbacked figure all the same.
     const typed = (text: string) =>
       hasFinancialFigure(withoutReferences(text), personWords, catalogNames);
     const figure = (text: string) => typed(text) || references.unbacked(text).length > 0;
@@ -1871,7 +1884,23 @@ export async function replyToVaultConversation(
         : []),
     ];
     // A figure is repaired once; one still there on the repair attempt costs its sentence, not the reply.
-    let model = candidate.data;
+    // No character that hides or reorders text is read or served.
+    const prosed = candidate.data;
+    let model: VaultAgentModelReply = {
+      message: cleanProse(prosed.message),
+      question: prosed.question === null ? null : cleanProse(prosed.question),
+      proposal: prosed.proposal && {
+        ...prosed.proposal,
+        objective: cleanProse(prosed.proposal.objective),
+        summary: cleanProse(prosed.proposal.summary),
+        tradeoffs: prosed.proposal.tradeoffs.map(cleanProse),
+        unknowns: prosed.proposal.unknowns.map(cleanProse),
+        allocations: prosed.proposal.allocations.map((allocation) => ({
+          ...allocation,
+          why: cleanProse(allocation.why),
+        })),
+      },
+    };
     if (proseOf(model).some(figure)) {
       const unbacked = proseOf(model).flatMap(references.unbacked);
       unknownReferences += unbacked.length;
@@ -1882,7 +1911,7 @@ export async function replyToVaultConversation(
         return proseOf(model).some(typed) || !unbacked.length
           ? rejected('prose_figure')
           : rejected('figure_reference', [
-              `Not resolved: ${[...new Set(unbacked)].slice(0, 5).join(', ').slice(0, 900)}.`,
+              `Found: ${[...new Set(unbacked)].slice(0, 6).join('; ').slice(0, 1200)}.`,
             ]);
       model = kept.reply;
       sentencesCut = kept.cut;
