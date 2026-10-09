@@ -953,6 +953,7 @@ describe('no /v1 route can make the server sign', () => {
       'orders/vault-agent.ts',
       'orders/vault-conversation-owner.ts',
       'orders/vault-conversation.ts',
+      'orders/vault-figures.ts',
       'orders/withdraw.ts',
       'plugins/auth.ts',
       'plugins/limits.ts',

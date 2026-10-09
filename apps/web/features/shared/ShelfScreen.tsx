@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardEmpty, CardHeader } from '../../components/ui/Card';
 import { ChainBadges } from '../../components/ui/ChainBadge';
+import { Hint } from '../../components/ui/Hint';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { StatusMark } from '../../components/ui/StatusMark';
@@ -171,8 +172,10 @@ function FamilyCard({ family }: { family: SharedFamily }) {
   /** Who published a recipe and which version is in effect, on its chain. */
   const published = (r: SharedRecipe) => (
     <p className="flex flex-wrap items-baseline gap-x-2 text-body-sm text-muted-foreground">
-      <span className="font-mono text-source" title={r.creator}>
-        {c.by(shortAddress(r.creator))}
+      <span className="font-mono text-source">
+        <Hint tip={<span className="font-mono text-source break-all">{r.creator}</span>}>
+          {c.by(shortAddress(r.creator))}
+        </Hint>
       </span>
       {isPlatformCreator(networkFor(r.chain, r.provenance === 'mock'), r.chain, r.creator) && (
         <span className="font-medium text-foreground">{c.platform}</span>

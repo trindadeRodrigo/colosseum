@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
-import { createElement, useEffect } from 'react';
+import { act, createElement, useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
+import { useAccount } from '../account/AccountProvider';
 import { withAccount } from '../account/test/screen';
 import type { InvestProps } from '../order/Invest';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
@@ -75,13 +76,17 @@ const both = familyOf(FAMILY_ID, {
 });
 
 /** The person's new plans start on Robinhood Chain; a vault of theirs follows the portfolio on Solana. */
+let starts = 'robinhood';
 function api() {
-  portStore.setApi(async (path) => {
-    if (path === '/v1/me')
+  starts = 'robinhood';
+  portStore.setApi(async (path, init) => {
+    // where new plans start, as /goal's choice stores it
+    if (path === '/v1/me/chain') starts = JSON.parse(String(init?.body)).chain;
+    if (path === '/v1/me' || path === '/v1/me/chain')
       return json({
         userId: USER,
         wallets: EMBEDDED,
-        chain: 'robinhood',
+        chain: starts,
         chainSource: 'picked',
         chainOptions: ['solana', 'robinhood'],
       });
@@ -155,6 +160,37 @@ describe('a portfolio’s page while a deposit runs', () => {
     await click(radios(host)[0] as HTMLElement);
     await settle(50);
     expect(checked(host)).toBe('solana');
+  });
+
+  it('keeps the recipe under a run when where new plans start changes elsewhere, the page’s own choice never touched', async () => {
+    // the bar's switch is gone; what is left to change it is /goal's choice, in another tab. The
+    // page fell back on it for the recipe it shows: the run pins the recipe from the press
+    let choose: (chain: 'solana' | 'robinhood') => Promise<void> = async () => {};
+    function Elsewhere() {
+      choose = useAccount().choose;
+      return null;
+    }
+    const host = await mount(
+      withAccount(
+        'en',
+        createElement(
+          'div',
+          null,
+          createElement(FamilyScreen, { slug: SLUG }),
+          createElement(Elsewhere),
+        ),
+      ),
+    );
+    for (let i = 0; i < 6; i += 1) await settle(50);
+    expect(checked(host)).toBe('robinhood');
+    await click(find(host, '[data-act="press"]'));
+    await act(async () => {
+      await choose('solana');
+    });
+    for (let i = 0; i < 3; i += 1) await settle(50);
+    // the same recipe, and the card that holds the run was not drawn again
+    expect(checked(host)).toBe('robinhood');
+    expect([card.mounts, card.unmounts]).toEqual([1, 0]);
   });
 
   it('gives the choice back once every step is confirmed', async () => {

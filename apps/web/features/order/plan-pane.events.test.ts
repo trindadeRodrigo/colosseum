@@ -259,6 +259,18 @@ describe('the allocation, as the picture', () => {
     expect(mark.textContent).toBe('jlU');
   });
 
+  it('writes the ticker, and draws no picture, for a token left without artwork', async () => {
+    for (const [asset, letters] of [
+      ['solana:jitosol', 'Jit'],
+      ['robinhood:tsgov', 'SGO'],
+    ] as const) {
+      const host = await mount(createElement(AssetMark, { asset }));
+      const mark = find(host, '[data-ui="asset-mark"]');
+      expect(mark.querySelector('img')).toBeNull();
+      expect(mark.textContent).toBe(letters);
+    }
+  });
+
   it('draws one bar as a picture, a part per holding by its share, with a label to press under each', async () => {
     const host = await pane(of('grow'));
     const bar = find(host, '[data-ui="plan-bar"]');
@@ -276,8 +288,8 @@ describe('the allocation, as the picture', () => {
     ]);
     // a part too thin for its mark is plain: 5% of a phone's bar is under 24px
     expect(
-      parts.map((p) => p.querySelector('[data-ui="asset-mark"]')?.textContent ?? null),
-    ).toEqual(['SPY', 'GLD', null]);
+      parts.map((p) => p.querySelector('[data-ui="asset-mark"] img')?.getAttribute('src') ?? null),
+    ).toEqual(['/assets/tokens/spyx.png', '/assets/tokens/gldx.png', null]);
     // every holding has a label under the bar, a real target with its mark, name and share
     const labels = [...bar.querySelectorAll('[data-ui="plan-labels"] button')];
     expect(labels.map((l) => l.getAttribute('aria-label'))).toEqual([

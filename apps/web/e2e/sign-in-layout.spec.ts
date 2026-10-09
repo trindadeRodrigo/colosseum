@@ -142,18 +142,37 @@ test('the bar keeps its height: signed out, on /sign-in, and signed in', async (
   await expect(page.locator('header [data-ui="sign-in-here"]')).toBeVisible();
   expect(await height()).toBe(out);
   await page.getByRole('button', { name: /Use my passkey/ }).click();
-  // no chain is asked (CHAIN-SWITCH): the bar shows one account control, on the chain they start on
+  // no chain is asked: the bar shows one account control, the person and no chain
   await expect(page.locator('header [data-ui="account"]')).toBeVisible();
   const control = page.locator('header [data-ui="account-menu-button"]');
-  await expect(control).toHaveAttribute('data-chain', 'solana');
+  await expect(control).toHaveAttribute('data-ready', '');
   await expect(page.locator('header [data-ui="chain-switch"]')).toHaveCount(0);
+  await expect(control).toHaveText('Account');
+  await expect(control).toHaveAccessibleName('Your account');
   expect(await height()).toBe(out);
 
-  // its menu: the chains, the address, and "Sign out" as the last item; Escape closes it
+  // its menu: the person's wallets, one for each chain they have one on (the throwaway wallet has
+  // both), and "Sign out" as the last item; nothing in it switches a chain; Escape closes it
   await control.click();
   const menu = page.locator('[data-ui="account-menu"]');
-  await expect(menu.getByRole('group')).toBeVisible();
-  await expect(menu.getByRole('button', { name: 'Copy address' })).toBeVisible();
+  await expect(menu.locator('[data-ui="account-wallet"]')).toHaveCount(2);
+  await expect(menu.getByRole('button', { name: 'Copy address' })).toHaveCount(2);
+  await expect(menu.getByRole('group')).toHaveCount(0);
+  // how each chain is run is words beside its name, with no hatched glyph; each row is inside the menu
+  await expect(menu.locator('[data-ui="account-wallet-run"]')).toHaveCount(2);
+  await expect(menu.locator('[data-ui="sample-glyph"], .tf-hatch')).toHaveCount(0);
+  const frame = await menu.boundingBox();
+  for (const row of await menu.locator('[data-ui="account-wallet"]').all()) {
+    const at = await row.boundingBox();
+    expect(at && frame && at.x >= frame.x && at.x + at.width <= frame.x + frame.width).toBe(true);
+  }
+  // the whole menu is inside the phone's window
+  await expect
+    .poll(async () => {
+      const at = await menu.boundingBox();
+      return at !== null && at.x >= 8 && at.x + at.width <= 375 - 8;
+    })
+    .toBe(true);
   await expect(menu.locator('button, a').last()).toHaveAttribute('data-ui', 'sign-out');
   expect(await height()).toBe(out);
   await page.keyboard.press('Escape');
@@ -163,7 +182,7 @@ test('the bar keeps its height: signed out, on /sign-in, and signed in', async (
   // the phone's sheet opens with the same block, and "Sign out" there signs out
   await page.getByRole('button', { name: 'Menu', exact: true }).click();
   const block = page.locator('[data-ui="compact-nav-sheet"] [data-ui="account-block"]');
-  await expect(block.locator('[data-ui="account-address"]')).toBeVisible();
+  await expect(block.locator('[data-ui="account-address"]').first()).toBeVisible();
   await block.locator('[data-ui="sign-out"]').click();
   await expect(page.locator('header a[href^="/sign-in"]')).toBeVisible();
   expect(await height()).toBe(out);

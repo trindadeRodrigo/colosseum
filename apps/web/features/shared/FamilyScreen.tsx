@@ -19,6 +19,7 @@ import { Card } from '../../components/ui/Card';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
 import { utcMinute } from '../../components/ui/ExecutionList';
+import { Hint } from '../../components/ui/Hint';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { ScreenWait } from '../../components/waits/ScreenWait';
@@ -255,7 +256,13 @@ export function FamilyScreen({ slug }: { slug: string }) {
           family={family}
           recipe={recipe}
           changed={changed}
-          onRunning={setRunning}
+          onRunning={(now) => {
+            // The run is on the recipe on the page. Where the page's own choice was never touched
+            // that recipe came from where the person's new plans start, which /goal can change in
+            // another tab: it is pinned here, so the section is not drawn again under the run.
+            if (now) setPicked(recipe.chain);
+            setRunning(now);
+          }}
           onVersionChanged={() => {
             setChanged(true);
             setRound((n) => n + 1);
@@ -942,13 +949,16 @@ function VaultsPanel({
                   </Button>
                 )}
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <Link
-                    href={`/vaults/${vault.chain}/${encodeURIComponent(vault.address)}`}
-                    className={buttonClass({ variant: 'link' })}
-                    title={vault.address}
+                  <Hint
+                    tip={<span className="font-mono text-source break-all">{vault.address}</span>}
                   >
-                    {v.open}
-                  </Link>
+                    <Link
+                      href={`/vaults/${vault.chain}/${encodeURIComponent(vault.address)}`}
+                      className={buttonClass({ variant: 'link' })}
+                    >
+                      {v.open}
+                    </Link>
+                  </Hint>
                   {!follows && (
                     <Button
                       variant="secondary"

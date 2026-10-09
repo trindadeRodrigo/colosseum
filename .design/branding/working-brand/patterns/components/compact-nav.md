@@ -45,7 +45,7 @@ Width, padding and wordmark size transition over 480ms `--ease-seat`; the menu f
 | Link hover | `bg-secondary`, text `--foreground` |
 | Link current (section in view) | `aria-current="true"`, `--foreground` + 2px honey underline at 6px offset |
 | Focus | 2px chalk `--ring`, 2px offset, inside the bar's padding (not clipped: no `overflow:hidden` on the bar) |
-| Wallet connected | CTA becomes "Open app" (link to `/`), never shows balance in the marketing nav. As built since 2026-10-09, following Thom's request for one account control on every bar (gate `ONE-ACCOUNT-CONTROL`), the landing shows the account chip with its menu instead: open for Rodrigo, whose spec this is |
+| Wallet connected | CTA becomes "Open app" (link to `/`), never shows balance in the marketing nav. As built since 2026-10-09, following Thom's request for one account control on every bar (gate `ONE-ACCOUNT-CONTROL`), the landing shows the account chip with its menu instead, and since the same day that chip reads "Account" and its menu lists the person's wallets, with no chain in the bar (gate `ACCOUNT-IN-THE-BAR`): open for Rodrigo, whose spec this is |
 
 ## Accessibility
 

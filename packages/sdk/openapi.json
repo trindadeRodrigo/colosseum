@@ -10941,6 +10941,231 @@
                         "additionalProperties": false
                       }
                     },
+                    "figures": {
+                      "type": "object",
+                      "properties": {
+                        "prose": {
+                          "type": "object",
+                          "properties": {
+                            "message": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 9600
+                            },
+                            "question": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 2000
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "proposal": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "objective": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 3200
+                                    },
+                                    "summary": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 6400
+                                    },
+                                    "tradeoffs": {
+                                      "maxItems": 12,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2400
+                                      }
+                                    },
+                                    "unknowns": {
+                                      "maxItems": 12,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2400
+                                      }
+                                    },
+                                    "why": {
+                                      "type": "object",
+                                      "propertyNames": {
+                                        "type": "string",
+                                        "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                      },
+                                      "additionalProperties": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 4000
+                                      }
+                                    }
+                                  },
+                                  "required": [
+                                    "objective",
+                                    "summary",
+                                    "tradeoffs",
+                                    "unknowns",
+                                    "why"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": ["message", "question", "proposal"],
+                          "additionalProperties": false
+                        },
+                        "facts": {
+                          "minItems": 1,
+                          "maxItems": 64,
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 160
+                                  },
+                                  "assetId": {
+                                    "type": "string",
+                                    "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                  },
+                                  "label": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "value": {
+                                    "type": "number"
+                                  },
+                                  "unit": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 80
+                                  },
+                                  "source": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 2000
+                                  },
+                                  "method": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 2000
+                                  },
+                                  "fetchedAt": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                  },
+                                  "provenance": {
+                                    "type": "string",
+                                    "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                                  },
+                                  "staleAgeSec": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "lowerBound": {
+                                    "type": "boolean",
+                                    "enum": [true]
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "text",
+                                  "value",
+                                  "unit",
+                                  "source",
+                                  "method",
+                                  "fetchedAt",
+                                  "provenance",
+                                  "staleAgeSec"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 160
+                                  },
+                                  "assetId": {
+                                    "type": "string",
+                                    "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                  },
+                                  "label": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "value": {
+                                    "type": "null"
+                                  },
+                                  "reason": {
+                                    "type": "string",
+                                    "enum": [
+                                      "no_samples_in_regime",
+                                      "insufficient_samples",
+                                      "not_a_number",
+                                      "beyond_measured_size",
+                                      "no_reference_price",
+                                      "no_external_source",
+                                      "chain_not_covered",
+                                      "not_collected",
+                                      "not_imported",
+                                      "not_followed",
+                                      "gate_open",
+                                      "not_applicable",
+                                      "no_oracle"
+                                    ]
+                                  }
+                                },
+                                "required": ["id", "text", "value", "reason"],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": ["prose", "facts"],
+                      "additionalProperties": false
+                    },
                     "chain": {
                       "type": "string",
                       "enum": ["solana", "base", "robinhood"]
@@ -23245,6 +23470,158 @@
                                 "type": "string",
                                 "minLength": 1,
                                 "maxLength": 8000
+                              },
+                              "figures": {
+                                "type": "object",
+                                "properties": {
+                                  "template": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 8000
+                                  },
+                                  "facts": {
+                                    "minItems": 1,
+                                    "maxItems": 64,
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "id": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 160
+                                            },
+                                            "assetId": {
+                                              "type": "string",
+                                              "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                            },
+                                            "label": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 200
+                                            },
+                                            "text": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 200
+                                            },
+                                            "value": {
+                                              "type": "number"
+                                            },
+                                            "unit": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 80
+                                            },
+                                            "source": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 2000
+                                            },
+                                            "method": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 2000
+                                            },
+                                            "fetchedAt": {
+                                              "type": "string",
+                                              "format": "date-time",
+                                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                            },
+                                            "provenance": {
+                                              "type": "string",
+                                              "enum": [
+                                                "live",
+                                                "mock",
+                                                "sandbox",
+                                                "fixture",
+                                                "prior_dataset"
+                                              ]
+                                            },
+                                            "staleAgeSec": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "number",
+                                                  "minimum": 0
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "lowerBound": {
+                                              "type": "boolean",
+                                              "enum": [true]
+                                            }
+                                          },
+                                          "required": [
+                                            "id",
+                                            "text",
+                                            "value",
+                                            "unit",
+                                            "source",
+                                            "method",
+                                            "fetchedAt",
+                                            "provenance",
+                                            "staleAgeSec"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "id": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 160
+                                            },
+                                            "assetId": {
+                                              "type": "string",
+                                              "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                            },
+                                            "label": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 200
+                                            },
+                                            "text": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 200
+                                            },
+                                            "value": {
+                                              "type": "null"
+                                            },
+                                            "reason": {
+                                              "type": "string",
+                                              "enum": [
+                                                "no_samples_in_regime",
+                                                "insufficient_samples",
+                                                "not_a_number",
+                                                "beyond_measured_size",
+                                                "no_reference_price",
+                                                "no_external_source",
+                                                "chain_not_covered",
+                                                "not_collected",
+                                                "not_imported",
+                                                "not_followed",
+                                                "gate_open",
+                                                "not_applicable",
+                                                "no_oracle"
+                                              ]
+                                            }
+                                          },
+                                          "required": ["id", "text", "value", "reason"],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": ["template", "facts"],
+                                "additionalProperties": false
                               }
                             },
                             "required": ["id", "who", "text"],
@@ -23727,6 +24104,158 @@
                               "type": "string",
                               "minLength": 1,
                               "maxLength": 8000
+                            },
+                            "figures": {
+                              "type": "object",
+                              "properties": {
+                                "template": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 8000
+                                },
+                                "facts": {
+                                  "minItems": 1,
+                                  "maxItems": 64,
+                                  "type": "array",
+                                  "items": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "id": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 160
+                                          },
+                                          "assetId": {
+                                            "type": "string",
+                                            "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                          },
+                                          "label": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 200
+                                          },
+                                          "text": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 200
+                                          },
+                                          "value": {
+                                            "type": "number"
+                                          },
+                                          "unit": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 80
+                                          },
+                                          "source": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 2000
+                                          },
+                                          "method": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 2000
+                                          },
+                                          "fetchedAt": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                          },
+                                          "provenance": {
+                                            "type": "string",
+                                            "enum": [
+                                              "live",
+                                              "mock",
+                                              "sandbox",
+                                              "fixture",
+                                              "prior_dataset"
+                                            ]
+                                          },
+                                          "staleAgeSec": {
+                                            "anyOf": [
+                                              {
+                                                "type": "number",
+                                                "minimum": 0
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
+                                          "lowerBound": {
+                                            "type": "boolean",
+                                            "enum": [true]
+                                          }
+                                        },
+                                        "required": [
+                                          "id",
+                                          "text",
+                                          "value",
+                                          "unit",
+                                          "source",
+                                          "method",
+                                          "fetchedAt",
+                                          "provenance",
+                                          "staleAgeSec"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "id": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 160
+                                          },
+                                          "assetId": {
+                                            "type": "string",
+                                            "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                          },
+                                          "label": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 200
+                                          },
+                                          "text": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 200
+                                          },
+                                          "value": {
+                                            "type": "null"
+                                          },
+                                          "reason": {
+                                            "type": "string",
+                                            "enum": [
+                                              "no_samples_in_regime",
+                                              "insufficient_samples",
+                                              "not_a_number",
+                                              "beyond_measured_size",
+                                              "no_reference_price",
+                                              "no_external_source",
+                                              "chain_not_covered",
+                                              "not_collected",
+                                              "not_imported",
+                                              "not_followed",
+                                              "gate_open",
+                                              "not_applicable",
+                                              "no_oracle"
+                                            ]
+                                          }
+                                        },
+                                        "required": ["id", "text", "value", "reason"],
+                                        "additionalProperties": false
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              "required": ["template", "facts"],
+                              "additionalProperties": false
                             }
                           },
                           "required": ["id", "who", "text"],
@@ -24051,6 +24580,158 @@
                                 "type": "string",
                                 "minLength": 1,
                                 "maxLength": 8000
+                              },
+                              "figures": {
+                                "type": "object",
+                                "properties": {
+                                  "template": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 8000
+                                  },
+                                  "facts": {
+                                    "minItems": 1,
+                                    "maxItems": 64,
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "id": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 160
+                                            },
+                                            "assetId": {
+                                              "type": "string",
+                                              "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                            },
+                                            "label": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 200
+                                            },
+                                            "text": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 200
+                                            },
+                                            "value": {
+                                              "type": "number"
+                                            },
+                                            "unit": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 80
+                                            },
+                                            "source": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 2000
+                                            },
+                                            "method": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 2000
+                                            },
+                                            "fetchedAt": {
+                                              "type": "string",
+                                              "format": "date-time",
+                                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                            },
+                                            "provenance": {
+                                              "type": "string",
+                                              "enum": [
+                                                "live",
+                                                "mock",
+                                                "sandbox",
+                                                "fixture",
+                                                "prior_dataset"
+                                              ]
+                                            },
+                                            "staleAgeSec": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "number",
+                                                  "minimum": 0
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "lowerBound": {
+                                              "type": "boolean",
+                                              "enum": [true]
+                                            }
+                                          },
+                                          "required": [
+                                            "id",
+                                            "text",
+                                            "value",
+                                            "unit",
+                                            "source",
+                                            "method",
+                                            "fetchedAt",
+                                            "provenance",
+                                            "staleAgeSec"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "id": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 160
+                                            },
+                                            "assetId": {
+                                              "type": "string",
+                                              "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                            },
+                                            "label": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 200
+                                            },
+                                            "text": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 200
+                                            },
+                                            "value": {
+                                              "type": "null"
+                                            },
+                                            "reason": {
+                                              "type": "string",
+                                              "enum": [
+                                                "no_samples_in_regime",
+                                                "insufficient_samples",
+                                                "not_a_number",
+                                                "beyond_measured_size",
+                                                "no_reference_price",
+                                                "no_external_source",
+                                                "chain_not_covered",
+                                                "not_collected",
+                                                "not_imported",
+                                                "not_followed",
+                                                "gate_open",
+                                                "not_applicable",
+                                                "no_oracle"
+                                              ]
+                                            }
+                                          },
+                                          "required": ["id", "text", "value", "reason"],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": ["template", "facts"],
+                                "additionalProperties": false
                               }
                             },
                             "required": ["id", "who", "text"],
@@ -24519,7 +25200,7 @@
       "post": {
         "summary": "Discuss an owned vault and preview a model-proposed strategy",
         "tags": ["portfolio"],
-        "description": "Fresh chain ownership on every call; missing and other-owned vaults return the same 404. The model receives the supplied conversation, real current vault state, listed assets and sourced risk inputs. It picks assets and the server sets the preview weights, without calling the allocation engine. The goal is the one of the plan the vault was opened for, read on the server as `POST /v1/vaults/{chain}/{address}/targets` reads it, never from the request: in an income or protect plan a stock is proposed only where the person asked for it in their own words, with the warning `outside_goal_requested`, and any other pick outside the goal is left out with the note `pick_outside_goal`, since the targets review would refuse it. A vault the server holds no plan for has no goal to check against, and `proposal.unknowns` says so. Sources and numerical metrics are server-authored. No history, plan, order, target or account-chain change is stored. Existing configured model and shared intake call quota apply. Cache-Control: private, no-store.",
+        "description": "Fresh chain ownership on every call; missing and other-owned vaults return the same 404. The model receives the supplied conversation, real current vault state, listed assets and sourced risk inputs. It picks assets and the server sets the preview weights, without calling the allocation engine. The goal is the one of the plan the vault was opened for, read on the server as `POST /v1/vaults/{chain}/{address}/targets` reads it, never from the request: in an income or protect plan a stock is proposed only where the person asked for it in their own words, with the warning `outside_goal_requested`, and any other pick outside the goal is left out with the note `pick_outside_goal`, since the targets review would refuse it. A vault the server holds no plan for has no goal to check against, and `proposal.unknowns` says so. Sources and numerical metrics are server-authored. The model writes no number: where it states a measured figure it names one the server gave it, and the server writes the value in its place in `message`, `question` and the prose of the proposal (plain text, no markup). `figures` is then present: `figures.prose` is the same prose with each figure a `{{fact:<id>}}` placeholder and `figures.facts` what each one is, with its value, unit, shown text, source, fetchedAt, method, provenance and, for a price past the age the chain accepts, `staleAgeSec`; a figure that is not measured has a null value and its reason, and its text says so. A reference to anything the server did not measure never becomes a number: its sentence is left out. No history, plan, order, target or account-chain change is stored. Existing configured model and shared intake call quota apply. Cache-Control: private, no-store.",
         "requestBody": {
           "required": true,
           "content": {
@@ -24928,6 +25609,231 @@
                         "required": ["code", "assetIds"],
                         "additionalProperties": false
                       }
+                    },
+                    "figures": {
+                      "type": "object",
+                      "properties": {
+                        "prose": {
+                          "type": "object",
+                          "properties": {
+                            "message": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 9600
+                            },
+                            "question": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 2000
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "proposal": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "objective": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 3200
+                                    },
+                                    "summary": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 6400
+                                    },
+                                    "tradeoffs": {
+                                      "maxItems": 12,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2400
+                                      }
+                                    },
+                                    "unknowns": {
+                                      "maxItems": 12,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2400
+                                      }
+                                    },
+                                    "why": {
+                                      "type": "object",
+                                      "propertyNames": {
+                                        "type": "string",
+                                        "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                      },
+                                      "additionalProperties": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 4000
+                                      }
+                                    }
+                                  },
+                                  "required": [
+                                    "objective",
+                                    "summary",
+                                    "tradeoffs",
+                                    "unknowns",
+                                    "why"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": ["message", "question", "proposal"],
+                          "additionalProperties": false
+                        },
+                        "facts": {
+                          "minItems": 1,
+                          "maxItems": 64,
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 160
+                                  },
+                                  "assetId": {
+                                    "type": "string",
+                                    "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                  },
+                                  "label": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "value": {
+                                    "type": "number"
+                                  },
+                                  "unit": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 80
+                                  },
+                                  "source": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 2000
+                                  },
+                                  "method": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 2000
+                                  },
+                                  "fetchedAt": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                  },
+                                  "provenance": {
+                                    "type": "string",
+                                    "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                                  },
+                                  "staleAgeSec": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "lowerBound": {
+                                    "type": "boolean",
+                                    "enum": [true]
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "text",
+                                  "value",
+                                  "unit",
+                                  "source",
+                                  "method",
+                                  "fetchedAt",
+                                  "provenance",
+                                  "staleAgeSec"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 160
+                                  },
+                                  "assetId": {
+                                    "type": "string",
+                                    "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                  },
+                                  "label": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "value": {
+                                    "type": "null"
+                                  },
+                                  "reason": {
+                                    "type": "string",
+                                    "enum": [
+                                      "no_samples_in_regime",
+                                      "insufficient_samples",
+                                      "not_a_number",
+                                      "beyond_measured_size",
+                                      "no_reference_price",
+                                      "no_external_source",
+                                      "chain_not_covered",
+                                      "not_collected",
+                                      "not_imported",
+                                      "not_followed",
+                                      "gate_open",
+                                      "not_applicable",
+                                      "no_oracle"
+                                    ]
+                                  }
+                                },
+                                "required": ["id", "text", "value", "reason"],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": ["prose", "facts"],
+                      "additionalProperties": false
                     },
                     "chain": {
                       "type": "string",

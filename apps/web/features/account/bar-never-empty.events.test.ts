@@ -8,7 +8,7 @@ import { ORDER_ID, recordOf, USER } from '../order/test/fixtures';
 import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port';
 import { location, router } from '../wallet/test/mock-next';
 import { left, portStore, restarts } from '../wallet/test/mock-provider';
-import { SLOW_MS, WAY_IN_MS } from './AccountProvider';
+import { SLOW_MS, useAccount, WAY_IN_MS } from './AccountProvider';
 import { inShellWithSignIn } from './test/screen';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
@@ -69,7 +69,7 @@ afterEach(async () => {
 describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s', (lang) => {
   const t = dictionary(lang);
 
-  it('leaves the bar an empty box for a moment only: then "Sign in" and the chain switcher, for good', async () => {
+  it('leaves the bar an empty box for a moment only: then "Sign in", for good', async () => {
     const host = await shell(lang);
     await later(WAY_IN_MS - 1);
     expect(way(host)).toBeNull();
@@ -79,8 +79,8 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
     await later(1);
     expect(way(host)?.textContent).toBe(t.shell.signIn);
     expect(box(host)).toBeNull();
-    // the visitor's controls, not an account's: the chain they look at, and no account menu
-    expect(host.querySelector('header [data-ui="chain-switch"]')).not.toBeNull();
+    // the visitor's control, not an account's: no account menu, and no chain in the bar
+    expect(host.querySelector('header [data-ui="chain-switch"]')).toBeNull();
     expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
     // and it stays, however long the service takes
     await later(20 * SLOW_MS);
@@ -191,7 +191,7 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
     await later(0);
     expect(way(host)).toBeNull();
     expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
-    expect(find(host, '[data-ui="account-menu-button"]').getAttribute('data-chain')).toBe('solana');
+    expect(find(host, '[data-ui="account-menu-button"]').hasAttribute('data-ready')).toBe(true);
   });
 
   it('lets that person out though the service cannot be reached: the hint goes, and the visitor’s way in is there at once', async () => {
@@ -247,7 +247,7 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
     await act(async () => portStore.set(signedInPort(EMBEDDED)));
     await later(0);
     expect(way(host)).toBeNull();
-    expect(find(host, '[data-ui="account-menu-button"]').getAttribute('data-chain')).toBe('solana');
+    expect(find(host, '[data-ui="account-menu-button"]').hasAttribute('data-ready')).toBe(true);
     expect(host.querySelector('[data-ui="account-slow"]')).toBeNull();
   });
 
@@ -280,10 +280,17 @@ describe('a sign-in service that loads in time', () => {
     expect(box(host)?.getAttribute('data-shape')).toBe('account');
   });
 
-  it('lets a visitor switch the chain they look at while the service is silent', async () => {
-    const host = await shell('en');
-    await later(WAY_IN_MS);
-    const button = find(host, 'header [data-ui="chain-switch"] button');
-    expect(button.textContent).toContain('Solana');
+  it('gives a visitor’s screens a chain to look at while the service is silent, with no chain in the bar', async () => {
+    let looking: string | null = null;
+    function Screen() {
+      looking = useAccount().chain;
+      return null;
+    }
+    const host = await mount(inShellWithSignIn('en', 'auto', createElement(Screen)));
+    await later(WAY_IN_MS - 1);
+    expect(looking).toBeNull();
+    await later(1);
+    expect(looking).toBe('solana');
+    expect(host.querySelector('header [data-ui="chain-switch"]')).toBeNull();
   });
 });

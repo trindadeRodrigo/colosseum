@@ -24,7 +24,9 @@ export const pt: Dictionary = {
     signedOut: 'Você saiu.',
     signOutFailed:
       'Não consegui encerrar sua sessão: o serviço de login não respondeu. Tente de novo.',
-    account: 'Sua carteira',
+    account: 'Sua conta',
+    accountLabel: 'Conta',
+    wallets: 'Suas carteiras',
     accountLoading: 'Carregando sua conta…',
     slow: {
       title: 'Sua conta ainda está carregando',
@@ -38,7 +40,6 @@ export const pt: Dictionary = {
       trying: 'Tentando de novo…',
       held: 'Um passo da sua ordem está sendo assinado. Conclua ou cancele esse passo primeiro e tente de novo.',
     },
-    address: 'Endereço',
     copyAddress: 'Copiar endereço',
     copied: 'Copiado',
     viewOn: (explorer: string) => `Ver no ${explorer}`,
@@ -51,6 +52,10 @@ export const pt: Dictionary = {
     language: 'Idioma',
     testNetwork: 'rede de teste',
     testNetworkLine: 'Rede de teste',
+    chainRun: {
+      shown: { sandbox: 'Rede de teste', mock: 'Exemplo' },
+      said: { sandbox: 'rede de teste', mock: 'exemplo' },
+    },
     slowDown: 'Nosso servidor pediu para eu ir mais devagar. Espere um minuto e tente de novo.',
     mockAnnounce: 'Números de exemplo',
     sampleFigure: 'número de exemplo',
@@ -164,19 +169,12 @@ export const pt: Dictionary = {
     short: { solana: 'Solana', robinhood: 'Robinhood', base: 'Base' },
     explorers: { solana: 'Solscan', robinhood: 'explorador da Robinhood', base: 'Basescan' },
     switch: {
-      current: (chain: string) => `Rede: ${chain}`,
-      group: 'Escolha uma rede',
-      plansStay:
-        'Planos novos são montados na rede que você escolher. Os planos que você já tem continuam na rede deles.',
-      browsing: 'Mostra os portfólios compartilhados dessa rede.',
       noWallet: (chain: string) => `A carteira com que você entrou não assina na ${chain}.`,
-      off: (chain: string) => `${chain} está indisponível no nosso servidor por enquanto.`,
       saving: 'Trocando…',
-      done: (chain: string) => `Agora você está na ${chain}.`,
     },
     is: {
       picked: (chain: string) =>
-        `Planos novos são montados na ${chain}. Você pode trocar de rede pela barra no topo.`,
+        `Planos novos são montados na ${chain}. Você escolhe a rede onde começa um plano, em Investir.`,
       wallet: (chain: string) =>
         `Planos novos são montados na ${chain}, a rede da carteira que você conectou.`,
     },
@@ -213,6 +211,10 @@ export const pt: Dictionary = {
         `Este plano vai ficar na ${chain}: a carteira com que você entrou só assina lá.`,
       onlyOn: (chain: string) =>
         `Este plano vai ficar na ${chain}: é a única rede que nosso servidor roda por enquanto.`,
+      off: (chain: string) =>
+        `${chain} está indisponível no nosso servidor por enquanto, então um plano não pode começar lá.`,
+      notYours: (chain: string) =>
+        `A carteira com que você entrou não assina na ${chain}, então um plano não pode começar lá.`,
       on: 'Este plano fica na',
       change: 'Trocar',
       changeLabel: 'Trocar a rede deste plano',
@@ -231,8 +233,8 @@ export const pt: Dictionary = {
     explore: {
       picker: {
         label: 'Conversa',
-        current: 'Esta conversa',
-        fresh: 'Nova conversa',
+        current: 'Nova conversa',
+        fresh: 'Começar uma nova conversa',
         vaults: 'Seus cofres',
         saved: 'Conversas salvas',
         untitled: 'Conversa anterior',
@@ -405,7 +407,8 @@ export const pt: Dictionary = {
       choose: 'Escolher a rede',
     },
     blocked: {
-      chainNotChosen: 'Escolha primeiro uma rede na barra no topo.',
+      chainNotChosen:
+        'Não consegui ler sua conta, então não sei qual rede usar. Tente de novo em instantes, ou saia e entre de novo.',
       chainUnknown:
         'Ainda não sei em qual rede seu plano fica, então não consigo montar para ela. Pergunte de novo, acima.',
       refused: 'Nosso servidor não aceitou esses limites. Confira cada campo e tente de novo.',
@@ -494,6 +497,32 @@ export const pt: Dictionary = {
       prior_dataset: 'dados anteriores, não reais',
     },
     unknownKind: 'não real',
+    whatFrom: '{what}: {source}',
+    from: 'Fonte: {source}',
+    unnamed: 'Detalhes da fonte abaixo',
+    updated: 'Atualizado {ago}',
+    read: 'Lido {ago}',
+    readAt: 'Lido em {time}',
+    copyFailed: 'Não deu para copiar aqui. A linha inteira está abaixo para selecionar.',
+    staleOverLimit: 'Atualizado {ago}, além do limite de {limit} desta fonte',
+    staleNoLimit: 'Atualizado {ago}, desatualizado',
+    staleNoAge: 'Desatualizado, de idade desconhecida',
+    live: 'Real',
+    ago: {
+      now: 'há menos de um minuto',
+      ago: 'há {n} {unit}',
+      second: ['segundo', 'segundos'],
+      minute: ['minuto', 'minutos'],
+      hour: ['hora', 'horas'],
+      day: ['dia', 'dias'],
+      about: 'cerca de',
+    },
+    details: 'Detalhes',
+    sourceLabel: 'Fonte',
+    timeLabel: 'Lido em',
+    methodLabel: 'Como é calculado',
+    copyAddress: 'Copiar endereço {address}',
+    explorer: 'Ver {address} no explorador',
   },
 
   portfolio: {
@@ -585,6 +614,8 @@ export const pt: Dictionary = {
         drift: 'Diferença',
       },
       noPrice: 'sem preço',
+      noPriceWhy:
+        'Sem preço: esta leitura da rede não trouxe nenhum para este ativo, então ele não tem valor nem parcela aqui.',
       unpriced: (n: number) =>
         n === 1
           ? '1 posição não tem preço, então o valor a deixa de fora.'
@@ -624,7 +655,8 @@ export const pt: Dictionary = {
     actions: {
       label: 'Este cofre',
       unnamed: (chain: string) => `Seu cofre na ${chain}`,
-      addMoney: 'Adicionar dinheiro',
+      numbered: (number: number) => `Cofre #${number}`,
+      addMoney: 'Depositar',
       rename: 'Renomear',
       newPlan: 'Novo plano',
       nameLabel: 'Nome deste cofre',
@@ -1372,6 +1404,9 @@ export const pt: Dictionary = {
         removed: 'Removido da estratégia proposta',
         details: 'Detalhes do cofre e fontes dos preços',
         draftIntro: 'Proposta preliminar, não aplicada:',
+        figureSaid: '{value}, um valor medido',
+        figureSaidAged: '{value}, um valor medido, {age}',
+        figureNotKept: '(valor não guardado)',
         comparison: 'Meta atual → fatia proposta',
         reasons: 'Escolhas e fontes',
         tradeoffs: 'Escolhas e consequências',
@@ -1409,6 +1444,81 @@ export const pt: Dictionary = {
         proposed: 'Estratégia proposta',
         previewOnly:
           'Somente uma prévia. Seu cofre não mudou. Aplicar uma atualização de estratégia ainda não está disponível aqui.',
+      },
+      /** A página de quem é dono (gate VAULT-PAGE-ACTIONS). */
+      page: {
+        yourVault: 'Seu cofre',
+        deposit: 'Depositar',
+        more: 'Mais',
+        editWeights: 'Editar pesos à mão',
+        holdings: 'O que ele guarda',
+        others: (count: number) => `${count} outros`,
+        against: (difference: string) => `${difference} em relação ao plano`,
+        onPlan: 'no plano',
+        change:
+          'Para mudar o que este cofre guarda, diga na conversa: mais de um ativo, menos de outro.',
+        details: 'Detalhes',
+        priceSources: 'Fontes dos preços',
+        read: 'Lido da rede',
+        copyVault: 'endereço do cofre',
+        copyOwner: 'endereço de quem é dono',
+        empty: {
+          title: 'Este cofre está vazio',
+          withTargets:
+            'Nada está guardado nele agora. Um depósito entra nestes ativos, nestas fatias planejadas.',
+          noTargets:
+            'Nada está guardado nele agora, e ele ainda não tem metas. Deposite para abastecê-lo e diga na conversa o que ele deve guardar.',
+          targets: 'Para onde vai um depósito',
+          choose: 'Escolher o que ele guarda',
+          choosePrompt: 'Me ajude a escolher o que este cofre deve guardar.',
+          explain: 'Explicar as metas',
+          explainPrompt: 'Explique as metas deste cofre e para onde iria um depósito.',
+        },
+        backToHoldings: 'Voltar ao que você tem',
+        backToVault: 'Voltar ao seu cofre',
+        amount: 'Valor do depósito',
+        finish: {
+          title: 'Termine seu depósito',
+          lead: 'Estes passos trocam o dinheiro que já está no seu cofre. Nenhum dinheiro novo é depositado.',
+        },
+        ended: 'Os passos terminaram',
+        endedLead: 'Como cada passo terminou está dito abaixo dos passos.',
+        panes: {
+          deposit: {
+            title: 'Depositar no seu cofre',
+            signTitle: 'Assine seu depósito',
+            lead: 'O valor inteiro entra neste cofre. Você assina cada passo aqui.',
+            resumed:
+              'Você aprovou este depósito antes de esta página ser aberta de novo. Os passos estão onde estavam.',
+            stopped: 'Este depósito parou, e a ordem dele está guardada.',
+          },
+          withdraw: {
+            title: 'Sacar do seu cofre',
+            signTitle: 'Assine seu saque',
+            lead: 'Você assina cada passo aqui. Os tokens vão para a sua própria carteira e para nenhum outro lugar.',
+            resumed:
+              'Você aprovou este saque antes de esta página ser aberta de novo. Os passos estão onde estavam.',
+            stopped: 'Este saque parou, e a ordem dele está guardada.',
+          },
+          change: {
+            title: 'Editar pesos à mão',
+            signTitle: 'Assine a mudança no seu cofre',
+            lead: 'O primeiro passo grava as novas metas na rede; os seguintes trocam para chegar a elas. Você assina cada passo aqui.',
+            resumed:
+              'Você aprovou esta mudança antes de esta página ser aberta de novo. Os passos estão onde estavam.',
+            stopped: 'Esta mudança parou, e a ordem dela está guardada.',
+          },
+        },
+        waits: {
+          deposit:
+            'A conversa espera enquanto este depósito está aberto. Termine, ou volte ao que você tem.',
+          withdraw:
+            'A conversa espera enquanto este saque está aberto. Termine, ou volte ao que você tem.',
+          change:
+            'A conversa espera enquanto esta mudança está aberta. Termine, ou volte ao que você tem.',
+          signing: 'A conversa espera enquanto os passos são assinados.',
+          done: 'Volte ao seu cofre para continuar a conversa.',
+        },
       },
       address: 'Endereço do cofre',
       workspaceLead: (chain: string) =>

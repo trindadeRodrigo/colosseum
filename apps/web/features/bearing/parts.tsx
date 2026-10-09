@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { Wait } from '../../components/shell/Wait';
 import { CHAIN_NAMES } from '../../components/ui/ChainBadge';
 import { cn } from '../../components/ui/cn';
+import { Hint } from '../../components/ui/Hint';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { Skeleton, SkeletonChart, SkeletonRows } from '../../components/ui/Skeleton';
 import { ScreenWait } from '../../components/waits/ScreenWait';
@@ -55,15 +56,43 @@ export function NotOnChain() {
   );
 }
 
-export function Reason({ code, detail }: { code?: string | null; detail?: string }) {
+/**
+ * Why a figure is missing: the short words on the page, and the same reason as a sentence one hover,
+ * focus or tap away (`why` in the dictionary), with what the API added. `whyCode` is the reason behind
+ * the words where the page says less than the API does (the chains side by side).
+ */
+export function Reason({
+  code,
+  detail,
+  whyCode,
+}: {
+  code?: string | null;
+  detail?: string;
+  whyCode?: string | null;
+}) {
   const say = useReason();
+  const t = useWords();
+  const why = t.why[(whyCode ?? code ?? 'not_served') as keyof typeof t.why];
+  const words = say(code);
   return (
     <span
       data-ui="bearing-reason"
-      title={detail}
       className="font-sans text-caption font-normal whitespace-nowrap text-muted-foreground"
     >
-      {say(code)}
+      {why || detail ? (
+        <Hint
+          tip={
+            <>
+              {why && <span>{why}</span>}
+              {detail && <span className="text-muted-foreground">{detail}</span>}
+            </>
+          }
+        >
+          {words}
+        </Hint>
+      ) : (
+        words
+      )}
     </span>
   );
 }
@@ -529,7 +558,7 @@ export function Pie({
   });
   const share = (v: number) => fm.pct(v / whole);
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the titles, the legend and the table
+    // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the readout, the legend and the table
     <div data-ui="bearing-pie" onMouseLeave={() => setOn(null)}>
       <div className="mb-2">
         <div className="font-condensed text-caption font-medium text-muted-foreground">{title}</div>
@@ -549,7 +578,7 @@ export function Pie({
             >
               {paths.map(({ s, i, color, d, full }) =>
                 full ? (
-                  // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the titles, the legend and the table
+                  // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the readout, the legend and the table
                   <circle
                     key={s.label}
                     cx={c}
@@ -560,11 +589,9 @@ export function Pie({
                     strokeWidth={R - r}
                     opacity={on != null && on !== i ? 0.35 : 1}
                     onMouseEnter={() => setOn(i)}
-                  >
-                    <title>{`${s.label} · ${fm.usd1(s.value)} · ${share(s.value)}`}</title>
-                  </circle>
+                  ></circle>
                 ) : (
-                  // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the titles, the legend and the table
+                  // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the readout, the legend and the table
                   <path
                     key={s.label}
                     d={d}
@@ -574,9 +601,7 @@ export function Pie({
                     strokeLinejoin="round"
                     opacity={on != null && on !== i ? 0.35 : 1}
                     onMouseEnter={() => setOn(i)}
-                  >
-                    <title>{`${s.label} · ${fm.usd1(s.value)} · ${share(s.value)}`}</title>
-                  </path>
+                  ></path>
                 ),
               )}
               <text

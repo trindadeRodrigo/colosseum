@@ -125,7 +125,12 @@ async function toOrder(p: Page) {
   const { id, record } = await sample<{ id: string; record: object }>(p, 'order');
   await (await signInTo(p, '/shelf'))();
   await expect(p).toHaveURL(/\/shelf/);
-  const wallet = p.locator('[data-ui="account-menu-button"] span[title]').first();
+  // the person's Solana wallet, as the account menu lists it (the phone's sheet holds the same block)
+  const wallet = p
+    .locator(
+      '[data-ui="compact-nav-sheet"] [data-ui="account-wallet"][data-chain="solana"] [data-ui="account-address"]',
+    )
+    .first();
   await expect(wallet).toHaveAttribute('title', /.+/);
   const address = (await wallet.getAttribute('title')) ?? '';
   // the app's router goes there, so the page and its wallet stay

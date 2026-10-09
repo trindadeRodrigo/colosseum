@@ -318,3 +318,18 @@ export function acceptTrust(
     // Not kept: the notice is asked again next time.
   }
 }
+
+/**
+ * The newest order of a line: `first`, or the order made to finish it, or the one made to finish that
+ * (`continues`), as this browser kept them. An add's line stays with its vault.
+ */
+export function latestOf(first: OrderRecord, mine: readonly OrderRecord[]): OrderRecord {
+  let latest = first;
+  for (let hop = 0; hop < 8; hop += 1) {
+    const from = latest.orderId;
+    const next = mine.find((r) => r.continues?.orderId === from && r.chain === first.chain);
+    if (!next) break;
+    latest = next;
+  }
+  return latest;
+}

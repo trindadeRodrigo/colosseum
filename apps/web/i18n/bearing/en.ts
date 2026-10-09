@@ -92,6 +92,32 @@ export const bearingEn = {
     no_price_source: 'no price source',
     no_quote_price: 'no USD price for the quote token',
   },
+  /**
+   * Why a figure is missing, as a sentence: what the tooltip on a reason says (gate TOOLTIP-WORDS).
+   * The short words above stay on the page; this is the same reason said in full.
+   */
+  why: {
+    no_samples_in_regime: 'No figure: Bearing has no readings for this time of week yet.',
+    insufficient_samples: 'No figure: there are too few readings to measure this.',
+    not_a_number: 'No figure: the stored value could not be used.',
+    beyond_measured_size: 'No figure: this size is above the largest Bearing has measured.',
+    no_reference_price: 'No figure: Bearing has no reference price for this asset at that time.',
+    no_external_source: 'No figure: this needs an outside price source that is not connected.',
+    chain_not_covered: 'No figure: Bearing does not collect this on this chain.',
+    not_collected: 'No figure: this is on chain, and Bearing does not collect it yet.',
+    not_imported: 'No figure: this was collected and is not in Bearing’s tables yet.',
+    not_followed: 'No figure: these liquidations were not traced after the transaction.',
+    before_routed_curves: 'No figure: this reading is from before Bearing measured routed exits.',
+    gate_open: 'No figure: how to measure this isn’t settled yet.',
+    not_applicable: 'No figure: this does not apply to this asset or pool.',
+    not_served: 'No figure: this isn’t measured here yet.',
+    api_error: 'No figure: the API returned no answer.',
+    nothing_selected: 'No figure: nothing is selected.',
+    no_price_source: 'No figure: this asset has no price source.',
+    no_quote_price:
+      'No figure: the pool’s quote token has no dollar price, so its value cannot be worked out.',
+    no_oracle: 'No figure: this asset has no price oracle the vault could check against.',
+  },
   filter: {
     all: (n: number) => `All (${n})`,
     none: 'None',

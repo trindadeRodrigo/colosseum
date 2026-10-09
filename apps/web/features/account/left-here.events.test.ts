@@ -166,7 +166,8 @@ describe('signed out here while the sign-in service could not be reached', () =>
     expect(host.querySelector('form')).toBeNull();
     // a vault's page is public, and is drawn; the owner's links are not
     expect(host.querySelector('[data-ui="vault-screen"]')).not.toBeNull();
-    expect(host.querySelector('[data-ui="vault-withdraw"]')).toBeNull();
+    expect(host.querySelector('[data-action="vault-withdraw"]')).toBeNull();
+    expect(host.querySelector('[data-action="vault-deposit"]')).toBeNull();
     expect(host.querySelector('a[href*="/add"]')).toBeNull();
     expect(host.textContent).not.toContain('So11…1112');
     expect(marked()).toBe(true);

@@ -2,7 +2,7 @@
 import type { Provenance } from '@colosseum/schemas';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
+import { click, find, mount, pinLine, settle, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary, type Lang } from '../../i18n';
@@ -102,9 +102,8 @@ describe('the exposure page, for a person who holds on two chains', () => {
     expect(part(robinhood, 'exposure-oldest')).toContain('Oct 6, 2026, 10:00 UTC');
     // the sum's pin is the chain's own stamp
     const total = find(solana, '[data-ui="exposure-total"] [data-ui="figure"]');
-    await click(find(total, 'button[data-ui="pin"]'));
     const chain = exposure().chains[0];
-    expect(text(find(total, '[data-ui="pin-source"]'))).toContain(
+    expect(await pinLine(total)).toContain(
       `${chain?.source} · 2026-10-07T08:55:00Z · ${chain?.method}`,
     );
   });
@@ -185,8 +184,7 @@ describe('the exposure page, for a person who holds on two chains', () => {
     expect(part(usdy, 'exit-holding')).toMatch(/^Your holding \$52,865\.00\s*$/);
     expect(part(usdy, 'exit-cost')).toMatch(/^Measured cost of selling all of it 7\.25 bps\s*$/);
     const cost = find(usdy, '[data-ui="exit-cost"] [data-ui="figure"]');
-    await click(find(cost, 'button[data-ui="pin"]'));
-    expect(text(find(cost, '[data-ui="pin-source"]'))).toContain(
+    expect(await pinLine(cost)).toContain(
       'Bearing, from the pools its collectors read each hour · 2026-10-07T11:00:00Z · risk-0.3',
     );
     // never more live than the chain the holding is on

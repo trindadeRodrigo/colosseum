@@ -671,6 +671,9 @@ export function OrderScreen({
   const needed = shown.needsConsent;
   const consentMissing = !record.approved && needed.some((kind) => !consents.includes(kind));
   const current = phase ? stepOf(shown, phase.legId) : 1;
+  // In a host's pane (a vault's own page, /goal) the portfolio is the board, as that page's own way
+  // back is; the order's own page still leads to the monitor.
+  const portfolioHref = embed?.hostEnds ? '/portfolio' : '/monitor';
   const terms = record.terms;
   const newOrder = !terms
     ? `/plan/${encodeURIComponent(record.proposalId)}/buy`
@@ -1012,9 +1015,12 @@ export function OrderScreen({
                 )}
               </p>
             )}
-            <Link href="/monitor" className={buttonClass({ variant: 'secondary' })}>
-              {t.withdraw.back}
-            </Link>
+            {/* a host that holds this screen (the vault's own page) has its own way back */}
+            {!embed?.hostEnds && (
+              <Link href={portfolioHref} className={buttonClass({ variant: 'secondary' })}>
+                {t.withdraw.back}
+              </Link>
+            )}
           </div>
         )}
         {trustAsked && check.ok && !done && (
@@ -1130,13 +1136,13 @@ export function OrderScreen({
                 >
                   {t.order.outcome.finish}
                 </Button>
-                <Link href="/monitor" className={buttonClass({ variant: 'secondary' })}>
+                <Link href={portfolioHref} className={buttonClass({ variant: 'secondary' })}>
                   {t.order.outcome.seePortfolio}
                 </Link>
               </>
             )}
             {deposited && !offerFinish && (
-              <Link href="/monitor" className={buttonClass({ variant: 'primary' })}>
+              <Link href={portfolioHref} className={buttonClass({ variant: 'primary' })}>
                 {t.order.outcome.seePortfolio}
               </Link>
             )}
@@ -1203,7 +1209,7 @@ export function OrderScreen({
         {/* The order is done: the next step is the portfolio it filled, and another buy beside it. */}
         {done && !running && terms?.kind !== 'publish' && !embed?.hostEnds && (
           <div data-ui="order-next" className="flex flex-wrap items-center gap-3">
-            <Link href="/monitor" className={buttonClass({ variant: 'primary' })}>
+            <Link href={portfolioHref} className={buttonClass({ variant: 'primary' })}>
               {t.order.outcome.seePortfolio}
             </Link>
             {buying && !embed && (

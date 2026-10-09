@@ -28,14 +28,25 @@ import { WithdrawWait } from './waits';
 // leaves (everything, or chosen tokens, each in full or by amount), a review of exactly that and of
 // where it goes, which is the owner's own wallet and nowhere else, then the order (POST /v1/orders,
 // type `withdraw`) and its screen, where every step is checked by the guard before it is signed. The
-// tokens leave as they are: nothing is sold. Nothing is signed here.
+// tokens leave as they are: nothing is sold. Nothing is signed here. With `embedded` the vault's own
+// page holds it in its pane: the same choice and review under the page's heading, and the order's id
+// handed to the page, which shows the steps there, in place of the order's own page.
 
 type Load = { kind: 'loading' } | { kind: 'read'; read: VaultResponse } | { kind: CallFailure };
 type StepId = 'what' | 'check' | 'confirm';
 const STEPS: readonly StepId[] = ['what', 'check', 'confirm'];
 type Pick = { on: boolean; text: string };
 
-export function WithdrawScreen({ chain: chainText, address }: { chain: string; address: string }) {
+export function WithdrawScreen({
+  chain: chainText,
+  address,
+  embedded,
+}: {
+  chain: string;
+  address: string;
+  /** Held in another screen's pane: no title of its own, and the order made is handed to the host. */
+  embedded?: { onOrder: (orderId: string) => void };
+}) {
   const t = useT();
   const lang = useLang();
   const w = t.withdraw;
@@ -74,15 +85,21 @@ export function WithdrawScreen({ chain: chainText, address }: { chain: string; a
       {w.back}
     </Link>
   );
-  const page = (body: string, more?: React.ReactNode) => (
-    <section aria-labelledby={titleId} className="flex flex-col items-start gap-4">
-      <h1 id={titleId} className={PAGE_TITLE}>
-        {w.title}
-      </h1>
-      <p className="max-w-(--tf-measure-body) text-body">{body}</p>
-      {more ?? back}
-    </section>
-  );
+  const page = (body: string, more?: React.ReactNode) =>
+    embedded ? (
+      // in a host's pane: the sentence alone, under the host's heading and beside its way back
+      <p data-ui="withdraw-gate" className="max-w-(--tf-measure-body) text-body">
+        {body}
+      </p>
+    ) : (
+      <section aria-labelledby={titleId} className="flex flex-col items-start gap-4">
+        <h1 id={titleId} className={PAGE_TITLE}>
+          {w.title}
+        </h1>
+        <p className="max-w-(--tf-measure-body) text-body">{body}</p>
+        {more ?? back}
+      </section>
+    );
 
   if (port.status === 'loading' || load.kind === 'loading') return <WithdrawWait chain={chain} />;
   if (port.status === 'signed-out')
@@ -233,6 +250,10 @@ export function WithdrawScreen({ chain: chainText, address }: { chain: string; a
       setPlacing(false);
       setFailure(t.buy.failure.noStore);
       return;
+    }
+    if (embedded) {
+      setPlacing(false);
+      return embedded.onOrder(placed.order.id);
     }
     router.push(`/orders/${encodeURIComponent(placed.order.id)}`);
   }
@@ -417,14 +438,23 @@ export function WithdrawScreen({ chain: chainText, address }: { chain: string; a
 
   const provenance = load.read.provenance;
   return (
-    <div data-ui="withdraw-screen" className="flex flex-col gap-8">
-      <header className="flex flex-col items-start gap-3">
-        <ChainBadge chain={chain} />
-        <h1 id={titleId} className={PAGE_TITLE}>
-          {w.title}
-        </h1>
-        <p className="max-w-(--tf-measure-body) text-body-lg">{w.lead(chainName)}</p>
-      </header>
+    <div
+      data-ui="withdraw-screen"
+      className={embedded ? 'flex min-w-0 flex-col gap-4' : 'flex flex-col gap-8'}
+    >
+      {embedded ? (
+        <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
+          {w.lead(chainName)}
+        </p>
+      ) : (
+        <header className="flex flex-col items-start gap-3">
+          <ChainBadge chain={chain} />
+          <h1 id={titleId} className={PAGE_TITLE}>
+            {w.title}
+          </h1>
+          <p className="max-w-(--tf-measure-body) text-body-lg">{w.lead(chainName)}</p>
+        </header>
+      )}
       <StepCard
         ui="withdraw"
         label={w.steps.label}

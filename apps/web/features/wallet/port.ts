@@ -47,7 +47,7 @@ export type ChainNetwork = {
   provenance: Provenance;
   /**
    * False when the API has the chain switched off: nothing can be built there, so the chain is not
-   * chosen in the switcher (ChainSwitch) and a plan is not asked for on it (GoalScreen).
+   * offered where a plan's chain is chosen (GoalChain) and a plan is not asked for on it.
    */
   on: boolean;
 };

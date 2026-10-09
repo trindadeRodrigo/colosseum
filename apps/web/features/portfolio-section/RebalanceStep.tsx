@@ -2,6 +2,7 @@
 import type { RebalanceEntry } from '@colosseum/schemas';
 import { Fragment, type ReactNode } from 'react';
 import { ExplorerLink } from '../../components/ui/ExplorerLink';
+import { Hint } from '../../components/ui/Hint';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { Status } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
@@ -56,8 +57,8 @@ function Instant({
 }) {
   const lang = useLang();
   return (
-    <time dateTime={at} title={utc(lang, at)} className={className}>
-      {children}
+    <time dateTime={at} className={className}>
+      <Hint tip={utc(lang, at)}>{children}</Hint>
     </time>
   );
 }

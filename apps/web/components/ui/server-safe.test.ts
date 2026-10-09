@@ -100,12 +100,14 @@ describe('a primitive a server component can render calls nothing from a client 
     ).toEqual([
       'Button.tsx',
       'CaseChart.tsx',
+      'ChainLogo.tsx',
       'CompactNav.tsx',
       'Composer.tsx',
       'ConstraintSheet.tsx',
       'CopyButton.tsx',
       'DistChart.tsx',
       'HeatmapTile.tsx',
+      'Hint.tsx',
       'ProvenancePin.tsx',
       'SubscribeBlock.tsx',
       'TimeChart.tsx',
@@ -133,7 +135,7 @@ describe('a client module exports components and types, and nothing else', () =>
   const client = files.filter(isClient);
 
   it('finds no constant, helper or default export in one', () => {
-    expect(client).toHaveLength(13);
+    expect(client).toHaveLength(15);
     expect(client.flatMap((file) => valueExports(file, read(file)))).toEqual([]);
   });
 

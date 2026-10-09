@@ -14,7 +14,8 @@ import { nextPath } from './next-path';
 //
 //   not known yet   a still box of the size of what comes, nothing to press, nothing said as an error
 //   signed out      one "Sign in", which opens the sign-in dialog over the page the person is on
-//   signed in       the account chip with its menu (AccountMenu.tsx)
+//   signed in       the account chip (a wallet glyph and "Account") with its menu of the person's
+//                   wallets (AccountMenu.tsx)
 
 /** The chip's box: the placeholder and the signed-in button share it, so nothing moves between them. */
 export const CHIP_BOX =
@@ -60,6 +61,9 @@ export function AccountControlFrame({
   );
 }
 
+/** The chip's label, of one width whatever it holds, so the bar never shifts. */
+export const LABEL_BOX = 'inline-flex w-[3.75rem] items-center justify-start';
+
 /**
  * Not known yet: still boxes in the shape of what is expected, the chip for someone the hint says
  * was signed in, the button for anyone else. Nothing to press and nothing to read; the frame says
@@ -74,23 +78,25 @@ export function AccountPlaceholder({ expected }: { expected: boolean }) {
     );
   return (
     <span aria-hidden="true" className={CHIP_BOX}>
-      <AccountBars />
+      <Skeleton className="size-4" />
+      <span className={LABEL_BOX}>
+        <AccountBars />
+      </span>
       <span className="size-4" />
     </span>
   );
 }
 
-/** The chip's still boxes: where the chain and the address will be. */
+/** The chip's still box: where its label will be. */
 export function AccountBars() {
   return (
     <span
       aria-hidden="true"
       data-ui="account-placeholder"
       data-shape="account"
-      className="inline-flex items-center gap-2"
+      className="inline-flex items-center"
     >
       <Skeleton className="h-3.5 w-12" />
-      <Skeleton className="h-3.5 w-20 max-[819px]:hidden" />
     </span>
   );
 }
