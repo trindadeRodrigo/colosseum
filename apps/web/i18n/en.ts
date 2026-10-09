@@ -280,12 +280,12 @@ export const en = {
         saved: 'Saved conversations',
         untitled: 'Earlier conversation',
       },
-      invitation: 'What would you like your strategy to do?',
+      invitation: 'What should your vault do?',
       lead: 'Tell me your ideas, needs and limits. I can discuss an allocation with its sources and tradeoffs.',
       placeholder: 'Describe what you want to explore…',
-      starters: ['Explore technology stocks', 'Build an income strategy', 'Protect my savings'],
+      starters: ['Explore technology stocks', 'Earn a monthly income', 'Protect my savings'],
       local: 'This browser · private draft conversation',
-      signIn: 'Sign in to explore a private strategy.',
+      signIn: 'Sign in to start a vault.',
       readingAccount: 'Your account and chain must be ready before I can get a reply.',
       empty:
         'Your proposed allocation and its sources will appear here after a reply. No vault has been created.',
@@ -311,7 +311,7 @@ export const en = {
       retry: 'Try again',
       elsewhere: 'See shared portfolios',
       unavailable:
-        'The strategy conversation service is unavailable. Your words are kept; no draft was produced.',
+        'The conversation isn’t answering right now. Your words are kept; no draft was produced.',
       /** The box while a deposit is open on the pane (gate DEPOSIT-IN-PLACE), and the ask before it is left. */
       deposit: {
         signing: 'The conversation waits while your deposit’s steps are signed.',
