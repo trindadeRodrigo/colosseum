@@ -21,8 +21,8 @@ Status: **pass** = usable as-is · **partial** = usable with the noted follow-up
 | Item | Where tracked |
 |---|---|
 | BRS mint route, fees, limits, settlement, KYB | `docs/GATES.md` → G-NORA |
-| Which chain each LOI partner pilots on | `docs/GATES.md` → EVM-S1 |
-| Solana + Base double eligibility (Discord) | `docs/GATES.md` → founder items |
+| Which chain each distributor partner pilots on | `docs/GATES.md` → EVM-S1 |
+| Removed: internal planning notes. | |
 | Regulatory position | `docs/GATES.md` → founder items; disclaimer constant in `packages/schemas/src/constants.ts` |
 
 ## Plan changes caused by these results

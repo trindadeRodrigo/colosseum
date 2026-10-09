@@ -6,28 +6,17 @@
 
 **Purpose.** This file is the full context for writing a build plan. The founder will ask another model to write a prompt from it, and that prompt will generate the day-by-day plan. Everything a planner needs is here. It does not assume access to earlier conversations.
 
-**Supporting files:**
-- `eval/FINAL.md`: the decision and scoring.
-- `eval/FEASIBILITY.md`: dependencies and the half-day plan written for the original idea.
-- `eval/IDEA1-MARKET.md`: competitors, the asset table and sizing.
-- `eval/PANEL.md`: one-liners and the misreadings to avoid.
+**Supporting files:** Removed: internal planning notes.
 
 ---
 
 ## 1. The situation in one paragraph
 
-The founder is entering the Colosseum Crypto World's Fair hackathon.
-- **Dates:** online, Sept 14 to Oct 12, 2026. The deadline is **11:59pm PT, Oct 12**.
-- **Tracks:** the primary track is Solana ($100k across the top 10 and an accelerator path). They are also entering the Superteam Brasil track ($5k). The Base track is possible if a partner pilots there.
-- **What is judged:** only work done inside the window. Prior work must be disclosed.
-- **What judges reward:** companies, not tools. Founder-market fit, insight, product, market, communication, viability and traction.
+The founder is entering the Colosseum Crypto World's Fair hackathon (online, Sept 14 to Oct 12, 2026). Only work done inside the window counts, and prior work must be disclosed.
 
-A multi-agent evaluation compared this idea with a risk-engine alternative. This idea won narrowly, 47.65 vs 46.50 out of 100. Its weakest scores were:
-- traction (3/10);
-- business viability (4/10);
-- the risk that the "agent policy" would be faked in the demo.
+Removed: internal planning notes.
 
-Since then the founder has secured partners who change the traction picture (§3). The build now has to prove two things:
+The build has to prove two things:
 1. The product is real: live on mainnet with real money, and not a chatbot in front of a list of yields.
 2. The partners can plug it in.
 
@@ -58,12 +47,9 @@ Since then the founder has secured partners who change the traction picture (§3
 - **Near-term BRL obligations** (the next N months of withdrawals, and the liquidity window) are matched with **BRS**, Nora's 1:1 BRL stablecoin. This has no FX risk, but also no yield.
 - **Longer-dated obligations** are funded by USD yield legs, and the FX gap is priced.
 
-The BRS share is set by the matching. **BRS is minted directly from USDC or USDT through Nora**, capped by Nora's mint limits. This route is pending confirmation (gate G-Nora, §6). This is the founder's FX-hedging background turned into a product feature, and none of the competitors below does it.
+The BRS share is set by the matching. **BRS is minted directly from USDC or USDT through Nora**, capped by Nora's mint limits. This route is pending confirmation (gate G-Nora, §6). This is the founder's FX-hedging background turned into a product feature that other products do not have.
 
-**The insight judges must see.** Competitors sell fixed model portfolios:
-- Glider (a16z CSX; non-custodial, policy-based, B2B wallet API on Base);
-- Ondo Intelligent Portfolios (BlackRock-designed income and growth tokens, launched Sept 24, 2026);
-- Peaks (a Solana agent portfolio app, which placed at Colosseum Frontier).
+Other products sell fixed model portfolios.
 
 This product instead solves for a **user-specific cash-flow target in local currency**, with **credit-aware haircuts on quoted yields**. The founder's prior analytics work found that naive on-chain yield and volume numbers are wrong by 2–5.6x. **The product also prices the FX gap between a BRL goal and USD assets.**
 
@@ -82,9 +68,9 @@ That combination is the moat: the founder's background is fixed income, credit s
 
 | Partner | What it is | Relevance | Status |
 |---|---|---|---|
-| **Nora Finance (BRS)** | A 1:1 BRL stablecoin, live on Solana, Ethereum, Base and Polygon. Only approved, KYB-verified minters can do primary mint and redeem. There is a REST API (`/v2/intents/onramp`, "Issue BRS, settle PIX") with a sandbox. BRS pays no yield. The site shows ~R$100K in circulation. Solana mint `BRSxQRUaGswjLs7ewcH7uXj3r7SgmfKSSLLXyCKHZtUo`. [nora.finance](https://www.nora.finance/) | **BRS is an allocation leg:** the zero-FX-risk BRL asset that matches near-term BRL obligations (see §2). It pays no yield and circulation is small, so its weight is capped. **Intended route: mint BRS directly from USDC or USDT through Nora** (primary mint, not a DEX swap). Feasibility and approach are **pending the founder's conversation with Nora** (see §6, gate G-Nora). The Pix on-ramp is **out of scope for now** (post-hackathon). | Founder is confident of integration; mint approach to be confirmed |
-| **Chainless (Notus)** | A Brazilian self-custody app on ERC-4337 account abstraction, running on EVM chains: Polygon, Arbitrum, Base, Optimism, Ethereum and others. It already offers "global investments, gold, bonds, dollar income" with Pix deposits. [chainless.finance](https://chainless.finance/en/about-us) | A distributor. **EVM, not Solana.** It already sells "dollar income", so position this product as the layer that decides and explains allocations, not as a new list of assets. | LOI (founder) |
-| **Picnic** | A Brazilian self-custody app with a Web3Auth wallet per user, a Gnosis Pay Visa card, Pix via BRLA, and a Polygon grant. It plans yield products such as sDAI. [usepicnic.com](https://usepicnic.com/en) | A distributor. **EVM.** | LOI (founder) |
+| **Nora Finance (BRS)** | A 1:1 BRL stablecoin, live on Solana, Ethereum, Base and Polygon. Only approved, KYB-verified minters can do primary mint and redeem. There is a REST API (`/v2/intents/onramp`, "Issue BRS, settle PIX") with a sandbox. BRS pays no yield. The site shows ~R$100K in circulation. Solana mint `BRSxQRUaGswjLs7ewcH7uXj3r7SgmfKSSLLXyCKHZtUo`. [nora.finance](https://www.nora.finance/) | **BRS is an allocation leg:** the zero-FX-risk BRL asset that matches near-term BRL obligations (see §2). It pays no yield and circulation is small, so its weight is capped. **Intended route: mint BRS directly from USDC or USDT through Nora** (primary mint, not a DEX swap). Feasibility and approach are **pending the founder's conversation with Nora** (see §6, gate G-Nora). The Pix on-ramp is **out of scope for now** (post-hackathon). | Mint approach to be confirmed (gate G-Nora) |
+| **A distributor partner** | A Brazilian self-custody app with account abstraction on EVM chains and Pix deposits | A distributor. **EVM, not Solana.** Position this product as the layer that decides and explains allocations, not as a new list of assets. | Removed: internal planning notes. |
+| **A second distributor partner** | A Brazilian self-custody app with a wallet per user and Pix deposits | A distributor. **EVM.** | Removed: internal planning notes. |
 
 **Consequence.** The engine core must be **chain-agnostic**:
 - Solana gets full live execution, for the primary track.
@@ -136,10 +122,9 @@ The video runs about 3 minutes. The MVP is whatever the video shows working **fo
   - Use a partner's name or logo only with that partner's written permission.
   - Otherwise keep it unbranded.
 
-### 4.3 Traction shown in the video (the founder supplies it)
-- The LOIs from Chainless and Picnic (named, dated in-window).
-- The Nora integration, with BRS live as the BRL leg.
-- Live mainnet numbers: wallets, deposited value, rebalances executed.
+### 4.3 (removed)
+
+Removed: internal planning notes.
 
 ### 4.4 Explicitly OUT of the MVP
 - Pix and fiat on-ramps, and the Nora on-ramp API. This is the next phase after the hackathon.
@@ -167,7 +152,7 @@ The video runs about 3 minutes. The MVP is whatever the video shows working **fo
 - [ ] The API returns a valid unsigned transaction set for a plan, and a script can sign and send it.
 
 ### 4.6 Stretch goals (only after the MVP passes 4.5)
-- **S1. EVM adapter** for one partner's chain: one or two legs (for example syrupUSDC or a Morpho vault on Base), returned as calldata through the API. This also qualifies for the Base track, subject to organiser confirmation.
+- **S1. EVM adapter** for one partner's chain: one or two legs (for example syrupUSDC or a Morpho vault on Base), returned as calldata through the API.
 - **S2.** A Pendle PT-USDC leg (Ethereum/Arbitrum) as the fixed-rate, coupon-like asset for income goals.
 - **S3.** The policy enforced on-chain rather than in the backend.
 - **S4.** The Nora Pix on-ramp (Pix to BRS to the portfolio). This is the start of the post-hackathon roadmap.
@@ -246,16 +231,10 @@ The video runs about 3 minutes. The MVP is whatever the video shows working **fo
 - Whether Squads (or an alternative) supports delegated execution across Jupiter and Kamino.
 - Everything about minting BRS from USDC/USDT: who mints, the API, fees, limits and settlement. This is pending the founder's conversation with Nora (G-Nora). Circulation is small: ~R$100K on Nora's site.
 - xStocks depth at demo notionals, and weekend behaviour.
-- Which chain each LOI partner would pilot on.
-- Whether one submission can win both the Solana and Base tracks. Ask in the Colosseum Discord.
+- Which chain each distributor partner would pilot on.
+- Removed: internal planning notes.
 - The regulatory position on personalised allocation in Brazil: who carries it, the distributor or this product. The founder is raising it with partners. **The MVP must not present itself as licensed advice.**
 
 ## 9. Pitch guardrails for the video
-- **Lead with the output, not the chat:** the BRL income schedule under stress, and the risk sheet.
-- **Say "policy in your wallet, not a fund"** in the first sentence.
-- **Have a one-slide answer to "isn't this Glider or Ondo Intelligent Portfolios with a chatbot?"** They sell fixed model portfolios. This product solves a user-specific BRL cash-flow target with credit haircuts and FX pricing.
-- **Use Nexa (Brazil) as the analog slide, not the opener.** Its facts:
-  - it raised R$25M led by Maya Capital in **July 2025**;
-  - "800+" is a count of structured issuances;
-  - it launched Genesis on Sept 22–24, 2026, with FIDC wrappers, no on-chain assets and advisor distribution.
-- **Claim only what is live or signed.** Label everything else "in discussion".
+
+Removed: internal planning notes.

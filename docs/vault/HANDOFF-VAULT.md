@@ -13,7 +13,7 @@ The name is Tenonfi (decided on Oct 3, gate `NAME` in `docs/GATES.md`). This doc
 Three things around the engine and Bearing, and two smaller ones.
 
 1. **A vault per plan.** The person's portfolio sits in a vault only they can withdraw from. The limits they approved are checked by the vault itself, on chain, every time the agent trades.
-2. **Shared portfolios.** Anyone can publish a portfolio for others to start from. Nobody buys one as it is: it goes through the goal and the limits like any other input, and comes out as a plan made to measure.
+2. **Shared portfolios.** Anyone can publish a portfolio for others to start from. Nobody takes one as it is: it goes through the goal and the limits like any other input, and comes out as a plan made to measure.
 3. **Robinhood Chain and Base, next to Solana.** The product works on the chain a person's wallet is on, from that chain's own shelf. These are also the chains where partners are.
 4. **Sign-in with a passkey,** for the person who has a goal and no wallet.
 5. **A surface for agents:** an API, an SDK and an MCP server over the same logic.
@@ -44,7 +44,7 @@ When a goal can't be met as set, the product says so, shows the gap and the ways
 A shared portfolio is a named, versioned list of assets and weights that anyone can publish. In the positioning's terms it is an idea. Here an idea is an input, never the product.
 
 - **It always goes through the goal.** Choosing one sets the themes on the sheet. The goal, the limits, what the person already holds and the exit plan then decide how much of it they hold, and the plan says why, line by line. Someone who only wants to hold it still gets the sheet, the reasons and the exit plan at their size.
-- **Following.** When its author publishes a new version, the people following it are told, with the change. They rebalance with one tap. A switch, off by default, lets the vault do it by itself: after a 48-hour delay, inside the vault's limits, and never into a new asset without the owner's tap. A portfolio that holds an asset with no price oracle has no such switch: its followers always rebalance with one tap (gate `GOLD-ONE-TAP`). Gold on Solana is PAXG, which has one (gate `GOLD-PAXG`).
+- **Following.** When its author publishes a new version, the people following it are told, with the change. They rebalance with one press. A switch, off by default, lets the vault do it by itself: after a 48-hour delay, inside the vault's limits, and never into a new asset without the owner's tap. A portfolio that holds an asset with no price oracle has no such switch: its followers always rebalance with one tap (gate `GOLD-ONE-TAP`). Gold on Solana is PAXG, which has one (gate `GOLD-PAXG`).
 - **Limits on authors.** 3 to 12 assets, each between 2% and 50%; one new version every 48 hours; a version moves at most 20% of the portfolio. An asset's maximum weight is capped by its measured exit capacity, from Bearing. Where nothing is measured, the tier on the asset list stands in and is labelled as a fallback.
 - **Why have them.** They are the reason to come back and the thing to share, and each one carries the exit plan to whoever picks it up.
 - **At launch:** about six, serious assets only, no meme tokens. Names and weights are drafts in `research/open-questions/launch-shelf.md`. The weights are brought under the measured caps before anything is published: on the measurements of Oct 1 to 2 the Tesla token's cap is near 6%, and two launch portfolios hold it at 14 to 15%.
@@ -63,13 +63,12 @@ Each input has to change the plan visibly. If it doesn't, it's a template.
 | Themes you believe in | Which shared portfolios it starts from |
 | Where you live | Which assets you can legally hold |
 
-## What carries over from Nexa
+## What carries over from structured products off chain
 
 1. **The input.** One sentence about the goal, turned into criteria for risk, term, cash flow and liquidity.
 2. **The output.** Five things on every plan's card: money needed today, expected return, total term, cash-flow pattern, and when you can get out. Two people's plans look different at a glance.
-3. **The line.** "A product built for one client used to need R$10 million. Now it starts at R$100."
 
-Nexa's own shelf is Brazilian credit, off chain. This shelf is global assets, on chain, in the person's own vault.
+Off chain, that shelf is local credit. This shelf is global assets, on chain, in the person's own vault.
 
 ## The vault
 
@@ -138,10 +137,10 @@ Out: an adviser view, fiat on-ramps, tax, perps or leverage, Brazilian credit as
 Along the narrative arc in `messaging.md`.
 
 1. **Three people, three goals (60s).** Each types what their money needs to do. Three visibly different plans appear, every line explained, each with its exit plan.
-2. **One tap (40s).** One of them buys. The legs settle on the chain of their wallet, and the assets sit in their own vault.
+2. **One deposit (40s).** One of them deposits. The legs settle on the chain of their wallet, and the assets sit in their own vault.
 3. **Starting from someone else's idea (35s).** Pick a shared portfolio, and watch it get cut to the goal.
 4. **It stays on track (25s).** An author updates a portfolio; a follower's vault rebalances inside its limits, and the log shows why.
-5. **Why us (20s).** The structuring, credit and risk background behind the engine and Bearing; live on mainnet.
+5. **Close (20s).** Removed: internal planning notes.
 
 ## How it gets built
 
