@@ -2071,6 +2071,9 @@ export type PostConversationsByChainGoalReplyResponse = {
       basis: string;
       sourceIds: string[];
     };
+    investSheet?: {
+      [key: string]: unknown;
+    };
   } | null;
   warnings: {
     code: 'over_exit_capacity' | 'outside_goal_requested';
@@ -4057,6 +4060,9 @@ export type PostVaultsByChainByAddressConversationReplyResponse = {
       }[];
       basis: string;
       sourceIds: string[];
+    };
+    investSheet?: {
+      [key: string]: unknown;
     };
   } | null;
   warnings: {

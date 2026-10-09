@@ -7,21 +7,6 @@ import {
 } from '../vault-conversation/agent';
 import type { Turn } from '../vault-conversation/storage';
 
-const GOALS = ['grow', 'income', 'protect'] as const;
-const RISKS = ['low', 'medium', 'high'] as const;
-const oneOf = <T extends string>(allowed: readonly T[], value: unknown): T | null =>
-  allowed.find((option) => option === value) ?? null;
-
-/**
- * A new goal's reply: the conversation's, with what the person said the money is for and the risk they
- * accept. Each is the server's reading of the person's own words, or null: a server that sends
- * neither, or a value this app does not know, is read as not said, and nothing is ever filled in here.
- */
-export type GoalReply = VaultAgentReply & {
-  goal: (typeof GOALS)[number] | null;
-  risk: (typeof RISKS)[number] | null;
-};
-
 /** Creation has a chain and person history, never an existing vault or fabricated address. */
 export async function goalAgent(
   api: ApiFetch,
@@ -29,7 +14,7 @@ export async function goalAgent(
   language: 'en' | 'pt',
   turns: Turn[],
   signal: AbortSignal,
-): Promise<GoalReply> {
+): Promise<VaultAgentReply> {
   const messageId = turns.at(-1)?.id;
   const response = await api(`/v1/conversations/${encodeURIComponent(chain)}/goal/reply`, {
     method: 'POST',
@@ -67,5 +52,5 @@ export async function goalAgent(
     throw new VaultAgentError('failed');
   const reply = strategyReplyOf(body, chain);
   if (!reply) throw new VaultAgentError('failed');
-  return { ...reply, goal: oneOf(GOALS, body.goal), risk: oneOf(RISKS, body.risk) };
+  return reply;
 }

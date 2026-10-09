@@ -38,6 +38,8 @@ export type VaultStrategyPreview = {
   weightNotes: WeightNote[];
   /** The relaxed intake's month-by-month projection from the server's sourced yields, when any. */
   projection?: StrategyProjection;
+  /** The relaxed intake's engine sheet for "Invest in this plan"; personalize checks it. */
+  investSheet?: Record<string, unknown>;
 };
 export type WeightNote = {
   code:
@@ -311,6 +313,9 @@ export function strategyReplyOf(value: unknown, chain: ChainId): VaultAgentReply
       warnings,
       weightNotes: notes,
       ...(projectionOf(p.projection) ? { projection: projectionOf(p.projection) } : {}),
+      ...(record(p.investSheet)
+        ? { investSheet: record(p.investSheet) as Record<string, unknown> }
+        : {}),
     };
   }
   return {
