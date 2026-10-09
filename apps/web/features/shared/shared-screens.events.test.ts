@@ -213,7 +213,12 @@ describe('the shelf', () => {
     ]);
     const card = find(host, '[data-ui="shelf-card"]');
     expect(card.textContent).toContain('<img src=x onerror=alert(1)>Three');
-    expect(card.querySelector('img')).toBeNull();
+    // the only pictures are the holdings' and the chains' own marks
+    expect(
+      [...card.querySelectorAll('img')].filter(
+        (i) => !i.closest('[data-ui="asset-mark"], [data-ui="chain-logo"]'),
+      ),
+    ).toEqual([]);
     // the one link is the card's own, to the portfolio's page
     expect([...card.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual([
       `/indexes/${SLUG}`,

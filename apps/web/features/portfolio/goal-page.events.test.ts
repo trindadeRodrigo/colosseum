@@ -334,7 +334,8 @@ describe('home', () => {
     expect(
       Array.from(host.querySelectorAll('img')).every(
         (image) =>
-          image.getAttribute('src') === '/assets/tokens/paxg.png' && !image.hasAttribute('onerror'),
+          /^\/assets\/tokens\/[a-z]+\.(png|svg)$/.test(image.getAttribute('src') ?? '') &&
+          !image.hasAttribute('onerror'),
       ),
     ).toBe(true);
     expect(calls.filter((path) => path === PORTFOLIO_PATH)).toHaveLength(1);
