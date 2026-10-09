@@ -1206,6 +1206,33 @@ describe('the relaxed intake’s plan on /goal (RELAXED-INTAKE)', () => {
     expect(chart.textContent).toContain(projection.basis);
   });
 
+  it('marks projected figures from a test-network reading as sample, quietly, and live ones not', async () => {
+    const openChart = async () => {
+      const host = await show();
+      await send(host, 'Grow $2,000 and add monthly');
+      const monthly = [...find(host, '[data-ui="preview-view"]').querySelectorAll('button')].find(
+        (button) => button.textContent === en.shared.vault.conversation.view.monthly,
+      );
+      if (!monthly) throw new Error('no monthly view');
+      await click(monthly);
+      return find(host, '[data-ui="projection-chart"]');
+    };
+    const reading = preview.sources[0];
+    if (!reading) throw new Error('no source in the fixture');
+    answerWith({ projection: { ...projection, sourceIds: [reading.id] } });
+    let chart = await openChart();
+    expect(reading.provenance).not.toBe('live');
+    expect(chart.querySelector('[data-ui="mock-plate"]')).not.toBeNull();
+    expect(chart.textContent).not.toMatch(/MOCK/);
+    await unmountAll();
+    answerWith({
+      projection: { ...projection, sourceIds: [reading.id] },
+      sources: [{ ...reading, provenance: 'live' }],
+    });
+    chart = await openChart();
+    expect(chart.querySelector('[data-ui="mock-plate"]')).toBeNull();
+  });
+
   it('lists this conversation, a new one and the saved ones in the picker, and opens a new one empty', async () => {
     const host = await show();
     await send(host, 'Consider gold');

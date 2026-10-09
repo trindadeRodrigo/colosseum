@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { MockPlate } from '../../components/ui/MockPlate';
 import { type Lang, LOCALE } from '../../i18n';
 import { useT } from '../../i18n/I18nProvider';
 import type { StrategyProjection } from './agent';
@@ -8,16 +9,22 @@ import type { StrategyProjection } from './agent';
 // intake, RELAXED-INTAKE). One series in honey (IDENTITY-2: the base series), the baseline a chalk
 // guide, bars from zero with a 2px gap and at most a 2px radius. The figures are said in words above
 // the bars for the month under the pointer or the focus, and in a table for a screen reader; the bars
-// are a picture only.
+// are a picture only. Figures projected from a reading that is not live (a test network's or a
+// sample's) carry the sample glyph beside them (MOCK-QUIET); the card around the chart says so once.
 
 export function ProjectionChart({
   projection,
   lang,
+  sample = false,
 }: {
   projection: StrategyProjection;
   lang: Lang;
+  /** A reading behind the projection is not live: its figures are sample figures. */
+  sample?: boolean;
 }) {
-  const w = useT().shared.vault.conversation.projection;
+  const t = useT();
+  const w = t.shared.vault.conversation.projection;
+  const plate = sample ? <MockPlate labels={{ figure: t.shell.sampleFigure }} /> : null;
   const money = (n: number) =>
     new Intl.NumberFormat(LOCALE[lang], {
       style: 'currency',
@@ -38,7 +45,7 @@ export function ProjectionChart({
       <div data-ui="projection-chart" className="flex flex-col gap-2">
         <p className="text-body-sm text-muted-foreground">{w.needsAmount}</p>
         <p className="text-caption text-muted-foreground [overflow-wrap:anywhere]">
-          {projection.basis}
+          {plate} {projection.basis}
         </p>
       </div>
     );
@@ -74,7 +81,7 @@ export function ProjectionChart({
         )}
       </div>
       <p aria-live="polite" className="min-h-5 text-body-sm tabular-nums [overflow-wrap:anywhere]">
-        {shown ? line(shown) : ''}
+        {shown ? line(shown) : ''} {shown && plate}
       </p>
       <div className="flex min-w-0 items-stretch gap-2">
         <div

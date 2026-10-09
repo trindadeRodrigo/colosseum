@@ -184,7 +184,13 @@ export function StrategyPreview({
             </fieldset>
           )}
           {showing === 'monthly' && monthly && (
-            <ProjectionChart projection={monthly} lang={language} />
+            <ProjectionChart
+              projection={monthly}
+              lang={language}
+              sample={monthly.sourceIds.some(
+                (id) => proposal.sources.find((source) => source.id === id)?.provenance !== 'live',
+              )}
+            />
           )}
           {/* Only the beam recedes while a reply is on its way: every word and figure stays as
               readable as it was. */}
