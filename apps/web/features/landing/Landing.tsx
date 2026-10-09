@@ -1,11 +1,9 @@
-import { LanguageSwitch } from '../../components/shell/LanguageSwitch';
-import { ThemeSwitch } from '../../components/shell/ThemeSwitch';
+import { HoneyFog } from '../../components/shell/HoneyFog';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card } from '../../components/ui/Card';
 import { cn } from '../../components/ui/cn';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
-import { dictionary, type Lang, type ThemeChoice } from '../../i18n';
-import { HoneyFog } from './HoneyFog';
+import { dictionary, type Lang } from '../../i18n';
 import { APP_HOME, LandingBar } from './LandingBar';
 import { LandingSignIn } from './LandingSignIn';
 import type { PlatformStats } from './stats';
@@ -21,12 +19,10 @@ export const SEE_A_PLAN = '/shelf';
 
 export function Landing({
   lang,
-  theme,
   stats,
   signedIn = false,
 }: {
   lang: Lang;
-  theme: ThemeChoice;
   stats: PlatformStats;
   /** Signed in on this browser: the bar leads back into the app, and nothing asks to sign in. */
   signedIn?: boolean;
@@ -124,15 +120,6 @@ export function Landing({
           </Card>
         </div>
       </main>
-      <footer className="border-t border-border bg-background pt-5 pb-[calc(env(safe-area-inset-bottom,0px)+20px)]">
-        <div className="mx-auto flex w-full max-w-page flex-wrap items-center justify-between gap-x-8 gap-y-3 px-[clamp(16px,4vw,56px)]">
-          <p className="font-mono text-[12px] text-muted-foreground">tenonfi</p>
-          <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
-            <LanguageSwitch />
-            <ThemeSwitch initial={theme} keepSystem />
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

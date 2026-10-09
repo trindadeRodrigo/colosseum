@@ -1,4 +1,5 @@
 import { Mark } from '../../components/shell/Mark';
+import { ThemeToggle } from '../../components/shell/ThemeToggle';
 import { buttonClass } from '../../components/ui/button-class';
 import { cn } from '../../components/ui/cn';
 import { dictionary, type Lang } from '../../i18n';
@@ -8,7 +9,7 @@ import { API } from '../../lib/api';
 // width, on the page's ground with a hairline under it. The face and the wordmark lead home; then the
 // product (Plans), Bearing, and the API's documents; the one action on the right. The action is "Sign
 // in" for a visitor (it opens the sign-in dialog over the landing: LandingSignIn.tsx) and "Open the
-// app" for a person signed in on this browser.
+// app" for a person signed in on this browser. Before it, the appearance as one icon (ThemeToggle).
 
 /** Where a signed-in person goes back into the app: the goal, where sign-in leads. */
 export const APP_HOME = '/goal';
@@ -58,9 +59,10 @@ export function LandingBar({ lang, signedIn = false }: { lang: Lang; signedIn?: 
             </a>
           ))}
         </nav>
+        <ThemeToggle className="ml-auto" />
         <a
           href={cta.href}
-          className={cn(buttonClass({ variant: 'secondary' }), 'ml-auto inline-flex items-center')}
+          className={cn(buttonClass({ variant: 'secondary' }), 'inline-flex items-center')}
         >
           {cta.label}
         </a>

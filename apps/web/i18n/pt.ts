@@ -44,6 +44,9 @@ export const pt: Dictionary = {
     disclaimer: 'Aviso legal',
     appearance: 'Aparência',
     themes: { auto: 'Sistema', light: 'Claro', dark: 'Escuro' },
+    /** The theme toggle's name, for what a press does. */
+    toLight: 'Mudar para o claro',
+    toDark: 'Mudar para o escuro',
     language: 'Idioma',
     testNetwork: 'rede de teste',
     testNetworkLine: 'Rede de teste',

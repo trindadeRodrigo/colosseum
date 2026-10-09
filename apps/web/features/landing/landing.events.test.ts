@@ -28,9 +28,7 @@ const landing = async (
     stats?: PlatformStats;
   },
 ) => {
-  const host = await mount(
-    inLanguage(lang, createElement(Landing, { lang, theme: 'auto', signedIn, stats })),
-  );
+  const host = await mount(inLanguage(lang, createElement(Landing, { lang, signedIn, stats })));
   await settle(10);
   return host;
 };

@@ -1,7 +1,6 @@
 import { cookies } from 'next/headers';
 import { Landing } from '../../features/landing/Landing';
 import { platformStats } from '../../features/landing/stats';
-import { landingTheme } from '../../features/landing/theme';
 import { SIGNED_IN_COOKIE } from '../../i18n';
 import { readPreferences } from '../../i18n/server';
 
@@ -14,10 +13,6 @@ import { readPreferences } from '../../i18n/server';
 export default async function LandingPage() {
   const jar = await cookies();
   const signedIn = Boolean(jar.get(SIGNED_IN_COOKIE)?.value);
-  const [{ lang }, theme, stats] = await Promise.all([
-    readPreferences(),
-    landingTheme(),
-    platformStats(),
-  ]);
-  return <Landing lang={lang} theme={theme} stats={stats} signedIn={signedIn} />;
+  const [{ lang }, stats] = await Promise.all([readPreferences(), platformStats()]);
+  return <Landing lang={lang} stats={stats} signedIn={signedIn} />;
 }

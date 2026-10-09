@@ -19,7 +19,7 @@ const box = async (page: Page, selector: string) => {
 
 for (const size of SIZES)
   for (const theme of ['dark', 'light'] as const)
-    for (const lang of ['en', 'pt'] as const)
+    for (const lang of ['en'] as const)
       test(`the dialog at ${size.width}, ${theme}, ${lang}`, async ({ page, context, baseURL }) => {
         await page.setViewportSize(size);
         await context.addCookies([

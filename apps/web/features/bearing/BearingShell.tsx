@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
+import { HoneyFog } from '../../components/shell/HoneyFog';
 import { CHAIN_NAMES } from '../../components/ui/ChainBadge';
 import { cn } from '../../components/ui/cn';
 import { Disclaimer } from '../../components/ui/Disclaimer';
@@ -146,7 +147,12 @@ export function BearingShell({ children }: { children: ReactNode }) {
         </nav>
       </aside>
       <div className="min-w-0 px-0 pt-2 min-[900px]:px-[clamp(16px,3vw,40px)] min-[900px]:pt-4">
-        <div>
+        {/* The page's head on the honey fog, as the landing's hero (Rodrigo, Oct 8). */}
+        <div
+          data-ui="bearing-head"
+          className="relative isolate -mx-4 overflow-hidden px-4 pt-4 pb-1 min-[900px]:mx-0 min-[900px]:rounded-lg"
+        >
+          <HoneyFog className="pointer-events-none absolute inset-0 -z-10 size-full" />
           <div className="font-condensed text-b-head font-medium text-muted-foreground">
             {t.head}
           </div>

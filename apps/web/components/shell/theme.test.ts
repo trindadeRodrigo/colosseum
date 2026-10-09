@@ -68,9 +68,11 @@ describe('the page that follows the system', () => {
       'app/(app)/layout.tsx',
     ])
       expect(read(file), file).not.toMatch(/dangerouslySetInnerHTML|<script/);
-    // the switch changes the class in the page and stores the choice; it reads no storage of its own
-    const control = read('components/shell/ThemeSwitch.tsx');
+    // the toggle changes the class in the page and stores the choice; it reads no storage of its own,
+    // and asks the system's scheme only on a press, to know which way a page with no choice flips
+    const control = read('components/shell/ThemeToggle.tsx');
     expect(control).toContain('remember(THEME_COOKIE');
-    expect(control).not.toMatch(/localStorage|matchMedia|useEffect/);
+    expect(control).not.toMatch(/localStorage|useEffect/);
+    expect(control).toContain('drawn-dark:');
   });
 });

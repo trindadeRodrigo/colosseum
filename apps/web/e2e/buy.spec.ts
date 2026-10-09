@@ -12,7 +12,6 @@ import { inTheme } from './theme';
 // light and in dark, and for no sideways scroll.
 
 const en = dictionary('en');
-const pt = dictionary('pt');
 
 // These run on the stub's Solana; the Robinhood Chain run (E2E_CHAIN=robinhood) is buy-robinhood.spec.ts.
 test.skip(process.env.E2E_CHAIN === 'robinhood', 'the stub runs Robinhood Chain');
@@ -264,28 +263,20 @@ test('a buy on a test network: test funds sent for what is missing, then every s
   );
 });
 
-test('the invest card by keyboard, in Portuguese, at 375 and 1440 px', async ({ page }) => {
+test('the invest card by keyboard, at 375 and 1440 px', async ({ page }) => {
   await toBuy(page, { fund: 'test' });
-  // Portuguese from the switch in the foot: the page is asked for again, and the sign-in stays
-  await page
-    .locator('[data-ui="language-switch"]')
-    .getByRole('button', { name: 'Português' })
-    .click();
-  // The page has arrived in Portuguese, all of it: its language, and its title, which comes last.
-  await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR');
-  await expect(page).toHaveTitle(new RegExp(`^${pt.buy.title}`));
-  const amount = page.getByLabel(pt.buy.amount.label, { exact: true });
+  const amount = page.getByLabel(en.buy.amount.label, { exact: true });
   await expect(amount).toHaveValue('40');
   const card = page.locator('[data-ui="invest-card"]');
-  // the wallet is short: what is missing is on the card, with the way to fill it, in Portuguese
-  const ask = card.getByRole('button', { name: pt.buy.funding.testFunds });
+  // the wallet is short: what is missing is on the card, with the way to fill it
+  const ask = card.getByRole('button', { name: en.buy.funding.testFunds });
   await expect(ask).toBeVisible();
   await expect(page.locator('[data-ui="data-note"]')).toHaveText(
-    pt.buy.steps.note.testNetwork('Solana'),
+    en.buy.steps.note.testNetwork('Solana'),
   );
   // no MOCK word anywhere on the buy screen: the card's one line says what the figures are
   await expect(page.locator('main')).not.toContainText('MOCK');
-  await check(page, 'buy-pt');
+  await check(page, 'buy-keyboard');
   // the full notice is one Enter away on the card
   const full = page.locator('details[data-ui="trust-full"] summary');
   await full.focus();
@@ -295,10 +286,10 @@ test('the invest card by keyboard, in Portuguese, at 375 and 1440 px', async ({ 
   await ask.focus();
   await page.keyboard.press('Enter');
   await expect(card.locator('[data-ui="order-step"]').first()).toBeVisible({ timeout: 30_000 });
-  const accept = page.getByLabel(pt.trust.accept);
+  const accept = page.getByLabel(en.trust.accept);
   await accept.focus();
   await page.keyboard.press('Space');
-  const press = card.getByRole('button', { name: /^Investir / });
+  const press = card.getByRole('button', { name: /^Invest / });
   await expect(press).not.toHaveAttribute('aria-disabled', 'true');
   await page.setViewportSize({ width: 1440, height: 900 });
   const result = await new AxeBuilder({ page })

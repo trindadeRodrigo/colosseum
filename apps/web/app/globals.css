@@ -27,6 +27,17 @@
 @source not inline("{italic,font-thin,font-extralight,font-light,text-justify}");
 
 @custom-variant dark (&:where(.dark, .dark *));
+/* Dark as drawn: the dark class, or no choice made on a system that is dark (the theme toggle's icon). */
+@custom-variant drawn-dark {
+  &:where(.dark, .dark *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(.tf-auto, .tf-auto *) {
+      @slot;
+    }
+  }
+}
 
 /*
  * The fallbacks of the three faces (app/fonts.ts): a local face with its metrics adjusted to the real

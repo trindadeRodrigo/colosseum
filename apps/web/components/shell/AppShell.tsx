@@ -1,10 +1,8 @@
 import type { ReactNode } from 'react';
-import { dictionary, type Lang, type ThemeChoice } from '../../i18n';
+import { dictionary, type Lang } from '../../i18n';
 import { Disclaimer } from '../ui/Disclaimer';
 import { AppNav } from './AppNav';
-import { LanguageSwitch } from './LanguageSwitch';
 import { RouterLinks } from './RouterLinks';
-import { ThemeSwitch } from './ThemeSwitch';
 
 // The one frame of the product's routes: the bar, the page, and the foot. The bar is his compact bar,
 // fixed at the top (AppNav), with the way past it for a keyboard as its first link; the page starts
@@ -16,9 +14,9 @@ import { ThemeSwitch } from './ThemeSwitch';
 // its vaults (disclaimer-block.md) has it once: the foot's is then not drawn, by a rule of the
 // stylesheet, so nothing about it waits for a script.
 
-export type AppShellProps = { lang: Lang; theme: ThemeChoice; children: ReactNode };
+export type AppShellProps = { lang: Lang; children: ReactNode };
 
-export function AppShell({ lang, theme, children }: AppShellProps) {
+export function AppShell({ lang, children }: AppShellProps) {
   const t = dictionary(lang).shell;
   return (
     <div
@@ -44,10 +42,6 @@ export function AppShell({ lang, theme, children }: AppShellProps) {
           label={t.disclaimer}
           className="group-has-[main_[data-ui=disclaimer]]/shell:hidden"
         />
-        <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
-          <LanguageSwitch />
-          <ThemeSwitch initial={theme} />
-        </div>
       </footer>
     </div>
   );

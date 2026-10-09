@@ -52,6 +52,9 @@ export const en = {
     disclaimer: 'Disclaimer',
     appearance: 'Appearance',
     themes: { auto: 'System', light: 'Light', dark: 'Dark' },
+    /** The theme toggle's name, for what a press does. */
+    toLight: 'Switch to light',
+    toDark: 'Switch to dark',
     language: 'Language',
     /** Beside a figure or a name that comes from a test network, after the MOCK plate. */
     testNetwork: 'test network',

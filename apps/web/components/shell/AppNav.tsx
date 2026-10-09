@@ -11,6 +11,7 @@ import { useT } from '../../i18n/I18nProvider';
 import { buttonClass } from '../ui/button-class';
 import { CompactNav } from '../ui/CompactNav';
 import { Mark } from './Mark';
+import { ThemeToggle } from './ThemeToggle';
 
 // The product's bar is his landing's compact bar (compact-nav.md, hero-3d.html), compact from the
 // start because no product page has a stage: the mark and the wordmark, then his items mapped to the
@@ -69,7 +70,12 @@ export function AppNav() {
         // the link whose own page this is wins over one it is under
         current: (exact ? pathname === route.href : isCurrent(pathname, route)) && 'page',
       }))}
-      action={account.action}
+      action={
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          {account.action}
+        </div>
+      }
       sheetHead={account.sheetHead}
       labels={{ skip: t.shell.skip, main: t.shell.nav, menu: t.shell.menu }}
     />
