@@ -24,10 +24,21 @@ describe('ChainBadge', () => {
     expect(dictionary('pt').chain.names).toEqual(CHAIN_NAMES);
   });
 
-  it('is text on a hairline tag (6px): no mark, no pill, no blue or violet', () => {
+  it('is the chain’s own mark, hidden from a reader, then its name on a hairline tag (6px): no pill, no blue or violet', () => {
     const badge = one(render(createElement(ChainBadge, { chain: 'solana' })), ui('chain-badge'));
     expect(all(badge, tag('svg'))).toHaveLength(0);
-    expect(all(badge, tag('img'))).toHaveLength(0);
+    const [mark] = all(badge, tag('img'));
+    expect(all(badge, tag('img'))).toHaveLength(1);
+    expect(mark?.attrs).toMatchObject({
+      alt: '',
+      'aria-hidden': 'true',
+      width: '12',
+      height: '12',
+    });
+    // a chain with no file is its name alone
+    const plain = one(render(createElement(ChainBadge, { chain: 'base' })), ui('chain-badge'));
+    expect(all(plain, tag('img'))).toHaveLength(0);
+    expect(text(plain)).toBe('Base');
     expect(classes(badge)).toContain('rounded-sm');
     expect(classes(badge).join(' ')).not.toMatch(/rounded-(full|lg|xl)|blue|violet|indigo|purple/);
   });
