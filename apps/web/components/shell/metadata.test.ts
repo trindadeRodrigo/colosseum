@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import * as missingPage from '../../app/(app)/[...missing]/page';
 import * as goalPage from '../../app/(app)/goal/page';
 import * as monitorPage from '../../app/(app)/monitor/page';
 import * as orderPage from '../../app/(app)/orders/[id]/page';
@@ -75,4 +78,16 @@ describe('the title and description of each product page', () => {
       expect(await orderPage.generateMetadata()).toEqual(pages[2]);
     },
   );
+
+  it('names an address with no page in the product’s own words, never the first shell’s', async () => {
+    preference.lang = 'en';
+    const t = dictionary('en');
+    expect(await missingPage.generateMetadata()).toEqual({ title: t.shell.missing.title });
+    const first = readFileSync(join(__dirname, '../../app/(structurer)/layout.tsx'), 'utf8');
+    expect(first).not.toMatch(/Colosseum —|pt-BR|DISCLAIMER\.pt|Policy in your wallet/);
+    expect(first).toContain('lang="en"');
+    expect(readFileSync(join(__dirname, '../Nav.tsx'), 'utf8')).not.toMatch(
+      /wallet-adapter|Structurer|\/monitor/,
+    );
+  });
 });
