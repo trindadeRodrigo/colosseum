@@ -82,7 +82,7 @@ const SHADOWED = new Set([
   'components/ui/ProvenancePin.tsx',
   'components/ui/Composer.tsx',
   // the popover behind "More" on a vault's own page
-  'features/shared/VaultScreen.tsx',
+  'features/shared/MoreMenu.tsx',
 ]);
 
 /** Uppercase is for captions and column heads at 12px or less (STYLE.md): it sits beside that size. */

@@ -589,7 +589,7 @@ export const pt: Dictionary = {
       label: 'Este cofre',
       unnamed: (chain: string) => `Seu cofre na ${chain}`,
       numbered: (number: number) => `Cofre #${number}`,
-      addMoney: 'Adicionar dinheiro',
+      addMoney: 'Depositar',
       rename: 'Renomear',
       newPlan: 'Novo plano',
       nameLabel: 'Nome deste cofre',
@@ -1400,13 +1400,13 @@ export const pt: Dictionary = {
         backToHoldings: 'Voltar ao que você tem',
         backToVault: 'Voltar ao seu cofre',
         amount: 'Valor do depósito',
+        ended: 'Os passos terminaram',
+        endedLead: 'Como cada passo terminou está dito abaixo dos passos.',
         panes: {
           deposit: {
             title: 'Depositar no seu cofre',
             signTitle: 'Assine seu depósito',
-            doneTitle: 'Seu depósito está feito',
-            lead: 'O valor inteiro entra neste cofre e depois em cada ativo dele, pela fatia planejada, um passo de cada vez. Você assina cada passo aqui.',
-            done: 'Seu depósito está no seu cofre.',
+            lead: 'O valor inteiro entra neste cofre. Você assina cada passo aqui.',
             resumed:
               'Você aprovou este depósito antes de esta página ser aberta de novo. Os passos estão onde estavam.',
             stopped: 'Este depósito parou, e a ordem dele está guardada.',
@@ -1414,9 +1414,7 @@ export const pt: Dictionary = {
           withdraw: {
             title: 'Sacar do seu cofre',
             signTitle: 'Assine seu saque',
-            doneTitle: 'Seu saque está feito',
             lead: 'Você assina cada passo aqui. Os tokens vão para a sua própria carteira e para nenhum outro lugar.',
-            done: 'O que você sacou está na sua carteira.',
             resumed:
               'Você aprovou este saque antes de esta página ser aberta de novo. Os passos estão onde estavam.',
             stopped: 'Este saque parou, e a ordem dele está guardada.',
@@ -1424,9 +1422,7 @@ export const pt: Dictionary = {
           change: {
             title: 'Editar pesos à mão',
             signTitle: 'Assine a mudança no seu cofre',
-            doneTitle: 'As metas do seu cofre mudaram',
             lead: 'O primeiro passo grava as novas metas na rede; os seguintes trocam para chegar a elas. Você assina cada passo aqui.',
-            done: 'Seu cofre segue as novas metas.',
             resumed:
               'Você aprovou esta mudança antes de esta página ser aberta de novo. Os passos estão onde estavam.',
             stopped: 'Esta mudança parou, e a ordem dela está guardada.',

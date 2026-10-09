@@ -97,6 +97,13 @@ export function AddMoneyScreen({
     );
   if (!chain || !own || !vault) {
     const signedOut = state.kind === 'signed-out';
+    // in a host's pane: the sentence alone, under the host's heading and beside its way back
+    if (embedded)
+      return (
+        <p data-ui="add-money-missing" className="max-w-(--tf-measure-body) text-body">
+          {signedOut ? t.portfolio.signedOut : words.missing}
+        </p>
+      );
     return (
       <section data-ui="add-money-missing" className="flex flex-col items-start gap-4">
         <h1 className={PAGE_TITLE}>{words.title}</h1>

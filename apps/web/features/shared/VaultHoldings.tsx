@@ -53,6 +53,8 @@ export function VaultHoldings({
     }));
   const empty = [vault.cash, ...vault.positions].every((h) => /^0+$/.test(h.raw));
   const missing = unpriced(vault);
+  // A vault with no target has no plan to be over or under: no difference is drawn under a share.
+  const planned = vault.positions.some((position) => position.targetBps > 0);
   const mockLabels = {
     announce: read.provenance === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
   };
@@ -204,19 +206,23 @@ export function VaultHoldings({
                 return (
                   <span className="inline-flex flex-col items-end">
                     <span>{share(lang, now * 10)}</span>
-                    <span
-                      data-ui="holding-drift"
-                      data-direction={off > 0 ? 'over' : off < 0 ? 'under' : 'on'}
-                      className={cn(
-                        'text-b-delta font-medium',
-                        off > 0 ? 'text-leaf' : off < 0 ? 'text-madder' : 'text-muted-foreground',
-                      )}
-                    >
-                      <span aria-hidden="true">{off === 0 ? v.page.onPlan : drift(lang, off)}</span>
-                      <span className="sr-only">
-                        {off === 0 ? v.page.onPlan : v.page.against(drift(lang, off))}
+                    {planned && (
+                      <span
+                        data-ui="holding-drift"
+                        data-direction={off > 0 ? 'over' : off < 0 ? 'under' : 'on'}
+                        className={cn(
+                          'text-b-delta font-medium',
+                          off > 0 ? 'text-leaf' : off < 0 ? 'text-madder' : 'text-muted-foreground',
+                        )}
+                      >
+                        <span aria-hidden="true">
+                          {off === 0 ? v.page.onPlan : drift(lang, off)}
+                        </span>
+                        <span className="sr-only">
+                          {off === 0 ? v.page.onPlan : v.page.against(drift(lang, off))}
+                        </span>
                       </span>
-                    </span>
+                    )}
                   </span>
                 );
               },

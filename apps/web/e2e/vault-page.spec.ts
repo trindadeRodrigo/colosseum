@@ -162,6 +162,33 @@ test('the owner’s vault page: a deposit, then a withdrawal, signed in place', 
   await check(page, 'idle');
   await fixedWorkbench(page, '[data-ui="vault-plan"]');
 
+  // A head that grows (the rename form, on a short screen) gives way before the panes do: they keep
+  // their room, the page still does not scroll, and the form's last control can be reached.
+  await page.setViewportSize({ width: 1280, height: 650 });
+  await screen.getByRole('button', { name: en.portfolio.actions.rename }).click();
+  const tall = await page.evaluate(() => {
+    const doc = document.scrollingElement as HTMLElement;
+    doc.scrollTop = 500;
+    const plan = document.querySelector<HTMLElement>('[data-ui="vault-plan"]');
+    const head = document.querySelector<HTMLElement>('[data-ui="vault-conversation"] > header');
+    return {
+      page: doc.scrollTop,
+      plan: plan ? Math.round(plan.getBoundingClientRect().height) : -1,
+      bottom: plan ? Math.round(plan.getBoundingClientRect().bottom) : -1,
+      head: head ? getComputedStyle(head).overflowY : '',
+      window: window.innerHeight,
+    };
+  });
+  expect(tall.page).toBe(0);
+  expect(tall.plan).toBeGreaterThanOrEqual(200);
+  expect(tall.bottom).toBeLessThanOrEqual(tall.window);
+  expect(tall.head).toBe('auto');
+  const cancel = screen.getByRole('button', { name: en.portfolio.actions.cancel });
+  await cancel.scrollIntoViewIfNeeded();
+  await expect(cancel).toBeInViewport();
+  await cancel.click();
+  await page.setViewportSize(PHONE);
+
   // "More": the weights by hand, sharing and the explorer, out of the way; Escape gives the focus back.
   const more = actions.locator('[data-ui="vault-more"]');
   await more.click();
@@ -194,7 +221,7 @@ test('the owner’s vault page: a deposit, then a withdrawal, signed in place', 
   await press.click();
   await expect(pane).toHaveAttribute('data-state', 'done', { timeout: 90_000 });
   await expect(page).toHaveURL(here);
-  await expect(title).toHaveText(p.panes.deposit.doneTitle);
+  await expect(title).toHaveText(p.ended);
   for (const step of await pane.locator('[data-ui="order-step"]').all())
     await expect(step).toHaveAttribute('data-status', 'confirmed');
   // done: one way on, the page's own, which also gives the conversation back

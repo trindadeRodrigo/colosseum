@@ -298,9 +298,11 @@ export function VaultConversation({
       tabIndex={-1}
       data-workbench
       aria-labelledby={`${id}-title`}
-      className="grid min-w-0 gap-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring md:min-h-0 md:flex-1 md:grid-cols-12 md:grid-rows-[auto_minmax(0,1fr)] md:items-stretch"
+      className="grid min-w-0 gap-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring md:min-h-0 md:flex-1 md:grid-cols-12 md:grid-rows-[minmax(0,auto)_minmax(15rem,1fr)] md:items-stretch"
     >
-      <header className="flex flex-wrap items-start justify-between gap-3 md:col-span-12">
+      {/* The panes keep a least height (the grid's second row): a head that outgrows what is left, with
+          the rename form open on a short screen, scrolls inside itself and is never clipped. */}
+      <header className="tf-scroll-thin flex flex-wrap items-start justify-between gap-3 md:col-span-12 md:min-h-0 md:overflow-y-auto">
         <div className="flex min-w-0 flex-1 flex-col gap-2">{heading}</div>
         <Button
           variant="link"

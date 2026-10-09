@@ -12,8 +12,8 @@ import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
-import { usePopover } from '../account/ChainSwitch';
-import type { CallFailure } from '../order/order-api';
+import { type CallFailure, readOrder } from '../order/order-api';
+import { stoppedShort } from '../order/order-check';
 import { explorerAddressUrlFor } from '../order/readiness';
 import { dollars } from '../portfolio/figures';
 import { vaultValueSource } from '../portfolio/portfolio';
@@ -22,6 +22,7 @@ import { sameAddress } from '../portfolio/vault-name';
 import { conversationNetwork } from '../vault-conversation/storage';
 import { VaultConversation } from '../vault-conversation/VaultConversation';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
+import { MoreMenu } from './MoreMenu';
 import { readVault } from './shared-api';
 import {
   type ActionKind,
@@ -229,7 +230,6 @@ function OwnVault({
   const v = t.shared.vault;
   const p = v.page;
   const titleId = useId();
-  const menuId = useId();
   const { vault } = read;
   const empty = [vault.cash, ...vault.positions].every((h) => /^0+$/.test(h.raw));
   const targeted = vault.positions.some((position) => position.targetBps > 0);
@@ -244,14 +244,36 @@ function OwnVault({
   );
   // What has the right pane: nothing (the holdings), or one action, from its first choice to its last
   // signed step. One approved before the page was opened again is taken up from its order's record.
-  const [open, setOpen] = useState<OpenAction | null>(() =>
-    recallAction(userId, read.chain, vault.address),
-  );
+  const [open, setOpen] = useState<OpenAction | null>(null);
   const [phase, setPhase] = useState<ActionPhase>('open');
+  // The pane as it is now, for an answer that comes back late: an order is taken only by the pane that
+  // asked for it, and each opening of a pane is its own (`token`).
+  const openNow = useRef(open);
+  openNow.current = open;
+  const tokens = useRef(0);
+  const apiFetch = useApiFetch();
+  // An action approved before the page was opened again. Its order is asked of our server first: one
+  // that goes no further (done, failed, run out) is forgotten here and opens nothing, so a dead order
+  // does not take the pane on every load. Where the server cannot be asked, the pane opens on it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: asked once for a person and a vault
+  useEffect(() => {
+    const kept = recallAction(userId, read.chain, vault.address);
+    if (!kept?.orderId) return;
+    let mine = true;
+    readOrder(apiFetch, kept.orderId).then((answer) => {
+      if (!mine) return;
+      if (answer.kind === 'read' && (answer.order.status === 'done' || stoppedShort(answer.order)))
+        return keepAction(userId, read.chain, vault.address, null);
+      tokens.current += 1;
+      const token = tokens.current;
+      // never over a pane the person opened meanwhile
+      setOpen((now) => now ?? { ...kept, token });
+    });
+    return () => {
+      mine = false;
+    };
+  }, [userId, read.chain, vault.address]);
   const root = useRef<HTMLDivElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
-  const menuButton = useRef<HTMLButtonElement>(null);
-  const [menuOpen, setMenuOpen] = usePopover(menu, menuButton);
   // The control that opened the pane gets the focus back when the pane goes.
   const opener = useRef<string | null>(null);
   const wasOpen = useRef(open !== null);
@@ -265,9 +287,11 @@ function OwnVault({
 
   const start = (kind: ActionKind, from: string) => {
     opener.current = from;
-    setMenuOpen(false);
     setPhase('open');
-    setOpen({ kind, orderId: null });
+    // another start is another order: what was kept of the last is not taken up again
+    keepAction(userId, read.chain, vault.address, null);
+    tokens.current += 1;
+    setOpen({ kind, orderId: null, token: tokens.current });
   };
   const leave = () => {
     keepAction(userId, read.chain, vault.address, null);
@@ -285,13 +309,17 @@ function OwnVault({
     pane: (
       <VaultAction
         // each order, and each fresh start, is its own pane: nothing of the last is carried over
-        key={`${open.kind}:${open.orderId && open.kind !== 'deposit' ? open.orderId : ''}`}
+        key={`${open.token}:${open.kind}:${open.orderId && open.kind !== 'deposit' ? open.orderId : ''}`}
         read={read}
         userId={userId}
         open={open}
         phase={phase}
         onOrder={(orderId, approved) => {
-          const next = { ...open, orderId };
+          // An answer that comes back after its pane was left, or after another took its place, is
+          // nobody's: it opens nothing and replaces nothing. Its order is left unsigned.
+          const now = openNow.current;
+          if (!now || now.token !== open.token) return;
+          const next = { ...now, orderId };
           setOpen(next);
           // kept only from the press on: an order nobody approved is not taken up again
           if (approved) keepAction(userId, read.chain, vault.address, next);
@@ -334,9 +362,13 @@ function OwnVault({
             : undefined
         }
         onOrder={(orderId) => {
+          // only while the holdings have the pane: an order confirmed in the conversation that
+          // answers after a deposit or a withdrawal was opened does not take its place
+          if (openNow.current) return;
           opener.current = '[data-action="vault-deposit"]';
           setPhase('open');
-          setOpen({ kind: 'apply', orderId });
+          tokens.current += 1;
+          setOpen({ kind: 'apply', orderId, token: tokens.current });
         }}
         heading={
           <>
@@ -385,49 +417,30 @@ function OwnVault({
                       {t.withdraw.action}
                     </Button>
                   )}
-                  <div ref={menu} className="md:relative">
-                    <button
-                      ref={menuButton}
-                      type="button"
-                      className={`${buttonClass({ variant: 'link' })} inline-flex items-center gap-1 whitespace-nowrap`}
-                      data-ui="vault-more"
-                      aria-expanded={menuOpen}
-                      aria-controls={menuId}
-                      onClick={() => setMenuOpen((now) => !now)}
-                    >
-                      {p.more}
-                      <Icon name="ChevronDown" size={16} />
-                    </button>
-                    <ul
-                      id={menuId}
-                      data-ui="vault-more-list"
-                      hidden={!menuOpen}
-                      className={`absolute top-full right-0 z-20 mt-2 w-max max-w-[min(32ch,calc(100vw-2rem))] flex-col items-start gap-3 rounded-md border border-border bg-popover p-4 text-popover-foreground shadow-popover max-md:right-auto max-md:left-0 ${menuOpen ? 'flex' : 'hidden'}`}
-                    >
+                  <MoreMenu label={p.more} ui="vault-more">
+                    <li>
+                      <Button
+                        variant="link"
+                        data-action="vault-edit-weights"
+                        onClick={() => start('weights', '[data-ui="vault-more"]')}
+                      >
+                        {p.editWeights}
+                      </Button>
+                    </li>
+                    {/* a strategy is its targets: a vault with none has nothing to share */}
+                    {canShare && targeted && (
                       <li>
-                        <Button
-                          variant="link"
-                          data-action="vault-edit-weights"
-                          onClick={() => start('weights', '[data-ui="vault-more"]')}
+                        <Link
+                          data-ui="vault-share-strategy"
+                          href={shareHref}
+                          className={buttonClass({ variant: 'link' })}
                         >
-                          {p.editWeights}
-                        </Button>
+                          {t.shared.publish.shareStrategy}
+                        </Link>
                       </li>
-                      {/* a strategy is its targets: a vault with none has nothing to share */}
-                      {canShare && targeted && (
-                        <li>
-                          <Link
-                            data-ui="vault-share-strategy"
-                            href={shareHref}
-                            className={buttonClass({ variant: 'link' })}
-                          >
-                            {t.shared.publish.shareStrategy}
-                          </Link>
-                        </li>
-                      )}
-                      {explorerLink && <li>{explorerLink}</li>}
-                    </ul>
-                  </div>
+                    )}
+                    {explorerLink && <li>{explorerLink}</li>}
+                  </MoreMenu>
                 </div>
               )}
             </div>

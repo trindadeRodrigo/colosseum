@@ -678,7 +678,7 @@ export const en = {
       unnamed: (chain: string) => `Your vault on ${chain}`,
       /** A vault with no name, by its number among the person's vaults, where the server gives one. */
       numbered: (number: number) => `Vault #${number}`,
-      addMoney: 'Add money',
+      addMoney: 'Deposit',
       rename: 'Rename',
       newPlan: 'New plan',
       nameLabel: 'Name of this vault',
@@ -1541,13 +1541,14 @@ export const en = {
         backToVault: 'Back to your vault',
         amount: 'Deposit amount',
         /** The pane of each action: its heading before the press, while signing, and once done. */
+        /** Over the steps once the order is done: how it ended is the order's own sentence. */
+        ended: 'The steps have ended',
+        endedLead: 'How each step ended is said under the steps below.',
         panes: {
           deposit: {
             title: 'Deposit into your vault',
             signTitle: 'Sign your deposit',
-            doneTitle: 'Your deposit is done',
-            lead: 'The whole amount goes into this vault, then into each of its assets by its planned share, one step at a time. You sign each step here.',
-            done: 'Your deposit is in your vault.',
+            lead: 'The whole amount goes into this vault. You sign each step here.',
             resumed:
               'You approved this deposit before this page was opened again. Its steps are where they were.',
             stopped: 'This deposit stopped, and its order is kept.',
@@ -1555,9 +1556,7 @@ export const en = {
           withdraw: {
             title: 'Withdraw from your vault',
             signTitle: 'Sign your withdrawal',
-            doneTitle: 'Your withdrawal is done',
             lead: 'You sign each step here. The tokens go to your own wallet and nowhere else.',
-            done: 'What you withdrew is in your wallet.',
             resumed:
               'You approved this withdrawal before this page was opened again. Its steps are where they were.',
             stopped: 'This withdrawal stopped, and its order is kept.',
@@ -1565,9 +1564,7 @@ export const en = {
           change: {
             title: 'Edit weights by hand',
             signTitle: 'Sign the change to your vault',
-            doneTitle: 'Your vault’s targets are changed',
             lead: 'The first step sets the new targets on chain; the steps after it swap to reach them. You sign each step here.',
-            done: 'Your vault follows its new targets.',
             resumed:
               'You approved this change before this page was opened again. Its steps are where they were.',
             stopped: 'This change stopped, and its order is kept.',

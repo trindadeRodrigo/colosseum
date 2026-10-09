@@ -8,6 +8,7 @@ import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
 import { keepOrder } from '../order/order-record';
+import { assetsOn, orderOn } from '../order/test/fixtures';
 import { PORTFOLIO_PATH } from '../portfolio/portfolio';
 import { vaultTitle } from '../portfolio/vault-name';
 import { EMBEDDED, fakePort, json, SOLANA, signedInPort } from '../wallet/test/fake-port';
@@ -27,6 +28,8 @@ import { VaultScreen } from './VaultScreen';
 const run = vi.hoisted(() => ({
   calls: [] as { order: OrderDetail; deps: ExecutorDeps }[],
   answer: 'done' as 'done' | 'failed',
+  /** The order the executor answers with, where a test says how its steps ended. */
+  result: null as OrderDetail | null,
 }));
 vi.mock('@colosseum/sdk', async (original) => ({
   ...(await original<typeof import('@colosseum/sdk')>()),
@@ -34,7 +37,7 @@ vi.mock('@colosseum/sdk', async (original) => ({
     run.calls.push({ order, deps });
     return Promise.resolve(
       (run.answer === 'done'
-        ? { status: 'done', order: { ...order, status: 'done' } }
+        ? { status: 'done', order: run.result ?? { ...order, status: 'done' } }
         : {
             status: 'failed',
             order: { ...order, status: 'failed' },
@@ -107,7 +110,18 @@ const everything = () =>
   withdrawOrder([[item(CASH, '600000000')], [item(SPYX, '250000000')]]) as OrderDetail;
 
 function api(
-  o: { vault?: VaultView; order?: () => OrderDetail; listed?: object; provenance?: string } = {},
+  o: {
+    vault?: VaultView;
+    order?: () => OrderDetail;
+    listed?: object;
+    provenance?: string;
+    /** The answer to POST /v1/orders is held until the test lets it go. */
+    placing?: Promise<void>;
+    /** What `GET /v1/orders/{id}` says, where it differs from the order placed. */
+    standing?: () => OrderDetail;
+    /** Other paths, answered before the defaults. */
+    more?: (path: string, method: string) => Response | Promise<Response> | undefined;
+  } = {},
 ) {
   const calls: { method: string; path: string }[] = [];
   const state = { vault: o.vault ?? held() };
@@ -115,6 +129,8 @@ function api(
   portStore.setApi(async (path, init) => {
     const method = init?.method ?? 'GET';
     calls.push({ method, path });
+    const other = o.more?.(path, method);
+    if (other) return other;
     if (path === '/v1/me') return json(person);
     if (path === PORTFOLIO_PATH)
       return json({
@@ -140,8 +156,12 @@ function api(
         prices: [],
         disclaimer: 'the disclaimer',
       });
-    if (path === '/v1/orders' && method === 'POST') return json(o.order?.() ?? everything());
-    if (path === `/v1/orders/${ORDER_ID}`) return json(o.order?.() ?? everything());
+    if (path === '/v1/orders' && method === 'POST') {
+      await o.placing;
+      return json(o.order?.() ?? everything());
+    }
+    if (path === `/v1/orders/${ORDER_ID}`)
+      return json(o.standing?.() ?? o.order?.() ?? everything());
     return json({ error: 'not found' }, 404);
   });
   return {
@@ -189,6 +209,7 @@ beforeEach(() => {
   router.push.mockClear();
   run.calls = [];
   run.answer = 'done';
+  run.result = null;
   Object.defineProperty(window.navigator, 'locks', {
     value: {
       request: async (_n: string, _o: object, work: (lock: { name: string }) => Promise<unknown>) =>
@@ -460,6 +481,22 @@ describe('the pane’s states, and the way out of each', () => {
     expect(document.activeElement).toBe(find(host, '[data-action="vault-deposit"]'));
   });
 
+  it('deposit, for a vault the portfolio does not list: one sentence in the pane, no second title and no link away', async () => {
+    api({
+      more: (path) => (path === PORTFOLIO_PATH ? json({ chains: [], disclaimer: 'd' }) : undefined),
+    });
+    const host = await show();
+    await click(find(host, '[data-action="vault-deposit"]'));
+    await settle();
+    expect(find(pane(host), '[data-ui="add-money-missing"]').textContent).toBe(
+      en.portfolio.add.missing,
+    );
+    expect(host.querySelectorAll('h1')).toHaveLength(1);
+    expect(pane(host).querySelector('h1')).toBeNull();
+    expect(pane(host).querySelector('a[href="/monitor"]')).toBeNull();
+    expect(pane(host).querySelector('[data-action="leave-action"]')).not.toBeNull();
+  });
+
   it('weights by hand: behind "More", the editor in the pane, and back to "More"', async () => {
     api();
     const host = await show();
@@ -497,7 +534,11 @@ describe('the pane’s states, and the way out of each', () => {
     for (let i = 0; i < 4; i += 1) await settle(30);
     expect(run.calls).toHaveLength(1);
     expect(pane(again).dataset.state).toBe('done');
-    expect(find(pane(again), ':scope > header h2').textContent).toBe(p.panes.withdraw.doneTitle);
+    expect(find(pane(again), ':scope > header h2').textContent).toBe(p.ended);
+    // how it ended is the order's own sentence, said once: here, plainly done
+    expect(find(pane(again), '[data-ui="order-status"]').textContent).toContain(
+      en.order.outcome.done('Solana'),
+    );
     // done: the page's own way on, and no link of the order's
     expect(pane(again).querySelector('[data-ui="order-next"]')).toBeNull();
     expect(pane(again).querySelector('a[href="/monitor"]')).toBeNull();
@@ -523,7 +564,8 @@ describe('the pane’s states, and the way out of each', () => {
     expect(run.calls).toHaveLength(1);
     expect(pane(host).dataset.state).toBe('stopped');
     expect(pane(host).textContent).toContain(p.panes.withdraw.stopped);
-    expect(pane(host).textContent).not.toContain(p.panes.withdraw.done);
+    expect(pane(host).textContent).not.toContain(p.ended);
+    expect(pane(host).textContent).not.toContain(en.order.outcome.done('Solana'));
     expect(find(host, '[data-ui="vault-chat-waits"]').textContent).toBe(p.waits.withdraw);
     // approved, so a reload finds it again
     expect(recallAction(USER, 'solana', MY_VAULT)).toEqual({
@@ -535,6 +577,136 @@ describe('the pane’s states, and the way out of each', () => {
     expect(screen(host).dataset.pane).toBe('holdings');
     // left: it is not opened again by itself
     expect(recallAction(USER, 'solana', MY_VAULT)).toBeNull();
+  });
+});
+
+describe('an order that answers late', () => {
+  const gated = () => {
+    let release: () => void = () => {};
+    const placing = new Promise<void>((done) => {
+      release = done;
+    });
+    return { placing, release };
+  };
+  /** In the withdraw pane: chosen, reviewed, and the order asked for (not yet answered). */
+  async function confirmWithdraw(host: HTMLElement) {
+    await click(find(host, '[data-action="vault-withdraw"]'));
+    await settle();
+    await settle();
+    await click(button(pane(host), w.steps.next));
+    const check = find(pane(host), '[data-ui="withdraw-step"][data-step="check"]');
+    await click(find(check, 'input[type="checkbox"]'));
+    await click(button(check, w.steps.next));
+    await click(button(pane(host), w.confirm.button));
+    await settle();
+  }
+
+  it('does not reopen a pane the person left: confirm a withdrawal, then Back before it answers', async () => {
+    const gate = gated();
+    const server = api({ placing: gate.placing });
+    const host = await show();
+    await confirmWithdraw(host);
+    expect(server.calls.filter((c) => c.path === '/v1/orders' && c.method === 'POST')).toHaveLength(
+      1,
+    );
+    await click(find(pane(host), '[data-action="leave-action"]'));
+    expect(screen(host).dataset.pane).toBe('holdings');
+    gate.release();
+    for (let i = 0; i < 4; i += 1) await settle(30);
+    expect(screen(host).dataset.pane).toBe('holdings');
+    expect(host.querySelector('[data-ui="vault-action-pane"]')).toBeNull();
+    expect(host.querySelector('[data-ui="order-step"]')).toBeNull();
+  });
+
+  it('does not take another pane’s place: Back, then Deposit, then the withdrawal’s order answers', async () => {
+    const gate = gated();
+    api({ placing: gate.placing });
+    const host = await show();
+    await confirmWithdraw(host);
+    await click(find(pane(host), '[data-action="leave-action"]'));
+    await click(find(host, '[data-action="vault-deposit"]'));
+    await settle();
+    gate.release();
+    for (let i = 0; i < 4; i += 1) await settle(30);
+    expect(screen(host).dataset.pane).toBe('deposit');
+    expect(find(pane(host), ':scope > header h2').textContent).toBe(p.panes.deposit.title);
+    expect(pane(host).querySelector('input[inputmode="decimal"]')).not.toBeNull();
+  });
+
+  it('a second opening of the same pane is not handed the first one’s order', async () => {
+    const gate = gated();
+    api({ placing: gate.placing });
+    const host = await show();
+    await confirmWithdraw(host);
+    await click(find(pane(host), '[data-action="leave-action"]'));
+    await click(find(host, '[data-action="vault-withdraw"]'));
+    await settle();
+    await settle();
+    gate.release();
+    for (let i = 0; i < 4; i += 1) await settle(30);
+    expect(screen(host).dataset.pane).toBe('withdraw');
+    expect(find(pane(host), ':scope > header h2').textContent).toBe(p.panes.withdraw.title);
+    expect(pane(host).querySelector('[data-ui="order-step"]')).toBeNull();
+  });
+});
+
+describe('an order that is done, but not plainly', () => {
+  it('a step that was skipped: the pane does not say done over it, and the order’s own sentence says what stayed', async () => {
+    // the executor answers done with one token's step skipped: it could not move
+    const order = everything();
+    const skipped = {
+      ...order,
+      status: 'done',
+      legs: order.legs.map((leg, i) =>
+        i === 0 ? { ...leg, status: 'confirmed', txId: 'sig' } : { ...leg, status: 'skipped' },
+      ),
+    } as OrderDetail;
+    run.result = skipped;
+    api();
+    const host = await show();
+    await toSteps(host);
+    await click(button(pane(host), en.order.shared.signWithdraw));
+    for (let i = 0; i < 4; i += 1) await settle(30);
+    expect(pane(host).dataset.state).toBe('done');
+    const text = pane(host).textContent ?? '';
+    expect(text).toContain(en.order.shared.doneExcept('Solana', 1));
+    // nothing over the steps claims more than the order does
+    const top = find(pane(host), '[data-ui="vault-action-done"]').textContent ?? '';
+    expect(find(pane(host), ':scope > header h2').textContent).toBe(p.ended);
+    for (const claim of [
+      /is done/i,
+      /in your wallet/i,
+      /follows its new targets/i,
+      /in your vault\./i,
+    ])
+      expect(`${top} ${find(pane(host), ':scope > header').textContent}`).not.toMatch(claim);
+    expect(text).not.toContain(en.order.outcome.done('Solana'));
+    // and the way on is still the page's one button
+    expect(find(pane(host), '[data-action="back-to-vault"]')).toBeTruthy();
+  });
+});
+
+describe('a funded vault with no targets', () => {
+  it('draws no difference under a share: with no plan there is nothing to be over', async () => {
+    api({
+      vault: held({
+        positions: [
+          {
+            ...holding(SPYX, '250000000', '2.5'),
+            targetBps: 0,
+            lastKeeperAt: null,
+            valueUsd: '450',
+            weightBps: 4_500,
+            driftBps: 4_500,
+          },
+        ] as VaultView['positions'],
+      }),
+    });
+    const host = await show();
+    const plan = find(host, '[data-ui="vault-plan"]');
+    expect(plan.querySelector('table')?.textContent).toContain('45%');
+    expect(plan.querySelector('[data-ui="holding-drift"]')).toBeNull();
+    expect(plan.textContent).not.toContain('against the plan');
   });
 });
 
@@ -594,6 +766,76 @@ describe('a reload in the middle of signing', () => {
     expect(screen(host).dataset.pane).toBe('apply');
     expect(find(pane(host), ':scope > header h2').textContent).toBe(p.panes.change.signTitle);
     expect(find(host, '[data-ui="vault-chat-waits"]').textContent).toBe(p.waits.change);
+  });
+
+  it('takes an approved deposit up again on the same card: its own order and amount, and no new order', async () => {
+    const add = {
+      ...orderOn(),
+      id: ORDER_ID,
+      basketId: '42',
+      legs: orderOn().legs.map((l) => (l.kind === 'create_vault' ? { ...l, kind: 'deposit' } : l)),
+    } as OrderDetail;
+    const server = api({ order: () => add });
+    expect(
+      keepOrder({
+        orderId: ORDER_ID,
+        userId: USER,
+        proposalId: '',
+        chain: 'solana',
+        amountUsd: 10,
+        lines: [],
+        terms: {
+          kind: 'vault',
+          vault: MY_VAULT,
+          basketId: '42',
+          targets: [{ asset: assetsOn('solana').spy, weightBps: 6000 }],
+          keeper: false,
+          source: 'api',
+        },
+        approved: { order: add, consents: [], at: '2026-10-09T12:00:00.000Z' },
+      }),
+    ).toBe(true);
+    keepAction(USER, 'solana', MY_VAULT, { kind: 'deposit', orderId: ORDER_ID });
+    const host = await show();
+    for (let i = 0; i < 4; i += 1) await settle(30);
+    expect(screen(host).dataset.pane).toBe('deposit');
+    expect(pane(host).textContent).toContain(p.panes.deposit.resumed);
+    // the amount is the order's own, a fact: nothing to type, and nothing typed makes another order
+    expect(find(pane(host), '[data-ui="vault-action-amount"]').textContent).toContain('$10');
+    expect(pane(host).querySelector('input[inputmode="decimal"]')).toBeNull();
+    expect(pane(host).querySelectorAll('[data-ui="order-step"]').length).toBeGreaterThan(0);
+    expect(server.calls.filter((c) => c.path === '/v1/orders' && c.method === 'POST')).toEqual([]);
+    expect(server.calls.filter((c) => c.path.startsWith('/v1/funding'))).toEqual([]);
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['failed', { status: 'failed' }],
+    ['ran out', { status: 'expired' }],
+    ['is done', { status: 'done' }],
+  ] as const)(
+    'opens nothing for an order that %s on our server, and forgets it',
+    async (_why, over) => {
+      api({ standing: () => ({ ...everything(), ...over }) as OrderDetail });
+      expect(kept(everything(), terms('withdraw'))).toBe(true);
+      keepAction(USER, 'solana', MY_VAULT, { kind: 'withdraw', orderId: ORDER_ID });
+      const host = await show();
+      expect(screen(host).dataset.pane).toBe('holdings');
+      expect(host.querySelector('[data-ui="vault-action-pane"]')).toBeNull();
+      // gone for the next load too, not only this one
+      expect(recallAction(USER, 'solana', MY_VAULT)).toBeNull();
+    },
+  );
+
+  it('starting again forgets the order that stopped: a reload does not return to it', async () => {
+    api();
+    expect(kept(everything(), terms('withdraw'))).toBe(true);
+    keepAction(USER, 'solana', MY_VAULT, { kind: 'withdraw', orderId: ORDER_ID });
+    const host = await show();
+    expect(screen(host).dataset.pane).toBe('withdraw');
+    await click(find(pane(host), '[data-action="leave-action"]'));
+    await click(find(host, '[data-action="vault-deposit"]'));
+    expect(recallAction(USER, 'solana', MY_VAULT)).toBeNull();
   });
 
   it.each([

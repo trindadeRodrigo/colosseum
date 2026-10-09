@@ -38,6 +38,8 @@ export type OpenAction = {
   orderId: string | null;
   /** Approved before the page was opened again: taken up from the order's own record. */
   resumed?: boolean;
+  /** Which opening of the pane this is: an answer for another opening is not this one's. */
+  token?: number;
 };
 /** Where an open action stands: before the press, its steps being signed, stopped short, or done. */
 export type ActionPhase = 'open' | 'signing' | 'stopped' | 'done';
@@ -259,7 +261,7 @@ export function VaultAction({
     >
       <header className="flex min-w-0 flex-col gap-2">
         <h2 id={titleId} tabIndex={-1} className="font-display text-h4 font-semibold outline-none">
-          {done ? words.doneTitle : open.orderId || pressed ? words.signTitle : words.title}
+          {done ? p.ended : open.orderId || pressed ? words.signTitle : words.title}
         </h2>
         {!done && (
           <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
@@ -267,11 +269,13 @@ export function VaultAction({
           </p>
         )}
       </header>
-      {/* the end, over the steps it sums up: the one way on is not under a long card */}
+      {/* The end, over the steps: the one way on is not under a long card. How it ended is the order's
+          own sentence, below, which never says plainly done of a step that was skipped or a token that
+          stayed (OrderScreen): nothing here says more than it does. */}
       {done && (
         <div data-ui="vault-action-done" className="flex flex-col items-start gap-3">
-          <p role="status" className="max-w-(--tf-measure-body) text-body">
-            {words.done}
+          <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
+            {p.endedLead}
           </p>
           <Button variant="primary" data-action="back-to-vault" onClick={onFinished}>
             {p.backToVault}
