@@ -7,7 +7,7 @@ import { HoldingsWait } from '../shared/waits';
 // a new plan, and a vault's card with its value, the bar of what it holds and its rows. The labels are
 // the page's own words; where a sum, a name or a share will be there is a still bar.
 
-/** The page's head: what the vaults are worth, how many, how many holdings, and the way to a new plan. */
+/** The page's head: what the vaults are worth, how many, how many holdings, the way to a new plan, the chain. */
 export function MonitorHeadWait() {
   const t = useT();
   const words = t.portfolio.overview;
@@ -36,6 +36,8 @@ export function MonitorHeadWait() {
         </dl>
       </div>
       <Skeleton className="h-8 w-24 rounded-md" />
+      {/* the chain the vaults are on, named once they are read */}
+      <Skeleton className="h-5 w-28" />
     </div>
   );
 }

@@ -45,7 +45,11 @@ import {
 import { z } from 'zod';
 import { statedAmountUsd } from '../../apps/api/src/orders/stated-amount';
 import { ORDER_ID, orderOn, recordOf } from '../../apps/web/features/order/test/fixtures';
-import { chainOf, portfolioBody } from '../../apps/web/features/portfolio/test/portfolio';
+import {
+  chainOf,
+  portfolioOf,
+  robinhoodChain,
+} from '../../apps/web/features/portfolio/test/portfolio';
 import {
   EXPOSURE,
   HISTORY,
@@ -861,8 +865,9 @@ const SAMPLES: Record<string, () => unknown> = {
   }),
   'shelf-empty': () => ({ families: [], disclaimer: DISCLAIMER.en }),
   family: () => ({ family: sampleFamily(FAMILY_ID), disclaimer: DISCLAIMER.en }),
-  monitor: () => portfolioBody(),
-  'monitor-empty': () => portfolioBody(chainOf([])),
+  // every chain the throwaway wallet signs on is answered, so none is said to be unread
+  monitor: () => portfolioOf(chainOf(), robinhoodChain([])),
+  'monitor-empty': () => portfolioOf(chainOf([]), robinhoodChain([])),
   order: () => ({ id: ORDER_ID, order: orderOn(), record: recordOf() }),
   plans: () => ({ ...PLANS, unavailable: [] }),
   'plans-empty': () => ({
