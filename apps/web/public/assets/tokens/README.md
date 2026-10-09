@@ -36,7 +36,7 @@ Added October 9, 2026 (Thom: tokens show the issuer's own artwork, else the comp
 
 - The xStocks images are the issuer's own picture for each token, as its on-chain metadata names it; the `image` field was read on chain for SPYx (`XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W`), QQQx (`Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ`) and NVDAx (`Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh`), and the others were taken from the same host by symbol. They are the issuer's 400×400 opaque tiles, byte for byte. The terms of the xstocks.fi website reserve its content and grant no right in any logo; the files here come from the token metadata, which is published for showing the token, not from the website.
 - usdg.png is the kit's PNG, resized only. jup.png is the 256×256 file, byte for byte.
-- usdy.svg, syrupusdt.svg, syrupusdg.svg and sol.svg are kept beside their PNGs. Each was read as text: paths, a clip path or a gradient referenced inside the file, no scripts, event handlers, embedded images or external resources. Conversion is the one above (sharp 0.35.5 / librsvg 2.63.2). The Solana logomark is not square, so it sits whole inside the round frame with clear space around it: `sharp("sol.svg", { density: 1536 }).resize(352, 352, { fit: "contain" }).extend(80)`, transparent.
+- usdy.svg, syrupusdt.svg, syrupusdg.svg and sol.svg are kept beside their PNGs. Each was read as text: paths, a clip path or a gradient referenced inside the file, no scripts, event handlers, embedded images or external resources. A `<title>` naming the token was added to each, as in syrupusdc.svg, for the linter; nothing else in them is changed, and the PNGs are the same bytes with or without it. Conversion is the one above (sharp 0.35.5 / librsvg 2.63.2). The Solana logomark is not square, so it sits whole inside the round frame with clear space around it: `sharp("sol.svg", { density: 1536 }).resize(352, 352, { fit: "contain" }).extend(80)`, transparent.
 - Every file was looked at on the light and the dark tile; none needed an alternate version.
 
 Tokens that keep their ticker, and why, are the `NO_ARTWORK` list in `features/order/asset-logos.ts`; `asset-logos.test.ts` fails for a listed token that is in neither list. In short: USDC (Circle's Brand Use Policy: "Circle does not permit any use of its Brand Assets for commercial purposes", and its kit is a zip); JitoSOL (no brand kit found, and the on-chain image sits on a generic storage host); cbBTC and cbETH (Coinbase asks for consent); and Robinhood Chain's stock and fund tokens, which have no artwork of their own: Apple, Microsoft, NVIDIA, Google, Amazon and Meta allow their logos only under a licence or with approval, Circle's own marks need written authorisation, and for Tesla, Strategy, SpaceX, TSMC and the funds' sponsors (State Street for SPY and GLD, Invesco for QQQ, iShares for SGOV) no brand kit was found that offers a mark for this use.
@@ -65,11 +65,11 @@ SHA-256:
 - gldx.png: 76ee29e811b22b2a2f8082d780c8c93442219a6a95d4db189bcf06343cbde448
 - usdg.png: 9bd1c0785516b2113ada92066fc710539233409741e0bf701cbecaeb4c256169
 - usdy.png: 8a61f71fc332bc80d64796e7da876512475fe6163e69c2f262fc2c97c662784e
-- usdy.svg (source): a7e114b688c62af7c26e45a5452e7d836eca84f78e7797e9293de17f674c4096
+- usdy.svg (source): 4d61f218ba8ff69b5e73c854ee82f3732e75cc9f3ce535cdb1fc53e34f984162
 - syrupusdt.png: eb253765c1f6c99dfdb9f6a1475d35049563ab5c7e49472ad7e3378be7826602
-- syrupusdt.svg (source): eeb9122ad5ad95a78ead864569ca52b7728559b687b33a0e0862b57601779b01
+- syrupusdt.svg (source): e5843ae9038b88d17a2893fed6a7c8d1fe23a1d33a66a7baaf35947111c940f3
 - syrupusdg.png: f380dcf31461dab5cb2c6c5d93d5688102268243c4a5dd7a098882c92b184b62
-- syrupusdg.svg (source): 617b71796fb0c72c6a9a78ef441f9972742439f41a88b7d7a673524a5e169b69
+- syrupusdg.svg (source): 4f60d4a1d836a7e38b3c52499f1ee81e47a6701c822fe7b9e6ea59898e5253c0
 - jup.png: 5f460c59d968c0af5a4dee3e19c5e51f0298f15ae3fac907e9e4c0904bec7506
 - sol.png: 6dbe58a11a904b798faea5a0073bee2078893bcd5af9649d0b4a93bdda727665
-- sol.svg (source): 3d3401109aa061dec40a8659f1847817a8e647f98de1e65e76e86a95bbe1f08a
+- sol.svg (source): 14381e02ce4a59b3811bf94522b1121f7cac67833db5a2d0c3d7561c193556fc
