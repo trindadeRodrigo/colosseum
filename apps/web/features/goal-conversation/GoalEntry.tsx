@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Select } from '../../components/ui/Field';
 import { useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
+import { switchFailure } from '../account/ChainSwitch';
 import type { PortfolioState } from '../portfolio/use-portfolio';
 import { shortAddress } from '../shared/use-person';
 import { readLocal } from '../vault-conversation/storage';
@@ -80,6 +81,16 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
   // The chain was moved from the control beside the box: focus goes back to it once it is drawn again.
   const refocus = useRef(false);
   const [said, setSaid] = useState('');
+  // A saved conversation of another chain was opened, which moved where new plans start: said on
+  // the page, and so is a move that was not stored.
+  const [moved, setMoved] = useState('');
+  const [problem, setProblem] = useState('');
+  const root = useRef<HTMLDivElement>(null);
+  // Words typed before the first message go with a change of chain made beside the box.
+  const carried = useRef<{ chain: ChainId; text: string } | null>(null);
+  useEffect(() => {
+    if (carried.current && carried.current.chain !== chain) carried.current = null;
+  }, [chain]);
   const nameOf = (on: ChainId) => port.network(on)?.name ?? t.chain.names[on];
 
   /** A new plan on `next`: the chain is stored, and an empty conversation opens there. */
@@ -92,11 +103,27 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
         writeIndex(there, { ...kept, current: newConversationId() });
     }
     refocus.current = true;
-    await choose(next);
+    carried.current = {
+      chain: next,
+      text:
+        root.current?.querySelector<HTMLTextAreaElement>('[data-ui="goal-chat"] textarea')?.value ??
+        '',
+    };
+    setMoved('');
+    setProblem('');
+    try {
+      await choose(next);
+    } catch (e) {
+      carried.current = null;
+      throw e;
+    }
     setSaid(t.chain.choice.done(nameOf(next)));
   }
 
   function pick(value: string) {
+    carried.current = null;
+    setMoved('');
+    setProblem('');
     if (value === 'new' && base) {
       // The conversation on screen stays in the saved list; a new, empty one takes its place.
       const next = { ...index, current: newConversationId() };
@@ -117,8 +144,8 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
       // A conversation of another chain is opened on its chain: a plan never changes chain.
       writeIndex(there, { ...readIndex(there), current: id });
       choose(on).then(
-        () => setSaid(t.chain.choice.done(nameOf(on))),
-        () => {},
+        () => setMoved(t.chain.choice.opened(nameOf(on))),
+        (e: unknown) => setProblem(switchFailure(t, e, nameOf(on))),
       );
       return;
     }
@@ -129,7 +156,7 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
     }
   }
   return (
-    <div className="flex min-w-0 flex-col gap-4 md:min-h-0 md:flex-1">
+    <div ref={root} className="flex min-w-0 flex-col gap-4 md:min-h-0 md:flex-1">
       <span role="status" data-ui="goal-chain-said" className="sr-only">
         {said}
       </span>
@@ -171,6 +198,19 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
           )}
         </Select>
       </div>
+      {/* There before its words, so a screen reader hears them when they come. */}
+      <p
+        role="status"
+        data-ui="goal-chain-moved"
+        className={moved ? 'text-caption text-muted-foreground' : 'sr-only'}
+      >
+        {moved}
+      </p>
+      {problem && (
+        <p role="alert" data-ui="goal-chain-problem" className="text-caption text-destructive">
+          {problem}
+        </p>
+      )}
       <GoalConversation
         key={`${port.userId}:${chain}:${network?.provenance}:${index.current}`}
         userId={port.userId}
@@ -185,6 +225,7 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
             return { base, index: touch(base, was, was.current, title) };
           });
         }}
+        carried={carried}
         chainControl={(state) => <GoalChain {...state} refocus={refocus} onChoose={startOn} />}
       />
     </div>

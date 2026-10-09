@@ -248,7 +248,21 @@ describe('the shelf', () => {
           slug: 'on-both',
           name: 'On both',
           chains: ['solana', 'robinhood'],
-          recipes: [recipeOf(), RH_RECIPE()],
+          // another recipe on Robinhood Chain: other tokens, weights, publisher and version
+          recipes: [
+            recipeOf(),
+            {
+              ...RH_RECIPE(),
+              active: {
+                ...RH_RECIPE().active,
+                version: 5,
+                components: [
+                  { asset: 'robinhood:tspy', weightBps: 7000 },
+                  { asset: 'robinhood:tnvda', weightBps: 3000 },
+                ],
+              },
+            },
+          ],
         }),
         // every recipe on a chain our server has switched off: nothing to show
         familyOf('01'.repeat(32), { slug: 'off', name: 'Off', chains: ['base'], recipes: [] }),
@@ -261,8 +275,42 @@ describe('the shelf', () => {
     expect(cardsOf(host)).toEqual([
       { name: 'Three of the largest', chains: ['Solana'], note: en.shell.testNetworkLine },
       { name: 'Robinhood three', chains: ['Robinhood Chain'], note: en.shell.mockAnnounce },
-      { name: 'On both', chains: ['Solana', 'Robinhood Chain'], note: en.shell.testNetworkLine },
+      // run differently on each chain: the card's line is the plain one, and each chain says its own
+      { name: 'On both', chains: ['Solana', 'Robinhood Chain'], note: en.shell.mockAnnounce },
     ]);
+    // A portfolio on one chain shows that chain's figures under its one badge.
+    const [solanaCard, , bothCard] = [
+      ...host.querySelectorAll<HTMLElement>('[data-ui="shelf-card"]'),
+    ];
+    expect(solanaCard?.querySelector('[data-ui="holdings-bar"]')).not.toBeNull();
+    expect(solanaCard?.querySelector('[data-ui="shelf-recipe"]')).toBeNull();
+    // One on both shows no figure of one chain as the family's: no bar, no yield line, and each
+    // chain's weights, publisher and version under that chain's own name and mark.
+    expect(bothCard?.querySelector('[data-ui="holdings-bar"]')).toBeNull();
+    expect(bothCard?.querySelector('[data-ui="product-yield"]')).toBeNull();
+    expect(bothCard?.textContent).toContain(en.shared.family.perChain);
+    const whose = [...(bothCard?.querySelectorAll<HTMLElement>('[data-ui="shelf-recipe"]') ?? [])];
+    expect(
+      whose.map((li) => [
+        li.getAttribute('data-chain'),
+        li.querySelector('[data-ui="chain-badge"]')?.textContent,
+      ]),
+    ).toEqual([
+      ['solana', 'Solana'],
+      ['robinhood', 'Robinhood Chain'],
+    ]);
+    expect(whose[0]?.textContent).toContain('SPYx 40% · NVDAx 30% · TSLAx 30%');
+    expect(whose[0]?.textContent).toContain(en.shared.shelf.card.version(2));
+    expect(whose[0]?.textContent).toContain('US51…ELFx');
+    expect(whose[0]?.textContent).toContain(en.shell.testNetwork);
+    expect(whose[0]?.textContent).not.toContain('0x11');
+    expect(whose[1]?.textContent).toContain('SPY 70% · NVDA 30%');
+    expect(whose[1]?.textContent).toContain(en.shared.shelf.card.version(5));
+    expect(whose[1]?.textContent).toContain('0x11…1111');
+    expect(whose[1]?.textContent).not.toContain('US51');
+    expect(whose[1]?.textContent).not.toContain('40%');
+    // the family's own, said once: its name and its creator's words
+    expect(bothCard?.textContent).toContain('Three test tokens.');
     expect(host.textContent).toContain(en.shared.shelf.lead);
     // the address names no chain, and none is stored for the person
     expect(window.location.search).toBe('');

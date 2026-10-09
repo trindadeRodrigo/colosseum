@@ -54,6 +54,8 @@ const passkey = (chain: Person['chain']): Person => ({
 });
 
 /** The API's side: the person, the chain switches sent to it, and a proposal for every message. */
+/** `noReply`: while true, every message gets a 503 in place of a reply. */
+const agent: { noReply: boolean; hold: Promise<void> | null } = { noReply: false, hold: null };
 function api(start: Person, refuse?: () => Response | null, portfolio?: unknown) {
   let person = start;
   portStore.setApi(async (path, init) => {
@@ -71,6 +73,8 @@ function api(start: Person, refuse?: () => Response | null, portfolio?: unknown)
     const reply = /^\/v1\/conversations\/(\w+)\/goal\/reply$/.exec(path);
     if (reply?.[1] && method === 'POST') {
       replies.push(reply[1]);
+      if (agent.hold) await agent.hold;
+      if (agent.noReply) return json({ error: 'down' }, 503);
       const { messageId } = JSON.parse(String(init?.body));
       return json({
         version: 1,
@@ -78,7 +82,14 @@ function api(start: Person, refuse?: () => Response | null, portfolio?: unknown)
         messageId,
         message: 'Here is a private preview.',
         question: null,
-        proposal: preview,
+        // the same draft, of the chain asked about: a reply naming another chain's assets is refused
+        proposal: {
+          ...preview,
+          allocations: preview.allocations.map((line) => ({
+            ...line,
+            assetId: line.assetId.replace('solana:', `${reply[1]}:`),
+          })),
+        },
       });
     }
     return json({ error: 'not found' }, 404);
@@ -111,6 +122,8 @@ beforeEach(() => {
   sessionStorage.clear();
   replies.length = 0;
   puts.length = 0;
+  agent.noReply = false;
+  agent.hold = null;
   portStore.set(signedInPort(EMBEDDED, { userId }));
 });
 afterEach(unmountAll);
@@ -247,6 +260,135 @@ describe('the chain of a new plan, chosen on /goal', () => {
     expect(find(find(host, '[data-ui="goal-chain"]'), '[data-ui="chain-badge"]').textContent).toBe(
       'Solana',
     );
+  });
+
+  it('keeps the words typed in the box when the chain is changed before the first message', async () => {
+    api(passkey('solana'));
+    const host = await show();
+    await settle();
+    const words = 'Half in a broad fund and half in gold';
+    await type(find<HTMLTextAreaElement>(host, 'textarea'), words);
+    await click(find(host, 'label[data-chain="robinhood"] input'));
+    await settle();
+    expect(checked(host)).toBe('robinhood');
+    expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe(words);
+    // and back again, with what was added meanwhile
+    await type(find<HTMLTextAreaElement>(host, 'textarea'), `${words}, for five years`);
+    await click(find(host, 'label[data-chain="solana"] input'));
+    await settle();
+    expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe(`${words}, for five years`);
+    // nothing was sent or saved by it, and they are sent on the chain chosen last
+    expect(replies).toEqual([]);
+    await click(find(host, '[data-ui="composer-send"]'));
+    await settle();
+    expect(replies).toEqual(['solana']);
+    // a new conversation starts with an empty box, not with words carried once
+    picker(host).value = 'new';
+    await fire(picker(host), new Event('change', { bubbles: true }));
+    await settle();
+    expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe('');
+  });
+
+  it('leaves the chain a plain choice after a first message that got no reply', async () => {
+    api(passkey('solana'));
+    agent.noReply = true;
+    const host = await show();
+    await settle();
+    await send(host, 'Consider gold');
+    expect(replies).toEqual(['solana']);
+    // no draft exists: still the two options, with no question to answer first
+    expect(radios(host).map((r) => [r.value, r.checked, r.disabled])).toEqual([
+      ['solana', true, false],
+      ['robinhood', false, false],
+    ]);
+    expect(host.querySelector('[data-act="chain-change"]')).toBeNull();
+    // their words went back in the box, and go with the change
+    expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe('Consider gold');
+    await click(find(host, 'label[data-chain="robinhood"] input'));
+    await settle();
+    expect(puts).toEqual(['robinhood']);
+    expect(host.querySelector('[data-ui="goal-chain-confirm"]')).toBeNull();
+    expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe('Consider gold');
+    agent.noReply = false;
+    await click(find(host, '[data-ui="composer-send"]'));
+    await settle();
+    expect(replies).toEqual(['solana', 'robinhood']);
+    expect(find(find(host, '[data-ui="goal-chain"]'), '[data-ui="chain-badge"]').textContent).toBe(
+      'Robinhood Chain',
+    );
+  });
+
+  it('fixes the chain through the deposit step: "Change" is inert until the step is closed', async () => {
+    api(passkey('solana'));
+    const host = await show();
+    await settle();
+    await send(host, 'Consider gold');
+    const change = () => find(host, '[data-act="chain-change"]');
+    expect(change().getAttribute('aria-disabled')).not.toBe('true');
+    // the question is open when the deposit step opens: it closes, and cannot be opened again
+    await click(change());
+    expect(host.querySelector('[data-ui="goal-chain-confirm"]')).not.toBeNull();
+    await click(find(host, '[data-ui="goal-strategy"] [data-action="deposit"]'));
+    await settle();
+    expect(host.querySelector('[data-ui="deposit-step"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="goal-chain-confirm"]')).toBeNull();
+    expect(change().getAttribute('aria-disabled')).toBe('true');
+    const why = change().getAttribute('aria-describedby') ?? '';
+    expect(host.querySelector(`#${CSS.escape(why)}`)?.textContent).toBe(c.fixed);
+    await click(change());
+    expect(host.querySelector('[data-ui="goal-chain-confirm"]')).toBeNull();
+    expect(puts).toEqual([]);
+    expect(host.querySelector('[data-ui="deposit-step"]')).not.toBeNull();
+  });
+
+  it('holds the choice while the first reply is on its way', async () => {
+    let release: () => void = () => {};
+    api(passkey('solana'));
+    agent.hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const host = await show();
+    await settle();
+    await type(find<HTMLTextAreaElement>(host, 'textarea'), 'Consider gold');
+    await click(find(host, '[data-ui="composer-send"]'));
+    expect(radios(host).every((r) => r.disabled)).toBe(true);
+    await click(find(host, 'label[data-chain="robinhood"] input'));
+    expect(puts).toEqual([]);
+    release();
+    await settle();
+    expect(radios(host)).toEqual([]);
+  });
+
+  it('says on the page that opening a saved conversation of the other chain moved where new plans start', async () => {
+    let refuse = false;
+    api(passkey('solana'), () => (refuse ? json({ error: 'down' }, 503) : null));
+    const host = await show();
+    await settle();
+    await send(host, 'Consider gold');
+    await click(find(host, '[data-act="chain-change"]'));
+    await click(find(host, '[data-act="chain-start"]'));
+    await settle();
+    const open = async () => {
+      const saved = [...picker(host).options].find((o) => o.textContent?.startsWith('Consider'));
+      picker(host).value = saved?.value ?? '';
+      await fire(picker(host), new Event('change', { bubbles: true }));
+      await settle();
+    };
+    // a switch that was not stored is said, and the page stays where it was
+    refuse = true;
+    await open();
+    expect(find(host, '[data-ui="goal-chain-problem"]').textContent).toBe(
+      en.chain.failure.unreachable,
+    );
+    expect(checked(host)).toBe('robinhood');
+    refuse = false;
+    await open();
+    expect(host.querySelector('[data-ui="goal-chain-problem"]')).toBeNull();
+    const moved = find(host, '[data-ui="goal-chain-moved"]');
+    expect(moved.textContent).toBe(c.opened('Solana'));
+    // for the eye too, not only a screen reader
+    expect(moved.className).not.toContain('sr-only');
+    expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain('Consider gold');
   });
 
   it('says why a switch was not stored, and stays on the chain it was on', async () => {

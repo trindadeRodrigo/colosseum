@@ -133,6 +133,12 @@ export function FamilyScreen({ slug }: { slug: string }) {
   const [changed, setChanged] = useState(false);
   // The recipe on the page, for a portfolio the person can use on more than one chain.
   const [picked, setPicked] = useState<ChainId | null>(null);
+  // A deposit was pressed and has not ended: the recipe on the page is the one it is signing on, so
+  // nothing here may change the chain under it (the section would be drawn again and the run cut).
+  const [running, setRunning] = useState(false);
+  const show = (chain: ChainId) => {
+    if (!running) setPicked(chain);
+  };
   const titleId = useId();
   const settled = person.kind !== 'loading';
 
@@ -230,9 +236,10 @@ export function FamilyScreen({ slug }: { slug: string }) {
           data-ui="family-chain"
           className="max-w-md"
           legend={f.which}
-          hint={f.whichHint}
+          hint={running ? f.whichLocked : f.whichHint}
           value={chosen.chain}
-          onChange={setPicked}
+          disabled={running}
+          onChange={show}
           options={usable.map((r) => ({
             chain: r.chain,
             name: nameOf(r.chain),
@@ -253,6 +260,7 @@ export function FamilyScreen({ slug }: { slug: string }) {
           family={family}
           recipe={recipe}
           changed={changed}
+          onRunning={setRunning}
           onVersionChanged={() => {
             setChanged(true);
             setRound((n) => n + 1);
@@ -265,7 +273,8 @@ export function FamilyScreen({ slug }: { slug: string }) {
           family={family}
           chain={chosen.chain}
           among={usable.map((r) => r.chain)}
-          onShow={setPicked}
+          locked={running}
+          onShow={show}
         />
       )}
       <VersionsPanel slug={family.slug} chain={chosen?.chain ?? null} />
@@ -281,11 +290,14 @@ function RecipeSection({
   family,
   recipe,
   changed,
+  onRunning,
   onVersionChanged,
   onReread,
 }: {
   family: SharedFamily;
   recipe: SharedRecipe;
+  /** A deposit was pressed (true) or ended, stopped or was put off (false): the page locks its chain. */
+  onRunning: (running: boolean) => void;
   /** A buy was refused for a newer version, and the page read the portfolio again. */
   changed: boolean;
   onVersionChanged: () => void;
@@ -297,7 +309,11 @@ function RecipeSection({
   const person = useSharedPerson(recipe.chain);
   // The amount to invest, typed on this page; locked once the person has pressed.
   const [amountText, setAmountText] = useState('');
-  const [pressed, setPressed] = useState(false);
+  const [pressed, setPressedHere] = useState(false);
+  const setPressed = (now: boolean) => {
+    setPressedHere(now);
+    onRunning(now);
+  };
   const f = t.shared.family;
   const chainName = t.chain.names[recipe.chain];
   const own = person.kind === 'ready' && person.chain === recipe.chain;
@@ -573,6 +589,7 @@ function VaultsElsewhere({
   family,
   chain,
   among,
+  locked,
   onShow,
 }: {
   family: SharedFamily;
@@ -580,6 +597,8 @@ function VaultsElsewhere({
   chain: ChainId;
   /** The chains whose recipe the page can show for this person. */
   among: readonly ChainId[];
+  /** A deposit is running on the recipe on the page: the way to another chain waits for it. */
+  locked: boolean;
   onShow: (chain: ChainId) => void;
 }) {
   const t = useT();
@@ -612,7 +631,7 @@ function VaultsElsewhere({
       {elsewhere.map((other) => (
         <p key={other} className="max-w-(--tf-measure-body) text-body">
           {f.elsewhere(t.chain.names[other])}{' '}
-          <Button variant="link" onClick={() => onShow(other)}>
+          <Button variant="link" disabled={locked} onClick={() => onShow(other)}>
             {f.showOn(t.chain.names[other])}
           </Button>
         </p>

@@ -13,6 +13,7 @@ import { SkeletonCards } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
+import { ChainBadgeMarked } from '../account/ChainName';
 import { formatBps, tokenName } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { AssetMark } from '../order/PlanView';
@@ -154,14 +155,31 @@ function FamilyCard({ family }: { family: SharedFamily }) {
   const c = t.shared.shelf.card;
   const p = t.shared.product;
   const locale = LOCALE[lang];
-  const [recipe] = family.recipes;
+  // A portfolio on one chain shows that recipe's figures. One on more shows what is the family's own
+  // (its name, its creator's words) and each chain's recipe beside that chain's name: one chain's
+  // weights, creator or version are never drawn under another chain's label.
+  const [first, ...more] = family.recipes;
+  const recipe = more.length === 0 ? first : undefined;
   const href = `/indexes/${encodeURIComponent(family.slug)}`;
   const notLive = family.recipes.some((r) => r.provenance !== 'live');
+  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.sampleFigure };
   const paying = recipe
     ? holdingsOf(recipe, recipe.active.components, t).flatMap((h) =>
         h.yield ? [{ asset: h.asset, yield: h.yield }] : [],
       )
     : [];
+  /** Who published a recipe and which version is in effect, on its chain. */
+  const published = (r: SharedRecipe) => (
+    <p className="flex flex-wrap items-baseline gap-x-2 text-body-sm text-muted-foreground">
+      <span className="font-mono text-source" title={r.creator}>
+        {c.by(shortAddress(r.creator))}
+      </span>
+      {isPlatformCreator(networkFor(r.chain, r.provenance === 'mock'), r.chain, r.creator) && (
+        <span className="font-medium text-foreground">{c.platform}</span>
+      )}
+      <span>{c.version(r.active.version)}</span>
+    </p>
+  );
   return (
     <Card
       as="article"
@@ -169,9 +187,12 @@ function FamilyCard({ family }: { family: SharedFamily }) {
       className="h-full"
       mock={notLive}
       mockLabels={{
-        announce: family.recipes.some((r) => r.provenance === 'sandbox')
-          ? t.shell.testNetworkLine
-          : t.shell.mockAnnounce,
+        // Recipes run differently say so each beside their chain; the card's line is the plain one.
+        announce:
+          recipe?.provenance === 'sandbox' ||
+          (!recipe && family.recipes.every((r) => r.provenance === 'sandbox'))
+            ? t.shell.testNetworkLine
+            : t.shell.mockAnnounce,
       }}
     >
       <CardHeader
@@ -184,8 +205,8 @@ function FamilyCard({ family }: { family: SharedFamily }) {
             {family.name}
           </Link>
         }
-        // The list mixes chains, so each card names its own.
-        meta={<ChainBadges chains={family.chains} />}
+        // The list mixes chains, so each card names its own; one on more names each beside its recipe.
+        meta={recipe ? <ChainBadges chains={family.chains} /> : undefined}
       />
       <CardBody className="flex flex-col gap-3">
         {/* The figures first: what it holds, as one bar with each share said under it, then its yield. */}
@@ -236,27 +257,40 @@ function FamilyCard({ family }: { family: SharedFamily }) {
             )}
           </p>
         )}
+        {!recipe && (
+          // On more than one chain: each chain's own weights, publisher and version, under its name
+          // and how it is run. Its yields and exit are on the portfolio's page, per chain.
+          <>
+            <p className="text-body-sm text-muted-foreground">{t.shared.family.perChain}</p>
+            <ul data-ui="shelf-recipes" className="flex flex-col gap-3">
+              {family.recipes.map((r, i) => (
+                <li
+                  key={r.chain}
+                  data-ui="shelf-recipe"
+                  data-chain={r.chain}
+                  className="flex min-w-0 flex-col gap-1 border-l border-border pl-3"
+                >
+                  <ChainBadgeMarked
+                    chain={r.chain}
+                    provenance={r.provenance}
+                    labels={marks}
+                    announce={i === 0}
+                  />
+                  <Weights recipe={r} locale={locale} />
+                  {published(r)}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
         {/* What it is for, in the creator's own words: one line, as text. */}
         {family.copy && (
           <p className="line-clamp-2 max-w-(--tf-measure-body) text-body-sm [overflow-wrap:anywhere]">
             {family.copy}
           </p>
         )}
-        <p className="flex flex-wrap items-baseline gap-x-2 text-body-sm text-muted-foreground">
-          {recipe && (
-            <span className="font-mono text-source" title={recipe.creator}>
-              {c.by(shortAddress(recipe.creator))}
-            </span>
-          )}
-          {recipe &&
-            isPlatformCreator(
-              networkFor(recipe.chain, recipe.provenance === 'mock'),
-              recipe.chain,
-              recipe.creator,
-            ) && <span className="font-medium text-foreground">{c.platform}</span>}
-          {recipe && <span>{c.version(recipe.active.version)}</span>}
-        </p>
-        {recipe && recipe.textMatches === null && (
+        {recipe && published(recipe)}
+        {family.recipes.some((r) => r.textMatches === null) && (
           <p className="flex items-start gap-1.5 text-body-sm">
             <StatusMark status="watch" className="mt-1.5" />
             <span>{t.shared.text.unverified}</span>

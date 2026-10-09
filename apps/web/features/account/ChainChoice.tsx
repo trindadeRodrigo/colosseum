@@ -37,6 +37,7 @@ export function ChainChoice({
   value,
   onChange,
   busy = null,
+  disabled = false,
   labels,
   className,
   'data-ui': dataUi = 'chain-choice',
@@ -49,6 +50,8 @@ export function ChainChoice({
   onChange: (chain: ChainId) => void;
   /** The chain a choice is being stored for: its name gives way to `labels.saving`. */
   busy?: ChainId | null;
+  /** Nothing can be chosen now (a deposit is running, a reply is on its way): said in `hint`. */
+  disabled?: boolean;
   labels: ChainChoiceLabels;
   className?: string;
   'data-ui'?: string;
@@ -66,7 +69,7 @@ export function ChainChoice({
           <label
             key={option.chain}
             data-chain={option.chain}
-            className="flex cursor-pointer flex-col gap-1 rounded-md border border-input px-3 py-2 hover:bg-muted has-checked:border-transparent has-checked:bg-accent has-checked:hover:bg-accent has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring"
+            className="flex cursor-pointer flex-col gap-1 rounded-md border border-input px-3 py-2 hover:bg-muted has-checked:border-transparent has-checked:bg-accent has-checked:hover:bg-accent has-disabled:cursor-not-allowed has-disabled:hover:bg-transparent has-disabled:has-checked:hover:bg-accent has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring"
           >
             <span className="flex items-center gap-2 text-body-sm font-medium">
               <input
@@ -75,7 +78,10 @@ export function ChainChoice({
                 value={option.chain}
                 className="size-4 shrink-0 accent-primary"
                 checked={option.chain === value}
-                onChange={() => onChange(option.chain)}
+                disabled={disabled}
+                onChange={() => {
+                  if (!disabled) onChange(option.chain);
+                }}
               />
               <span className="min-w-0 [overflow-wrap:anywhere]">
                 {busy === option.chain ? labels.saving : option.name}

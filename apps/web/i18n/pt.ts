@@ -211,6 +211,9 @@ export const pt: Dictionary = {
         `Cada rede tem seus próprios ativos, então este rascunho não pode ir para a ${chain}. Ele continua nas suas conversas salvas.`,
       start: (chain: string) => `Começar uma conversa nova na ${chain}`,
       keep: 'Manter esta',
+      fixed: 'A rede fica como está enquanto uma resposta ou um depósito está em andamento.',
+      opened: (chain: string) =>
+        `Esta conversa é da ${chain}, então planos novos agora começam na ${chain}.`,
       done: (chain: string) => `Planos novos agora começam na ${chain}.`,
     },
   },
@@ -489,7 +492,7 @@ export const pt: Dictionary = {
     down: {
       word: 'Indisponível',
       body: (chains: string) =>
-        `${chains} não respondeu, então não consigo ler seus cofres agora. Não conseguir lê-los não move nada. Tente de novo daqui a pouco.`,
+        `Sem resposta de ${chains}, então não consigo ler seus cofres agora. Não conseguir lê-los não move nada. Tente de novo daqui a pouco.`,
     },
     unreachable: 'Não consegui falar com nosso servidor para ler seu cofre. Tente de novo.',
     unreadable:
@@ -1099,6 +1102,8 @@ export const pt: Dictionary = {
         `Este portfólio está na ${chains}, e a carteira com que você entrou não assina lá. Não dá para investir nele nem segui-lo com este login.`,
       which: 'Rede em que investir',
       whichHint: 'O cofre que você abre segue este portfólio na rede que você escolher.',
+      whichLocked: 'A rede fica fixa enquanto este depósito roda.',
+      perChain: 'O que ele guarda muda conforme a rede.',
       elsewhere: (chain: string) => `Você tem um cofre na ${chain} que segue este portfólio.`,
       showOn: (chain: string) => `Mostrar na ${chain}`,
       recipe: (chain: string) => `Na ${chain}`,

@@ -1,6 +1,6 @@
 'use client';
 import { type ChainId, chainFamily } from '@colosseum/schemas';
-import { type RefObject, useEffect, useRef, useState } from 'react';
+import { type RefObject, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { useT } from '../../i18n/I18nProvider';
@@ -33,7 +33,7 @@ export function GoalChain({
 }: {
   /** The conversation has words: the chain is no longer a free choice. */
   started: boolean;
-  /** A reply is being worked on: nothing changes under it. */
+  /** A reply is being worked on, or the deposit step is open and may be signing: the chain is fixed. */
   busy: boolean;
   /** Set when this control moved the chain: the conversation is drawn again, and focus comes back here. */
   refocus: RefObject<boolean>;
@@ -49,6 +49,7 @@ export function GoalChain({
   const sending = useRef(false);
   const [problem, setProblem] = useState('');
   const [asking, setAsking] = useState(false);
+  const fixedId = useId();
 
   // The control moved the chain and was drawn again with the conversation: focus stays on it.
   useEffect(() => {
@@ -65,6 +66,11 @@ export function GoalChain({
       ?.querySelector<HTMLElement>(`[data-act="${asking ? 'chain-start' : 'chain-change'}"]`)
       ?.focus();
   }, [asking]);
+
+  // The chain is fixed now: a question that was open is closed with it.
+  useEffect(() => {
+    if (busy) setAsking(false);
+  }, [busy]);
 
   if (!chain) return null;
   const nameOf = (id: ChainId) => port.network(id)?.name ?? t.chain.names[id];
@@ -111,13 +117,19 @@ export function GoalChain({
               data-act="chain-change"
               aria-label={c.changeLabel}
               disabled={busy}
+              aria-describedby={busy ? fixedId : undefined}
               onClick={() => setAsking(true)}
             >
               {c.change}
             </Button>
           )}
+          {other && busy && (
+            <span id={fixedId} className="sr-only">
+              {c.fixed}
+            </span>
+          )}
         </p>
-        {other && asking && (
+        {other && asking && !busy && (
           // biome-ignore lint/a11y/useSemanticElements: a question with its two answers, not form fields
           <div
             role="group"
@@ -174,6 +186,7 @@ export function GoalChain({
         hint={c.hint}
         value={chain}
         busy={saving}
+        disabled={busy}
         onChange={(next) => void pick(next)}
         options={usable.map((id) => ({
           chain: id,

@@ -259,6 +259,11 @@ export const en = {
         `Each chain has its own assets, so this draft can’t move to ${chain}. It stays in your saved conversations.`,
       start: (chain: string) => `Start a new conversation on ${chain}`,
       keep: 'Keep this one',
+      /** For a screen reader, on "Change" while a reply is worked on or a deposit is open. */
+      fixed: 'The chain stays as it is while a reply or a deposit is in progress.',
+      /** A saved conversation of another chain was opened: where new plans start moved with it. */
+      opened: (chain: string) =>
+        `This conversation is on ${chain}, so new plans start on ${chain} now.`,
       /** Said to a screen reader once the chain is stored. */
       done: (chain: string) => `New plans start on ${chain} now.`,
     },
@@ -1228,6 +1233,10 @@ export const en = {
       /** A portfolio with a recipe on more than one chain the person can use: which to invest on. */
       which: 'Chain to invest on',
       whichHint: 'The vault you open follows this portfolio on the chain you choose.',
+      /** In place of the hint while a deposit runs: the choice is locked until it ends. */
+      whichLocked: 'The chain is fixed while this deposit runs.',
+      /** On a card of a portfolio with a recipe on more than one chain: each chain's own, beside its name. */
+      perChain: 'Its holdings differ by chain.',
       /** A vault of the person's on another chain follows it: it is updated on that chain. */
       elsewhere: (chain: string) => `You have a vault on ${chain} that follows this portfolio.`,
       showOn: (chain: string) => `Show it on ${chain}`,
