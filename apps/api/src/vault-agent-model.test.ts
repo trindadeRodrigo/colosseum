@@ -211,6 +211,13 @@ describe('vault proposal provider uses the existing model settings and a shared 
     expect(sdk.create).toHaveBeenLastCalledWith(expect.anything(), { timeout: 1000 });
   });
 
+  it('leaves the goal and risk to the server: none in the reply schema, and the model asks for what is missing', () => {
+    expect(JSON.stringify(VAULT_AGENT_REPLY_SCHEMA)).not.toMatch(/purpose|goal|risk/);
+    expect(VAULT_AGENT_SYSTEM).toContain('Only the server reads these');
+    expect(VAULT_AGENT_SYSTEM).toContain('Never state, assume or infer a goal or a risk');
+    expect(VAULT_AGENT_SYSTEM).toContain('use question to ask for what is missing');
+  });
+
   it('asks the model for picks only: no weight in its schema, and the prompt says the server sets them', () => {
     expect(JSON.stringify(VAULT_AGENT_REPLY_SCHEMA)).not.toContain('weightBps');
     expect(VAULT_AGENT_SYSTEM).toContain('the server sets the weights');

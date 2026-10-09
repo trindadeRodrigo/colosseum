@@ -9,6 +9,7 @@ import type {
   Price,
   Provenance,
   Shelf,
+  VaultAgentStatedPurpose,
   VaultState,
 } from '@colosseum/schemas';
 import {
@@ -24,6 +25,7 @@ import {
 import type { VaultAgentModel, VaultAgentRepair } from '../vault-agent-model';
 import type { ChainEntry } from './chains';
 import type { PlanInputs } from './personalize';
+import { statedPurpose } from './stated-purpose';
 
 type Figures = Awaited<ReturnType<PlanInputs>>;
 
@@ -186,6 +188,11 @@ export type VaultAgentPrompt = {
   /** Measured exit capacity as a share of the vault; above it is allowed and warned, not refused. */
   exitCapacityBps: Record<string, number>;
   eligibilityGoal: 'grow' | 'income' | 'protect' | null;
+  /**
+   * For a new goal, the goal and risk the server read in the person's own messages, null where it read
+   * none, so the model asks for what is missing. Null for a vault.
+   */
+  statedPurpose: VaultAgentStatedPurpose | null;
   /** The listed assets a plan for eligibilityGoal cannot hold, by the registry's rule. */
   outsideGoal: string[];
   /** The stocks among outsideGoal that the person asked for in their own words. */
@@ -625,6 +632,20 @@ function eligibilityGoal(context: ConversationAgentContext): 'grow' | 'income' |
     if (goal === 'grow' || goal === 'income' || goal === 'protect') return goal;
   }
   return null;
+}
+
+/**
+ * The goal and risk the person's messages state (stated-purpose.ts), read with the catalog's names so a
+ * later message about the mix ("add more Tesla") is known for what it is.
+ */
+export function statedPurposeIn(
+  messages: VaultAgentRequest['messages'],
+  context: Pick<ConversationAgentContext, 'assets' | 'stockAttributes'>,
+): VaultAgentStatedPurpose {
+  return statedPurpose(messages, [
+    ...context.assets.flatMap((asset) => [asset.symbol, asset.underlying]),
+    ...(context.stockAttributes?.stocks ?? []).flatMap((row) => [row.symbol, row.company]),
+  ]);
 }
 
 function hasNonFiniteNumber(value: unknown): boolean {
@@ -1650,6 +1671,8 @@ export async function replyToVaultConversation(
     exitCostTolerance: PERSONAL_PARAMS.tau,
     exitCapacityBps: caps,
     eligibilityGoal: goal,
+    statedPurpose:
+      context.kind === 'new_goal' ? statedPurposeIn(parsed.data.messages, context) : null,
     outsideGoal: [...outside],
     requestedOutsideGoal: [...outside].filter((id) => requested.has(id)),
     allocationConstraints: person.standing.map((share) => ({

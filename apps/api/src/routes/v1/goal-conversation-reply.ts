@@ -4,6 +4,7 @@ import {
   OrderError,
   VaultAgentReplyShape,
   VaultAgentRequest,
+  VaultAgentStatedPurpose,
   warningsBelong,
 } from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
@@ -18,13 +19,24 @@ import {
   buildGoalAgentContext,
   readAgentAnalytics,
   replyToVaultConversation,
+  statedPurposeIn,
 } from '../../orders/vault-agent';
 import type { VaultAgentModel } from '../../vault-agent-model';
 import { signedIn } from './orders';
 
-export const GoalConversationReply = VaultAgentReplyShape.extend({ chain: ChainId }).superRefine(
-  warningsBelong,
-);
+/**
+ * `goal` and `risk` are what the person said the money is for and the risk they accept, each null
+ * until they have said it: a mix is made into a plan with these (`goal/accept`), never with a default.
+ */
+export const GoalConversationReply = VaultAgentReplyShape.extend({
+  chain: ChainId,
+  goal: VaultAgentStatedPurpose.shape.goal.describe(
+    'What the person said the money is for, read by the server from plain statements in their own messages; the latest one stands. Null until they have plainly said it, and after they take it back or question it. Never the model’s reading and never defaulted.',
+  ),
+  risk: VaultAgentStatedPurpose.shape.risk.describe(
+    'The risk the person said they accept, read the same way. Null until they have plainly said it; never defaulted.',
+  ),
+}).superRefine(warningsBelong);
 export const GoalConversationReplyError = z.strictObject({
   error: z.string(),
   code: z.literal('GOAL_AGENT_UNAVAILABLE'),
@@ -159,7 +171,8 @@ export function registerGoalConversationReplyRoute(
             ? 'the new-goal conversation reply passed on its repair attempt'
             : 'the new-goal conversation reply asks about a stated limit its repair attempt still missed',
         );
-      return { ...result.reply, chain };
+      // Read from the person's messages alone: the same whichever model attempt is served.
+      return { ...result.reply, chain, ...statedPurposeIn(req.body.messages, context) };
     },
   );
 }
