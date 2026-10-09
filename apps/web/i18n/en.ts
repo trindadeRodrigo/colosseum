@@ -26,16 +26,20 @@ export const en = {
     signedOut: 'You’re signed out.',
     signOutFailed: 'I couldn’t sign you out: the sign-in service didn’t answer. Try again.',
     account: 'Your wallet',
+    /** The bar's account control before it is known who is here: said once, politely. */
+    accountLoading: 'Loading your account…',
     /**
-     * Someone signed in who is still not ready after a quarter of a minute: said in the bar and where
-     * the chain would be, with "Try again" and "Sign out". Which side is slow is said when it is known.
+     * Someone signed in who is still not ready after half a minute. The bar's control keeps its
+     * loading look; this is the help under it, with "Try again" and "Sign out". `title` heads the
+     * help and is never the control's label. Which side is slow is said as far as it is known: the
+     * wallet waits for our server before it loads, so a server that is waking is named either way.
      */
     slow: {
-      title: 'Sign-in is slow',
+      title: 'Still loading your account',
       wallets:
-        'You’re signed in, but the sign-in service hasn’t handed over your wallets yet. Nothing is lost.',
+        'Your wallets haven’t come through yet. Our server may be waking up, which can take up to a minute. Nothing is lost.',
       server:
-        'You’re signed in, but our server hasn’t said yet which chain your plan lives on. Nothing is lost.',
+        'Our server hasn’t said yet which chain your plan lives on. It may be waking up, which can take up to a minute. Nothing is lost.',
       /** Nobody is known to be signed in: the sign-in service has not loaded at all. */
       service:
         'The sign-in service hasn’t answered yet, so I can’t tell whether you’re signed in. You can still look around.',
@@ -76,7 +80,8 @@ export const en = {
 
   signIn: {
     title: 'Sign in with a wallet that is yours.',
-    lead: 'Your plan sits in a vault only you can withdraw from, so it needs a wallet you own. Create one with a passkey, or connect one you already use.',
+    /** One sentence, then the choices (Thom, Oct 9). */
+    lead: 'Use a passkey, or a wallet you already have.',
     loading: 'Loading sign-in…',
     /** The landing's sign-in panel did not load. */
     notLoaded: 'Sign-in didn’t load here.',
@@ -85,31 +90,44 @@ export const en = {
     close: 'Close sign-in',
     passkey: {
       title: 'Passkey',
-      body: 'No seed phrase to write down. I use the passkey this device keeps for this site. A wallet is made for you that only that passkey opens.',
-      /** One button: signs in with a passkey this device has, or makes one. */
-      continue: 'Continue with a passkey',
-      /** After the prompt to use one was closed: makes one, and with it a new account. */
-      createNew: 'Create a new passkey',
-      /** Under that button: what a new passkey is, before one is made by mistake. */
-      createNewNote:
-        'New here? A new passkey opens a new account with a new, empty wallet. It doesn’t open a wallet you already have.',
+      /**
+       * The pair at the top of the passkey side: someone new, and someone who has one. A new passkey
+       * is a new, empty wallet, said beside the button that makes one, before it is pressed.
+       */
+      create: 'Create a passkey',
+      createNote:
+        'New here? This opens a new account with a new, empty wallet. It doesn’t open an account you already have.',
+      continue: 'Use my passkey',
+      continueNote: 'Signed in here before? Use the passkey you made then.',
+      /** Where passkeys cannot be used at all: said once, under the pair, whose buttons are off. */
+      unavailable:
+        'Passkeys can’t be used in this browser or in this frame, so these two are off. Open the page in a current browser, or connect a wallet.',
+      /** The disclosure under the pair. */
+      what: 'What is a passkey?',
+      body: 'A key this device keeps for this site, opened the way you open the device: a fingerprint, a face or a code. There is no seed phrase to write down. A wallet is made for you that only that passkey opens.',
       waiting: 'Waiting for your passkey…',
       making: 'Making your wallet…',
     },
     wallet: {
       title: 'Wallet',
-      body: 'Connect a wallet you already use. Your plan lives on its chain: Solana for a Solana wallet, Robinhood Chain for an Ethereum wallet.',
-      /** Opens the list of wallets found in this browser. */
-      connect: 'Connect a wallet',
       /** The name of the list of wallets found in this browser. */
       found: 'Wallets found in this browser',
       waiting: 'Waiting for your wallet…',
-      none: 'No wallet was found in this browser. Install one, or open this page inside your wallet’s own browser. Or continue with a passkey: it needs nothing installed.',
+      /** Under a wallet's name: where a plan made with it lives. Nothing is switched by the person. */
+      lives: (chain: string) => `Your plan lives on ${chain}`,
+      livesEither: (a: string, b: string) => `Your plan lives on ${a} or ${b}`,
+      none: 'No wallet was found in this browser.',
+      /** Under the list, a quiet disclosure: a wallet that is not in it. It connects nothing. */
+      other: 'Wallet not listed?',
+      otherBody:
+        'Only wallets in this browser are listed. Install yours, or open this page inside your wallet’s own browser. Or use a passkey: it needs nothing installed.',
       /** A wallet that signs on both families: the chain is asked before it signs. */
       both: (wallet: string) =>
         `${wallet} works on Solana and on Robinhood Chain. Choose the chain your plan lives on: it can’t be changed later.`,
       /** After `both`: someone who signed in before chooses again what they chose then. */
       before: 'Signed in before? Choose the chain you chose then.',
+      /** From the chain question back to the list. */
+      back: 'Back to the wallets',
       /** A wallet every chain of which is switched off on our server. */
       off: (wallet: string) =>
         `${wallet} works only on chains switched off on our server for now, so it can’t be used to sign in. Use another wallet, or a passkey.`,
@@ -133,11 +151,17 @@ export const en = {
     failure: {
       passkeyOff:
         'Passkeys aren’t switched on for this app yet, so none can be created or used here. Connect a wallet instead, or come back later.',
+      /** A closed prompt is no failure: these two are said calmly, not in red (Thom, Oct 9). */
       passkeyNotCreated:
-        'The passkey wasn’t created: the prompt was closed or ran out of time. Nothing was saved. Try again when you’re ready.',
-      /** The prompt to use a passkey was closed: nothing is made unless the person asks (SIGN-IN-FLOW). */
+        'No passkey was created: the prompt was closed or ran out of time. Nothing was saved. Try again when you’re ready.',
+      /**
+       * The prompt to use a passkey was closed, or found none on this device. Said calmly, and only
+       * about finding the passkey the person has: this is read by exactly the person whose passkey is
+       * elsewhere, and a word about making one would send them to a second account (review of #87,
+       * and of #209). The way to a new one is the button above, with its own warning.
+       */
       passkeyNotUsed:
-        'No passkey was used. If you made one on another device, use that device or choose “use a phone” in the prompt.',
+        'No passkey was used. If you made yours on another device, use that device or choose “use a phone” in the prompt. It may also be kept by another browser or a password manager: open this page there.',
       passkeyUnknown:
         'I don’t know that passkey: no account here was opened with it. Try the one you signed up with.',
       /** A passkey sign-in that failed with nothing more said: no passkey was taken. */
@@ -287,6 +311,8 @@ export const en = {
       local: 'This browser · private draft conversation',
       signIn: 'Sign in to explore a private strategy.',
       readingAccount: 'Your account and chain must be ready before I can get a reply.',
+      /** While it is not known yet whether anyone is signed in: the page waits, as the bar does. */
+      loadingAccount: 'Loading your account…',
       empty:
         'Your proposed allocation and its sources will appear here after a reply. No vault has been created.',
       previewOnly: 'Preview only. This draft cannot be invested here yet.',
@@ -1972,9 +1998,6 @@ export const en = {
       main: 'Main',
       menu: 'Menu',
       skip: 'Skip to content',
-      cta: 'Sign in',
-      /** In place of "Sign in" for a person signed in on this browser. */
-      openApp: 'Open the app',
       /** The landing's static bar: the product, Bearing, and the API's documents. */
       plans: 'Plans',
       bearing: 'Bearing',

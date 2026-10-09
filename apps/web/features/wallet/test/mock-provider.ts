@@ -11,6 +11,15 @@ import { createPortStore, fakePort } from './fake-port';
 
 export const portStore = createPortStore();
 
+// happy-dom has no WebAuthn. The screens' tests are of a browser that has it; the one that has
+// none takes it away (SignIn.events.test.ts).
+if (typeof window !== 'undefined' && !('PublicKeyCredential' in window))
+  Object.defineProperty(window, 'PublicKeyCredential', {
+    value: class PublicKeyCredential {},
+    configurable: true,
+    writable: true,
+  });
+
 const screens = new WeakMap<WebWalletPort, ScreenPort>();
 const screenOf = () => {
   const port = portStore.get();

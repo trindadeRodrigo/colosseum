@@ -9,6 +9,8 @@ import { fromReply, type PlatformStats, platformStats, SAMPLE_STATS } from './st
 
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 vi.mock('next/link', () => import('../wallet/test/mock-next'));
+// the wallet is not loaded in these tests: a person the hint names stays on the still box
+vi.mock('./landing-account-live', () => new Promise(() => {}));
 
 // His landing page on the new identity (IDENTITY-2): the hero is the whole page. A static bar, the
 // line and "Start a plan" in front, the slow honey fog behind, and the platform's numbers, each pinned.
@@ -100,19 +102,22 @@ describe('the bar', () => {
     expect(bar.className).not.toMatch(/\b(fixed|sticky)\b/);
   });
 
-  it('asks a visitor to sign in, and leads a person signed in back into the app', async () => {
+  it('ends with the account control: "Sign in" for a visitor, the chip’s still box for a person signed in here', async () => {
     const visitor = await landing();
-    expect(
-      [...find(visitor, '[data-ui="landing-bar"]').querySelectorAll('a')]
-        .at(-1)
-        ?.getAttribute('href'),
-    ).toBe('/sign-in?next=/goal');
+    const bar = find(visitor, '[data-ui="landing-bar"]');
+    const way = [...bar.querySelectorAll('a')].at(-1);
+    expect([way?.textContent, way?.getAttribute('href')]).toEqual([en.shell.signIn, '/sign-in']);
+    expect(way?.closest('[data-ui="account-control"]')?.getAttribute('data-state')).toBe(
+      'signed-out',
+    );
     await unmountAll();
+    // signed in on this browser: no "Open the app", and never "Sign in" while their account loads
     const back = await landing({ signedIn: true });
-    const action = [...find(back, '[data-ui="landing-bar"]').querySelectorAll('a')].at(-1);
-    expect(action?.textContent).toBe(en.landing.nav.openApp);
-    expect(action?.getAttribute('href')).toBe('/goal');
+    const control = find(back, '[data-ui="landing-bar"] [data-ui="account-control"]');
+    expect(control.getAttribute('data-state')).toBe('loading');
+    expect(control.querySelector('[data-ui="account-placeholder"]')).not.toBeNull();
     expect(back.querySelector('a[href^="/sign-in"]')).toBeNull();
+    expect(back.textContent).not.toMatch(/Open the app|Go to app/);
   });
 });
 

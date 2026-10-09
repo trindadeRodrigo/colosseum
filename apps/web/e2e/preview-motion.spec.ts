@@ -108,7 +108,7 @@ async function answerWith(page: Page, mix: Mix, gate: Promise<void> = Promise.re
 async function signIn(page: Page) {
   await page.request.post(`${STUB}/__stub/reset`);
   await page.goto('/goal');
-  await page.locator('header a[href="/sign-in"]').click();
+  await page.locator('header a[href^="/sign-in"]').click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await expect(dialog).toHaveCount(0);

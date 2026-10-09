@@ -5,7 +5,6 @@ import { cn } from '../../components/ui/cn';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { dictionary, type Lang } from '../../i18n';
 import { APP_HOME, LandingBar } from './LandingBar';
-import { LandingSignIn } from './LandingSignIn';
 import type { PlatformStats } from './stats';
 
 // His landing page on the new identity (IDENTITY-2; the first demonstration of it, in
@@ -24,7 +23,7 @@ export function Landing({
 }: {
   lang: Lang;
   stats: PlatformStats;
-  /** Signed in on this browser: the bar leads back into the app, and nothing asks to sign in. */
+  /** Signed in on this browser (the hint): the bar's account control loads their account. */
   signedIn?: boolean;
 }) {
   const { landing: t, shell } = dictionary(lang);
@@ -33,8 +32,6 @@ export function Landing({
   return (
     <div className="flex min-h-dvh flex-col">
       <LandingBar lang={lang} signedIn={signedIn} />
-      {/* "Sign in" opens the sign-in dialog over the landing, loaded on the first press. */}
-      <LandingSignIn />
       <main id="content" tabIndex={-1} className="flex flex-1 flex-col outline-none">
         <section
           data-ui="landing-hero"

@@ -421,6 +421,9 @@ describe('rule 3: no screen can reach a key', () => {
     'next/link',
     'next/navigation',
     'react',
+    // createPortal alone: the landing draws the sign-in panel inside the dialog's frame, which is
+    // on the page before the panel's code is (features/landing/landing-account-live.tsx)
+    'react-dom',
   ];
 
   /**
