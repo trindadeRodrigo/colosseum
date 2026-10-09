@@ -58,7 +58,7 @@ export async function orderMetadata() {
 export async function shelfMetadata() {
   const { lang } = await readPreferences();
   const t = dictionary(lang);
-  return { title: t.shared.meta.shelf, description: t.shared.shelf.leadAll };
+  return { title: t.shared.meta.shelf, description: t.shared.shelf.lead };
 }
 
 export async function familyMetadata() {

@@ -1,5 +1,4 @@
 'use client';
-import type { ChainId } from '@colosseum/schemas';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   createContext,
@@ -11,8 +10,14 @@ import {
   useRef,
   useState,
 } from 'react';
-import { recallChain, rememberChain } from '../account/chain-choice';
-import { type BearingChain, FIRST, pickChain, withChain } from './chain';
+import {
+  type BearingChain,
+  FIRST,
+  pickChain,
+  recallBearingChain,
+  rememberBearingChain,
+  withChain,
+} from './chain';
 import { inPool, makeReader, R, type Reader, type Res } from './data';
 import type { DexAsset } from './dex';
 import { type Clock, maxT, STALE_AFTER_MS } from './fact';
@@ -60,7 +65,7 @@ type Ctx = {
   reader: Reader;
   /** The chain the figures are read for (chain.ts). */
   chain: BearingChain;
-  /** Reads another chain: named in the address and remembered as the bar remembers it. */
+  /** Reads another chain: named in the address and remembered for these pages. */
   setChain: (chain: BearingChain) => void;
   mode: Mode;
   /** Ages are read against this; `stale` when the collectors' newest reading is old. */
@@ -113,28 +118,12 @@ export function BearingProvider({
   children,
   reader: given,
   now: fixedNow,
-  barChain,
-  followsBar = false,
-  moveBar,
 }: {
   children: ReactNode;
   /** A reader of a stub, in tests. */
   reader?: Reader;
   /** A fixed clock, in tests. */
   now?: number;
-  /**
-   * The chain the app's bar is on: null when it says none, undefined while it is still finding out
-   * (the account loading). Bearing follows it when it changes.
-   */
-  barChain?: ChainId | null;
-  /** Mounted under the bar: the first pick waits for the bar to settle (BearingFromBar). */
-  followsBar?: boolean;
-  /**
-   * Moves the bar's switcher to the chain chosen here, so the two agree. Given only for someone
-   * signed out: a signed-in person's chain is where their plans are made, and the toggle here only
-   * filters the page.
-   */
-  moveBar?: (chain: BearingChain) => void;
 }) {
   const reader = useMemo(() => given ?? makeReader(), [given]);
   const router = useRouter();
@@ -142,48 +131,25 @@ export function BearingProvider({
   const [chain, setChainState] = useState<BearingChain>(FIRST);
   // Nothing is read before the chain is known: a page would otherwise read Solana's routes first.
   const [known, setKnown] = useState(false);
-  const show = useCallback(
+  // The toggle: the pages read the chain, the address names it and this browser keeps it for them.
+  const setChain = useCallback(
     (next: BearingChain) => {
       setChainState(next);
-      rememberChain(next);
+      rememberBearingChain(next);
       router.replace(withChain(pathname, window.location.search, next));
     },
     [router, pathname],
   );
-  // The bar has said what it says: at once outside the app, when the account has loaded inside it.
-  const settled = !followsBar || barChain !== undefined;
-  // The bar's chain at the first pick: a later change from it is a move of the bar's switcher.
-  const lastBar = useRef<ChainId | null | undefined>(undefined);
-  // The toggle here: the page reads the chain, and the bar of someone signed out goes with it. The
-  // bar's answer is then not a move of its own to follow.
-  const setChain = useCallback(
-    (next: BearingChain) => {
-      show(next);
-      if (!moveBar) return;
-      lastBar.current = next;
-      moveBar(next);
-    },
-    [show, moveBar],
-  );
-  // On arrival, once the bar has settled: the address's chain, else the bar's, else this browser's,
-  // else Solana, then named in the address so the page can be shared as it is. The account settling
-  // is not a move of the bar: a link that names a chain keeps it.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the bar has settled
+  // On arrival: the address's chain, else the one chosen here last, else Solana, then named in the
+  // address so the page can be shared as it is.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, on arrival
   useEffect(() => {
-    if (!settled || known) return;
-    lastBar.current = barChain ?? null;
-    const picked = pickChain(window.location.search, barChain, recallChain());
+    const picked = pickChain(window.location.search, recallBearingChain());
     setChainState(picked);
     setKnown(true);
     if (new URLSearchParams(window.location.search).get('chain') !== picked)
       router.replace(withChain(window.location.pathname, window.location.search, picked));
-  }, [settled]);
-  // The bar's switcher moved after the first pick: Bearing follows it.
-  useEffect(() => {
-    if (!known || barChain === undefined || barChain === lastBar.current) return;
-    lastBar.current = barChain;
-    if (barChain === 'solana' || barChain === 'robinhood') show(barChain);
-  }, [barChain, known, show]);
+  }, []);
   const [mode, setMode] = useState<Mode>('loading');
   const [newest, setNewest] = useState<string | null>(null);
   const [now, setNow] = useState(() => fixedNow ?? 0);

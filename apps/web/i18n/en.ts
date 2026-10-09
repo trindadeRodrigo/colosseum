@@ -239,6 +239,34 @@ export const en = {
     noWallet:
       'You’re signed in, but no wallet is linked to this sign-in yet, so there is no chain for your plan.',
     reading: 'Reading where your plan lives…',
+    /** The chain of a new plan, chosen on the page where it starts (gate CHAIN-AT-THE-PLAN). */
+    choice: {
+      legend: 'Chain for this plan',
+      hint: 'A plan lives on one chain. Choose it before your first message.',
+      /** A wallet's whole address, for a screen reader. */
+      wallet: (address: string) => `wallet ${address}`,
+      /** One chain to start on, because the person's wallet signs on no other. */
+      onlyWallet: (chain: string) =>
+        `This plan will live on ${chain}: the wallet you signed in with signs only there.`,
+      /** One chain to start on, because the other is switched off on our server. */
+      onlyOn: (chain: string) =>
+        `This plan will live on ${chain}: it is the only chain our server runs for now.`,
+      /** Before the chain's badge, once the conversation has words. */
+      on: 'This plan is on',
+      change: 'Change',
+      changeLabel: 'Change the chain of this plan',
+      confirm: (chain: string) =>
+        `Each chain has its own assets, so this draft can’t move to ${chain}. It stays in your saved conversations.`,
+      start: (chain: string) => `Start a new conversation on ${chain}`,
+      keep: 'Keep this one',
+      /** For a screen reader, on "Change" while a reply is worked on or a deposit is open. */
+      fixed: 'The chain stays as it is while a reply or a deposit is in progress.',
+      /** A saved conversation of another chain was opened: where new plans start moved with it. */
+      opened: (chain: string) =>
+        `This conversation is on ${chain}, so new plans start on ${chain} now.`,
+      /** Said to a screen reader once the chain is stored. */
+      done: (chain: string) => `New plans start on ${chain} now.`,
+    },
   },
 
   goal: {
@@ -515,9 +543,6 @@ export const en = {
     chainOut: (chain: string) => `${chain} is unavailable right now.`,
     /** A chain of the person's that this server has switched off: asking again will not help. */
     chainOff: (chain: string) => `${chain} is switched off on our server for now.`,
-    /** The person's current chain, which no wallet of this sign-in signs on. */
-    notHeld: (chain: string) =>
-      `No wallet of this sign-in is on ${chain}, so nothing is read there.`,
     title: (vaults: number): string =>
       vaults > 1 ? 'What your vaults hold.' : 'What your vault holds.',
     planDetails: 'Goal and strategy details',
@@ -536,8 +561,8 @@ export const en = {
     /** The plan's chain did not answer, or is switched off here. */
     down: {
       word: 'Unavailable',
-      body: (chain: string) =>
-        `${chain} didn’t answer, so I can’t read your vault right now. Not being able to read it moves nothing. Try again in a moment.`,
+      body: (chains: string) =>
+        `${chains} didn’t answer, so I can’t read your vaults right now. Not being able to read them moves nothing. Try again in a moment.`,
     },
     unreachable: 'I couldn’t reach our server to read your vault. Try again.',
     unreadable:
@@ -548,8 +573,7 @@ export const en = {
       'I can’t read your vault yet: the sign-in service didn’t give me the part of your sign-in that lists your wallets. Wait a minute, then try again.',
     again: 'Read again',
     againBusy: 'Reading…',
-    empty: (chain: string) =>
-      `You have no vault on ${chain} yet. A vault is made when you buy your first plan.`,
+    empty: 'You have no vault yet. A vault is made with your first deposit.',
     startGoal: 'Start with your goal',
     /** Vaults on more than one chain: a heading per chain, with what that chain's vaults are worth. */
     group: {
@@ -1124,20 +1148,15 @@ export const en = {
     },
     shelf: {
       title: 'Portfolios people have shared.',
-      lead: (chain: string) =>
-        `Explore published strategies on ${chain}. Open one to review its assets, sources and options for investing or following.`,
-      leadAll:
-        'Each is a list of assets and weights its creator published on a chain. Sign in to see the ones on your chain.',
+      lead: 'Explore published strategies on every chain we run. Each names the chain it is on. Open one to review its assets, sources and options for investing or following.',
       loading: 'Reading the shared portfolios…',
-      empty: (chain: string) => `No portfolio is shared on ${chain} yet.`,
-      emptyAll: 'No portfolio is shared yet.',
+      empty: 'No portfolio is shared yet.',
       publish: 'Publish a portfolio',
       /** Where publishing is not offered yet: said, in place of the link. */
       publishSoon: (chain: string) =>
         `Publishing a portfolio on ${chain} is coming. For now it can be done on Solana.`,
-      /** After signing out on this page: the shelf stays, and says whose it is now. */
-      signedOut: (chain: string) =>
-        `You’re signed out. This is still the shelf of ${chain}; sign in to follow a portfolio.`,
+      /** After signing out on this page: the shelf stays, and says what it still shows. */
+      signedOut: 'You’re signed out. The portfolios stay listed; sign in to follow one.',
       card: {
         by: (creator: string) => `by ${creator}`,
         platform: 'From tenonfi',
@@ -1210,12 +1229,19 @@ export const en = {
       backToShelf: 'Back to the shared portfolios',
       lead: (chain: string) =>
         `A list of assets and weights its creator published on ${chain}. Following it means a vault of yours takes its weights; a new version takes effect after a delay, and you see it before it does.`,
-      notHere: (chain: string) =>
-        `This portfolio isn’t published on ${chain}, your current chain, so it can’t be followed from here.`,
+      /** Signed in, and no wallet of theirs signs on a chain the portfolio is on. */
+      noWalletFor: (chains: string) =>
+        `This portfolio is on ${chains}, and the wallet you signed in with doesn’t sign there. It can’t be invested in or followed from this sign-in.`,
+      /** A portfolio with a recipe on more than one chain the person can use: which to invest on. */
+      which: 'Chain to invest on',
+      whichHint: 'The vault you open follows this portfolio on the chain you choose.',
+      /** In place of the hint while a deposit runs: the choice is locked until it ends. */
+      whichLocked: 'The chain is fixed while this deposit runs.',
+      /** On a card of a portfolio with a recipe on more than one chain: each chain's own, beside its name. */
+      perChain: 'Its holdings differ by chain.',
       /** A vault of the person's on another chain follows it: it is updated on that chain. */
-      elsewhere: (chain: string) =>
-        `You have a vault on ${chain} that follows this portfolio. Switch to ${chain} to update it there.`,
-      switchTo: (chain: string) => `Switch to ${chain}`,
+      elsewhere: (chain: string) => `You have a vault on ${chain} that follows this portfolio.`,
+      showOn: (chain: string) => `Show it on ${chain}`,
       recipe: (chain: string) => `On ${chain}`,
       inEffect: 'In effect',
       since: (when: string) => `since ${when}`,

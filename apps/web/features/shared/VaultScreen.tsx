@@ -175,9 +175,10 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
         key={`${port.userId}:${read.chain}:${vault.address}`}
         read={read}
         userId={port.userId}
-        // The owner's, on the vault's own chain.
-        canShare={account.status === 'ready' && account.chain === read.chain}
-        shareHref={`/publish?vault=${encodeURIComponent(vault.address)}`}
+        // The owner's, on the vault's own chain: offered where a wallet of theirs signs on it,
+        // whatever chain their new plans start on (gate CHAIN-AT-THE-PLAN).
+        canShare={account.status === 'ready' && account.options.includes(read.chain)}
+        shareHref={`/publish?vault=${encodeURIComponent(vault.address)}&chain=${read.chain}`}
         value={value}
         back={back}
         explorerLink={explorerLink}

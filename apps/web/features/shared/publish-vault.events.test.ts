@@ -76,9 +76,13 @@ function api(
     publicOwner?: string;
     /** The vault's page reads it with a target: a strategy there is to share. */
     targeted?: boolean;
+    /** The chain the person's new plans start on; Solana unless said. */
+    chain?: string;
+    /** The chains a wallet of theirs signs on; both unless said. */
+    chainOptions?: string[];
   } = {},
 ) {
-  let chain = 'solana';
+  let chain = options.chain ?? 'solana';
   const calls: { path: string; body?: Record<string, unknown> }[] = [];
   portStore.setApi(async (path, init) => {
     calls.push({ path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
@@ -87,7 +91,7 @@ function api(
       wallets: EMBEDDED,
       chain,
       chainSource: 'picked',
-      chainOptions: [],
+      chainOptions: options.chainOptions ?? [],
     };
     if (path === '/v1/me') return json(person);
     if (path === '/v1/me/chain') {
@@ -174,7 +178,7 @@ beforeEach(() => {
 afterEach(unmountAll);
 
 describe('sharing a selected vault strategy', () => {
-  it('offers Share strategy only to the vault owner on its active chain', async () => {
+  it('offers Share strategy to the vault’s owner on the vault’s own chain, whatever chain new plans start on', async () => {
     api({ targeted: true });
     const host = await mount(
       withAccount(
@@ -188,12 +192,13 @@ describe('sharing a selected vault strategy', () => {
       ),
     );
     await settle(30);
-    expect(find(host, '[data-ui="vault-share-strategy"]').getAttribute('href')).toBe(
-      `/publish?vault=${encodeURIComponent(first)}`,
-    );
+    // the link names the vault's chain, so the form opens on it
+    const href = `/publish?vault=${encodeURIComponent(first)}&chain=solana`;
+    expect(find(host, '[data-ui="vault-share-strategy"]').getAttribute('href')).toBe(href);
+    // new plans now start on Robinhood Chain: the Solana vault is still theirs to share
     await click(button(host, 'Switch chain'));
     await settle(30);
-    expect(host.querySelector('[data-ui="vault-share-strategy"]')).toBeNull();
+    expect(find(host, '[data-ui="vault-share-strategy"]').getAttribute('href')).toBe(href);
     await act(async () => {
       portStore.set(fakePort());
     });
@@ -207,6 +212,26 @@ describe('sharing a selected vault strategy', () => {
     await settle(30);
     expect(host.querySelector('[data-ui="vault-more"]')).not.toBeNull();
     expect(host.querySelector('[data-ui="vault-share-strategy"]')).toBeNull();
+  });
+  it('does not offer Share strategy where no wallet of the person signs on the vault’s chain', async () => {
+    api({ chainOptions: ['robinhood'], targeted: true });
+    const host = await mount(
+      withAccount('en', createElement(VaultScreen, { chain: 'solana', address: first })),
+    );
+    await settle(30);
+    expect(host.querySelector('[data-ui="vault"], [data-ui="vault-screen"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="vault-share-strategy"]')).toBeNull();
+  });
+  it('opens the form on the chain the link names, though new plans start on another', async () => {
+    api({ chain: 'robinhood' });
+    window.history.replaceState(
+      null,
+      '',
+      `/publish?vault=${encodeURIComponent(second)}&chain=solana`,
+    );
+    const host = await show();
+    expect(find<HTMLSelectElement>(host, 'select').value).toBe(second);
+    expect(host.querySelectorAll('[data-ui="publish-row"]')).toHaveLength(3);
   });
   it('does not offer Share strategy on another person’s public vault', async () => {
     api({ publicOwner: '11111111111111111111111111111111', targeted: true });
