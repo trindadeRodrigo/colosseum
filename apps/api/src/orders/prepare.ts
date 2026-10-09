@@ -24,6 +24,7 @@ import {
 import { holds } from '../plugins/auth';
 import { assertBuilds, type ChainEntry, type ChainRegistry } from './chains';
 import { Refusal, refusing } from './errors';
+import { chainsHeld } from './person';
 import { followedOn, planFollow, planPublish, recipeTargets, type SharedContext } from './shared';
 import { planWithdraw } from './withdraw';
 
@@ -69,7 +70,10 @@ export type PrepareContext = {
    * number then takes the buyer too (`basketIdOfLinked`). Left out, no plan is.
    */
   isLinkedPlan?(id: string): Promise<boolean>;
-  /** The person's current chain, where a new plan is made (CHAIN-SWITCH). Refuses when there is none yet. */
+  /**
+   * The person's current chain, where a new plan is made when the request names none (CHAIN-SWITCH).
+   * Refuses when there is none yet.
+   */
   homeChain(): Promise<ChainId>;
   /** The shared portfolios that have a recipe on `chain`, each with that recipe as it is in effect. */
   loadFamilies(chain: ChainId): Promise<Shelf['families']>;
@@ -271,8 +275,8 @@ export function recipeOf(proposal: BasketProposal): BasketProposal['recipes'][nu
  * nothing is stored, so the funding check plans with the same function the order does.
  *
  * A buy of a stored plan is on the plan's own chain, whatever the person's current chain is; a plan with
- * recipes on several chains is refused. A buy of a shared portfolio opens a vault, so it is a new plan,
- * on the current chain.
+ * recipes on several chains is refused. A buy of a shared portfolio opens a vault, so it is a new plan:
+ * on the chain the request names (`chain`), else on the current chain.
  */
 export async function planBuy(
   req: Extract<IntentRequest, { type: 'buy' }>,
@@ -284,6 +288,13 @@ export async function planBuy(
   const named = [req.proposalId, req.family, req.vault].filter((x) => x !== undefined).length;
   if (named > 1)
     throw new Refusal(400, 'a buy names one thing: a plan, a shared portfolio or a vault of yours');
+  // A plan is bought on its own chain and a vault added to on its own: only a shared portfolio,
+  // which may have a recipe on more than one, is told which (gate CHAIN-AT-THE-PLAN).
+  if (req.chain !== undefined && req.family === undefined)
+    throw new Refusal(
+      400,
+      '`chain` is the chain of a shared portfolio’s recipe: send it with `family`',
+    );
   if (req.vault !== undefined) {
     if (req.version !== undefined)
       throw new Refusal(
@@ -385,8 +396,9 @@ function eligible(entry: ChainEntry, assets: BasketAsset[], targets: Target[]) {
 }
 
 /**
- * A buy of a shared portfolio on the person's chain (gate ONE-CHAIN): a vault that follows the
- * version in effect, opened with the whole deposit, then a swap per asset. The vault's number is
+ * A buy of a shared portfolio on one chain (gate ONE-CHAIN): the chain of the recipe the request
+ * names, which a wallet of the person has to sign on, else the person's current chain (gate
+ * CHAIN-AT-THE-PLAN). A vault that follows the version in effect, opened with the whole deposit, then a swap per asset. The vault's number is
  * `basketIdOf(familyId)`, so buying the same portfolio again adds to the vault that follows it. The
  * vault opens with auto-follow off: with it on, the keeper could trade the deposit before the person's
  * own buys land. A follow order switches it on afterwards, where the portfolio offers it.
@@ -398,7 +410,14 @@ async function planFamilyBuy(
 ): Promise<BuyPlan> {
   const shared = ctx.shared;
   if (!shared) throw new Refusal(501, 'buying a shared portfolio is not served here: name a plan');
-  const chain = await ctx.homeChain();
+  const chain = req.chain ?? (await ctx.homeChain());
+  // A chain the request names is held to the person's wallets, as a switch of the current chain is.
+  if (req.chain !== undefined && !chainsHeld(ctx.principal).includes(chain))
+    throw new Refusal(409, `no wallet you signed in with signs on ${ctx.chains.name(chain)}`, {
+      code: 'NO_WALLET_FOR_CHAIN',
+      fix: `Sign in with a wallet that signs on ${ctx.chains.name(chain)}, or with a passkey.`,
+      details: { retryable: false },
+    });
   const { family, entry, onchain } = await refusing(() =>
     followedOn(slug, chain, { chains: ctx.chains, bySlug: shared.bySlug }, req.version),
   );

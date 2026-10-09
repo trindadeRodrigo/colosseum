@@ -59,6 +59,11 @@ export const FundingQuery = z
       .regex(/^[a-z0-9][a-z0-9-]*$/)
       .optional(),
     /**
+     * With `family` only: the chain of the recipe the buy follows, as the order will name it
+     * (`IntentRequest.chain`). Left out, the person's current chain.
+     */
+    chain: ChainId.optional(),
+    /**
      * A vault of the person's, in place of `proposalId` and `family`: adding `amountUsd` to it (a buy
      * that names the vault). Sent with `vaultChain`, the chain it is on, and with `wallet`, its owner.
      */
@@ -70,6 +75,9 @@ export const FundingQuery = z
   })
   .refine((q) => (q.vault === undefined) === (q.vaultChain === undefined), {
     message: 'send vault and vaultChain together',
+  })
+  .refine((q) => q.chain === undefined || q.family !== undefined, {
+    message: 'send chain with family: a plan and a vault are on their own chain',
   })
   .refine(
     (q) =>
@@ -134,6 +142,8 @@ export const TestFundsRequest = z
       .max(ORDER_LIMITS.maxAmountUsd, 'one order buys at most $1,000,000'),
     proposalId: z.uuid().optional(),
     family: FundingQuery.shape.family,
+    /** With `family` only: the chain of the recipe the buy follows (as GET /v1/funding). */
+    chain: FundingQuery.shape.chain,
     /** A vault of the person's that the buy adds to, with the chain it is on (as GET /v1/funding). */
     vault: FundingQuery.shape.vault,
     vaultChain: FundingQuery.shape.vaultChain,
@@ -143,6 +153,9 @@ export const TestFundsRequest = z
   })
   .refine((q) => (q.vault === undefined) === (q.vaultChain === undefined), {
     message: 'send vault and vaultChain together',
+  })
+  .refine((q) => q.chain === undefined || q.family !== undefined, {
+    message: 'send chain with family: a plan and a vault are on their own chain',
   });
 export type TestFundsRequest = z.infer<typeof TestFundsRequest>;
 

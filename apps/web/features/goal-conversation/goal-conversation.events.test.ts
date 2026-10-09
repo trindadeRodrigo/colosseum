@@ -270,7 +270,8 @@ describe('private strategy exploration for a new goal', () => {
     const saved = [...find<HTMLSelectElement>(host, '[data-ui="goal-picker"]').options].find((o) =>
       o.value.startsWith('conversation:'),
     );
-    expect(saved?.textContent).toBe('Consider gold');
+    // with its chain as text: the picker lists what lives on one chain (gate CHAIN-AT-THE-PLAN)
+    expect(saved?.textContent).toBe('Consider gold · Solana');
     await mode(host, saved?.value ?? '');
     await settle();
     expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain('Consider gold');
@@ -1124,7 +1125,13 @@ describe('waiting for a reply, in the conversation and on the card', () => {
     expect(announced(host).getAttribute('role')).toBe('status');
     expect(announced(host).textContent).toBe('');
     expect(find(host, '[data-ui="goal-transcript"]').hasAttribute('aria-live')).toBe(false);
-    expect(host.querySelectorAll('[role="status"]')).toHaveLength(1);
+    // (the chain's own line beside the box is the chain's, and says nothing of a reply)
+    expect(
+      ['[data-ui="goal-transcript"]', '[data-ui="composer"]', '[data-ui="goal-strategy"]'].flatMap(
+        (part) => [...find(host, part).querySelectorAll('[role="status"], [aria-live]')],
+      ),
+    ).toEqual([]);
+    expect(host.querySelectorAll('[data-ui="reply-announcer"]')).toHaveLength(1);
     await say(host, 'Gold and some cash');
     // at once: the message, and under it the reply's place with the mark of a wait and a plain line
     expect(
@@ -1155,7 +1162,13 @@ describe('waiting for a reply, in the conversation and on the card', () => {
     expect(announced(host).textContent).toBe(
       `${en.talk.me}: Here is a private preview. ${en.shared.vault.conversation.draftArrived}`,
     );
-    expect(host.querySelectorAll('[role="status"]')).toHaveLength(1);
+    // (the chain's own line beside the box is the chain's, and says nothing of a reply)
+    expect(
+      ['[data-ui="goal-transcript"]', '[data-ui="composer"]', '[data-ui="goal-strategy"]'].flatMap(
+        (part) => [...find(host, part).querySelectorAll('[role="status"], [aria-live]')],
+      ),
+    ).toEqual([]);
+    expect(host.querySelectorAll('[data-ui="reply-announcer"]')).toHaveLength(1);
     expect(host.querySelector('[data-ui="composer-send"] [data-ui="lattice-loader"]')).toBeNull();
   });
 
@@ -1517,7 +1530,7 @@ describe('the relaxed intake’s plan on /goal (RELAXED-INTAKE)', () => {
     expect(options.map((o) => o.textContent)).toEqual([
       en.goal.explore.picker.current,
       en.goal.explore.picker.fresh,
-      'Consider gold',
+      'Consider gold · Solana',
     ]);
     expect(find(host, '[data-ui="goal-transcript"]').textContent).toBe('');
   });

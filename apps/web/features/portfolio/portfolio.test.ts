@@ -89,16 +89,16 @@ describe('reading the portfolio', () => {
       expect((await readPortfolio(answering(json(answer)), 'solana')).kind).toBe('unreadable');
   });
 
-  it('shows the chains that were read when the current one was not, and says where the current one stands', async () => {
+  it('shows every chain that was read and says which were not, with no chain as the current one', async () => {
     const other = chainOf([vault({ chain: 'robinhood' })], { chain: 'robinhood' });
     const evmVault = { ...portfolioBody(), chains: [other] };
-    // the answer is for Robinhood Chain alone; the person's current chain is Solana, not held here
-    expect(await readPortfolio(answering(json(evmVault)), 'solana')).toEqual({
-      kind: 'read',
-      chains: [other],
-      unavailable: [],
-      current: 'not-held',
-    });
+    // the answer is for Robinhood Chain alone: that is what is shown, whatever chain is asked first
+    for (const first of ['solana', 'robinhood', undefined] as const)
+      expect(await readPortfolio(answering(json(evmVault)), first)).toEqual({
+        kind: 'read',
+        chains: [other],
+        unavailable: [],
+      });
     // Solana could not be read this time: Robinhood Chain is shown, and Solana is said to be out
     const out = {
       chain: 'solana',
@@ -107,23 +107,20 @@ describe('reading the portfolio', () => {
       error: 'the node did not answer',
       retryable: true,
     };
-    expect(
-      await readPortfolio(answering(json({ ...evmVault, unavailable: [out] })), 'solana'),
-    ).toMatchObject({ kind: 'read', chains: [other], unavailable: [out], current: 'unavailable' });
-    // the current chain read, another out: the current first, the other said
-    const both = {
-      ...portfolioBody(),
-      unavailable: [{ ...out, chain: 'robinhood', name: 'Robinhood Chain' }],
+    expect(await readPortfolio(answering(json({ ...evmVault, unavailable: [out] })))).toMatchObject(
+      { kind: 'read', chains: [other], unavailable: [out] },
+    );
+    // both read: in the server's order, or with the chain a screen works on first
+    const two = { ...portfolioBody(), chains: [chainOf(), other] };
+    const order = async (first?: 'solana' | 'robinhood') => {
+      const read = await readPortfolio(answering(json(two)), first);
+      return read.kind === 'read' ? read.chains.map((c) => c.chain) : read.kind;
     };
-    expect(await readPortfolio(answering(json(both)), 'solana')).toMatchObject({
-      kind: 'read',
-      current: 'read',
-      unavailable: [{ chain: 'robinhood' }],
-    });
+    expect(await order()).toEqual(['solana', 'robinhood']);
+    expect(await order('robinhood')).toEqual(['robinhood', 'solana']);
     // a chain both read and out is not an answer
     expect(
-      (await readPortfolio(answering(json({ ...portfolioBody(), unavailable: [out] })), 'solana'))
-        .kind,
+      (await readPortfolio(answering(json({ ...portfolioBody(), unavailable: [out] })))).kind,
     ).toBe('unreadable');
   });
 
@@ -142,11 +139,8 @@ describe('reading the portfolio', () => {
       chains: [chainOf(), chainOf([vault()], { chain: 'robinhood' })],
     };
     expect((await readPortfolio(answering(json(misfiled)), 'solana')).kind).toBe('unreadable');
-    // the same answer for the person's own chain is read as theirs
-    expect(await readPortfolio(answering(json(evmVault)), 'robinhood')).toMatchObject({
-      kind: 'read',
-      current: 'read',
-    });
+    // a well-filed answer of one chain is read
+    expect((await readPortfolio(answering(json(evmVault)), 'robinhood')).kind).toBe('read');
   });
 
   it('reads vaults on two chains, each under its own chain, the person’s first', async () => {
