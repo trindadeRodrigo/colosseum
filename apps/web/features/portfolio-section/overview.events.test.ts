@@ -391,13 +391,16 @@ describe('the table of vaults', () => {
     expect(part(row(host, SOL_INCOME), 'status')).toBe(en.status.words.watch);
   });
 
-  it('offers a new plan in orange, and reads again on request', async () => {
+  it('offers a new plan in honey with ink text (IDENTITY-2), and reads again on request', async () => {
     const server = serve(portStore);
     signIn();
     const host = await overview();
     const fresh = find(host, '[data-ui="new-plan"]');
     expect(fresh.getAttribute('href')).toBe('/goal');
-    expect(fresh.className).toContain('text-warning');
+    expect(fresh.className).toContain('border-primary');
+    expect(fresh.className).toContain('bg-honey-tint');
+    // never a status colour, and never honey as small text
+    expect(fresh.className).not.toMatch(/(^|\s)text-(warning|primary)(\s|$)/);
     await click(find(host, '[data-action="read-again"]'));
     await settle();
     expect(server.to(PLANS_PATH)).toHaveLength(2);

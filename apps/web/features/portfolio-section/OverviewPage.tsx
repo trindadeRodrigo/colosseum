@@ -455,7 +455,7 @@ function Figures({
               // the board's figures are not live: said in words, as the hatch band would have
               <span
                 data-ui="board-plate"
-                className="rounded-full border border-warning/40 bg-clay-tint px-2.5 py-0.5 text-caption font-medium text-warning"
+                className="rounded-full border border-primary/60 bg-honey-tint px-2.5 py-0.5 text-caption font-medium text-foreground"
               >
                 {sampleLine(t.shell, provenance)}
               </span>
@@ -702,11 +702,11 @@ function Vaults({
         </p>
         <div className="ml-auto flex items-center gap-2">
           <ReadAgain className="h-9 rounded-full px-4" />
-          {/* Orange, so the way to a new plan stands out on the page. */}
+          {/* Honey, so the way to a new plan stands out on the page: a honey edge on its tint, ink text (IDENTITY-2). */}
           <Link
             data-ui="new-plan"
             href="/goal"
-            className="inline-flex h-9 items-center justify-center rounded-full border border-warning bg-transparent px-4 text-body-sm font-medium text-warning transition-colors hover:bg-clay-tint focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="inline-flex h-9 items-center justify-center rounded-full border border-primary bg-honey-tint px-4 text-body-sm font-medium text-foreground transition-colors hover:bg-primary hover:text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
             {words.newPlan}
           </Link>
