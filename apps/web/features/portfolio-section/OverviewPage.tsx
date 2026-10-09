@@ -556,7 +556,8 @@ function Figures({
                   <Hint
                     tip={bestName}
                     className="flex min-w-0"
-                    triggerClassName="truncate text-body-sm font-normal"
+                    // 24px tall: a target on a line of its own (WCAG 2.5.8)
+                    triggerClassName="min-h-6 truncate text-body-sm font-normal"
                   >
                     {bestName}
                   </Hint>
