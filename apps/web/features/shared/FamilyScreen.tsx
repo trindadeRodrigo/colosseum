@@ -20,8 +20,9 @@ import { Card } from '../../components/ui/Card';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
 import { utcMinute } from '../../components/ui/ExecutionList';
+import { Hint } from '../../components/ui/Hint';
 import { PAGE_TITLE } from '../../components/ui/heading';
-import { SkeletonPlan, SkeletonRows } from '../../components/ui/Skeleton';
+import { SkeletonRows } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -48,6 +49,7 @@ import { SourceMark } from './SourceMark';
 import { placeShared, readFamily, readPortfolio, readVersions } from './shared-api';
 import type { FollowTerms, SharedTerms } from './terms';
 import { type SharedPerson, shortAddress, useSharedPerson } from './use-person';
+import { FamilyWait } from './waits';
 
 // A shared portfolio's page (DESIGN-VAULT section 11): its name and creator, each recipe a wallet of
 // the person's signs on (one at a time: a portfolio with a recipe on both chains asks which, gate
@@ -157,12 +159,7 @@ export function FamilyScreen({ slug }: { slug: string }) {
     };
   }, [apiFetch, slug, settled, round]);
 
-  if (load.kind === 'loading')
-    return (
-      <Card>
-        <CardWait label={t.shared.family.loading} skeleton={<SkeletonPlan />} />
-      </Card>
-    );
+  if (load.kind === 'loading') return <FamilyWait />;
   if (load.kind !== 'read')
     return (
       <section aria-labelledby={titleId} className="flex flex-col items-start gap-4">
@@ -260,7 +257,13 @@ export function FamilyScreen({ slug }: { slug: string }) {
           family={family}
           recipe={recipe}
           changed={changed}
-          onRunning={setRunning}
+          onRunning={(now) => {
+            // The run is on the recipe on the page. Where the page's own choice was never touched
+            // that recipe came from where the person's new plans start, which /goal can change in
+            // another tab: it is pinned here, so the section is not drawn again under the run.
+            if (now) setPicked(recipe.chain);
+            setRunning(now);
+          }}
           onVersionChanged={() => {
             setChanged(true);
             setRound((n) => n + 1);
@@ -955,13 +958,16 @@ function VaultsPanel({
                   </Button>
                 )}
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <Link
-                    href={`/vaults/${vault.chain}/${encodeURIComponent(vault.address)}`}
-                    className={buttonClass({ variant: 'link' })}
-                    title={vault.address}
+                  <Hint
+                    tip={<span className="font-mono text-source break-all">{vault.address}</span>}
                   >
-                    {v.open}
-                  </Link>
+                    <Link
+                      href={`/vaults/${vault.chain}/${encodeURIComponent(vault.address)}`}
+                      className={buttonClass({ variant: 'link' })}
+                    >
+                      {v.open}
+                    </Link>
+                  </Hint>
                   {!follows && (
                     <Button
                       variant="secondary"

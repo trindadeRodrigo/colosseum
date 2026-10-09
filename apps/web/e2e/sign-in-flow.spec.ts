@@ -60,8 +60,8 @@ test('someone new: "Create a passkey" is there from the start with what it opens
   await create.click();
   await expect(dialog).toHaveCount(0);
   await expect(page.locator('header [data-ui="account-menu-button"]')).toHaveAttribute(
-    'data-chain',
-    'solana',
+    'data-ready',
+    '',
   );
 });
 
@@ -78,7 +78,7 @@ test('someone with a passkey: "Use my passkey" signs in, and leads the pair the 
   await passkey.click();
   await expect(dialog).toHaveCount(0);
   const chip = page.locator('header [data-ui="account-menu-button"]');
-  await expect(chip).toHaveAttribute('data-chain', 'solana');
+  await expect(chip).toHaveAttribute('data-ready', '');
   // signed out and back at the dialog, the one who has a passkey leads; the order has not moved
   await page.getByRole('button', { name: en.shell.menu, exact: true }).click();
   await page.locator('[data-ui="compact-nav-sheet"] [data-ui="sign-out"]').click();
@@ -129,7 +129,11 @@ test('a wallet: one list with where each vault lives, and the chain asked for a 
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/goal$/);
   await expect(page.locator('header [data-ui="account"]')).toBeVisible();
-  // the chain that stands is the Solana side's: the bar shows that wallet's address, not an EVM one
-  const address = page.locator('header [data-ui="account"] .font-mono[title]');
+  // signed in with the Solana side alone: the account menu lists that one wallet, a Solana address,
+  // and no EVM one (the phone's sheet holds the same block)
+  const wallets = page.locator('[data-ui="compact-nav-sheet"] [data-ui="account-wallet"]');
+  await expect(wallets).toHaveCount(1);
+  await expect(wallets).toHaveAttribute('data-chain', 'solana');
+  const address = wallets.locator('[data-ui="account-address"]');
   await expect(address).toHaveAttribute('title', /^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
 });

@@ -84,3 +84,48 @@ export async function settle(ms = 0): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, ms));
   });
 }
+
+/**
+ * A figure's pin, opened as far as its details: the line the API wrote (`source · fetched_at ·
+ * method`), as "Copy all" hands it over. The popover's first words are plain ones (gate
+ * TOOLTIP-WORDS); the API's own are one step further, and this is that step.
+ */
+export async function pinLine(figure: Element): Promise<string> {
+  const pin = find<HTMLButtonElement>(figure, 'button[data-ui="pin"]');
+  if (pin.getAttribute('aria-expanded') !== 'true') await click(pin);
+  const more = find(figure, '[data-ui="pin-details"]');
+  if (more.getAttribute('aria-expanded') !== 'true') await click(more);
+  let copied = '';
+  const before = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: {
+      writeText: async (line: string) => {
+        copied = line;
+      },
+    },
+  });
+  try {
+    await click(find(figure, '[data-ui="pin-copy"]'));
+  } finally {
+    if (before) Object.defineProperty(navigator, 'clipboard', before);
+    else delete (navigator as { clipboard?: unknown }).clipboard;
+  }
+  return copied;
+}
+
+/**
+ * What a tooltip says (Hint.tsx): the keyboard's focus on its trigger opens it, as a mouse that
+ * rests or a tap would. Closed again before this returns: by Escape, or, where Escape would close
+ * something around it too (a menu), by focus moving to `leaveTo`. `inside` is the hint, or anything
+ * in it.
+ */
+export async function hintOf(inside: Element, leaveTo?: Element): Promise<string> {
+  const hint = inside.closest('[data-ui="hint"]') ?? find(inside, '[data-ui="hint"]');
+  const trigger = hint.querySelector('[data-ui="hint-trigger"], a, button') ?? hint;
+  await fire(trigger, new FocusEvent('focusin', { bubbles: true }));
+  const said = find(hint, '[role="tooltip"]').textContent ?? '';
+  if (leaveTo) await fire(leaveTo, new FocusEvent('focusin', { bubbles: true }));
+  else await press(document, 'Escape');
+  return said;
+}

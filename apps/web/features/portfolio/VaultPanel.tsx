@@ -7,6 +7,7 @@ import { Card, CardBody, CardFooter, CardHeader } from '../../components/ui/Card
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { type Column, DataTable } from '../../components/ui/DataTable';
 import { shorten } from '../../components/ui/format';
+import { Hint } from '../../components/ui/Hint';
 import { MarketNote } from '../../components/ui/MarketNote';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { pinSourceOfPrice } from '../../components/ui/price-source';
@@ -100,6 +101,7 @@ export function VaultPanel({
                 ...price,
                 provenance: worst(vault.provenance, price.provenance),
               })}
+              what={words.columns.price}
               labels={t.pin}
             />
             <MarketNote market={price.market} label={t.shell.marketClosed} />
@@ -120,6 +122,7 @@ export function VaultPanel({
             <ProvenancePin
               value={dollars(lang, row.valueUsd ?? '0')}
               obs={vaultValueSource(chain, vault, words.valueMethod)}
+              what={words.value}
               labels={t.pin}
             />
           );
@@ -127,6 +130,7 @@ export function VaultPanel({
           <ProvenancePin
             value={dollars(lang, row.valueUsd)}
             obs={positionValueSource(vault, price, words.positionMethod)}
+            what={words.columns.value}
             labels={t.pin}
           />
         ) : (
@@ -173,15 +177,16 @@ export function VaultPanel({
           <span className="inline-flex flex-wrap items-center justify-end gap-2">
             <ChainBadge chain={vault.chain} />
             {/* the vault's own page: the same read, for anybody, with its explorer link */}
-            <Link
-              data-ui="vault-page-link"
-              href={`/vaults/${vault.chain}/${encodeURIComponent(vault.address)}`}
-              title={vault.address}
-              aria-label={words.page(shorten(vault.address))}
-              className="font-mono text-honey-text underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-            >
-              {shorten(vault.address)}
-            </Link>
+            <Hint tip={<span className="font-mono text-source break-all">{vault.address}</span>}>
+              <Link
+                data-ui="vault-page-link"
+                href={`/vaults/${vault.chain}/${encodeURIComponent(vault.address)}`}
+                aria-label={words.page(shorten(vault.address))}
+                className="font-mono text-honey-text underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              >
+                {shorten(vault.address)}
+              </Link>
+            </Hint>
           </span>
         }
       />
@@ -195,6 +200,7 @@ export function VaultPanel({
             <ProvenancePin
               value={dollars(lang, vault.valueUsd)}
               obs={vaultValueSource(chain, vault, words.valueMethod)}
+              what={words.value}
               labels={t.pin}
             />
           </dd>

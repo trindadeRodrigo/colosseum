@@ -2,7 +2,6 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAccountControl } from '../../features/account/AccountControl';
-import { ChainSwitch } from '../../features/account/ChainSwitch';
 import { useWalletPort } from '../../features/wallet/WalletProvider';
 import { useT } from '../../i18n/I18nProvider';
 import { CompactNav } from '../ui/CompactNav';
@@ -18,15 +17,15 @@ import { ThemeToggle } from './ThemeToggle';
 //   Analytics   Bearing's analytics (/analytics/stocks), current on every page under /analytics,
 //               its methodology too, which its side menu links (no Resources item: Thom, Oct 6)
 //   the account one control, the same on the landing's bar (Thom, Oct 9; AccountControl.tsx): a still
-//               placeholder until it is known who is here, "Sign in" for nobody, and for a person the
-//               chip with the current chain and the short address, opening the chain switch, "Copy
-//               address", the explorer and "Sign out" (Thom, Oct 6; AccountMenu.tsx)
-//   signed out  beside it, the chain switcher (what the shelf shows, CHAIN-SWITCH)
+//               placeholder until it is known who is here, "Sign in" for nobody, and for a person
+//               "Account", opening their wallets (one for each chain they have one on, each with
+//               "Copy address" and the explorer) and "Sign out" (AccountMenu.tsx). The bar shows and
+//               switches no chain (gate CHAIN-AT-THE-PLAN): where a plan starts is chosen on /goal
 //
 //   Products    the shelf of shared portfolios (/shelf), and a portfolio's page under it
 //
-// On a phone the links are in the sheet under the menu button, under the same account block (chain
-// switch, address, "Sign out"); the bar's control shows the chain's short name alone.
+// On a phone the links are in the sheet under the menu button, under the same account block (the
+// wallets, "Sign out"); the bar's control is the same "Account".
 //
 // Nothing here is the wallet adapter's button, which renders one thing on the server and another in
 // the browser. What the bar shows about the person comes from the wallet port, and it shows nothing
@@ -81,11 +80,7 @@ export function AppNav() {
           <span className="hidden sm:contents">
             <ThemeToggle />
           </span>
-          {/* What a visitor looks at, beside the way in: not part of the account control. */}
-          <div className="ml-2 flex items-center gap-2">
-            {account.view === 'signed-out' && <ChainSwitch />}
-            {account.action}
-          </div>
+          <div className="ml-2 flex items-center gap-2">{account.action}</div>
         </div>
       }
       sheetHead={

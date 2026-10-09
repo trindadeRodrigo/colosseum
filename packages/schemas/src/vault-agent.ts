@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AssetId, Bps, Sourced } from './chain';
+import { FactNullReason } from './facts';
 
 const prose = (max: number) => z.string().trim().min(1).max(max);
 export const VaultAgentMessage = z.discriminatedUnion('who', [
@@ -168,6 +169,90 @@ export const VaultAgentWeightNote = z.strictObject({
   quote: prose(400).optional(),
 });
 export type VaultAgentWeightNote = z.infer<typeof VaultAgentWeightNote>;
+/**
+ * A figure the conversation states by reference (gate `FIGURES-BY-REFERENCE`). The model writes
+ * `{{fact:<id>}}` where a number would stand and never the number; the server resolves the id against
+ * the evidence of that request and writes everything here. Measured: the value, its unit, `text` as it
+ * is shown ("$1,234.56", "0.42%"), its pin, and `staleAgeSec` when the figure has an age limit and is
+ * past it (a price the chain's vault no longer trades on), else null. Not measured: null with the
+ * reason, and `text` says so in words with no number.
+ */
+const figureHead = {
+  id: prose(160),
+  assetId: AssetId.optional(),
+  label: prose(200).optional(),
+  text: prose(200),
+};
+export const VaultAgentFigure = z.union([
+  z.strictObject({
+    ...figureHead,
+    value: z.number().finite(),
+    unit: prose(80),
+    source: prose(2000),
+    method: prose(2000),
+    fetchedAt: Sourced.shape.fetchedAt,
+    provenance: Sourced.shape.provenance,
+    staleAgeSec: z.number().finite().nonnegative().nullable(),
+    /** The true value is at least this: `text` says "at least". */
+    lowerBound: z.literal(true).optional(),
+  }),
+  z.strictObject({ ...figureHead, value: z.null(), reason: FactNullReason }),
+]);
+export type VaultAgentFigure = z.infer<typeof VaultAgentFigure>;
+/** How a figure stands in prose that keeps its place: `{{fact:<id>}}`, the id one of `facts`. */
+export const FIGURE_REFERENCE = /\{\{fact:([^{}\s]{1,160})\}\}/gu;
+/**
+ * The figures of one reply. The reply's own prose fields hold each figure's `text` inline, so a client
+ * that does not know this field shows plain words and no braces. `prose` is the same prose with each
+ * figure a `{{fact:<id>}}` placeholder, for a client that draws the figure with its pin: `why` by asset,
+ * the lists in the order of the proposal's. Every placeholder names one of `facts`.
+ */
+export const VaultAgentFigures = z
+  .strictObject({
+    prose: z.strictObject({
+      message: prose(9600),
+      question: prose(2000).nullable(),
+      proposal: z
+        .strictObject({
+          objective: prose(3200),
+          summary: prose(6400),
+          tradeoffs: z.array(prose(2400)).max(12),
+          unknowns: z.array(prose(2400)).max(12),
+          why: z.record(AssetId, prose(4000)),
+        })
+        .nullable(),
+    }),
+    facts: z.array(VaultAgentFigure).min(1).max(64),
+  })
+  .superRefine((figures, context) => {
+    const ids = figures.facts.map((fact) => fact.id);
+    const known = new Set(ids);
+    if (known.size !== ids.length)
+      context.addIssue({ code: 'custom', path: ['facts'], message: 'A figure is listed once.' });
+    const { message, question, proposal } = figures.prose;
+    const texts = [
+      message,
+      question ?? '',
+      ...(proposal
+        ? [
+            proposal.objective,
+            proposal.summary,
+            ...proposal.tradeoffs,
+            ...proposal.unknowns,
+            ...Object.values(proposal.why),
+          ]
+        : []),
+    ];
+    for (const text of texts)
+      for (const match of text.matchAll(FIGURE_REFERENCE))
+        if (!known.has(match[1] ?? ''))
+          context.addIssue({
+            code: 'custom',
+            path: ['prose'],
+            message: 'A placeholder names one of the facts.',
+          });
+  });
+export type VaultAgentFigures = z.infer<typeof VaultAgentFigures>;
 /** The reply's fields; `VaultAgentReply` adds the rule that ties its notes to its proposal. */
 export const VaultAgentReplyShape = z.strictObject({
   version: z.literal(1),
@@ -177,6 +262,8 @@ export const VaultAgentReplyShape = z.strictObject({
   proposal: VaultAgentProposal.nullable(),
   warnings: z.array(VaultAgentWarning).max(128),
   weightNotes: z.array(VaultAgentWeightNote).max(64),
+  /** Present when the reply states a figure by reference; absent otherwise. */
+  figures: VaultAgentFigures.optional(),
 });
 /**
  * A warning belongs to the proposal: none without one, and each on one of its assets and sources. A
@@ -222,7 +309,19 @@ export type VaultAgentFailure = 'unavailable' | 'timeout' | 'budget' | 'invalid'
  * and a count only, for the server log.
  */
 export type VaultAgentRepairNote = { failed: string; outcome: string; sentencesCut?: number };
+/**
+ * What became of the references in the model's prose, for the server log: counts only. `resolved` and
+ * `missing` (a figure that is not measured, said with its reason) are in the served reply; `unknown`
+ * counts, over both attempts, what was found wrong with a reference: one that named no figure of the
+ * request, a malformed one, or one that did not stand alone as the figure it is.
+ */
+export type VaultAgentFigureCounts = { resolved: number; missing: number; unknown: number };
 export type VaultAgentResult =
-  | { kind: 'reply'; reply: VaultAgentReply; repair?: VaultAgentRepairNote }
+  | {
+      kind: 'reply';
+      reply: VaultAgentReply;
+      repair?: VaultAgentRepairNote;
+      figures?: VaultAgentFigureCounts;
+    }
   /** `detail` is a fixed code for the server log (which check failed); never the person's text. */
   | { kind: 'failure'; reason: VaultAgentFailure; detail?: string; repair?: VaultAgentRepairNote };

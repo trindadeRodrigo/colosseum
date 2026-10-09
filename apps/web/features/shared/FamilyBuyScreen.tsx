@@ -259,6 +259,8 @@ export function FamilyBuyScreen({
       blocked={blocked}
       place={place}
       onProgress={(progress) => {
+        // the recipe the run is on is this page's from here on, whatever /goal stores meanwhile
+        if (recipe) setPicked(recipe.chain);
         setLocked(true);
         embedded?.onProgress?.(progress);
       }}

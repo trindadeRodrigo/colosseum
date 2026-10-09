@@ -44,6 +44,12 @@ import {
 } from '@colosseum/sdk';
 import { z } from 'zod';
 import { statedAmountUsd } from '../../apps/api/src/orders/stated-amount';
+import { ORDER_ID, orderOn, recordOf } from '../../apps/web/features/order/test/fixtures';
+import {
+  chainOf,
+  portfolioOf,
+  robinhoodChain,
+} from '../../apps/web/features/portfolio/test/portfolio';
 import {
   EXPOSURE,
   HISTORY,
@@ -56,6 +62,7 @@ import {
   narrowPlans,
   narrowRebalances,
 } from '../../apps/web/features/portfolio-section/fixtures/narrow';
+import { FAMILY_ID, familyOf as sampleFamily } from '../../apps/web/features/shared/test/fixtures';
 import { apiDouble } from '../../packages/sdk/test/api-double';
 import { type MockWorld, tampered } from '../../packages/sdk/test/mock';
 import { riskAnswer } from './stub-risk';
@@ -70,7 +77,8 @@ import { riskAnswer } from './stub-risk';
 //   tsx tests/e2e/stub-api.ts            STUB_API_PORT (3901), WEB_ORIGIN (http://localhost:3100)
 //
 // Plans an agent proposes from a link are made and read back as the API does (AGT-2). Four routes of
-// its own, for the spec: POST /__stub/reset forgets everything, GET /__stub/reports
+// its own, for the spec: POST /__stub/reset forgets everything, POST /__stub/delay { ms } has every
+// answer wait that long (the loading states), GET /__stub/reports
 // lists the steps the web reported as signed, POST
 // /__stub/tamper makes the next swap it builds carry a lower minimum than the order states, as a
 // server that lies would, and POST /__stub/test-network has the funding answer as a test network's
@@ -411,6 +419,47 @@ async function placeWithdraw(body: Body): Promise<OrderDetail> {
       if (!tx) throw new ApiRefusal(409, { error: 'the vault holds none of it any more' });
       return tx;
     },
+  });
+}
+
+/**
+ * POST /v1/orders with `vault`: more money into a vault the person has, as apps/api plans it
+ * (`planVaultBuy`): the deposit, then a swap per target in the order the vault lists its positions.
+ * With auto-follow on it is the deposit alone.
+ */
+async function placeVaultAdd(body: Body & { amountUsd: number }, owner: string) {
+  const { adapter } = world;
+  const named = body.vault as { address?: unknown };
+  const state = await adapter.getVault(String(named.address));
+  if (!state || state.owner !== owner)
+    throw new ApiRefusal(404, { error: 'no vault of yours at that address' });
+  const deposit = cashOf(Number(body.amountUsd));
+  const targets = state.positions
+    .filter((p) => p.targetBps > 0)
+    .map((p) => ({ asset: p.asset, weightBps: p.targetBps }));
+  const trades = state.autoFollow ? [] : tradesFor(targets, deposit);
+  return doubleFor(owner).place({
+    type: 'buy',
+    summary: `Add money to your vault on ${CHAIN_NAME}`,
+    depositRaw: String(deposit),
+    needsConsent: [],
+    steps: [
+      {
+        kind: 'deposit',
+        description: 'Deposit into your vault',
+        cashRaw: String(deposit),
+        trades: [],
+      },
+      ...trades.map((t) => ({ kind: 'swap' as const, description: 'Buy', trades: [t] })),
+    ],
+    build: async (leg) =>
+      leg.kind === 'deposit'
+        ? adapter.buildDeposit({
+            vault: state.address,
+            amountRaw: String(deposit),
+            slippageBps: 100,
+          })
+        : adapter.buildOwnerSwap({ vault: state.address, trades: leg.trades, slippageBps: 100 }),
   });
 }
 
@@ -836,6 +885,42 @@ const cors = () => ({
   'access-control-allow-methods': 'GET, POST, PUT, OPTIONS',
 });
 
+/**
+ * A wait before every answer, for looking at the loading states and for their specs: STUB_DELAY_MS
+ * from the start, or POST /__stub/delay { ms } while it runs. A reset puts it back.
+ */
+const DELAY_MS = Math.max(0, Number(process.env.STUB_DELAY_MS ?? 0) || 0);
+let delayMs = DELAY_MS;
+
+const SAMPLES: Record<string, () => unknown> = {
+  shelf: () => ({
+    families: [
+      sampleFamily(FAMILY_ID),
+      sampleFamily(FAMILY_ID, {
+        slug: 'dollars',
+        name: 'Dollars that pay',
+        familyId: 'b'.repeat(64),
+      }),
+      sampleFamily(FAMILY_ID, { slug: 'gold', name: 'Gold and cash', familyId: 'c'.repeat(64) }),
+    ],
+    disclaimer: DISCLAIMER.en,
+  }),
+  'shelf-empty': () => ({ families: [], disclaimer: DISCLAIMER.en }),
+  family: () => ({ family: sampleFamily(FAMILY_ID), disclaimer: DISCLAIMER.en }),
+  // every chain the throwaway wallet signs on is answered, so none is said to be unread
+  monitor: () => portfolioOf(chainOf(), robinhoodChain([])),
+  'monitor-empty': () => portfolioOf(chainOf([]), robinhoodChain([])),
+  order: () => ({ id: ORDER_ID, order: orderOn(), record: recordOf() }),
+  plans: () => ({ ...PLANS, unavailable: [] }),
+  'plans-empty': () => ({
+    ...PLANS,
+    unavailable: [],
+    chains: PLANS.chains.map((chain) => ({ ...chain, plans: [] })),
+  }),
+  exposure: () => ({ ...EXPOSURE, unavailable: [] }),
+  rebalances: () => ({ ...REBALANCES, unavailable: [] }),
+};
+
 async function route(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
   const method = req.method ?? 'GET';
@@ -845,7 +930,23 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     res.end();
     return;
   }
+  if (path === '/__stub/delay' && method === 'POST') {
+    const { ms } = (await read(req)) as { ms?: number };
+    delayMs = Math.max(0, Math.min(Number(ms) || 0, 120_000));
+    return send(res, 200, { ok: true, ms: delayMs });
+  }
+  if (path.startsWith('/__stub/sample/') && method === 'GET') {
+    // Answers for the specs of the waiting states (apps/web/e2e/skeletons.spec.ts), which hold a
+    // read and then hand the screen one of these: a shelf with three portfolios, one portfolio, a
+    // person's vault, an order with the record its browser keeps, and the portfolio section's
+    // answers with every chain read. Samples, in the shared shapes; nothing here is stored.
+    const sample = SAMPLES[path.slice('/__stub/sample/'.length)];
+    return sample ? send(res, 200, sample()) : send(res, 404, { error: 'no such sample' });
+  }
+  if (delayMs > 0 && !path.startsWith('/__stub/'))
+    await new Promise((done) => setTimeout(done, delayMs));
   if (path === '/__stub/reset' && method === 'POST') {
+    delayMs = DELAY_MS;
     mixTargets = null;
     world = freshWorld();
     tamperNext = false;
@@ -1135,6 +1236,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       return send(res, 200, await placeShared(body));
     const owner = ownerIn(body.owner);
     if (!owner) return send(res, 422, { error: 'a buy names its owner' });
+    if (body.vault !== undefined) return send(res, 200, await placeVaultAdd(body, owner));
     return send(res, 200, await doubleFor(owner).buy(body.amountUsd));
   }
   if (path === '/v1/shelf') {

@@ -5,12 +5,12 @@ import { Card, CardBody } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import type { PinSource } from '../../components/ui/provenance';
-import { SkeletonRows } from '../../components/ui/Skeleton';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { displayName, kindLabel } from '../order/plain';
 import { dollars, sharesOf } from '../portfolio/figures';
 import type { ExposureAnswer, ExposureChain, Plan, PlansChain } from './api';
+import { ExitLinesWait, RiskWait } from './PlanWait';
 import type { Reading } from './PortfolioProvider';
 import { ChainsOut, sampleLine } from './parts';
 import { exitPin, exposurePin, leastLive } from './pins';
@@ -77,7 +77,7 @@ export function PlanExit({ chain, plan, read }: Shown) {
 
   return (
     <Block ui="plan-exit" heading={words.heading} lead={words.lead}>
-      <BlockRead read={read} label={words.reading} skeleton={<SkeletonRows rows={2} columns={2} />}>
+      <BlockRead read={read} label={words.reading} skeleton={<ExitLinesWait />}>
         {(answer) => {
           const { entry, out, label } = entryOf(answer, chain, plan);
           if (out) return <ChainsOut unavailable={[out]} />;
@@ -193,7 +193,7 @@ export function PlanRisk({ chain, plan, read }: Shown) {
 
   return (
     <Block ui="plan-risk" heading={words.heading} lead={words.lead}>
-      <BlockRead read={read} label={words.reading} skeleton={<SkeletonRows rows={3} columns={2} />}>
+      <BlockRead read={read} label={words.reading} skeleton={<RiskWait />}>
         {(answer) => {
           const { entry, out, label } = entryOf(answer, chain, plan);
           if (out) return <ChainsOut unavailable={[out]} />;

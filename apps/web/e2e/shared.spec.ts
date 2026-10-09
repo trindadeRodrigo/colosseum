@@ -86,7 +86,12 @@ async function publish(page: Page, name: string, weights: [string, string][], ph
   await expect(page.getByText(en.shared.publish.noVaults, { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: en.shared.publish.review })).toBeDisabled();
   await expect(page.locator('[data-ui="publish-row"]')).toHaveCount(0);
-  const shownWallet = page.locator('[data-ui="account-menu-button"] span[title]').first();
+  // the person's Solana wallet, as the account menu lists it (the phone's sheet holds the same block)
+  const shownWallet = page
+    .locator(
+      '[data-ui="compact-nav-sheet"] [data-ui="account-wallet"][data-chain="solana"] [data-ui="account-address"]',
+    )
+    .first();
   await expect(shownWallet).toHaveAttribute('title', /.+/);
   const owner = await shownWallet.getAttribute('title');
   const source = await page.request.post(`${STUB}/__stub/source-vault`, {
@@ -201,18 +206,18 @@ test('publish a portfolio, find it on the shelf, buy it and follow it, every ste
   await mine.getByRole('link').first().click();
   await expect(page).toHaveURL(/\/vaults\/solana\/[^/]+$/);
   // This fixture follows a shared strategy and has no private name or goal record.
-  // The owner-proved workspace calls it by its chain, with the existing deposit route.
+  // The owner-proved workspace calls it "Your vault", says its chain once beside the value, and
+  // leads with Deposit, which opens in the page's own pane (gate VAULT-PAGE-ACTIONS).
   const workspace = page.locator('[data-ui="vault-screen"]');
   const ownedName = workspace.locator('h1[data-ui="vault-name"]');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(
-    en.portfolio.actions.unnamed('Solana'),
-  );
-  await expect(ownedName).toHaveText(en.portfolio.actions.unnamed('Solana'));
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.shared.vault.page.yourVault);
+  await expect(ownedName).toHaveText(en.shared.vault.page.yourVault);
   await expect(ownedName).toHaveAttribute('data-named', 'false');
-  const addMoney = workspace.locator('[data-ui="vault-add-money"]');
-  await expect(addMoney).toBeVisible();
-  await expect(addMoney).toHaveAttribute('href', `${new URL(page.url()).pathname}/add`);
-  await expect(addMoney).toHaveClass(/(?:^|\s)bg-primary(?:\s|$)/);
+  await expect(workspace.locator('[data-ui="vault-chain"]')).toHaveText('Solana');
+  const deposit = workspace.locator('[data-action="vault-deposit"]');
+  await expect(deposit).toBeVisible();
+  await expect(deposit).toHaveClass(/(?:^|\s)bg-primary(?:\s|$)/);
+  await expect(workspace.locator('[data-ui="vault-add-money"]')).toHaveCount(0);
   // The owner's page is the workbench (GOAL-CHAT-PORT): the chat is on the page beside the plan,
   // so no link leads down to it.
   await expect(workspace.locator('[data-ui="vault-conversation"]')).toBeVisible();

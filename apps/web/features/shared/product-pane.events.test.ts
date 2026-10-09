@@ -2,7 +2,15 @@
 import { type RecipeFigures, ShelfResponse } from '@colosseum/schemas';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
+import {
+  click,
+  find,
+  mount,
+  pinLine,
+  settle,
+  type,
+  unmountAll,
+} from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary, type Lang } from '../../i18n';
@@ -225,7 +233,10 @@ describe('the shelf, a card per product with the figures first', () => {
     expect(yields.textContent).not.toContain('SPYx');
     expect(yields.querySelectorAll('[data-ui="pin"]')).toHaveLength(2);
     await click(yields.querySelector('[data-ui="pin"]') as HTMLElement);
-    expect(find(host, '[data-ui="pin-source"]').textContent).toContain('the pool’s own rate');
+    expect(find(host, '[data-ui="pin-what"]').textContent).toBe('From the pool itself');
+    expect(await pinLine(yields.querySelector('[data-ui="figure"]') as Element)).toContain(
+      'the pool’s own rate',
+    );
     expect(find(card, '[data-ui="chain-badge"]').textContent).toBe('Solana');
     expect(card.textContent).toContain(en.shared.shelf.card.by('US51…ELFx'));
     expect(card.textContent).toContain(en.shared.shelf.card.version(2));
@@ -329,8 +340,8 @@ describe('a product’s page, on the plan view', () => {
     );
     expect(said).not.toContain('syrupUSDC (Maple):');
     expect(exit.querySelectorAll('[data-ui="pin"]')).toHaveLength(2);
-    await click(exit.querySelector('[data-ui="pin"]') as HTMLElement);
-    expect(find(host, '[data-ui="pin-source"]').textContent).toContain('Bearing');
+    expect(await pinLine(exit.querySelector('[data-ui="figure"]') as Element)).toContain('Bearing');
+    expect(find(host, '[data-ui="pin-what"]').textContent).toBe('From Bearing’s measurements');
   });
 
   it('names the version and the publisher in view, and offers one way to invest', async () => {

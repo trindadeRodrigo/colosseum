@@ -1,6 +1,7 @@
 'use client';
 import { type ReactNode, useState } from 'react';
 import { type Column, DataTable } from '../../components/ui/DataTable';
+import { Hint } from '../../components/ui/Hint';
 import { Sparkline, sparkable } from '../../components/ui/Sparkline';
 import { Segmented, TimeChart } from '../../components/ui/TimeChart';
 import { useAnswer, useBearing } from './BearingProvider';
@@ -49,6 +50,27 @@ import type { AssetsBody, HistBody } from './types';
 // box (0.1% to 10%, default 1%) sets it for the whole page: counters, chart and table re-read the
 // capacity at that tolerance.
 
+/** The lending page while its pools are read: six figures by their labels. */
+export function LendingWait() {
+  const t = useWords();
+  return (
+    <PageWait
+      label={t.lending.reading}
+      kpis={[
+        { label: t.lending.kpi.supplied },
+        { label: t.lending.kpi.borrowed },
+        { label: t.lending.kpi.collateral, note: t.lending.kpi.collateralNote },
+        {
+          label: t.lending.kpi.covered,
+          note: t.lending.kpi.coveredNote('1.00%', t.regimes.us_market_hours),
+        },
+        { label: t.lending.kpi.largest, note: t.lending.kpi.largestNote('1.00%') },
+        { label: t.lending.kpi.loss, note: t.lending.kpi.lossNote('00.00%') },
+      ]}
+    />
+  );
+}
+
 /** Lending pools are Solana's: on another chain the page says it is not collected there. */
 export function LendingPage() {
   const { chain } = useBearing();
@@ -77,22 +99,7 @@ function LendingOnSolana() {
         : null,
     [key, reader],
   );
-  if (!b || !rows || !assets || (assets.ok && b.lendList.ok && !hist))
-    return (
-      <PageWait
-        label={t.lending.reading}
-        kpis={[
-          { label: t.lending.kpi.supplied },
-          { label: t.lending.kpi.borrowed },
-          { label: t.lending.kpi.collateral, note: t.lending.kpi.collateralNote },
-          {
-            label: t.lending.kpi.covered,
-            note: t.lending.kpi.coveredNote('1.00%', t.regimes.us_market_hours),
-          },
-          { label: t.lending.kpi.largest, note: t.lending.kpi.largestNote('1.00%') },
-        ]}
-      />
-    );
+  if (!b || !rows || !assets || (assets.ok && b.lendList.ok && !hist)) return <LendingWait />;
   if (!b.lendList.ok || !assets.ok)
     return (
       <p className="mt-6">
@@ -172,17 +179,17 @@ function TolBox() {
     if (t !== ui.tol) setUi((s) => ({ ...s, tol: t }));
   };
   return (
-    <label
-      title={w.toleranceTitle}
-      className="relative inline-flex items-center gap-1.5 text-caption text-muted-foreground"
-    >
-      <span>{w.tolerance}</span>
+    // The word says what the box is; what a tolerance means is one hover, focus or tap away, and the
+    // box carries the same sentence for a screen reader.
+    <span className="relative inline-flex items-center gap-1.5 text-caption text-muted-foreground">
+      <Hint tip={w.toleranceTitle}>{w.tolerance}</Hint>
       <input
         type="text"
         inputMode="decimal"
         autoComplete="off"
         value={text}
-        aria-describedby="bearing-tol-err"
+        aria-label={w.tolerance}
+        aria-describedby="bearing-tol-why bearing-tol-err"
         aria-invalid={err ? true : undefined}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
@@ -202,7 +209,10 @@ function TolBox() {
       >
         {err}
       </span>
-    </label>
+      <span id="bearing-tol-why" className="sr-only">
+        {w.toleranceTitle}
+      </span>
+    </span>
   );
 }
 
@@ -460,11 +470,14 @@ function LendBody(p: {
           <>
             <Fig f={f.collF} fmt={fm.usd1} />
             {parts.length > 0 && (
-              <span
-                title={parts.map((x) => x.asset).join(', ')}
-                className="block font-mono text-b-meta text-muted-foreground"
-              >
-                {parts.length === 1 ? parts[0]?.asset : t.table.assets(parts.length)}
+              <span className="block font-mono text-b-meta text-muted-foreground">
+                {parts.length === 1 ? (
+                  parts[0]?.asset
+                ) : (
+                  <Hint tip={parts.map((x) => x.asset).join(', ')}>
+                    {t.table.assets(parts.length)}
+                  </Hint>
+                )}
               </span>
             )}
           </>

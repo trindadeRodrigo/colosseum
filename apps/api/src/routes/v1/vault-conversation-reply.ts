@@ -70,7 +70,7 @@ export function registerVaultConversationReplyRoute(
         tags: ['portfolio'],
         summary: 'Discuss an owned vault and preview a model-proposed strategy',
         description:
-          'Fresh chain ownership on every call; missing and other-owned vaults return the same 404. The model receives the supplied conversation, real current vault state, listed assets and sourced risk inputs. It picks assets and the server sets the preview weights, without calling the allocation engine. The goal is the one of the plan the vault was opened for, read on the server as `POST /v1/vaults/{chain}/{address}/targets` reads it, never from the request: in an income or protect plan a stock is proposed only where the person asked for it in their own words, with the warning `outside_goal_requested`, and any other pick outside the goal is left out with the note `pick_outside_goal`, since the targets review would refuse it. A vault the server holds no plan for has no goal to check against, and `proposal.unknowns` says so. Sources and numerical metrics are server-authored. No history, plan, order, target or account-chain change is stored. Existing configured model and shared intake call quota apply. Cache-Control: private, no-store.',
+          'Fresh chain ownership on every call; missing and other-owned vaults return the same 404. The model receives the supplied conversation, real current vault state, listed assets and sourced risk inputs. It picks assets and the server sets the preview weights, without calling the allocation engine. The goal is the one of the plan the vault was opened for, read on the server as `POST /v1/vaults/{chain}/{address}/targets` reads it, never from the request: in an income or protect plan a stock is proposed only where the person asked for it in their own words, with the warning `outside_goal_requested`, and any other pick outside the goal is left out with the note `pick_outside_goal`, since the targets review would refuse it. A vault the server holds no plan for has no goal to check against, and `proposal.unknowns` says so. Sources and numerical metrics are server-authored. The model writes no number: where it states a measured figure it names one the server gave it, and the server writes the value in its place in `message`, `question` and the prose of the proposal (plain text, no markup). `figures` is then present: `figures.prose` is the same prose with each figure a `{{fact:<id>}}` placeholder and `figures.facts` what each one is, with its value, unit, shown text, source, fetchedAt, method, provenance and, for a price past the age the chain accepts, `staleAgeSec`; a figure that is not measured has a null value and its reason, and its text says so. A reference to anything the server did not measure never becomes a number: its sentence is left out. No history, plan, order, target or account-chain change is stored. Existing configured model and shared intake call quota apply. Cache-Control: private, no-store.',
         params: VaultRouteParams,
         body: VaultAgentRequest,
         response: {
@@ -174,6 +174,12 @@ export function registerVaultConversationReplyRoute(
           result.repair.outcome === 'repaired'
             ? 'the vault conversation reply passed on its repair attempt'
             : 'the vault conversation reply is the one the server corrected: its repair attempt failed a check too',
+        );
+      if (result.figures)
+        // Counts only: never an id, a value, the person's words or the model's reply.
+        req.log.info(
+          { figures: result.figures, chain: identity.chain },
+          'the vault conversation reply stated figures by reference',
         );
       return { ...result.reply, chain: identity.chain, address: identity.address };
     },

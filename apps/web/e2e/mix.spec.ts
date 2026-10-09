@@ -233,7 +233,12 @@ test('a vault’s own weights, edited by hand: reviewed, ordered, every step sig
   page,
 }) => {
   await signIn(page);
-  const shownWallet = page.locator('[data-ui="account-menu-button"] span[title]').first();
+  // the person's Solana wallet, as the account menu lists it (the phone's sheet holds the same block)
+  const shownWallet = page
+    .locator(
+      '[data-ui="compact-nav-sheet"] [data-ui="account-wallet"][data-chain="solana"] [data-ui="account-address"]',
+    )
+    .first();
   await expect(shownWallet).toHaveAttribute('title', /.+/);
   const owner = await shownWallet.getAttribute('title');
   const source = await page.request.post(`${STUB}/__stub/source-vault`, {
@@ -262,9 +267,15 @@ test('a vault’s own weights, edited by hand: reviewed, ordered, every step sig
   );
   await page.locator('[data-ui="goal-picker"]').selectOption(vaultOption);
   await expect(page).toHaveURL(new RegExp(`/vaults/solana/${address}$`));
-  await page.getByRole('link', { name: en.mix.editor.edit }).click();
-  await expect(page).toHaveURL(new RegExp(`/vaults/solana/${address}/targets$`));
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.mix.editor.title);
+  // By hand, behind "More" on the vault's own page: the editor, the review and the steps are in the
+  // page's pane, at one address (gate VAULT-PAGE-ACTIONS). The editor's own page stays for old links.
+  const here = new RegExp(`/vaults/solana/${address}$`);
+  const pane = page.locator('[data-ui="vault-action-pane"]');
+  await page.locator('[data-ui="vault-more"]').click();
+  await page.locator('[data-action="vault-edit-weights"]').click();
+  await expect(pane.locator(':scope > header h2')).toHaveText(
+    en.shared.vault.page.panes.change.title,
+  );
   // from 60/40 to 70 SPY, nothing in NVDA, 30 left in cash
   await page.getByLabel(en.mix.editor.weight('SPY'), { exact: true }).fill('70');
   await page.getByRole('button', { name: en.mix.editor.remove('NVDA') }).click();
@@ -277,14 +288,18 @@ test('a vault’s own weights, edited by hand: reviewed, ordered, every step sig
   const confirm = await tickAll(page, en.mix.vault.confirm);
   await confirm.click();
 
-  await expect(page).toHaveURL(/\/orders\/[^/]+$/);
-  await expect(page.getByRole('region', { name: en.mix.order.title })).toContainText('70%');
+  await expect(pane.locator(':scope > header h2')).toHaveText(
+    en.shared.vault.page.panes.change.signTitle,
+  );
+  await expect(page).toHaveURL(here);
+  await expect(pane.getByRole('region', { name: en.mix.order.title })).toContainText('70%');
   await check(page, 'vault-order');
-  await page.getByRole('button', { name: en.mix.order.signTargets }).click();
+  await pane.getByRole('button', { name: en.mix.order.signTargets }).click();
+  await expect(pane).toHaveAttribute('data-state', 'done', { timeout: 90_000 });
   await expect(page.locator('[data-ui="order-status"]')).toHaveText(
     en.order.outcome.done('Solana'),
-    { timeout: 90_000 },
   );
+  await expect(page).toHaveURL(here);
   const vault = await page.request.get(`${STUB}/v1/vaults/solana/${address}`);
   const read = await vault.json();
   expect(

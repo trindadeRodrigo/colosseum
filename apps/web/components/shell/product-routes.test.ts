@@ -365,6 +365,9 @@ describe('rule 3: no screen can reach a key', () => {
    */
   const SIGNING_ROUTES: readonly string[] = [
     ORDER_ROUTE,
+    // a vault's own page shows its owner the steps of a deposit, a withdrawal or new weights in its
+    // right pane (gate VAULT-PAGE-ACTIONS, Thom, Oct 9): the order screen is drawn there
+    'app/(app)/vaults/[chain]/[address]/page.tsx',
     'app/(app)/plan/[id]/buy/page.tsx',
     'app/(app)/indexes/[slug]/buy/page.tsx',
     // a shared portfolio's own page mounts the invest card under its holdings (gate PRODUCTS-PLAN-PANE)
@@ -562,7 +565,7 @@ describe('rule 3: no screen can reach a key', () => {
     for (const file of [
       'features/goal-conversation/GoalConversation.tsx',
       'features/account/SignInScreen.tsx',
-      'features/account/ChainSwitch.tsx',
+      'features/account/AccountMenu.tsx',
       'features/account/AccountProvider.tsx',
       'features/wallet/SignIn.tsx',
       'components/shell/AppNav.tsx',

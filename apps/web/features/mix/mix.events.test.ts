@@ -9,6 +9,7 @@ import { withAccount } from '../account/test/screen';
 import { recallOrder } from '../order/order-record';
 import { deploymentsFor } from '../order/readiness';
 import { retargetOrder } from '../shared/test/fixtures';
+import { VaultScreen } from '../shared/VaultScreen';
 import { reply, read as sample } from '../vault-conversation/test/fixtures';
 import { VaultConversation } from '../vault-conversation/VaultConversation';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
@@ -303,6 +304,20 @@ describe('a vault conversation’s preview, applied to the vault', () => {
     expect(confirm.getAttribute('aria-disabled')).toBe('true');
     await click(confirm);
     expect(calls.filter((c) => c.url.endsWith('/targets'))).toHaveLength(1);
+    // A warning's figure sits in the label of its tick, and so does the popover of its source:
+    // reading that popover, and pressing its words, ticks nothing (review of #214, finding 3).
+    const warned = find(host, '[data-ui="mix-review-warnings"]');
+    // (opened by the keyboard's focus here: happy-dom, unlike a browser, takes a press on a button
+    // inside a label for the label's)
+    const pin = warned.querySelector<HTMLElement>('[data-ui="pin"]') as HTMLElement;
+    await fire(pin, new FocusEvent('focusin', { bubbles: true }));
+    await click(find(warned, '[data-ui="pin-what"]'));
+    expect(box(host).checked, 'after the words').toBe(false);
+    await click(find(warned, '[data-ui="pin-popover"]'));
+    expect(box(host).checked, 'after the panel').toBe(false);
+    expect(confirm.getAttribute('aria-disabled')).toBe('true');
+    await fire(document, new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(warned.querySelector('[data-ui="pin-popover"]')).toBeNull();
     await click(find(host, '[data-ui="mix-review-warnings"] input[type="checkbox"]'));
     expect(confirm.getAttribute('aria-disabled')).toBeNull();
     await click(confirm);
@@ -449,6 +464,77 @@ describe('a vault conversation’s preview, applied to the vault', () => {
     const notes = find(host, '[data-ui="weight-notes"]').textContent ?? '';
     expect(notes).toContain(en.mix.preview.notesAlone);
     expect(notes).toContain(en.mix.preview.note.unmet('70% TSLA'));
+  });
+});
+
+describe('a proposal confirmed on the vault’s own page (gate VAULT-PAGE-ACTIONS)', () => {
+  /** The owner's page, with a proposal in the conversation and its confirm answered by `ordered`. */
+  async function page(ordered: () => Promise<Response>) {
+    portStore.setApi(async (url, init) => {
+      if (url === '/v1/me')
+        return json({
+          userId,
+          wallets: EMBEDDED,
+          chain: 'solana',
+          chainSource: 'picked',
+          chainOptions: [],
+        });
+      if (url === `/v1/vaults/solana/${read.vault.address}`) return json(read);
+      if (init?.method !== 'POST') return json({}, 404);
+      const body = JSON.parse(String(init.body));
+      if (url.endsWith('/conversation/reply'))
+        return json({ ...answer, messageId: body.messageId });
+      if (url.endsWith('/targets'))
+        return body.confirm ? ordered() : json({ status: 'review', review: reviewOf() });
+      return json({}, 404);
+    });
+    const host = await mount(
+      withAccount(
+        'en',
+        createElement(VaultScreen, { chain: 'solana', address: read.vault.address }),
+      ),
+    );
+    for (let i = 0; i < 4; i += 1) await settle(30);
+    await type(find<HTMLTextAreaElement>(host, 'textarea'), 'Put 40% in gold');
+    await click(find(host, '[data-ui="composer-send"]'));
+    await settle();
+    await click(buttonNamed(host, en.mix.preview.apply));
+    await settle();
+    await click(find(host, '[data-action="targets-review"]'));
+    await settle();
+    await click(box(host));
+    await click(find(host, '[data-action="mix-confirm"]'));
+    await settle();
+    return host;
+  }
+  const answered = () =>
+    json({ status: 'ordered', review: reviewOf({ unconfirmed: [] }), order: retargetOrder() });
+
+  it('takes the pane with the order’s steps, and opens no other page', async () => {
+    const host = await page(async () => answered());
+    for (let i = 0; i < 4; i += 1) await settle(30);
+    expect(find(host, '[data-ui="vault-screen"]').dataset.pane).toBe('apply');
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('does not replace a deposit opened before its order answers', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((done) => {
+      release = done;
+    });
+    const host = await page(async () => {
+      await gate;
+      return answered();
+    });
+    // the confirm is on its way: the person opens Deposit meanwhile
+    await click(find(host, '[data-action="vault-deposit"]'));
+    await settle();
+    expect(find(host, '[data-ui="vault-screen"]').dataset.pane).toBe('deposit');
+    release();
+    for (let i = 0; i < 4; i += 1) await settle(30);
+    expect(find(host, '[data-ui="vault-screen"]').dataset.pane).toBe('deposit');
+    expect(host.querySelector('[data-ui="vault-action-pane"] [data-ui="order-step"]')).toBeNull();
+    expect(router.push).not.toHaveBeenCalled();
   });
 });
 

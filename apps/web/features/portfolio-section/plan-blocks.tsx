@@ -1,7 +1,7 @@
 'use client';
 import { type ReactNode, useId } from 'react';
-import { CardWait } from '../../components/shell/Wait';
 import { Card } from '../../components/ui/Card';
+import { ScreenWait } from '../../components/waits/ScreenWait';
 import { useT } from '../../i18n/I18nProvider';
 import { type Reading, usePortfolioSection } from './PortfolioProvider';
 import { ReadAgain, Say } from './parts';
@@ -75,8 +75,12 @@ export function BlockRead<T>({
     case 'idle':
     case 'reading':
       return (
+        // The frame is exactly its skeleton (the line floats over its foot), as the page's own wait
+        // drew it: a block that reads after the plans does not move the blocks under it.
         <Card>
-          <CardWait label={label} skeleton={skeleton} onRetry={again} />
+          <div data-ui="card-loading" className="p-6">
+            <ScreenWait label={label} skeleton={skeleton} onRetry={again} />
+          </div>
         </Card>
       );
     case 'read':

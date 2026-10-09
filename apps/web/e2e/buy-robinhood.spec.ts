@@ -42,10 +42,10 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/goal$/);
-  // signed in, the bar's one account control is on the chain chosen on the page
+  // signed in: the bar's account control shows the person, and no chain
   await expect(page.locator('header [data-ui="account-menu-button"]')).toHaveAttribute(
-    'data-chain',
-    'robinhood',
+    'data-ready',
+    '',
   );
 
   await openPlan(page);

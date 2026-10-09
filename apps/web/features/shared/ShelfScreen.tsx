@@ -2,15 +2,15 @@
 import type { SharedFamily, SharedRecipe } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState } from 'react';
-import { Wait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardEmpty, CardHeader } from '../../components/ui/Card';
 import { ChainBadges } from '../../components/ui/ChainBadge';
+import { Hint } from '../../components/ui/Hint';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
-import { SkeletonCards } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
+import { ScreenWait } from '../../components/waits/ScreenWait';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { ChainBadgeMarked } from '../account/ChainName';
@@ -24,6 +24,7 @@ import { isPlatformCreator } from './platform';
 import { holdingsOf, rate } from './product-figures';
 import { readShelf } from './shared-api';
 import { shortAddress, useSharedPerson } from './use-person';
+import { ShelfWait } from './waits';
 
 // The shelf (DESIGN-VAULT section 11; gate PRODUCTS-PLAN-PANE): a card per shared portfolio, the
 // figures first: one bar of what it holds with each share under it, each holding's yield with its pin, what it
@@ -109,7 +110,7 @@ export function ShelfScreen() {
       </header>
 
       {load.kind === 'loading' ? (
-        <Wait label={t.shared.shelf.loading} skeleton={<SkeletonCards />} />
+        <ScreenWait label={t.shared.shelf.loading} skeleton={<ShelfWait />} />
       ) : load.kind !== 'read' ? (
         <section aria-labelledby={titleId} className="flex flex-col items-start gap-4">
           <p className="max-w-(--tf-measure-body) text-body">
@@ -171,8 +172,10 @@ function FamilyCard({ family }: { family: SharedFamily }) {
   /** Who published a recipe and which version is in effect, on its chain. */
   const published = (r: SharedRecipe) => (
     <p className="flex flex-wrap items-baseline gap-x-2 text-body-sm text-muted-foreground">
-      <span className="font-mono text-source" title={r.creator}>
-        {c.by(shortAddress(r.creator))}
+      <span className="font-mono text-source">
+        <Hint tip={<span className="font-mono text-source break-all">{r.creator}</span>}>
+          {c.by(shortAddress(r.creator))}
+        </Hint>
       </span>
       {isPlatformCreator(networkFor(r.chain, r.provenance === 'mock'), r.chain, r.creator) && (
         <span className="font-medium text-foreground">{c.platform}</span>

@@ -3,12 +3,12 @@ import type { PlanNewest } from '@colosseum/schemas';
 import { useState } from 'react';
 import { Card, CardBody } from '../../components/ui/Card';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
-import { SkeletonChart } from '../../components/ui/Skeleton';
 import { Segmented } from '../../components/ui/TimeChart';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars, utc } from '../portfolio/figures';
 import { type HistoryAnswer, type Plan, type PlansChain, readHistory } from './api';
 import { type ChartPoint, DepositTag, PlanValueChart } from './PlanValueChart';
+import { ValueChartWait } from './PlanWait';
 import { useSectionRead } from './PortfolioProvider';
 import { ChainsOut, Say, sampleLine } from './parts';
 import { leastLive, pointPin, putInPin } from './pins';
@@ -71,7 +71,7 @@ export function PlanHistory({
       }
     >
       {chosen && served(chosen) ? (
-        <BlockRead read={reading} label={words.reading} skeleton={<SkeletonChart />}>
+        <BlockRead read={reading} label={words.reading} skeleton={<ValueChartWait />}>
           {(answer) => <Read answer={answer} chain={chain} plan={plan} newest={newest} />}
         </BlockRead>
       ) : (

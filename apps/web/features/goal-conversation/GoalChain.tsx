@@ -7,8 +7,8 @@ import { useT } from '../../i18n/I18nProvider';
 import { type Account, useAccount } from '../account/AccountProvider';
 import { ChainChoice } from '../account/ChainChoice';
 import { ChainHow } from '../account/ChainName';
-import { switchFailure } from '../account/ChainSwitch';
 import { SWITCHABLE } from '../account/chain-choice';
+import { switchFailure } from '../account/chain-failure';
 import type { WebWalletPort } from '../wallet/port';
 import { useWalletPort } from '../wallet/WalletProvider';
 
@@ -17,7 +17,8 @@ import { useWalletPort } from '../wallet/WalletProvider';
 // starting on the person's last one (`account.chain`, which the choice stores: PUT /v1/me/chain). Once
 // it has words the chain is a quiet badge with "Change": each chain has its own assets, so a change
 // starts a new conversation on the other chain, after the person says yes; the one on screen stays
-// among the saved ones. A person whose wallet signs on one chain sees that chain and why.
+// among the saved ones. A person whose wallet signs on one chain sees that chain and why; one whose
+// plans start on a chain that cannot take one sees why, and the way to a chain that can.
 
 /** The chains a plan of this person can start on: a wallet of theirs signs there, and our server runs it. */
 export function plannable(account: Account, port: Pick<WebWalletPort, 'network'>): ChainId[] {
@@ -174,8 +175,39 @@ export function GoalChain({
     );
   }
 
-  if (!usable.includes(chain) || others.length === 0)
-    // One chain, or none our server runs: said plainly, with nothing to choose.
+  if (!usable.includes(chain)) {
+    // New plans start on a chain that cannot take one: our server has it switched off, or no wallet
+    // of theirs signs there. Said with why, and with the way to a chain that can: nothing else on
+    // the page is a way off it (no first message can be sent there, so there is no "Change"; the
+    // bar's list, which was the way out, is gone).
+    const [to] = usable;
+    return (
+      <div ref={root} data-ui="goal-chain" data-chain={chain} className="flex flex-col gap-2">
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted-foreground">
+          <span>
+            {port.network(chain)?.on === false ? c.off(nameOf(chain)) : c.notYours(nameOf(chain))}
+          </span>
+        </p>
+        {to && (
+          <Button
+            variant="secondary"
+            data-act="chain-move"
+            busy={saving === to}
+            busyLabel={t.chain.switch.saving}
+            disabled={busy}
+            onClick={() => void pick(to)}
+            className="self-start"
+          >
+            {c.start(nameOf(to))}
+          </Button>
+        )}
+        {failed}
+      </div>
+    );
+  }
+
+  if (others.length === 0)
+    // One chain our server runs for them: said plainly, with nothing to choose.
     return usable.includes(chain) ? (
       <p
         data-ui="goal-chain"
