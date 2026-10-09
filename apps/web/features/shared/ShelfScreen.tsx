@@ -196,6 +196,7 @@ function FamilyCard({ family }: { family: SharedFamily }) {
       }}
     >
       <CardHeader
+        level={2}
         title={
           // The card's one link, stretched over the card; a link of the app, so the page is not reloaded.
           <Link
