@@ -278,7 +278,7 @@ export async function insertContinuation(
     if (built.some((attempt) => !first.seen.includes(attempt.id)))
       throw new Refusal(409, 'a step of this order was built just now', {
         code: 'STEP_IN_FLIGHT',
-        fix: 'Report it, or wait until it can no longer land, then finish the buy.',
+        fix: 'Report it, or wait until it can no longer land, then finish the deposit.',
         details: { retryable: true },
       });
     await insertOrderRows(tx, order, request);

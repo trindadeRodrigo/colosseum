@@ -118,7 +118,7 @@ describe('the walking skeleton: a buy on the chain of the person’s wallet, on 
 
       const placed = await order(a);
       expect(Order.parse(placed)).toMatchObject({ type: 'buy', status: 'open', owner: a.owner });
-      expect(placed.summary).toBe(`Buy $1,000.00 of your plan on ${NAME[chain]}`);
+      expect(placed.summary).toBe(`Deposit $1,000.00 into your plan’s vault on ${NAME[chain]}`);
       expect(placed.legs.map((l) => [l.chain, l.seq, l.kind, l.trades.length, l.cashRaw])).toEqual(
         steps[chain],
       );
@@ -1577,7 +1577,7 @@ describe('refusals', () => {
   it('refuses what it cannot plan, and says why', async () => {
     const a = await someone();
     const cases: [object, number, RegExp][] = [
-      [{ proposalId: undefined }, 400, /names the plan/],
+      [{ proposalId: undefined }, 400, /names its plan/],
       [{ proposalId: '4b1c0f0e-3f8e-4d0e-9d2b-0d7a3a6b1c2d' }, 404, /no plan/],
       [{ proposalId: plans.robinhood }, 422, /no evm address, and this plan is on Robinhood Chain/],
       [{ proposalId: undefined, family: 'core' }, 404, /no shared portfolio with that slug/],

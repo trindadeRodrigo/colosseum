@@ -17,7 +17,7 @@ export const shell = {
   signedOut:
     'Sign in to see your plans over time. Each one sits in a vault on the chain of your wallet, and only you can withdraw from it.',
   /** Signed in, with no plan in a vault on any chain that was read. */
-  empty: 'You have no plan in a vault yet. A vault is made when you buy your first plan.',
+  empty: 'You have no plan in a vault yet. A vault is made with your first deposit.',
   startGoal: 'Start with your goal',
   again: 'Read again',
   againBusy: 'Reading…',
