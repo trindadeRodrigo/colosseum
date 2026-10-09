@@ -316,7 +316,7 @@ export function VaultConversation({
             {turns.map((turn) => (
               <li
                 key={turn.id}
-                className={`min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] ${turn.who === 'person' ? 'border-l-2 border-primary pl-3' : ''}`}
+                className={`min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] ${turn.who === 'person' ? 'max-w-[85%] self-end rounded-lg bg-honey-tint bg-glow px-4 py-3' : ''}`}
               >
                 <span className="sr-only">{turn.who === 'person' ? copy.you : copy.agent}: </span>
                 {[

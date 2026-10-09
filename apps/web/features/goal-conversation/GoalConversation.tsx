@@ -200,7 +200,7 @@ export function GoalConversation({
       <div
         ref={box}
         data-ui="goal-chat"
-        className="flex min-w-0 flex-col gap-4 bg-glow lg:sticky lg:top-24 lg:col-span-5 lg:max-h-[calc(100dvh-8rem)]"
+        className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-24 lg:col-span-5 lg:max-h-[calc(100dvh-8rem)]"
       >
         {turns.length === 0 && (
           <div className="flex flex-col gap-2">
@@ -214,10 +214,13 @@ export function GoalConversation({
           aria-live="polite"
           className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto"
         >
+          {/* The person's own words sit on the honey glow, so they stand apart from the replies
+              (Rodrigo, Oct 8); the column itself has no glow. */}
           {turns.map((turn) => (
             <li
+              data-who={turn.who}
               key={turn.id}
-              className={`min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] ${turn.who === 'person' ? 'border-l-2 border-primary pl-3' : ''}`}
+              className={`min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] ${turn.who === 'person' ? 'max-w-[85%] self-end rounded-lg bg-honey-tint bg-glow px-4 py-3' : ''}`}
             >
               <span className="sr-only">{turn.who === 'person' ? t.talk.you : t.talk.me}: </span>
               {['en', 'pt'].some(
