@@ -674,6 +674,26 @@ function goalReply(body: { messageId?: string; messages?: { who: string; text: s
         (level[1] ?? level[2]) as string
       ] ?? null)
     : null;
+  // The engine's sheet for "Invest in this plan" (RELAXED-INTAKE), as the relaxed agent sends it: only
+  // once the person named an amount in dollars. Personalize below builds the plan from this sheet with
+  // the stub's own weights, never the 50/50 of the preview.
+  const dollars = /\$\s?(\d[\d,]*)/.exec(words);
+  const amountUsd = dollars ? Number((dollars[1] as string).replaceAll(',', '')) : null;
+  const investSheet =
+    amountUsd !== null && amountUsd >= 10
+      ? {
+          basketType: 'standard',
+          goal: goal ?? 'grow',
+          amountUsd,
+          horizonMonths: 120,
+          horizonOpen: true,
+          risk: risk ?? 'medium',
+          themes: [],
+          chains: [CHAIN],
+          rules: { useHoldings: false, glide: false },
+          language: 'en',
+        }
+      : null;
   return GoalReply.parse({
     version: 1,
     chain: CHAIN,
@@ -700,6 +720,7 @@ function goalReply(body: { messageId?: string; messages?: { who: string; text: s
         label: 'Listed on this chain',
         ...OBSERVED,
       })),
+      ...(investSheet ? { investSheet } : {}),
     },
     warnings: [],
     weightNotes: [{ code: 'equal_split', assetIds: picks }],

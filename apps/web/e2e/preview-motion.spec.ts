@@ -180,7 +180,7 @@ test('a draft arrives as a joint tied to its rows, and the next one moves only w
   const final = SIX.map(([symbol, bps]) => [idOf(symbol), shareOf('en', bps)]);
   expect(await shownShares(page)).toEqual(final);
   const midway = await strategy.locator('[data-ui="card"]').boundingBox();
-  await expect(strategy.getByRole('button', { name: en.mix.preview.deposit })).toBeEnabled();
+  await expect(strategy.getByRole('button', { name: en.mix.preview.use })).toBeEnabled();
   await shot(page, 'arrival-midway-1440');
   // the whole arrival is over within 1.2s
   const ends = await page.evaluate(() =>
@@ -239,7 +239,7 @@ test('a draft arrives as a joint tied to its rows, and the next one moves only w
   await expect(strategy.locator('[data-ui="preview-pending"]')).toHaveText(
     en.shared.vault.conversation.reworking,
   );
-  await expect(strategy.getByRole('button', { name: en.mix.preview.deposit })).toHaveAttribute(
+  await expect(strategy.getByRole('button', { name: en.mix.preview.use })).toHaveAttribute(
     'aria-disabled',
     'true',
   );
@@ -267,7 +267,7 @@ test('a draft arrives as a joint tied to its rows, and the next one moves only w
   await shot(page, 'changed-midway-1440');
   await resume(page);
   await expect(strategy.locator('[data-ui="preview-pending"]')).toHaveText('');
-  await expect(strategy.getByRole('button', { name: en.mix.preview.deposit })).toBeEnabled();
+  await expect(strategy.getByRole('button', { name: en.mix.preview.use })).toBeEnabled();
   await shot(page, 'changed-settled-1440');
 
   // a wait can be long: every word and figure on the waiting card stays readable, in both themes
