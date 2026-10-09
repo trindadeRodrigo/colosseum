@@ -70,24 +70,43 @@ for (const size of SIZES)
           const cards = dialog.locator('[data-ui="sign-in"] [data-ui="card"]');
           const [a, b] = [await cards.nth(0).boundingBox(), await cards.nth(1).boundingBox()];
           expect(Math.abs((a?.height ?? 0) - (b?.height ?? 1))).toBeLessThan(1);
-          const lastBottoms = await dialog
-            .locator('[data-ui="sign-in"] [data-ui="sign-in-buttons"]')
-            .evaluateAll((lists) =>
-              lists.map((l) => (l.lastElementChild as HTMLElement).getBoundingClientRect().bottom),
-            );
-          expect(lastBottoms).toHaveLength(2);
-          expect(Math.abs((lastBottoms[0] ?? 0) - (lastBottoms[1] ?? 1))).toBeLessThan(1);
+          // the two sides start on one line: the first choice of each
+          const tops = await dialog
+            .locator('[data-act="passkey-create"], [data-ui="wallet-list"] button')
+            .evaluateAll((buttons) => buttons.map((b) => b.getBoundingClientRect().top));
+          expect(Math.abs((tops[0] ?? 0) - (tops[1] ?? 1))).toBeLessThan(1);
         }
-        // the two ways in, one button each, as wide as each other
-        const widths = await dialog
-          .locator('[data-ui="sign-in"] [data-ui="sign-in-buttons"] button')
+        // someone new and someone who has a passkey, as a pair: the new one first, as wide and as
+        // tall as each other, of one weight on a browser nothing is known about (no primary)
+        const pair = await dialog
+          .locator('[data-ui="passkey-pair"] button')
           .evaluateAll((buttons) =>
-            buttons.map((b) => Math.round(b.getBoundingClientRect().width)),
+            buttons.map((b) => ({
+              act: b.getAttribute('data-act'),
+              variant: b.getAttribute('data-variant'),
+              width: Math.round(b.getBoundingClientRect().width),
+              height: Math.round(b.getBoundingClientRect().height),
+            })),
           );
-        expect(widths, `${widths}`).toHaveLength(2);
-        expect(new Set(widths).size, `${widths}`).toBe(1);
-        // one primary in the dialog
-        await expect(dialog.locator('[data-variant="primary"]')).toHaveCount(1);
+        expect(pair.map((b) => b.act)).toEqual(['passkey-create', 'passkey-continue']);
+        expect(new Set(pair.map((b) => `${b.variant} ${b.width} ${b.height}`)).size).toBe(1);
+        await expect(dialog.locator('[data-variant="primary"]')).toHaveCount(0);
+        // what a new passkey opens is on the screen before the button is pressed
+        await expect(dialog.locator('[data-ui="passkey-create-note"]')).toBeVisible();
+        // the wallets are one list with no name twice; a wallet not listed is words under it
+        const names = await dialog.locator('[data-ui="wallet-name"]').allTextContents();
+        expect(new Set(names).size).toBe(names.length);
+        await expect(dialog.locator('[data-ui="wallet-list"] button')).toHaveCount(names.length);
+        await expect(
+          dialog.locator('[data-ui="wallet-list"] + [data-ui="wallet-other"]'),
+        ).toBeVisible();
+        // focus opens on the heading, never on a way in; back from it is "Close", the last control,
+        // and forward from "Close" is the first way in
+        await expect(dialog.locator('[data-ui="sign-in-screen"] > header h2')).toBeFocused();
+        await page.keyboard.press('Shift+Tab');
+        await expect(dialog.getByRole('button', { name: 'Close sign-in' })).toBeFocused();
+        await page.keyboard.press('Tab');
+        await expect(dialog.locator('[data-act="passkey-create"]')).toBeFocused();
         // nothing scrolls sideways, and the page behind does not scroll
         expect(
           await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
@@ -108,7 +127,8 @@ test('a direct link to /sign-in still gets the panel, as a page', async ({ page 
     'aria-current',
     'page',
   );
-  await expect(page.locator('[data-variant="primary"], a.bg-primary')).toHaveCount(1);
+  // no second primary beside the page's own choices, which are equals on a browser nothing is known about
+  await expect(page.locator('[data-variant="primary"], a.bg-primary')).toHaveCount(0);
 });
 
 test('the bar keeps its height: signed out, on /sign-in, and signed in', async ({ page }) => {
@@ -121,7 +141,7 @@ test('the bar keeps its height: signed out, on /sign-in, and signed in', async (
   await page.goto('/sign-in');
   await expect(page.locator('header [data-ui="sign-in-here"]')).toBeVisible();
   expect(await height()).toBe(out);
-  await page.getByRole('button', { name: /Continue with a passkey/ }).click();
+  await page.getByRole('button', { name: /Use my passkey/ }).click();
   // no chain is asked (CHAIN-SWITCH): the bar shows one account control, on the chain they start on
   await expect(page.locator('header [data-ui="account"]')).toBeVisible();
   const control = page.locator('header [data-ui="account-menu-button"]');
@@ -165,7 +185,7 @@ test('on the landing, "Sign in" opens the dialog over it, the URL stays /, and E
   await expect(dialog.locator('[data-ui="sign-in"][data-state="ready"]')).toBeVisible({
     timeout: 60_000,
   });
-  await expect(dialog.getByRole('button', { name: /Continue with a passkey/ })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /Use my passkey/ })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/$/);

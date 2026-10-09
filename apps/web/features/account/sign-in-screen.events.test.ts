@@ -99,9 +99,8 @@ const button = (host: HTMLElement, label: string) => {
   if (found.length !== 1) throw new Error(`expected one "${label}", found ${found.length}`);
   return found[0] as HTMLElement;
 };
-/** Connects a wallet as a person does: "Connect a wallet", then the wallet in the list. */
+/** Connects a wallet as a person does: the wallet in the list, which is there from the start. */
 const connectWith = async (host: HTMLElement, name: string) => {
-  await click(button(host, en.signIn.wallet.connect));
   await click(button(host, name));
 };
 const state = (host: HTMLElement) =>
@@ -131,7 +130,7 @@ describe('a person who creates a wallet in the app', () => {
 
     await click(button(host, en.signIn.passkey.continue));
     await settle();
-    // one button: a passkey this device has, or one made here (SIGN-IN-FLOW)
+    // "Use my passkey": a passkey this device has, and none is made (SIGN-IN-PAIR)
     expect(signIn).toHaveBeenCalledWith('passkey');
     // no question: the chain they were looking at (Solana, where nobody has chosen) is stored
     expect(host.querySelector('[role="group"]')).toBeNull();
@@ -604,6 +603,26 @@ describe('the screen itself', () => {
     expect(host.textContent).toContain(en.signIn.lead);
     expect(host.querySelectorAll('h1')).toHaveLength(1);
     expect(find(host, '[data-ui="sign-in"]').getAttribute('data-state')).toBe('ready');
+    // one heading, one sentence, then the choices (Thom, Oct 9)
+    const head = find(host, '[data-ui="sign-in-screen"] > header');
+    expect(head.querySelectorAll('p')).toHaveLength(1);
+    expect(en.signIn.lead.split('. ')).toHaveLength(1);
+    expect(head.nextElementSibling?.nextElementSibling).toBe(find(host, '[data-ui="sign-in"]'));
+  });
+
+  it('takes someone new on from "Create a passkey": one made, the wallet read, then where they were headed', async () => {
+    const server = api(made());
+    const signIn = signsInAs(EMBEDDED);
+    portStore.set(fakePort({ found: FOUND, signIn }));
+    const host = await screen('en', '/goal');
+    await click(find(host, '[data-act="passkey-create"]'));
+    await settle();
+    expect(signIn.mock.calls).toEqual([['passkey', { create: true }]]);
+    expect(server.calls.filter((c) => c.method === 'PUT')).toEqual([
+      { method: 'PUT', path: '/v1/me/chain', body: { chain: 'solana' } },
+    ]);
+    expect(state(host)).toBe('ready');
+    expect(router.replace).toHaveBeenCalledWith('/goal');
   });
 
   it('says a wallet is being made while the port loads after a passkey sign-in', async () => {

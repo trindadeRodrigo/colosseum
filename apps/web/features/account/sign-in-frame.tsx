@@ -12,8 +12,8 @@ import { useT } from '../../i18n/I18nProvider';
 // The surface is the design system's modal (token-mapping.md, section 7): the popover ground, a 1px
 // hairline, 2px corners, no shadow, a scrim of the page's ground at 85% with no blur. It rises 12px as
 // it fades in (STYLE.md, Motion), a 120ms crossfade with reduced motion. Below 640px it is a sheet the
-// full height of the window. `role="dialog"`, `aria-modal`, named by its title; focus goes into it
-// and stays there, Escape, the scrim and the close button close it, focus goes back to what opened
+// full height of the window. `role="dialog"`, `aria-modal`, named by its title; focus goes into it,
+// to its heading so that Enter starts nothing, and stays there, Escape, the scrim and the close button close it, focus goes back to what opened
 // it, and the rest of the page is inert and does not scroll.
 
 /**
@@ -70,8 +70,10 @@ export function SignInFrame({
         if (sibling !== node && sibling instanceof HTMLElement && !sibling.inert)
           behind.push(sibling);
     for (const el of behind) el.inert = true;
-    const first = panel.current?.querySelector<HTMLElement>(FOCUSABLE);
-    (first ?? panel.current)?.focus();
+    // Focus opens on the dialog's heading, never on a way in: Enter on open must start nothing, a
+    // new passkey least of all (the first button in the order of the keys makes one).
+    const heading = document.getElementById(titleId);
+    (heading?.hasAttribute('tabindex') ? heading : panel.current)?.focus();
     return () => {
       html.style.overflow = overflow;
       html.style.scrollbarGutter = scrollbarGutter;
@@ -81,7 +83,7 @@ export function SignInFrame({
       if (trigger?.isConnected) trigger.focus();
       else if (trigger) document.querySelector<HTMLElement>('[data-account-focus]')?.focus();
     };
-  }, [trigger]);
+  }, [trigger, titleId]);
 
   // Escape closes it wherever focus is, on <body> too when what had it went away (a list the chain
   // question replaced).
@@ -107,7 +109,9 @@ export function SignInFrame({
     const first = items[0];
     const last = items[items.length - 1];
     if (!first || !last) return;
-    if (event.shiftKey && document.activeElement === first) {
+    // From the heading, where focus opens, back is the last control: nothing behind the dialog.
+    const outside = !items.includes(document.activeElement as HTMLElement);
+    if (event.shiftKey && (document.activeElement === first || outside)) {
       event.preventDefault();
       last.focus();
     } else if (!event.shiftKey && document.activeElement === last) {
@@ -138,6 +142,8 @@ export function SignInFrame({
         onKeyDown={onKeyDown}
         className="relative flex w-full flex-col gap-6 overflow-y-auto border border-border bg-popover p-6 text-popover-foreground outline-none motion-safe:animate-dialog-in motion-reduce:animate-crossfade max-sm:h-dvh max-sm:rounded-none max-sm:border-0 max-sm:pt-16 sm:max-h-[calc(100dvh-32px)] sm:w-[calc(100%-32px)] sm:max-w-[920px] sm:rounded-md"
       >
+        {children(titleId)}
+        {/* Last in the order of the keys, after the ways in (Thom, Oct 9); drawn at the top right. */}
         <Button
           variant="icon"
           aria-label={t.signIn.close}
@@ -146,7 +152,6 @@ export function SignInFrame({
         >
           <Icon name="X" />
         </Button>
-        {children(titleId)}
       </div>
     </div>
   );
