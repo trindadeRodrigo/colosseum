@@ -7,6 +7,7 @@ import { click, find, mount, settle, unmountAll } from '../../components/ui/test
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary, type Lang } from '../../i18n';
+import { useAccount } from '../account/AccountProvider';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
 import { keepOrder, type OrderRecord } from '../order/order-record';
@@ -555,7 +556,7 @@ describe('the monitor, when there is nothing to read or the API cannot say', () 
     api({ person: onSolana, portfolio: () => json(portfolioBody(chainOf([]))) });
     signIn();
     const host = await screen();
-    expect(text(host)).toContain(en.portfolio.empty('Solana'));
+    expect(text(host)).toContain(en.portfolio.empty);
     const link = find(host, 'a');
     expect([link.textContent, link.getAttribute('href')]).toEqual([
       en.portfolio.startGoal,
@@ -1480,17 +1481,17 @@ describe('the chain of each vault', () => {
       retryable,
     });
     for (const answer of [
-      // the current chain could not be read, and no vault was read anywhere
+      // a chain of theirs could not be read, and no vault was read anywhere
       { ...portfolioOf(robinhoodChain([])), unavailable: [out('solana', true)] },
-      // the current chain is not held, and nothing was read
+      // a chain a wallet of theirs signs on is not in the answer at all, and nothing was read
       { ...portfolioOf(robinhoodChain([])), unavailable: [] },
-      // the current chain was read empty, but another could not be read
+      // one chain was read empty, but another could not be read
       { ...portfolioOf(chainOf([])), unavailable: [out('robinhood', false)] },
     ]) {
       api({ person: onSolana, portfolio: () => json(answer) });
       signIn();
       const host = await screen();
-      expect(host.textContent).not.toContain(en.portfolio.empty('Solana'));
+      expect(host.textContent).not.toContain(en.portfolio.empty);
       expect(host.querySelector('[data-ui="chains-out"]')).not.toBeNull();
       await unmountAll();
     }
@@ -1510,10 +1511,10 @@ describe('the chain of each vault', () => {
     await unmountAll();
     api({ person: onSolana, portfolio: () => json(portfolioOf(chainOf([]))) });
     signIn();
-    expect((await screen()).textContent).toContain(en.portfolio.empty('Solana'));
+    expect((await screen()).textContent).toContain(en.portfolio.empty);
   });
 
-  it('says no wallet is on the current chain only where there is none: with one, that it was not read', async () => {
+  it('says a chain a wallet of theirs signs on was not read, and nothing of a chain none signs on', async () => {
     // a wallet on Solana, and an answer with nothing of Solana: the chain was not read this time
     api({ person: onSolana, portfolio: () => json(portfolioOf(robinhoodChain())) });
     signIn();
@@ -1529,36 +1530,76 @@ describe('the chain of each vault', () => {
       ),
     ).toBe(true);
     await unmountAll();
-    // no wallet of theirs signs on Solana: that is what is said
+    // no wallet of theirs signs on Solana, though new plans were once started there: the page is of
+    // the chains they hold, and says nothing of Solana (gate CHAIN-AT-THE-PLAN)
     api({
       person: { ...onSolana, chainOptions: ['robinhood'] },
       portfolio: () => json(portfolioOf(robinhoodChain())),
     });
     signIn();
-    expect(find(await screen(), '[data-ui="chains-out"] [data-chain="solana"]').textContent).toBe(
-      en.portfolio.notHeld('Solana'),
-    );
+    const other = await screen();
+    expect(other.querySelectorAll('[data-ui="vault"]')).toHaveLength(1);
+    expect(other.querySelector('[data-ui="chains-out"]')).toBeNull();
+    expect(other.textContent).not.toContain('Solana');
   });
 
-  it('says the chain the bar is on holds no vault when another does, and names the chain of each vault', async () => {
-    // Solana was read and is empty; the vault is on Robinhood Chain (the flow audit, finding 36)
+  it('says nothing of an empty chain when another holds the vaults, whatever chain new plans start on', async () => {
+    // Solana was read and is empty; the vault is on Robinhood Chain
     api({
       person: { ...onSolana, wallets: EMBEDDED },
       portfolio: () => json(portfolioOf(chainOf([]), robinhoodChain())),
     });
     signIn(EMBEDDED);
     const host = await screen();
-    const empty = find(host, '[data-ui="chain-empty"]');
-    expect(empty.getAttribute('data-chain')).toBe('solana');
-    expect(empty.textContent).toContain(en.portfolio.empty('Solana'));
-    expect(find(empty, 'a').getAttribute('href')).toBe('/goal');
-    const groups = [...host.querySelectorAll('[data-ui="chain-group"]')];
-    expect(groups.map((g) => g.getAttribute('data-chain'))).toEqual(['robinhood']);
-    // the empty line comes first, and nothing adds one chain up "across chains"
-    expect(
-      empty.compareDocumentPosition(groups[0] as Element) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(host.querySelector('[data-ui="chain-empty"]')).toBeNull();
+    expect(host.textContent).not.toContain(en.portfolio.empty);
+    // the page is that one chain's, named once on its vault, with nothing added up "across chains"
+    expect(host.querySelectorAll('[data-ui="vault"]')).toHaveLength(1);
+    expect(host.querySelector('[data-ui="chain-group"]')).toBeNull();
     expect(host.querySelector('[data-ui="across-chains"]')).toBeNull();
+    expect(host.querySelector('[data-ui="chains-out"]')).toBeNull();
+  });
+
+  it('does not read again when the chain new plans start on changes', async () => {
+    const both: Person = {
+      ...onSolana,
+      wallets: EMBEDDED,
+      chainSource: 'picked',
+      chainOptions: ['solana', 'robinhood'],
+    };
+    const server = api({
+      person: both,
+      portfolio: () => json(portfolioOf(chainOf(), robinhoodChain())),
+      more: (path) => (path === '/v1/me/chain' ? json({ ...both, chain: 'robinhood' }) : null),
+    });
+    signIn(EMBEDDED);
+    function Switch() {
+      const { choose } = useAccount();
+      return createElement(
+        'button',
+        { type: 'button', 'data-ui': 'switch', onClick: () => choose('robinhood') },
+        'x',
+      );
+    }
+    const host = await mount(
+      withAccount('en', [
+        createElement(MonitorScreen, { key: 'm' }),
+        createElement(Switch, { key: 's' }),
+      ]),
+    );
+    await settle(50);
+    const before = host.querySelectorAll('[data-ui="chain-group"]').length;
+    expect(before).toBe(2);
+    expect(server.to(PORTFOLIO_PATH)).toHaveLength(1);
+    await click(find(host, '[data-ui="switch"]'));
+    await settle(50);
+    expect(server.to('/v1/me/chain')).toHaveLength(1);
+    expect(server.to(PORTFOLIO_PATH)).toHaveLength(1);
+    expect(
+      [...host.querySelectorAll('[data-ui="chain-group"]')].map((g) =>
+        g.getAttribute('data-chain'),
+      ),
+    ).toEqual(['solana', 'robinhood']);
   });
 
   it('groups in Portuguese too, with the label that says it adds the chains up', async () => {

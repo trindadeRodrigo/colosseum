@@ -1,7 +1,7 @@
 'use client';
 import type { ChainId, Network, Provenance } from '@colosseum/schemas';
 import Link from 'next/link';
-import { useEffect, useId, useRef, useState } from 'react';
+import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Composer } from '../../components/ui/Composer';
 import { WORKSPACE_TITLE } from '../../components/ui/heading';
@@ -55,6 +55,8 @@ export function GoalConversation({
   conversationId = 'main',
   onSaved,
   onDeposit,
+  chainControl,
+  carried,
 }: {
   userId: string | null;
   chain: ChainId | null;
@@ -64,8 +66,21 @@ export function GoalConversation({
   conversationId?: string;
   /** Called with the person's first words each time the transcript is saved. */
   onSaved?: (title: string) => void;
-  /** Called as a deposit is open on the pane (approved, its steps not all confirmed), and as it no longer is. */
-  onDeposit?: (open: boolean) => void;
+  /**
+   * Called as a deposit is open on the pane (approved, its steps not all confirmed) whichever way the
+   * pane came to show it, with whether a step is being signed now, and as it no longer is.
+   */
+  onDeposit?: (state: { open: boolean; signing: boolean }) => void;
+  /**
+   * The chain of this plan, drawn beside the box (GoalChain, gate CHAIN-AT-THE-PLAN): a choice while
+   * the conversation has no words, its badge with "Change" once it has.
+   */
+  chainControl?: (state: { started: boolean; busy: boolean }) => ReactNode;
+  /**
+   * Words typed before the first message on another chain, carried over when the chain was changed
+   * beside the box: the box starts with them.
+   */
+  carried?: RefObject<{ chain: ChainId; text: string } | null>;
 }) {
   const t = useT();
   const lang = useLang();
@@ -90,7 +105,9 @@ export function GoalConversation({
   const prefill = useRef<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() =>
+    carried?.current && carried.current.chain === chain ? carried.current.text : '',
+  );
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [reply, setReply] = useState<GoalReply | null>(null);
@@ -120,9 +137,9 @@ export function GoalConversation({
   const tellDeposit = useRef(onDeposit);
   tellDeposit.current = onDeposit;
   useEffect(() => {
-    tellDeposit.current?.(locked);
-    return () => tellDeposit.current?.(false);
-  }, [locked]);
+    tellDeposit.current?.({ open: locked, signing: locked && signing });
+  }, [locked, signing]);
+  useEffect(() => () => tellDeposit.current?.({ open: false, signing: false }), []);
   const [error, setError] = useState<string>();
   // The mix on the screen was read back from this browser, not answered on this visit: it is shown, and
   // the deposit comes back with the next reply (Rodrigo, Oct 8: a kept plan is a preview only).
@@ -174,7 +191,8 @@ export function GoalConversation({
     setBusy(false);
     sending.current = false;
     prefill.current = readGoalHandoff(userId, ready);
-    setText(prefill.current ?? '');
+    // What the box holds stays: it is empty on a new conversation, or the words carried over.
+    setText((now) => prefill.current ?? now);
     setError(undefined);
     setLoaded(true);
     return () => {
@@ -459,6 +477,14 @@ export function GoalConversation({
             {t.shell.signIn}
           </Link>
         )}
+        {/* A draft exists once a reply came: words that got none leave the chain a plain choice. It
+            is fixed while a reply is worked on and through the deposit step and its signing. */}
+        {loaded &&
+          chainControl?.({
+            started: turns.some((turn) => turn.who === 'app'),
+            // and while a deposit is open on the pane, however it came to be there (after a reload too)
+            busy: busy || depositing || locked,
+          })}
         <Composer
           label={copy.invitation}
           labelHidden

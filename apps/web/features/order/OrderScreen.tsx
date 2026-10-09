@@ -661,7 +661,7 @@ export function OrderScreen({
   const newOrder = !terms
     ? `/plan/${encodeURIComponent(record.proposalId)}/buy`
     : terms.kind === 'family'
-      ? `/indexes/${encodeURIComponent(terms.slug)}/buy`
+      ? `/indexes/${encodeURIComponent(terms.slug)}/buy?chain=${chain}`
       : terms.kind === 'follow'
         ? `/indexes/${encodeURIComponent(terms.slug)}`
         : terms.kind === 'vault'
