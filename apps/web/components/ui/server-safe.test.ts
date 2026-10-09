@@ -110,6 +110,7 @@ describe('a primitive a server component can render calls nothing from a client 
       'ProvenancePin.tsx',
       'SubscribeBlock.tsx',
       'TimeChart.tsx',
+      'WaitMark.tsx',
       'Waiting.tsx',
     ]);
     expect(server).toContain(`${UI}/PlanLegs.tsx`);

@@ -220,6 +220,59 @@ test('publish a portfolio, find it on the shelf, buy it and follow it, every ste
   await expect(workspace.locator('a[href="#vault-conversation"]')).toHaveCount(0);
   await expect(workspace).toContainText('SPY');
   await check(page, 'vault');
+
+  // A message in the vault's own conversation: while its reply is on its way the reply's place says
+  // so under the message, and the plan side says a reply is being worked on and promises no draft.
+  // The stub has no model behind a vault's conversation, so the spec answers, once it lets it through.
+  let release = () => {};
+  const gate = new Promise<void>((done) => {
+    release = done;
+  });
+  await page.route('**/v1/vaults/*/*/conversation/reply', async (route) => {
+    const [, chain, address] = new URL(route.request().url()).pathname.match(
+      /vaults\/([^/]+)\/([^/]+)\//,
+    ) as RegExpMatchArray;
+    await gate;
+    await route.fulfill({
+      json: {
+        version: 1,
+        chain,
+        address: decodeURIComponent(address as string),
+        messageId: route.request().postDataJSON().messageId,
+        message: 'Sample: the spec answered, with no change proposed.',
+        question: null,
+        proposal: null,
+      },
+    });
+  });
+  const talk = en.shared.vault.conversation;
+  const box = workspace.locator('textarea');
+  await box.fill('Why does it hold what it holds?');
+  await box.press('Enter');
+  const pending = workspace.locator('[data-ui="vault-transcript"] [data-ui="reply-pending"]');
+  await expect(pending).toHaveText(`${talk.agent}: ${talk.pendingLines[0]}`);
+  await expect(pending.locator('[data-ui="lattice-loader"]')).toBeVisible();
+  await expect(workspace.locator('[data-ui="reply-announcer"]')).toHaveText(talk.reading);
+  const building = workspace.locator('[data-ui="vault-building"]');
+  await expect(building.locator('h2')).toHaveText(talk.building);
+  await expect(building).toContainText(talk.buildingLine);
+  // the message, the row under it and the box are whole in the window
+  for (const part of [
+    workspace.locator('[data-ui="vault-transcript"] li').first(),
+    pending,
+    workspace.locator('[data-ui="composer-box"]'),
+  ])
+    await expect(part).toBeInViewport({ ratio: 1 });
+  const row = await pending.boundingBox();
+  await check(page, 'vault-reply-pending');
+  release();
+  const reply = workspace.locator('[data-ui="vault-transcript"] li').nth(1);
+  await expect(reply).toContainText('Sample: the spec answered');
+  await expect(pending).toHaveCount(0);
+  await expect(building).toHaveCount(0);
+  // the reply is where the pending row was
+  const landed = await reply.boundingBox();
+  expect([landed?.x, landed?.y]).toEqual([row?.x, row?.y]);
 });
 
 test('a portfolio with a recipe on both chains: both named on its card, and its page asks which', async ({

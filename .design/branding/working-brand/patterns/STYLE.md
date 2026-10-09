@@ -202,7 +202,7 @@ It takes the Sage's structure (a grid, hairlines, tabular figures, signed deltas
 - **plan-lock:** legs fade in at their exploded positions (160ms, 60ms stagger), slide and seat (280–360ms), and then the pin appears 120ms later over 160ms.
 - **part-and-close ("Why this plan?"):** pieces part 12–24px on their axes, callouts fade in, then the pieces close back to locked.
 - **loader:** a three-segment bar fills in honey, left to right, 240ms per segment. Only for waits over 400ms, with a text label and `role="status"`.
-- **reduced motion:** every slide becomes a 120ms crossfade, the pin appears without travel, and the loader is static with its label. As built today the mix joint (plan-leg.md, "The mix joint") neither moves nor fades under reduced motion; whether that stays or becomes this crossfade is open for Rodrigo (gate `MIX-JOINT`).
+- **reduced motion:** every slide becomes a 120ms crossfade, the pin appears without travel, and the loader is static with its label.
 
 ---
 
