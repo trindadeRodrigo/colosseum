@@ -10,6 +10,7 @@ import { useWalletPort } from '../../features/wallet/WalletProvider';
 import { useT } from '../../i18n/I18nProvider';
 import { buttonClass } from '../ui/button-class';
 import { CompactNav } from '../ui/CompactNav';
+import { cn } from '../ui/cn';
 import { Mark } from './Mark';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -78,8 +79,8 @@ export function AppNav() {
         current: (exact ? pathname === route.href : isCurrent(pathname, route)) && 'page',
       }))}
       action={
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
+        <div className="flex min-w-0 items-center gap-2 max-[419px]:gap-0">
+          <ThemeToggle className="shrink-0" />
           {account.action}
         </div>
       }
@@ -146,7 +147,10 @@ function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
   const visitor = signedOut || waitedOut;
   const signedIn = !visitor && !unknown;
   const action = (
-    <div data-ui="account-control" className="relative ml-2 flex items-center gap-2">
+    <div
+      data-ui="account-control"
+      className="relative ml-2 flex min-w-0 items-center gap-2 max-[419px]:ml-0 max-[419px]:gap-1"
+    >
       <span role="status" data-ui="account-said" className="sr-only">
         {said}
       </span>
@@ -182,7 +186,14 @@ function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
             </Link>
           ) : (
             // The bar's one call to action, as the landing's bar draws it (compact-nav.md: CTA = primary).
-            <Link ref={signIn} href="/sign-in" className={buttonClass({ variant: 'primary' })}>
+            <Link
+              ref={signIn}
+              href="/sign-in"
+              className={cn(
+                buttonClass({ variant: 'primary' }),
+                'shrink-0 whitespace-nowrap max-[419px]:px-2.5',
+              )}
+            >
               {t.shell.signIn}
             </Link>
           )}
