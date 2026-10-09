@@ -230,7 +230,7 @@ contract CopyPricesTest is KitFixture {
         return copier.copy(record, _read(), 1000, address(factory), true);
     }
 
-    /// A market that has closed: nothing is written until a value is four hours from the vault's 26, with
+    /// A market that has closed: nothing is written until a value is eight hours from the vault's 26, with
     /// the flag or without it; then, with the flag, the price and the average keep their value and take
     /// the time of the block read, and the vault's age limit is not passed.
     function test_copier_holding_writesTheSameValueAgain_fourHoursBeforeItsAgeLimit() public {
@@ -239,12 +239,12 @@ contract CopyPricesTest is KitFixture {
         _copy();
         uint256 n = d.tokens.length;
 
-        vm.warp(T0 - 10 + 22 hours - 1);
+        vm.warp(T0 - 10 + 18 hours - 1);
         CopyPrices.Result memory result = _copyHolding();
-        assertEq(result.held, 0, "not yet within four hours of the limit");
+        assertEq(result.held, 0, "not yet within eight hours of the limit");
         assertEq(result.unchanged, n);
 
-        vm.warp(T0 + 22 hours);
+        vm.warp(T0 + 18 hours);
         result = _copy();
         assertEq(result.held, 0, "without the flag nothing is held");
         assertEq(result.unchanged, n);
@@ -258,14 +258,14 @@ contract CopyPricesTest is KitFixture {
         for (uint256 i; i < n; ++i) {
             (int256 price, uint256 priceAt) = _held(d.tokens[i].feed);
             assertEq(price, cfg.tokens[i].answer);
-            assertEq(priceAt, T0 + 22 hours);
+            assertEq(priceAt, T0 + 18 hours);
             (int256 average, uint256 averageAt) = _held(d.tokens[i].average);
             assertEq(average, cfg.tokens[i].answer);
-            assertEq(averageAt, T0 + 22 hours);
+            assertEq(averageAt, T0 + 18 hours);
         }
         assertEq(_copyHolding().held, 0, "a second round holds nothing");
 
-        // Thirty hours after the source's last round the price is eight hours old, not thirty.
+        // Thirty hours after the source's last round the price is twelve hours old, not thirty.
         vm.warp(T0 + 30 hours);
         (, at) = _held(d.tokens[0].feed);
         assertLe(block.timestamp - at, factory.asset(d.tokens[0].token).maxAge);
@@ -276,19 +276,19 @@ contract CopyPricesTest is KitFixture {
         vm.warp(T0);
         _sourcesAt(T0 - 10);
         _copy();
-        vm.warp(T0 + 23 hours);
+        vm.warp(T0 + 19 hours);
         _copyHolding();
 
         int256 p = cfg.tokens[0].answer * 101 / 100;
-        vm.warp(T0 + 23 hours + 30);
-        sources[0].write(p, T0 + 23 hours + 30);
-        vm.warp(T0 + 23 hours + 60);
+        vm.warp(T0 + 19 hours + 30);
+        sources[0].write(p, T0 + 19 hours + 30);
+        vm.warp(T0 + 19 hours + 60);
         CopyPrices.Result memory result = _copyHolding();
         assertEq(result.written, 1);
         assertEq(result.held, 0);
         (int256 price, uint256 at) = _held(d.tokens[0].feed);
         assertEq(price, p);
-        assertEq(at, T0 + 23 hours + 30);
+        assertEq(at, T0 + 19 hours + 30);
     }
 
     /// A value the source does not hold is never held: here the test network's price was written by hand.
@@ -300,14 +300,70 @@ contract CopyPricesTest is KitFixture {
         vm.prank(address(kit));
         TestPriceFeed(d.tokens[0].feed).write(other, T0);
 
-        vm.warp(T0 + 23 hours);
+        vm.warp(T0 + 19 hours);
         CopyPrices.Result memory result = _copyHolding();
         (int256 price, uint256 at) = _held(d.tokens[0].feed);
         assertEq(price, other);
         assertEq(at, T0, "the price is not the source's: not held");
         (, uint256 averageAt) = _held(d.tokens[0].average);
-        assertEq(averageAt, T0 + 23 hours, "its average is");
+        assertEq(averageAt, T0 + 19 hours, "its average is");
         assertEq(result.held, d.tokens.length);
+    }
+
+    /// A source that has posted nothing for four days is held no longer, and goes stale as on mainnet.
+    function test_copier_holding_stopsFourDaysAfterTheSourcesLastRound() public {
+        vm.warp(T0);
+        _sourcesAt(T0 - 10);
+        _copy();
+        uint256 n = d.tokens.length;
+        uint256 at;
+        for (uint256 h = 18 hours; h <= 90 hours; h += 18 hours) {
+            vm.warp(T0 + h);
+            assertEq(_copyHolding().held, n);
+            (, at) = _held(d.tokens[0].feed);
+            assertEq(at, T0 + h);
+        }
+        vm.warp(T0 - 10 + 4 days);
+        assertEq(_copyHolding().held, 0, "held 6 hours ago: not due");
+        vm.warp(T0 + 108 hours);
+        CopyPrices.Result memory result = _copyHolding();
+        assertEq(result.held, 0, "due, and the source is more than four days old");
+        assertEq(result.unchanged, n);
+        (, at) = _held(d.tokens[0].feed);
+        assertEq(at, T0 + 90 hours);
+    }
+
+    /// A mainnet block more than a minute past the test network's latest: nothing is held this round, since
+    /// the price contract would refuse the time.
+    function test_copier_holding_aMainnetBlockAheadOfTheClock_holdsNothing() public {
+        vm.warp(T0);
+        _sourcesAt(T0 - 10);
+        _copy();
+        vm.warp(T0 + 19 hours);
+        CopyPrices.Reading[] memory readings = _read();
+        for (uint256 i; i < readings.length; ++i) {
+            readings[i].averageAt = block.timestamp + 61;
+        }
+        CopyPrices.Result memory result = copier.copy(record, readings, 1000, address(factory), true);
+        assertEq(result.held, 0);
+        assertEq(result.unchanged, d.tokens.length);
+        (, uint256 at) = _held(d.tokens[0].feed);
+        assertEq(at, T0 - 10);
+        for (uint256 i; i < readings.length; ++i) {
+            readings[i].averageAt = block.timestamp + 60;
+        }
+        assertEq(copier.copy(record, readings, 1000, address(factory), true).held, d.tokens.length);
+    }
+
+    /// With no factory named, the age limit is taken as the stock tokens' 26 hours.
+    function test_copier_holding_withNoFactory_takesTwentySixHours() public {
+        vm.warp(T0);
+        _sourcesAt(T0 - 10);
+        _copy();
+        vm.warp(T0 - 10 + 18 hours - 1);
+        assertEq(copier.copy(record, _read(), 1000, address(0), true).held, 0);
+        vm.warp(T0 + 18 hours);
+        assertEq(copier.copy(record, _read(), 1000, address(0), true).held, d.tokens.length);
     }
 
     /// Holding writes nowhere that is a mainnet either.
@@ -315,7 +371,7 @@ contract CopyPricesTest is KitFixture {
         vm.warp(T0);
         _sourcesAt(T0 - 10);
         _copy();
-        vm.warp(T0 + 23 hours);
+        vm.warp(T0 + 19 hours);
         CopyPrices.Reading[] memory readings = _read();
         vm.chainId(4663);
         vm.expectRevert(abi.encodeWithSelector(CopyPrices.MainnetRefused.selector, 4663));

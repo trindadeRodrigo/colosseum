@@ -8,7 +8,7 @@
 //   PRICE_WRITER_KEY_FILE=<path> pnpm exec tsx scripts/testnet/robinhood/prices.ts --loop [--every 60]
 //
 // --hold-last, with any of the three: a price whose mainnet feed has posted nothing newer (a closed
-// market) is written again, same value, when it is four hours from the age the vault takes, and logged as
+// market) is written again, same value, when it is eight hours from the age the vault takes, and logged as
 // `held <token> at <price> (source last posted <time>)`. Off unless said.
 //
 // RH_TESTNET_RPC_URL replaces the test network's public RPC and SOURCE_RPC_URL mainnet's; FACTORY names

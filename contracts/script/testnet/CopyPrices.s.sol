@@ -51,10 +51,15 @@ contract CopyPrices is Script {
     /// The furthest back the average looks for rounds; a stock feed writes a few an hour.
     uint256 public constant MAX_ROUNDS_BACK = 64;
     string internal constant NO_ANSWER = "the source feed did not answer";
-    /// Holding: how long before a value passes the vault's age limit it is written again.
-    uint256 public constant HOLD_MARGIN = 4 hours;
+    /// Holding: how long before a value passes the vault's age limit it is written again. Eight of the
+    /// stock tokens' 26 hours: a held value is never older than 70% of its limit, under the 75% at which
+    /// `scripts/testnet/health.ts` calls a price old.
+    uint256 public constant HOLD_MARGIN = 8 hours;
     /// The age limit taken for a token when no factory is named: the stock tokens' 26 hours.
     uint256 public constant HOLD_MAX_AGE = 26 hours;
+    /// A source that has posted nothing for this long is not held any more: a long weekend is under four
+    /// days, and a feed that died or a halted stock has to go stale here as it does on mainnet.
+    uint256 public constant HOLD_SOURCE_MAX_AGE = 4 days;
 
     struct Asset {
         string symbol;
@@ -392,25 +397,52 @@ contract CopyPrices is Script {
     }
 
     /// Writes again, with the time of the mainnet block read, each of the token's two values that is
-    /// `holdAfter` old or older. Only a value the source still holds is held, and never with a time that is
-    /// not newer than its last or is past the test network's clock by more than `MAX_AHEAD`.
+    /// `holdAfter` old or older. Only a value the source still holds is held, never with a time that is not
+    /// newer than its last or is past the test network's clock by more than `MAX_AHEAD`, and not once the
+    /// source has posted nothing for `HOLD_SOURCE_MAX_AGE`. A value that is due and left says why.
     function _hold(Asset memory a, Reading memory reading, uint256 holdAfter) private returns (bool held) {
         uint256 stamp = reading.averageAt;
-        if (stamp > block.timestamp + MAX_AHEAD) return false;
-        string memory posted = string.concat(" (source last posted ", _iso(reading.updatedAt), ")");
         (int256 price, uint256 priceAt) = _held(a.feed);
-        if (price > 0 && price == reading.answer && stamp > priceAt && block.timestamp >= priceAt + holdAfter) {
+        (int256 average, uint256 averageAt) = _held(a.average);
+        bool priceDue = price > 0 && stamp > priceAt && block.timestamp >= priceAt + holdAfter;
+        bool averageDue = average > 0 && stamp > averageAt && block.timestamp >= averageAt + holdAfter;
+        if (!priceDue && !averageDue) return false;
+        if (stamp > block.timestamp + MAX_AHEAD) {
+            console2.log(
+                string.concat(
+                    "  ",
+                    a.symbol,
+                    ": not held, the mainnet block is ",
+                    vm.toString(stamp - block.timestamp),
+                    " s ahead of the test network's latest"
+                )
+            );
+            return false;
+        }
+        string memory posted = string.concat(" (source last posted ", _iso(reading.updatedAt), ")");
+        if (stamp > reading.updatedAt + HOLD_SOURCE_MAX_AGE) {
+            console2.log(string.concat("  ", a.symbol, ": not held, too long ago", posted));
+            return false;
+        }
+        bool priceHeld = priceDue && price == reading.answer;
+        if (priceHeld) {
             TestPriceFeed(a.feed).write(price, stamp);
             console2.log(string.concat("  held ", a.symbol, " at ", _dollars(price), posted));
-            held = true;
+        } else if (priceDue) {
+            console2.log(string.concat("  ", a.symbol, ": price not held, it is not the source's"));
         }
-        (int256 average, uint256 averageAt) = _held(a.average);
-        if (average > 0 && average == reading.average && stamp > averageAt && block.timestamp >= averageAt + holdAfter)
-        {
+        bool averageHeld = averageDue && average == reading.average;
+        if (averageHeld) {
             TestPriceFeed(a.average).write(average, stamp);
-            console2.log(string.concat("  held ", a.symbol, " average at ", _dollars(average), posted));
-            held = true;
+            console2.log(
+                string.concat(
+                    "  held ", a.symbol, priceHeld ? " average at " : " average only at ", _dollars(average), posted
+                )
+            );
+        } else if (averageDue) {
+            console2.log(string.concat("  ", a.symbol, ": average not held, it is not the source's"));
         }
+        return priceHeld || averageHeld;
     }
 
     /// Unix seconds as `2026-10-10T20:00:00Z`.
