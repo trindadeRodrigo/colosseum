@@ -180,7 +180,8 @@ export async function loadOracleInput(
           and(
             sameAddress(riskAssetSnapshots.assetMint, list.chain, mint),
             gte(riskAssetSnapshots.fetchedAt, new Date(from.getTime() - 3_600_000)),
-            lte(riskAssetSnapshots.fetchedAt, new Date(now.getTime() + 3_600_000)),
+            // Nothing after `now`: a sheet built for a past time stays the same when later snapshots land.
+            lte(riskAssetSnapshots.fetchedAt, now),
           ),
         )
         .orderBy(riskAssetSnapshots.fetchedAt)
