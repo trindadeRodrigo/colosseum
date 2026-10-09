@@ -16,7 +16,7 @@ export async function shellMetadata() {
 export async function goalMetadata() {
   const { lang } = await readPreferences();
   const t = dictionary(lang);
-  return { title: t.goal.composer.label, description: t.goal.title };
+  return { title: t.shell.invest, description: t.goal.title };
 }
 
 export async function monitorMetadata() {

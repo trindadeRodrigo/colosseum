@@ -1976,7 +1976,7 @@ export const en = {
       /** In place of "Sign in" for a person signed in on this browser. */
       openApp: 'Open the app',
       /** The landing's static bar: the product, Bearing, and the API's documents. */
-      plans: 'Plans',
+      plans: 'Invest',
       bearing: 'Bearing',
       docs: 'Docs',
     },

@@ -36,7 +36,7 @@ describe('the title and description of each product page', () => {
       monitorMetadata(),
       shellMetadata(),
     ]);
-    expect(onGoal).toEqual({ title: t.goal.composer.label, description: t.goal.title });
+    expect(onGoal).toEqual({ title: t.shell.invest, description: t.goal.title });
     expect(onSignIn).toEqual({ title: t.shell.signIn, description: t.signIn.title });
     expect(onMonitor).toEqual({ title: t.shell.portfolio, description: t.portfolio.lead });
     // three pages, three titles, and none carries another's description
