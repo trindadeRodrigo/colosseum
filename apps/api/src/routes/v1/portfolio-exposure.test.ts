@@ -316,6 +316,9 @@ describe('what a person holds on a chain, added up', () => {
       provenance: 'mock',
       byUnderlying: chain.byUnderlying,
       byIssuer: chain.byIssuer,
+      source: chain.source,
+      method: expect.stringContaining(chain.method),
+      observedAt: chain.observedAt,
     });
     expect(unavailable).toEqual([]);
   });
@@ -622,7 +625,7 @@ describe('what selling a holding would cost (gate EXIT-SOURCE)', () => {
     ]);
   });
 
-  it('leaves out a time or a source the measurement does not have, and makes none up', async () => {
+  it('leaves out a time or a source the measurement does not have, makes none up, and states no cost without them', async () => {
     const undated = handMade({ 'solana:spy': { gridUsd: 1500, dataTo: null } });
     const ann = await someone();
     await vault(ann, 'solana', { parts: { spy: 5000 } });
@@ -636,7 +639,7 @@ describe('what selling a holding would cost (gate EXIT-SOURCE)', () => {
         asset: 'solana:spy',
         usd: '500',
         measured: true,
-        costBps: 1.25,
+        costBps: null,
         source: BEARING,
         method: 'test-depth-1',
         provenance: 'fixture',
@@ -661,7 +664,7 @@ describe('what selling a holding would cost (gate EXIT-SOURCE)', () => {
         asset: 'solana:spy',
         usd: '500',
         measured: true,
-        costBps: 1.25,
+        costBps: null,
         method: 'test-depth-1',
         fetchedAt: DATA_TO,
         provenance: 'fixture',
@@ -701,6 +704,10 @@ describe('the chains of a person, and their total', () => {
         { key: 'GLD', usd: '100', bps: 667 },
       ],
       byIssuer: [{ key: 'mock', usd: '1500', bps: 10_000 }],
+      // where the sum comes from: the sources of the chains it adds, no fresher than the oldest
+      source: [...new Set(chains.map((c) => c.source))].sort().join('; '),
+      method: expect.stringContaining('added together'),
+      observedAt: chains.map((c) => c.observedAt).sort()[0],
     });
     expect(sumOf(total?.byUnderlying ?? [])).toBe(10_000);
     expect(unavailable).toEqual([]);

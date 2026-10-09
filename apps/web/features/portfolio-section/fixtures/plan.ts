@@ -59,6 +59,9 @@ function onSolana(
     total: {
       valueUsd: sums.valueUsd,
       provenance: 'sandbox',
+      source: (solanaOfIncome as Chain).source,
+      method: `${(solanaOfIncome as Chain).method}; the chains' sums added together`,
+      observedAt: readAt(address),
       byUnderlying: sums.byUnderlying,
       byIssuer: sums.byIssuer,
     },
@@ -196,6 +199,9 @@ export const EXPOSURE_OF_SILENT: PortfolioExposureResponse = {
   total: {
     valueUsd: robinhoodOfAll.valueUsd,
     provenance: 'mock',
+    source: robinhoodOfAll.source,
+    method: `${robinhoodOfAll.method}; the chains' sums added together`,
+    observedAt: robinhoodOfAll.observedAt,
     byUnderlying: robinhoodOfAll.byUnderlying,
     byIssuer: robinhoodOfAll.byIssuer,
   },

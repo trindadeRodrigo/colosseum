@@ -99,6 +99,9 @@ export function narrowExposure(
         ? {
             valueUsd: only.valueUsd,
             provenance: only.provenance,
+            source: only.source,
+            method: `${only.method}; the chains' sums added together`,
+            observedAt: only.observedAt,
             byUnderlying: only.byUnderlying,
             byIssuer: only.byIssuer,
           }

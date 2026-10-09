@@ -3193,6 +3193,9 @@ export type GetPortfolioExposureResponse = {
       usd: string;
       bps: number;
     }[];
+    source: string;
+    method: string;
+    observedAt: string | null;
   } | null;
   chains: {
     chain: 'solana' | 'base' | 'robinhood';

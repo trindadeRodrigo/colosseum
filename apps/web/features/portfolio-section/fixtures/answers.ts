@@ -1370,6 +1370,9 @@ export const EXPOSURE: PortfolioExposureResponse = {
   total: {
     valueUsd: '84088.6',
     provenance: 'mock',
+    source: [MOCK_CHAIN, SOLANA_READER].sort().join('; '),
+    method: `${EXPOSURE_METHOD}; the chains' sums added together`,
+    observedAt: [NEWEST_STALE.observedAt, NEWEST_SILENT.observedAt].sort()[0] ?? null,
     byUnderlying: [
       { key: 'USDY', usd: '52865', bps: 6287 },
       { key: 'SGOV', usd: '22836.2', bps: 2716 },
@@ -1506,6 +1509,9 @@ export const EXPOSURE_OF_INCOME: PortfolioExposureResponse = {
   total: {
     valueUsd: '81243.55',
     provenance: 'sandbox',
+    source: SOLANA_READER,
+    method: `${EXPOSURE_METHOD}; the chains' sums added together`,
+    observedAt: NEWEST_INCOME.observedAt,
     byUnderlying: [
       { key: 'USDY', usd: '51557', bps: 6346 },
       { key: 'SGOV', usd: '22836.2', bps: 2811 },

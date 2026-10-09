@@ -524,7 +524,8 @@ export type ChainExposure = z.infer<typeof ChainExposure>;
 
 /**
  * `total` adds the chains up, by underlying and by issuer. Its label is the least live of the labels
- * of the chains that add to it: a sum with a mock chain in it is `mock`. Null when no chain holds
+ * of the chains that add to it: a sum with a mock chain in it is `mock`; its `source` and `method` are
+ * those of the chains it adds, and `observedAt` the oldest of their snapshots. Null when no chain holds
  * anything.
  */
 export const PortfolioExposureResponse = z.object({
@@ -534,6 +535,9 @@ export const PortfolioExposureResponse = z.object({
       provenance: Provenance,
       byUnderlying: z.array(ExposureShare),
       byIssuer: z.array(ExposureShare),
+      source: z.string().min(1),
+      method: z.string().min(1),
+      observedAt: z.string().datetime().nullable(),
     })
     .nullable(),
   chains: z.array(ChainExposure),

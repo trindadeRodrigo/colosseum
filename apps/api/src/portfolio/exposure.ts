@@ -144,10 +144,13 @@ export function exitsOf(held: Held[], liquidity: Liquidity): ExposureExit[] {
       const cost = provider.exitCost(asset.id, dollars(usd), EXIT_WINDOW_DAYS);
       const at = IsoTime.safeParse(provider.exitCapacity(asset.id, tau, EXIT_WINDOW_DAYS)?.dataTo);
       const source = liquidity.source.trim();
+      // A cost goes out only with where it came from and when: a measurement that names no source or
+      // no time states no cost (CLAUDE.md: every figure carries source, fetched_at and method).
+      const sourced = source !== '' && at.success;
       return {
         ...size,
         measured: true,
-        costBps: cost === null ? null : round2(cost * 10_000),
+        costBps: cost === null || !sourced ? null : round2(cost * 10_000),
         ...(source ? { source } : {}),
         method: provider.methodVersion,
         ...(at.success ? { fetchedAt: at.data } : {}),
@@ -251,18 +254,23 @@ export async function chainExposure(a: {
 }
 
 /**
- * The chains added up, by underlying and by issuer over the grand total. Null when no chain holds
+ * The chains added up, by underlying and by issuer over the grand total, with the sources, the
+ * method and the oldest snapshot time of the chains it adds. Null when no chain holds
  * anything with a value. Its label is the least live of the labels of the chains that add to it: a
  * chain that holds nothing puts no figure into the sum, and so no label on it.
  */
 export function totalOf(chains: ChainRead[]): PortfolioExposureResponse['total'] {
   const held = chains.flatMap((chain) => chain.held);
   if (held.length === 0) return null;
+  const adding = chains.filter((chain) => chain.held.length > 0).map((chain) => chain.answer);
+  const times = adding.flatMap((answer) => (answer.observedAt ? [answer.observedAt] : [])).sort();
   return {
     valueUsd: formatDecimal(held.reduce((sum, h) => sum + h.usd, 0n)),
-    provenance: leastLive(
-      chains.filter((chain) => chain.held.length > 0).map((chain) => chain.answer.provenance),
-    ),
+    provenance: leastLive(adding.map((answer) => answer.provenance)),
+    // Where the sum comes from: the sources of the chains it adds, and no fresher than the oldest.
+    source: [...new Set(adding.map((answer) => answer.source))].sort().join('; '),
+    method: `${EXPOSURE_METHOD}; the chains' sums added together`,
+    observedAt: times[0] ?? null,
     byUnderlying: sharesOf(held.map((h) => ({ key: h.asset.underlying, usd: h.usd }))),
     byIssuer: sharesOf(held.map((h) => ({ key: h.asset.issuer, usd: h.usd }))),
   };
