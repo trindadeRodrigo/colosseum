@@ -367,6 +367,10 @@ function sayShares(
 const clip = (text: string, max: number) =>
   text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 
+/** For the log: which check failed and where, never the text that failed it (the model's, or the person's). */
+const whereOf = (error: z.ZodError) =>
+  error.issues.map((issue) => `${issue.code}:${issue.path.join('.')}`);
+
 export type RelaxedGoalAgent = {
   id: string;
   reply(request: VaultAgentRequest, context: GoalAgentContext): Promise<VaultAgentResult>;
@@ -439,7 +443,15 @@ export function createRelaxedGoalAgent(options: {
         const block = response.content.find((item) => item.type === 'text');
         raw = block?.type === 'text' ? JSON.parse(block.text) : null;
       } catch (error) {
-        log('model call failed', error instanceof Error ? error.message : error);
+        // A reply that is not JSON fails in `JSON.parse`, whose message quotes the text: only its kind.
+        log(
+          'model call failed',
+          error instanceof SyntaxError
+            ? 'reply was not JSON'
+            : error instanceof Error
+              ? error.message
+              : 'unknown error',
+        );
         return {
           kind: 'failure',
           reason: error instanceof Anthropic.APIConnectionTimeoutError ? 'timeout' : 'unavailable',
@@ -447,7 +459,7 @@ export function createRelaxedGoalAgent(options: {
       }
       const read = Reply.safeParse(raw);
       if (!read.success) {
-        log('reply did not fit the sheet', read.error.issues);
+        log('reply did not fit the sheet', whereOf(read.error));
         return { kind: 'failure', reason: 'invalid' };
       }
       const r = read.data;
@@ -534,7 +546,7 @@ export function createRelaxedGoalAgent(options: {
         }
       } else
         pots.push({ name: r.shape, shape: r.shape, given: null, lines: keep(r.lines, r.shape) });
-      if (dropped.length) log('ids not on the catalog', dropped);
+      if (dropped.length) log('ids not on the catalog', dropped.length);
       if (dropped.length)
         notes.push(`Dropped, not on this chain's catalog: ${dropped.join(', ')}.`);
       for (const n of r.not_available)
@@ -781,7 +793,7 @@ export function createRelaxedGoalAgent(options: {
           : null,
       });
       if (!reply.success) {
-        log('final reply did not validate', reply.error.issues);
+        log('final reply did not validate', whereOf(reply.error));
         return { kind: 'failure', reason: 'invalid' };
       }
       return { kind: 'reply', reply: reply.data };

@@ -367,6 +367,61 @@ describe('relaxed intake: the split', () => {
   });
 });
 
+describe('relaxed intake: what it logs', () => {
+  const SECRET = 'Tesla will return 40% next year, guaranteed';
+  const logged = async (text: string) => {
+    const lines: string[] = [];
+    const agent = createRelaxedGoalAgent({
+      apiKey: 'placeholder',
+      log: (msg, detail) => lines.push(`${msg} ${JSON.stringify(detail ?? null)}`),
+      create: async () => ({
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text, citations: null }],
+      }),
+    });
+    const result = await agent.reply(
+      {
+        version: 1,
+        language: 'en',
+        messageId: 'm1',
+        messages: [{ who: 'person', text: 'I want USDY' }],
+      },
+      context(),
+    );
+    return { result, log: lines.join('\n') };
+  };
+  const sheet = (over: object) =>
+    JSON.stringify({
+      say: SECRET,
+      shape: 'pick',
+      lines: [line('solana:usdy')],
+      buckets: null,
+      stated: STATED,
+      not_available: [],
+      open: [],
+      ...over,
+    });
+  it('counts the ids it dropped and never writes them', async () => {
+    const { result, log } = await logged(
+      sheet({ lines: [line('solana:usdy'), line(`solana:${SECRET}`)] }),
+    );
+    expect(result.kind).toBe('reply');
+    expect(log).toBe('ids not on the catalog 1');
+  });
+  it('names the check a reply failed, not the reply', async () => {
+    const { result, log } = await logged(sheet({ shape: SECRET }));
+    expect(result).toEqual({ kind: 'failure', reason: 'invalid' });
+    expect(log).toContain('reply did not fit the sheet');
+    expect(log).toContain(':shape');
+    expect(log).not.toContain('Tesla');
+  });
+  it('says a reply was not JSON without quoting it', async () => {
+    const { result, log } = await logged(SECRET);
+    expect(result.kind).toBe('failure');
+    expect(log).toBe('model call failed "reply was not JSON"');
+  });
+});
+
 describe('relaxed intake: the most a vault holds', () => {
   const many = (n: number) =>
     Array.from({ length: n }, (_, i) => asset(`s${i + 1}`, `S${i + 1}x`, 'stock'));
