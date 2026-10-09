@@ -73,3 +73,9 @@ SHA-256:
 - jup.png: 5f460c59d968c0af5a4dee3e19c5e51f0298f15ae3fac907e9e4c0904bec7506
 - sol.png: 6dbe58a11a904b798faea5a0073bee2078893bcd5af9649d0b4a93bdda727665
 - sol.svg (source): 14381e02ce4a59b3811bf94522b1121f7cac67833db5a2d0c3d7561c193556fc
+
+## Decision, and what is still text
+
+Thom, 2026-10-09: a token shows its issuer's own artwork where the token has it, otherwise the company's or fund's official mark; unaltered, on the neutral tile `AssetMark` draws, with the ticker as the fallback. Files are kept here and keyed by the token's name as `tokenName` gives it, so a test token (`tSPYx`) and the token it stands in for (`SPYx`) show one picture. Every screen draws a holding through `AssetMark` (`features/order/PlanView.tsx`), so a token has one face.
+
+Files were added on Oct 9 under this decision: the rows above. What still shows its ticker, and why, is the paragraph above the hashes and the `NO_ARTWORK` list in `features/order/asset-logos.ts`. mYield, BRLx and the sample asset are not real tokens and keep the ticker.
