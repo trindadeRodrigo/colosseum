@@ -28,7 +28,7 @@ for (const size of SIZES)
         ]);
         await page.goto('/goal');
         await expect(page.locator('html')).toHaveClass(new RegExp(`\\b${theme}\\b`));
-        await page.locator('header a[href="/sign-in"]').click();
+        await page.locator('header a[href^="/sign-in"]').click();
         const dialog = page.getByRole('dialog');
         await expect(dialog).toHaveAttribute('aria-modal', 'true');
         await expect(dialog.locator('[data-ui="sign-in"][data-state="ready"]')).toBeVisible({
@@ -115,7 +115,7 @@ test('the bar keeps its height: signed out, on /sign-in, and signed in', async (
   const height = async () =>
     Math.round((await page.locator('[data-ui="compact-nav-bar"]').boundingBox())?.height ?? 0);
   await page.goto('/goal');
-  await expect(page.locator('header a[href="/sign-in"]')).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('header a[href^="/sign-in"]')).toBeVisible({ timeout: 60_000 });
   const out = await height();
   expect(out).toBe(58);
   await page.goto('/sign-in');
@@ -145,7 +145,7 @@ test('the bar keeps its height: signed out, on /sign-in, and signed in', async (
   const block = page.locator('[data-ui="compact-nav-sheet"] [data-ui="account-block"]');
   await expect(block.locator('[data-ui="account-address"]')).toBeVisible();
   await block.locator('[data-ui="sign-out"]').click();
-  await expect(page.locator('header a[href="/sign-in"]')).toBeVisible();
+  await expect(page.locator('header a[href^="/sign-in"]')).toBeVisible();
   expect(await height()).toBe(out);
 });
 

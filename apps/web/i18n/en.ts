@@ -26,16 +26,20 @@ export const en = {
     signedOut: 'You’re signed out.',
     signOutFailed: 'I couldn’t sign you out: the sign-in service didn’t answer. Try again.',
     account: 'Your wallet',
+    /** The bar's account control before it is known who is here: said once, politely. */
+    accountLoading: 'Loading your account…',
     /**
-     * Someone signed in who is still not ready after a quarter of a minute: said in the bar and where
-     * the chain would be, with "Try again" and "Sign out". Which side is slow is said when it is known.
+     * Someone signed in who is still not ready after half a minute. The bar's control keeps its
+     * loading look; this is the help under it, with "Try again" and "Sign out". `title` heads the
+     * help and is never the control's label. Which side is slow is said as far as it is known: the
+     * wallet waits for our server before it loads, so a server that is waking is named either way.
      */
     slow: {
-      title: 'Sign-in is slow',
+      title: 'Still loading your account',
       wallets:
-        'You’re signed in, but the sign-in service hasn’t handed over your wallets yet. Nothing is lost.',
+        'Your wallets haven’t come through yet. Our server may be waking up, which can take up to a minute. Nothing is lost.',
       server:
-        'You’re signed in, but our server hasn’t said yet which chain your plan lives on. Nothing is lost.',
+        'Our server hasn’t said yet which chain your plan lives on. It may be waking up, which can take up to a minute. Nothing is lost.',
       /** Nobody is known to be signed in: the sign-in service has not loaded at all. */
       service:
         'The sign-in service hasn’t answered yet, so I can’t tell whether you’re signed in. You can still look around.',
@@ -287,6 +291,8 @@ export const en = {
       local: 'This browser · private draft conversation',
       signIn: 'Sign in to explore a private strategy.',
       readingAccount: 'Your account and chain must be ready before I can get a reply.',
+      /** While it is not known yet whether anyone is signed in: the page waits, as the bar does. */
+      loadingAccount: 'Loading your account…',
       empty:
         'Your proposed allocation and its sources will appear here after a reply. No vault has been created.',
       previewOnly: 'Preview only. This draft cannot be invested here yet.',
@@ -1972,9 +1978,6 @@ export const en = {
       main: 'Main',
       menu: 'Menu',
       skip: 'Skip to content',
-      cta: 'Sign in',
-      /** In place of "Sign in" for a person signed in on this browser. */
-      openApp: 'Open the app',
       /** The landing's static bar: the product, Bearing, and the API's documents. */
       plans: 'Plans',
       bearing: 'Bearing',

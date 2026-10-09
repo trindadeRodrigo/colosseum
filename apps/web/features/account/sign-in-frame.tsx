@@ -6,7 +6,7 @@ import { useT } from '../../i18n/I18nProvider';
 
 // The sign-in dialog's frame, apart from what is in it: the scrim, the panel and the modal's rules.
 // It imports nothing of the wallet, so the landing can draw it at once on the first press of "Sign in"
-// while the panel inside it loads (features/landing/LandingSignIn.tsx). The product's dialog uses the
+// while the panel inside it loads (features/landing/LandingAccount.tsx). The product's dialog uses the
 // same frame (SignInDialog.tsx).
 //
 // The surface is the design system's modal (token-mapping.md, section 7): the popover ground, a 1px
@@ -76,7 +76,10 @@ export function SignInFrame({
       html.style.overflow = overflow;
       html.style.scrollbarGutter = scrollbarGutter;
       for (const el of behind) el.inert = false;
+      // What opened it may be gone ("Sign in", once someone is signed in): focus goes to the bar's
+      // account control, which took its place, and is not left on the page's body.
       if (trigger?.isConnected) trigger.focus();
+      else if (trigger) document.querySelector<HTMLElement>('[data-account-focus]')?.focus();
     };
   }, [trigger]);
 

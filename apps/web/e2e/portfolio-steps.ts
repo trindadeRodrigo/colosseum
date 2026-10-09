@@ -20,7 +20,7 @@ export const WIDTHS = [375, 1280] as const;
 export async function openSignedIn(page: Page, path: string, lang: Lang = 'en') {
   await page.request.post(`${STUB}/__stub/reset`);
   await page.goto(path);
-  await page.locator('header a[href="/sign-in"]').click();
+  await page.locator('header a[href^="/sign-in"]').click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: dictionary(lang).signIn.passkey.continue }).click();
   await expect(dialog).toHaveCount(0);

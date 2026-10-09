@@ -25,12 +25,13 @@ export const pt: Dictionary = {
     signOutFailed:
       'Não consegui encerrar sua sessão: o serviço de login não respondeu. Tente de novo.',
     account: 'Sua carteira',
+    accountLoading: 'Carregando sua conta…',
     slow: {
-      title: 'O login está lento',
+      title: 'Sua conta ainda está carregando',
       wallets:
-        'Você entrou, mas o serviço de login ainda não entregou suas carteiras. Nada foi perdido.',
+        'Suas carteiras ainda não chegaram. Nosso servidor pode estar acordando, o que pode levar até um minuto. Nada foi perdido.',
       server:
-        'Você entrou, mas nosso servidor ainda não disse em qual rede fica o seu plano. Nada foi perdido.',
+        'Nosso servidor ainda não disse em qual rede fica o seu plano. Ele pode estar acordando, o que pode levar até um minuto. Nada foi perdido.',
       service:
         'O serviço de login ainda não respondeu, então não sei dizer se você entrou. Você pode continuar olhando.',
       again: 'Tentar de novo',
@@ -239,6 +240,7 @@ export const pt: Dictionary = {
       local: 'Este navegador · conversa privada de rascunho',
       signIn: 'Entre para explorar uma estratégia privada.',
       readingAccount: 'Sua conta e rede precisam estar prontas antes de eu buscar uma resposta.',
+      loadingAccount: 'Carregando sua conta…',
       empty:
         'A alocação proposta e suas fontes aparecerão aqui após uma resposta. Nenhum cofre foi criado.',
       previewOnly: 'Apenas uma prévia. Este rascunho ainda não pode ser investido aqui.',
@@ -1808,8 +1810,6 @@ export const pt: Dictionary = {
       main: 'Principal',
       menu: 'Menu',
       skip: 'Pular para o conteúdo',
-      cta: 'Entrar',
-      openApp: 'Abrir o app',
       plans: 'Planos',
       bearing: 'Bearing',
       docs: 'Docs',

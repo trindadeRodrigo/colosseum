@@ -17,7 +17,7 @@ test.beforeEach(async ({ page }) => {
 
 test('a passkey: one button, and no chain is asked', async ({ page }) => {
   await page.goto('/goal');
-  await page.locator('header a[href="/sign-in"]').click();
+  await page.locator('header a[href^="/sign-in"]').click();
   const dialog = page.getByRole('dialog');
   const passkey = dialog.getByRole('button', { name: en.signIn.passkey.continue });
   await expect(passkey).toBeVisible({ timeout: 60_000 });
@@ -36,7 +36,7 @@ test('a wallet: one button, its own list, and the chain asked for a wallet that 
   page,
 }) => {
   await page.goto('/goal');
-  await page.locator('header a[href="/sign-in"]').click();
+  await page.locator('header a[href^="/sign-in"]').click();
   const dialog = page.getByRole('dialog');
   const connect = dialog.getByRole('button', { name: en.signIn.wallet.connect });
   await expect(connect).toBeVisible({ timeout: 60_000 });

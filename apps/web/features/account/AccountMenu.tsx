@@ -9,8 +9,8 @@ import { useT } from '../../i18n/I18nProvider';
 import { explorerAddressUrlFor, onMock } from '../order/readiness';
 import { useWalletPort } from '../wallet/WalletProvider';
 import { useAccount } from './AccountProvider';
+import { AccountBars, CHIP_BOX } from './account-control-parts';
 import { ChainOptions, usePopover } from './ChainSwitch';
-import { SlowSignIn } from './SlowSignIn';
 
 // The bar's account control for someone signed in (Thom, Oct 6): one compact button with the current
 // chain and the short address, opening what was spread along the bar: the chain switch, the short
@@ -18,6 +18,11 @@ import { SlowSignIn } from './SlowSignIn';
 // The same block heads the phone's sheet. It is a disclosure, not a menu of commands: the chains in it are
 // toggle buttons with their reasons, as in the switcher someone signed out gets. Square, like the
 // rest: a hairline and 2px corners (STYLE.md).
+//
+// The chain is a part of its own, in the button and in the menu (`data-part="chain"`): its own
+// element in the chip, described and not named by it, and its own section of the menu. The control's
+// name is "Your wallet" and the address. So the chain can leave the chip, or become a list per
+// wallet, with the sign-in states as they are.
 
 export type SignOutState = {
   signOut: () => void;
@@ -42,7 +47,7 @@ export function AccountBlock({
 }) {
   const t = useT();
   const port = useWalletPort();
-  const { account, slow } = useAccount();
+  const { account } = useAccount();
   const chain = account.status === 'ready' ? account.chain : null;
   // Only the wallet of the current chain: the one a new plan is built with.
   const wallet = chain ? port.active(chainFamily(chain)) : null;
@@ -51,9 +56,11 @@ export function AccountBlock({
 
   return (
     <div data-ui="account-block" className={className}>
-      {/* Still not ready after a while: said here, above the way out. */}
-      <SlowSignIn className="flex flex-col gap-1 px-2 pb-2" />
-      {chain && <ChainOptions className="flex flex-col gap-1" onPicked={onPicked} />}
+      {chain && (
+        <div data-part="chain">
+          <ChainOptions className="flex flex-col gap-1" onPicked={onPicked} />
+        </div>
+      )}
       {wallet && (
         <div className="flex flex-col gap-1 border-t border-border pt-2">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 text-caption text-muted-foreground">
@@ -91,7 +98,7 @@ export function AccountBlock({
           )}
         </div>
       )}
-      <div className={chain || wallet || slow ? 'border-t border-border pt-2' : undefined}>
+      <div className={chain || wallet ? 'border-t border-border pt-2' : undefined}>
         <button
           type="button"
           data-ui="sign-out"
@@ -113,15 +120,29 @@ export function AccountBlock({
   );
 }
 
-export function AccountMenu({ out }: { out: SignOutState }) {
+export function AccountMenu({
+  out,
+  waiting = false,
+}: {
+  out: SignOutState;
+  /**
+   * Signed in, and the account is still being read: the button keeps the loading look (still boxes
+   * where the chain and the address will be), is named "Your wallet" all the same, and its menu
+   * holds the way out.
+   */
+  waiting?: boolean;
+}) {
   const t = useT();
   const port = useWalletPort();
-  const { account, slow } = useAccount();
+  const { account } = useAccount();
   const button = useRef<HTMLButtonElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const [open, setOpen] = usePopover(root, button);
   const [said, setSaid] = useState('');
   const panelId = useId();
+  const labelId = useId();
+  const chainId = useId();
+  const addressId = useId();
   const chain = account.status === 'ready' ? account.chain : null;
   const wallet = chain ? port.active(chainFamily(chain)) : null;
   const name = chain ? (port.network(chain)?.name ?? t.chain.names[chain]) : null;
@@ -129,7 +150,7 @@ export function AccountMenu({ out }: { out: SignOutState }) {
   return (
     <div ref={root} data-ui="account" className="relative flex items-center gap-2">
       <span role="status" data-ui="chain-said" className="sr-only">
-        {slow ? t.shell.slow.title : said}
+        {said}
       </span>
       {/* The throwaway wallet of development is marked sample beside its address. */}
       {port.test && wallet && (
@@ -142,25 +163,39 @@ export function AccountMenu({ out }: { out: SignOutState }) {
         type="button"
         aria-expanded={open}
         aria-controls={panelId}
+        aria-labelledby={wallet ? `${labelId} ${addressId}` : labelId}
+        aria-describedby={chain ? chainId : undefined}
+        aria-busy={waiting || undefined}
         data-ui="account-menu-button"
+        data-account-focus=""
         data-chain={chain ?? undefined}
         onClick={() => setOpen((now) => !now)}
-        className="inline-flex h-10 max-w-full items-center gap-2 rounded-md border border-border px-3 text-[0.875rem]/5 font-medium whitespace-nowrap text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className={`${CHIP_BOX} text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring`}
       >
-        {/* Its name is what it shows, with the whole address in place of the short one. A person
-            whose chain is not known yet (their wallets are being made, or could not be) still has
-            the menu, and the way out in it. */}
-        {chain && name ? (
+        {/* Its name is "Your wallet" and the whole address. A person whose chain is not known (a
+            wallet could not be made, or our server did not say) has the name alone, and the menu
+            with the way out in it. */}
+        <span id={labelId} className={(chain && name) || waiting ? 'sr-only' : undefined}>
+          {t.shell.account}
+        </span>
+        {waiting && !chain && <AccountBars />}
+        {chain && name && (
           <>
-            <span className="sr-only">{t.shell.account}: </span>
-            <span className="max-[1023px]:hidden">{name}</span>
-            <span className="min-[1024px]:hidden">{t.chain.short[chain]}</span>
+            {/* The chain, a part of its own: it describes the control and is not its name. */}
+            <span id={chainId} data-part="chain">
+              <span className="max-[1023px]:hidden">{name}</span>
+              <span className="min-[1024px]:hidden">{t.chain.short[chain]}</span>
+            </span>
             {wallet && (
-              <span className="inline-flex items-center gap-2 max-[819px]:hidden">
+              <span
+                data-part="address"
+                className="inline-flex items-center gap-2 max-[819px]:hidden"
+              >
                 <span aria-hidden="true" className="text-muted-foreground">
                   ·
                 </span>
                 <span
+                  id={addressId}
                   className="font-mono text-source text-muted-foreground"
                   title={wallet.address}
                 >
@@ -170,12 +205,6 @@ export function AccountMenu({ out }: { out: SignOutState }) {
               </span>
             )}
           </>
-        ) : (
-          // Signed in and still not ready after a while: the bar says so, and the menu says what
-          // is slow, with "Try again" and "Sign out".
-          <span data-ui={slow ? 'account-slow' : undefined}>
-            {slow ? t.shell.slow.title : t.shell.account}
-          </span>
         )}
         <Icon name="ChevronDown" size={16} />
       </button>
