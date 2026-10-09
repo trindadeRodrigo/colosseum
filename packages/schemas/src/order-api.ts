@@ -5,7 +5,7 @@ import { Address, ChainId } from './chain';
 import { Provenance } from './enums';
 import { ChainMode } from './flags';
 import { Attempt, ConsentKind, LegStatus, LegWithdrawal, OrderBase } from './order';
-import { Price, VaultName, VaultView } from './vault';
+import { Price, VaultName, VaultNumber, VaultView } from './vault';
 
 // The bodies of the order routes (DESIGN-VAULT 3.3), named once so the API, the SDK and the web share
 // them. POST /v1/orders takes an IntentRequest. Every order route but the build answers with an
@@ -209,6 +209,11 @@ export const PortfolioResponse = z.object({
           provenance: Provenance,
           /** The name its owner gave it; null when they gave none. Left out by a server older than names. */
           name: VaultName.nullable().optional(),
+          /**
+           * Its number among the caller's vaults, there whether or not it has a name. Left out where
+           * the server holds none for it; a caller then names the vault some other way.
+           */
+          number: VaultNumber.optional(),
           /** The caller's plan this vault was opened from; null when it follows a shared portfolio or the plan is not theirs to read. */
           planId: z.string().uuid().nullable().optional(),
         }),
@@ -263,7 +268,14 @@ export const VaultResponse = z.object({
   name: z.string(),
   mode: ChainMode,
   provenance: Provenance,
-  vault: VaultView.extend({ provenance: Provenance }),
+  vault: VaultView.extend({
+    provenance: Provenance,
+    /**
+     * Its number among its owner's vaults, answered to the owner alone: to a signed-in caller one of
+     * whose wallets owns the vault. Left out for anybody else, and where the server holds none.
+     */
+    number: VaultNumber.optional(),
+  }),
   prices: z.array(Price),
   disclaimer: z.string(),
 });
