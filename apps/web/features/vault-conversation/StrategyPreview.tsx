@@ -53,8 +53,11 @@ export function StrategyPreview({
    */
   pending?: string;
   onDiscuss?: () => void;
-  /** The one action this preview leads to: buying it for a new goal, or applying it to the vault. */
-  use?: { label: string; onUse: () => void };
+  /**
+   * The one action this preview leads to: a deposit for a new goal, which is the card's primary
+   * button, or applying it to the vault.
+   */
+  use?: { label: string; onUse: () => void; primary?: boolean };
 }) {
   const id = useId();
   const [pointed, setLit] = useState<string | null>(null);
@@ -303,9 +306,9 @@ export function StrategyPreview({
             <div className="flex flex-wrap gap-3">
               {use && (
                 <Button
-                  variant="secondary"
-                  size="dense"
-                  data-action="use-mix"
+                  variant={use.primary ? 'primary' : 'secondary'}
+                  size={use.primary ? 'default' : 'dense'}
+                  data-action={use.primary ? 'deposit' : 'use-mix'}
                   disabled={Boolean(pending)}
                   onClick={use.onUse}
                 >

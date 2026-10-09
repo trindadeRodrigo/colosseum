@@ -214,7 +214,7 @@ export const pt: Dictionary = {
       working:
         'Preparando um rascunho a partir do que você disse. Ele aparece aqui com suas fontes.',
       draftNote:
-        'Um rascunho desta conversa. Nada é comprado antes de você revisar a mistura e assinar.',
+        'Um rascunho desta conversa. Deposite para escolher o valor. Nada é comprado antes de você revisar e assinar.',
       retry: 'Tentar de novo',
       elsewhere: 'Ver portfólios compartilhados',
       unavailable:
@@ -1948,7 +1948,7 @@ export const pt: Dictionary = {
   mix: {
     activity: (when: string) => `Novos pesos-alvo do seu cofre · ${when}`,
     preview: {
-      use: 'Usar esta mistura',
+      deposit: 'Depositar',
       apply: 'Aplicar ao meu cofre',
       notes: 'Como os pesos foram definidos',
       notesAlone: 'Sobre as proporções que você deu',
@@ -1992,23 +1992,76 @@ export const pt: Dictionary = {
       back: 'Mudar a mistura',
     },
     goal: {
-      title: 'Usar esta mistura para um novo objetivo',
-      lead: 'Diga quanto e para quê. Confiro a mistura com os preços de hoje antes de qualquer compra.',
-      amount: 'Valor',
-      amountHint: 'Em dólares, de US$ 10 a US$ 1.000.000.',
-      goal: 'Objetivo',
       goals: { grow: 'Fazer crescer', income: 'Renda mensal', protect: 'Manter seguro' },
-      risk: 'Risco',
       risks: { low: 'Baixo', medium: 'Médio', high: 'Alto' },
       choose: 'Escolha um',
-      review: 'Revisar esta mistura',
-      reviewing: 'Revisando…',
       confirm: 'Confirmar e ir para a compra',
       confirming: 'Confirmando…',
+    },
+    deposit: {
+      title: 'Depositar nesta mistura',
+      purpose: (
+        goal: 'grow' | 'income' | 'protect' | null,
+        risk: 'low' | 'medium' | 'high' | null,
+      ) => {
+        const goals = {
+          grow: 'Para crescer',
+          income: 'Para renda mensal',
+          protect: 'Para manter seguro',
+        };
+        const risks = {
+          low: 'com risco mais baixo',
+          medium: 'com risco médio',
+          high: 'com risco mais alto',
+        };
+        if (goal && risk) return `${goals[goal]}, ${risks[risk]}.`;
+        if (goal) return `${goals[goal]}.`;
+        return risk ? `C${risks[risk].slice(1)}.` : '';
+      },
+      /** The dollar sign before the amount, as this language writes it. */
+      currency: 'US$',
+      changePurpose: 'Mudar',
+      changePurposeLabel: 'Mudar o objetivo ou o risco na conversa',
+      askGoal: 'Para que é este dinheiro?',
+      askRisk: 'Quanto risco ele pode correr?',
+      askWhy:
+        'Você não disse isso na conversa, e eu não adivinho: o objetivo decide quais ativos o plano pode ter. Toque em um, ou diga na conversa.',
+      limits: 'De US$ 10 a US$ 1.000.000.',
+      quick: 'Valores rápidos',
+      quickOne: (amount: string) => `Depositar ${amount}`,
+      mix: 'O que ele compra',
+      edited: 'Editada à mão',
+      share: 'Parte',
+      unchecked: 'ainda não conferido',
+      needAmount: 'Digite um valor para ver quanto vai para cada ativo.',
+      needPurpose: 'Escolha o objetivo e o risco para ver quanto vai para cada ativo.',
+      checking: 'Conferindo com os preços de hoje…',
+      checked: 'Conferido com os preços de hoje. Nada foi comprado ainda.',
+      review: 'Revisar o depósito',
+      reviewOf: (amount: string) => `Revisar o depósito de ${amount}`,
+      reviewing: 'Conferindo…',
+      changeMix: 'Mudar a mistura',
+      next: 'Nada é comprado nem assinado nesta página. Em seguida você confere a revisão e assina cada passo na tela de compra.',
+      brokenMix:
+        'Os pesos no editor ainda não fecham, então não há mistura para mostrar. Corrija abaixo, ou volte aos pesos propostos.',
+      balance: 'O saldo da sua carteira é conferido na tela de compra.',
+      editByHand: 'Editar os pesos à mão',
+      editorLead:
+        'Digite um peso para cada ativo, em porcentagem. O que você deixar sem atribuir fica em caixa. Os pesos daqui são os que eu confiro.',
+      reset: 'Voltar aos pesos propostos',
+      backToProposal: 'Voltar à proposta',
+      backToDeposit: 'Voltar ao depósito',
+      invalidNext: 'Peça uma mudança na conversa, ou edite os pesos à mão.',
+      blocked: {
+        reply: 'Espere a resposta na conversa primeiro.',
+        weights: 'Corrija os pesos no editor primeiro.',
+        amount: 'Digite um valor primeiro.',
+        purpose: 'Escolha o objetivo e o risco primeiro.',
+      },
       errors: {
-        amount: 'Digite um valor de US$ 10 a US$ 1.000.000.',
-        goal: 'Escolha para que é o dinheiro.',
-        risk: 'Escolha um risco.',
+        notAmount: 'Digite um valor em dólares, como 250 ou 250,50.',
+        belowMin: 'O mínimo para depositar é US$ 10.',
+        aboveMax: 'O máximo em um depósito é US$ 1.000.000. Digite menos.',
       },
     },
     vault: {
@@ -2051,7 +2104,7 @@ export const pt: Dictionary = {
       back: 'Voltar ao seu cofre',
     },
     failure: {
-      invalid: 'Não consigo usar esta mistura assim:',
+      invalid: 'Esta mistura não pode seguir assim:',
       signedOut: 'Seu acesso expirou. Entre de novo e tente mais uma vez.',
       noWallet: 'Seu acesso não tem carteira nesta rede. Adicione uma e tente de novo.',
       notYours: 'Este cofre não é seu.',

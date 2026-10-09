@@ -10,9 +10,9 @@ import { LatticeLoader } from '../../components/ui/Skeleton';
 import { useWaitPhase } from '../../components/ui/wait';
 import { dictionary } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { UseGoalMix } from '../mix/UseGoalMix';
+import { DepositStep, type Purpose } from '../mix/DepositStep';
 import { share } from '../portfolio/figures';
-import { replyText, VaultAgentError, type VaultAgentReply } from '../vault-conversation/agent';
+import { replyText, VaultAgentError, type VaultStrategyPreview } from '../vault-conversation/agent';
 import { StrategyPreview, WeightNotes } from '../vault-conversation/StrategyPreview';
 import {
   conversationNetwork,
@@ -22,7 +22,7 @@ import {
   writeLocal,
 } from '../vault-conversation/storage';
 import { useApiFetch } from '../wallet/WalletProvider';
-import { goalAgent } from './agent';
+import { type GoalReply, goalAgent } from './agent';
 import { consumeGoalHandoff, readGoalHandoff } from './handoff';
 
 export const goalConversationKey = (
@@ -64,9 +64,14 @@ export function GoalConversation({
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [reply, setReply] = useState<VaultAgentReply | null>(null);
-  // The preview the person chose to use: the flow stays only while that preview is the one shown.
-  const [using, setUsing] = useState<VaultAgentReply | null>(null);
+  const [reply, setReply] = useState<GoalReply | null>(null);
+  // The mix on the screen: the last proposal the conversation made. A reply that only talks, or one
+  // that failed, leaves it there, so asking for a change never costs the person what they had.
+  const [mix, setMix] = useState<VaultStrategyPreview | null>(null);
+  // The deposit step is open, for the mix on the screen. Another proposal is read as a preview first.
+  const [depositing, setDepositing] = useState(false);
+  // The amount typed on the deposit step: kept while the mix is changed in the conversation.
+  const [amountText, setAmountText] = useState('');
   const [error, setError] = useState<string>();
   useEffect(() => {
     ++generation.current;
@@ -76,6 +81,9 @@ export function GoalConversation({
     held.current = key ? readLocal(key).transcript : [];
     setTurns(held.current);
     setReply(null);
+    setMix(null);
+    setDepositing(false);
+    setAmountText('');
     setBusy(false);
     sending.current = false;
     prefill.current = readGoalHandoff(userId, ready);
@@ -101,6 +109,9 @@ export function GoalConversation({
     setTurns([]);
     setText('');
     setReply(null);
+    setMix(null);
+    setDepositing(false);
+    setAmountText('');
     setError(undefined);
     persist([]);
   }
@@ -123,11 +134,8 @@ export function GoalConversation({
     setBusy(true);
     setError(undefined);
     setText('');
-    // The draft on the card stays while its successor is worked on, so the new one can show what
-    // changed; it is marked as the one before, and it can no longer be used.
-    setReply((now) => (now?.proposal ? now : null));
-    setUsing(null);
-    let answered = false;
+    // The mix on the card stays while its successor is worked on, marked as the one before, and its
+    // deposit action waits for the reply.
     held.current = next;
     setTurns(next);
     if (persist(next) && prefill.current && userId) {
@@ -171,7 +179,10 @@ export function GoalConversation({
       held.current = completed;
       setTurns(completed);
       setReply(result);
-      answered = true;
+      if (result.proposal) {
+        setMix(result.proposal);
+        setDepositing(false);
+      }
       persist(completed);
     } catch (cause) {
       if (active()) {
@@ -191,13 +202,23 @@ export function GoalConversation({
       }
     } finally {
       if (active()) {
-        // no reply, no draft: the one before it does not stand in for an answer that did not come
-        if (!answered) setReply(null);
         sending.current = false;
         setBusy(false);
       }
     }
   }
+  // What the person said the money is for and the risk, as the newest reply read the whole conversation.
+  const said: Purpose = { goal: reply?.goal ?? null, risk: reply?.risk ?? null };
+  // "Back to the proposal": focus goes to the button that opened the step, never to the page. A new
+  // proposal closing the step leaves focus where the person is typing.
+  const backToPreview = useRef(false);
+  useEffect(() => {
+    if (depositing || !backToPreview.current) return;
+    backToPreview.current = false;
+    box.current?.parentElement?.querySelector<HTMLElement>('[data-action="deposit"]')?.focus();
+  }, [depositing]);
+  /** Weights, the goal and the risk are changed by saying so: back to the box, the mix kept. */
+  const toChat = () => box.current?.querySelector('textarea')?.focus();
   // The person's last words with no reply after them: a failed reply, or one a reload cut short.
   const unanswered = !busy && ready && loaded ? turns.at(-1) : undefined;
   // a wait under 400ms shows nothing; after that the lattice assembles beside the words (STYLE.md)
@@ -322,24 +343,42 @@ export function GoalConversation({
         )}
       </div>
       <div data-ui="goal-strategy" className="flex min-w-0 flex-col gap-4 lg:col-span-7">
-        {reply?.proposal ? (
+        {mix && chain && userId && depositing ? (
+          <>
+            <DepositStep
+              chain={chain}
+              userId={userId}
+              allocations={mix.allocations}
+              said={said}
+              amountText={amountText}
+              onAmountText={setAmountText}
+              provenance={provenance}
+              onChangeMix={toChat}
+              waiting={busy}
+              onClose={() => {
+                backToPreview.current = true;
+                setDepositing(false);
+              }}
+            />
+            {reply && !reply.proposal && reply.notes && <WeightNotes notes={reply.notes} />}
+          </>
+        ) : mix ? (
           <>
             <StrategyPreview
-              proposal={reply.proposal}
+              proposal={mix}
               previewOnly={copy.draftNote}
               {...(busy ? { pending: t.shared.vault.conversation.reworking } : {})}
-              {...(chain && userId && using !== reply
-                ? { use: { label: t.mix.preview.use, onUse: () => setUsing(reply) } }
+              {...(chain && userId
+                ? {
+                    use: {
+                      label: t.mix.preview.deposit,
+                      onUse: () => setDepositing(true),
+                      primary: true,
+                    },
+                  }
                 : {})}
             />
-            {chain && userId && using === reply && (
-              <UseGoalMix
-                chain={chain}
-                userId={userId}
-                allocations={reply.proposal.allocations}
-                onClose={() => setUsing(null)}
-              />
-            )}
+            {reply && !reply.proposal && reply.notes && <WeightNotes notes={reply.notes} />}
           </>
         ) : (
           <div
