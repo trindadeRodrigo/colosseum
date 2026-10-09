@@ -3,6 +3,7 @@ import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, fire, mount, press, settle, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
+import { toWalletError } from '../wallet/errors';
 import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port';
 import { location, router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
@@ -72,7 +73,7 @@ afterEach(async () => {
 describe('the sign-in dialog', () => {
   it('opens over the page from the bar’s "Sign in", as a modal named by its title', async () => {
     const host = await shell();
-    const trigger = find<HTMLAnchorElement>(host, 'header a[href="/sign-in"]');
+    const trigger = find<HTMLAnchorElement>(host, 'header a[href^="/sign-in"]');
     trigger.focus();
     await click(trigger);
     const box = dialog();
@@ -97,7 +98,7 @@ describe('the sign-in dialog', () => {
 
   it('closes with Escape, the scrim and its close button, and gives focus back to what opened it', async () => {
     const host = await shell();
-    const trigger = find<HTMLAnchorElement>(host, 'header a[href="/sign-in"]');
+    const trigger = find<HTMLAnchorElement>(host, 'header a[href^="/sign-in"]');
     for (const close of ['escape', 'scrim', 'button'] as const) {
       trigger.focus();
       await click(trigger);
@@ -115,7 +116,7 @@ describe('the sign-in dialog', () => {
 
   it('keeps Tab inside it, going round from the last control to the first and back', async () => {
     const host = await shell();
-    await click(find(host, 'header a[href="/sign-in"]'));
+    await click(find(host, 'header a[href^="/sign-in"]'));
     const box = dialog() as HTMLElement;
     const controls = [...box.querySelectorAll<HTMLElement>('button, a[href]')];
     const [first, last] = [
@@ -145,12 +146,56 @@ describe('the sign-in dialog', () => {
   it('leaves the person on the page when the sign-in was asked for by the bar', async () => {
     person = { ...person, chain: 'solana', chainSource: 'picked', chainOptions: [] };
     const host = await shell();
-    await click(find(host, 'header a[href="/sign-in"]'));
+    await click(find(host, 'header a[href^="/sign-in"]'));
     await click(button(dialog() as HTMLElement, en.signIn.passkey.continue));
     await settle();
     expect(dialog()).toBeNull();
     expect(router.push).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
+    // the bar is theirs with no reload: the chip in place of "Sign in", and focus on it, since what
+    // opened the dialog is gone
+    expect(host.querySelector('header a[href^="/sign-in"]')).toBeNull();
+    const chip = find(host, '[data-ui="account-menu-button"]');
+    expect(chip.getAttribute('data-chain')).toBe('solana');
+    expect(document.activeElement).toBe(chip);
+  });
+
+  it('leaves "Sign in" usable after a sign-in that was cancelled, with a plain line saying so', async () => {
+    const closed = toWalletError(
+      Object.assign(new Error('Passkey request timed out or rejected by user.'), {
+        privyErrorCode: 'passkey_not_allowed',
+      }),
+    );
+    let fails = true;
+    portStore.set(
+      fakePort({
+        signIn: vi.fn(async () => {
+          if (fails) throw closed;
+          portStore.set(signedInPort(EMBEDDED));
+        }),
+      }),
+    );
+    person = { ...person, chain: 'solana', chainSource: 'picked', chainOptions: [] };
+    const host = await shell();
+    const way = find<HTMLAnchorElement>(host, 'header a[href^="/sign-in"]');
+    await click(way);
+    await click(button(dialog() as HTMLElement, en.signIn.passkey.continue));
+    await settle();
+    // what happened, in the dialog, which stays; nobody is signed in
+    expect(find(dialog() as HTMLElement, '[role="alert"]').textContent).toBe(
+      en.signIn.failure.passkeyNotUsed,
+    );
+    expect(find(host, '[data-ui="account-control"]').getAttribute('data-state')).toBe('signed-out');
+    // closed, the bar's button is the same one, with focus back on it, and it works again
+    await press(dialog() as HTMLElement, 'Escape');
+    expect(find(host, 'header a[href^="/sign-in"]')).toBe(way);
+    expect(document.activeElement).toBe(way);
+    fails = false;
+    await click(way);
+    await click(button(dialog() as HTMLElement, en.signIn.passkey.continue));
+    await settle();
+    expect(dialog()).toBeNull();
+    expect(find(host, '[data-ui="account-menu-button"]').getAttribute('data-chain')).toBe('solana');
   });
 
   it('closes with Escape after the chain question replaced the wallet list, focus on the question', async () => {
@@ -163,7 +208,7 @@ describe('the sign-in dialog', () => {
       }),
     );
     const host = await shell();
-    await click(find(host, 'header a[href="/sign-in"]'));
+    await click(find(host, 'header a[href^="/sign-in"]'));
     const box = dialog() as HTMLElement;
     await click(button(box, en.signIn.wallet.connect));
     await click(button(box, 'Throwaway wallet'));

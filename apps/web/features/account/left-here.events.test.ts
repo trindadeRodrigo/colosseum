@@ -401,7 +401,7 @@ describe('signed out here while the sign-in service could not be reached', () =>
       await later(WAY_IN_MS);
       expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
       expect(host.querySelector('[data-ui="account-address"]')).toBeNull();
-      expect(find(host, '[data-ui="account-control"] a[href="/sign-in"]').textContent).toBe(
+      expect(find(host, '[data-ui="account-control"] a[href^="/sign-in"]').textContent).toBe(
         t.shell.signIn,
       );
       // "Portfolio" is a signed-in person's link

@@ -224,15 +224,18 @@ describe('the frame', () => {
     portStore.set(fakePort({ status: 'loading' }));
     const loading = await shell();
     expect(loading.querySelector('[data-ui="account"]')).toBeNull();
-    expect(loading.querySelector('header a[href="/sign-in"]')).toBeNull();
+    expect(loading.querySelector('header a[href^="/sign-in"]')).toBeNull();
   });
 });
 
 describe('who is signed in, in the bar', () => {
   it('offers "Sign in" to nobody in particular, as a link to the sign-in screen', async () => {
     const host = await shell();
-    const link = find<HTMLAnchorElement>(host, 'header a[href="/sign-in"]');
+    const link = find<HTMLAnchorElement>(host, 'header a[href^="/sign-in"]');
     expect(link.textContent).toBe(en.signIn);
+    // it comes back to the page the person is on (a link opened in a new tab too)
+    expect(link.getAttribute('href')).toBe('/sign-in?next=/goal');
+    expect(find(host, '[data-ui="account-control"]').getAttribute('data-state')).toBe('signed-out');
     expect(host.querySelector('[data-ui="account"]')).toBeNull();
   });
 
@@ -240,7 +243,7 @@ describe('who is signed in, in the bar', () => {
     for (const path of ['/goal', '/shelf', '/analytics/stocks']) {
       location.pathname = path;
       const host = await shell();
-      const link = find<HTMLAnchorElement>(host, 'header a[href="/sign-in"]');
+      const link = find<HTMLAnchorElement>(host, 'header a[href^="/sign-in"]');
       expect(link.className, path).toContain('bg-primary');
       expect(link.className, path).toContain('h-10');
       expect(link.getAttribute('aria-current'), path).toBeNull();
@@ -310,7 +313,7 @@ describe('who is signed in, in the bar', () => {
     await click(find(menu, '[data-ui="sign-out"]'));
     await settle();
     expect(signOut).toHaveBeenCalledTimes(1);
-    expect(find<HTMLAnchorElement>(host, 'header a[href="/sign-in"]').textContent).toBe(en.signIn);
+    expect(find<HTMLAnchorElement>(host, 'header a[href^="/sign-in"]').textContent).toBe(en.signIn);
   });
 
   it('shows no address before the chain is known: it does not guess which wallet is the one', async () => {
@@ -323,34 +326,53 @@ describe('who is signed in, in the bar', () => {
     expect(menu.textContent).toBe(en.signOut);
   });
 
-  it('says nothing about anyone before the wallet has loaded', async () => {
+  it('says nothing about anyone before the wallet has loaded: a still box, nothing to press', async () => {
     portStore.set(fakePort({ status: 'loading' }));
     const host = await shell();
     expect(host.querySelector('[data-ui="account"]')).toBeNull();
-    expect(host.querySelector('header a[href="/sign-in"]')).toBeNull();
+    expect(host.querySelector('header a[href^="/sign-in"]')).toBeNull();
+    const control = find(host, '[data-ui="account-control"]');
+    expect(control.getAttribute('data-state')).toBe('loading');
+    const box = find(control, '[data-ui="account-placeholder"]');
+    expect(box.getAttribute('aria-hidden')).toBe('true');
+    expect(box.textContent).toBe('');
+    expect(control.querySelectorAll('button, a')).toHaveLength(0);
+    // a wait under 400ms is not announced
+    expect(find(control, '[data-ui="account-said"]').textContent).toBe('');
   });
 
-  it.each(['making', 'failed'] as const)(
-    'always offers the way out to someone signed in whose wallets are %s',
-    async (walletsOwed) => {
-      const signOut = vi.fn(async () => {
-        portStore.set(fakePort());
-      });
-      portStore.set(
-        fakePort({ status: 'loading', userId: 'did:privy:test', walletsOwed, signOut }),
-      );
-      const host = await shell();
-      await settle();
-      // no address: there is no chain, and no wallet to show for one
-      expect(menuButton(host).textContent).toBe(en.account);
-      const menu = await openMenu(host);
-      expect(menu.textContent).toBe(en.signOut);
-      await click(find(menu, '[data-ui="sign-out"]'));
-      await settle();
-      expect(signOut).toHaveBeenCalledTimes(1);
-      expect(find(host, 'header a[href="/sign-in"]').textContent).toBe(en.signIn);
-    },
-  );
+  it('always offers the way out to someone signed in whose wallets could not be made', async () => {
+    const signOut = vi.fn(async () => {
+      portStore.set(fakePort());
+    });
+    portStore.set(
+      fakePort({ status: 'loading', userId: 'did:privy:test', walletsOwed: 'failed', signOut }),
+    );
+    const host = await shell();
+    await settle();
+    // no address: there is no chain, and no wallet to show for one
+    expect(menuButton(host).textContent).toBe(en.account);
+    const menu = await openMenu(host);
+    expect(menu.textContent).toBe(en.signOut);
+    await click(find(menu, '[data-ui="sign-out"]'));
+    await settle();
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(find(host, 'header a[href^="/sign-in"]').textContent).toBe(en.signIn);
+  });
+
+  it('keeps the loading look while the wallets of someone signed in are being made', async () => {
+    // a passing state, a few seconds: no "Your wallet" button that the chip then replaces. The way
+    // out while it lasts too long is in the help (features/account/slow-sign-in.events.test.ts)
+    portStore.set(fakePort({ status: 'loading', userId: 'did:privy:test', walletsOwed: 'making' }));
+    const host = await shell();
+    await settle();
+    const control = find(host, '[data-ui="account-control"]');
+    expect(control.getAttribute('data-state')).toBe('loading');
+    expect(find(control, '[data-ui="account-placeholder"]').getAttribute('data-shape')).toBe(
+      'account',
+    );
+    expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
+  });
 
   it('puts focus on "Sign in" after a sign-out, and tells a screen reader the person is out', async () => {
     const signOut = vi.fn(async () => {
@@ -363,7 +385,7 @@ describe('who is signed in, in the bar', () => {
     out.focus();
     await click(out);
     await settle();
-    const link = find<HTMLAnchorElement>(host, 'header a[href="/sign-in"]');
+    const link = find<HTMLAnchorElement>(host, 'header a[href^="/sign-in"]');
     expect(document.activeElement).toBe(link);
     expect(find(host, '[data-ui="account-said"]').textContent).toBe(en.signedOut);
   });
@@ -445,9 +467,18 @@ describe('the account control of someone signed in (Thom, Oct 6)', () => {
       .filter((el) => el.children.length === 0 && el.getAttribute('aria-hidden') !== 'true')
       .map((el) => el.textContent)
       .join(' ');
-    expect(heard).toContain(`${en.account}:`);
+    expect(heard).toContain(en.account);
     expect(heard).toContain(SOLANA);
     expect(heard).not.toContain('So11…1112');
+    // its name is "Your wallet" and the address. The chain is a part of its own, which describes the
+    // control and is not in its name, so it can leave the chip without the name changing
+    const named = (button.getAttribute('aria-labelledby') ?? '')
+      .split(' ')
+      .map((id) => document.getElementById(id));
+    expect(named.map((el) => el?.textContent)).toEqual([en.account, `So11…1112${SOLANA}`]);
+    const chainPart = find(button, '[data-part="chain"]');
+    expect(button.getAttribute('aria-describedby')).toBe(chainPart.id);
+    expect(named.some((el) => el && chainPart.contains(el))).toBe(false);
     // a hairline and 2px corners, never a pill
     expect(button.className).toContain('rounded-md');
     expect(button.className).not.toContain('rounded-full');
@@ -565,10 +596,13 @@ describe('the account control of someone signed in (Thom, Oct 6)', () => {
   it('signed out, keeps the chain switcher and the one primary "Sign in"', async () => {
     const host = await shell();
     await settle();
+    // the chain a visitor looks at is beside the account control, not part of it
     const bar = find(host, '[data-ui="account-control"]');
-    expect(bar.querySelector('[data-ui="chain-switch"]')).not.toBeNull();
+    expect(bar.querySelector('[data-ui="chain-switch"]')).toBeNull();
+    expect(bar.parentElement?.querySelector('[data-ui="chain-switch"]')).not.toBeNull();
     expect(bar.querySelector('[data-ui="account"]')).toBeNull();
-    expect(find<HTMLAnchorElement>(bar, 'a[href="/sign-in"]').textContent).toBe(en.signIn);
+    expect(bar.querySelectorAll('a, button')).toHaveLength(1);
+    expect(find<HTMLAnchorElement>(bar, 'a[href^="/sign-in"]').textContent).toBe(en.signIn);
   });
 });
 
@@ -609,7 +643,7 @@ describe('the language', () => {
     expect([...find(host, 'nav').querySelectorAll(':scope > a')].map((a) => a.textContent)).toEqual(
       [pt.products, pt.invest, pt.analytics],
     );
-    expect(find(host, 'header a[href="/sign-in"]').textContent).toBe(pt.signIn);
+    expect(find(host, 'header a[href^="/sign-in"]').textContent).toBe(pt.signIn);
     expect(host.textContent).not.toMatch(/!/);
   });
 });

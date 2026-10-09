@@ -27,7 +27,7 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
   const w = t.goal.explore.picker;
   const pickerId = useId();
   const router = useRouter();
-  const { account, chain } = useAccount();
+  const { account, chain, view } = useAccount();
   const port = useWalletPort();
   const network = chain ? port.network(chain) : null;
   // The conversations kept in this browser for this person, chain and network.
@@ -106,6 +106,7 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
       </div>
       <GoalConversation
         key={`${port.userId}:${chain}:${network?.provenance}:${index.current}`}
+        account={view}
         userId={port.userId}
         chain={chain}
         provenance={network?.provenance ?? null}

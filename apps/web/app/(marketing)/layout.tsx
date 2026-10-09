@@ -10,8 +10,9 @@ import { BLACK } from '../../lib/brand-grounds';
 // His landing page's document (compact-nav.md, joint-stage.md): the three faces, the language, and
 // the ground. Marketing is dark unless the visitor chose otherwise (token-mapping.md, section 6), so
 // with no choice made the class is `dark`, not `tf-auto` (features/landing/theme.ts). No wallet and no
-// API at first load: the page sends a goal on to the product (`/goal`), and its "Sign in" loads the
-// wallet and the sign-in dialog on the first press only (features/landing/LandingSignIn.tsx).
+// API at a visitor's first load: the page sends a goal on to the product (`/goal`), and its "Sign in"
+// loads the wallet and the sign-in dialog on the first press only. For a person signed in on this
+// browser the bar's account control loads the wallet at once (features/landing/LandingAccount.tsx).
 
 // The landing opens dark, so the browser's bar is black around it in either scheme.
 export const viewport = { themeColor: BLACK };

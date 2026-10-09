@@ -5,11 +5,13 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Composer } from '../../components/ui/Composer';
 import { WORKSPACE_TITLE } from '../../components/ui/heading';
-import { LatticeGlyph } from '../../components/ui/Lattice';
+import { LatticeGlyph, LatticeStatus } from '../../components/ui/Lattice';
 import { LatticeLoader } from '../../components/ui/Skeleton';
 import { useWaitPhase } from '../../components/ui/wait';
 import { dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
+import type { AccountView } from '../account/AccountProvider';
+import { signInHref } from '../account/account-control-parts';
 import { DepositStep, type Purpose } from '../mix/DepositStep';
 import { share } from '../portfolio/figures';
 import {
@@ -45,9 +47,15 @@ export function GoalConversation({
   chain,
   ready,
   provenance,
+  account = userId ? 'signed-in' : 'signed-out',
   conversationId = 'main',
   onSaved,
 }: {
+  /**
+   * What the bar's account control shows (AccountProvider, `view`), so this page says the same:
+   * while it is not known who is here the page waits, and asks nobody to sign in.
+   */
+  account?: AccountView;
   userId: string | null;
   chain: ChainId | null;
   ready: boolean;
@@ -374,13 +382,22 @@ export function GoalConversation({
             </li>
           ))}
         </ol>
-        {!ready && (
-          <p className="text-body-sm text-muted-foreground">
-            {userId ? copy.readingAccount : copy.signIn}
-          </p>
-        )}
-        {!userId && (
-          <Link href="/sign-in?next=/goal" className="text-body-sm underline">
+        {/* The page agrees with the bar: it waits while the bar's control waits, and asks for a
+            sign-in only once the bar offers one, through the same link. */}
+        {!ready &&
+          (account === 'loading' ? (
+            <LatticeStatus label={copy.loadingAccount} className="self-start" />
+          ) : (
+            <p data-ui="goal-account" className="text-body-sm text-muted-foreground">
+              {account === 'signed-in' ? copy.readingAccount : copy.signIn}
+            </p>
+          ))}
+        {account === 'signed-out' && (
+          <Link
+            href={signInHref('/goal')}
+            data-ui="goal-sign-in"
+            className="text-body-sm underline"
+          >
             {t.shell.signIn}
           </Link>
         )}

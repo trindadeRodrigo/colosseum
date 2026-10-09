@@ -67,11 +67,15 @@ export type Account =
 export type Unknown = 'unreachable' | 'signed_out' | 'no_identity' | 'busy' | 'off' | 'refused';
 
 /**
- * Someone signed in has waited this long and is not ready: they are told, and not left looking at
- * "Reading…". Nothing is asked again by itself: a sign-in service that answered 429 is left alone
- * until the person presses "Try again", and each press waits twice as long as the one before.
+ * Someone signed in has waited this long and is not ready: the bar's control keeps its loading look
+ * and offers help under it (what is slow, "Try again", "Sign out"). Half a minute, not a quarter:
+ * the wallet is not mounted until our server has answered GET /v1/config (privy-bridge.tsx), and a
+ * hosted server that was asleep takes most of a minute to wake, so a shorter wait called every
+ * first visit after a quiet spell slow. Nothing is asked again by itself: a sign-in service that
+ * answered 429 is left alone until the person presses "Try again", and each press waits twice as
+ * long as the one before.
  */
-export const SLOW_MS = 15_000;
+export const SLOW_MS = 30_000;
 /**
  * How long the bar waits for the sign-in service before it offers "Sign in" anyway to someone nobody
  * knows to be signed in. A service that never loads (a blocker, a network that drops it) must not
@@ -132,7 +136,27 @@ export type AccountValue = {
   choose(chain: ChainId): Promise<void>;
   /** Asks the API again, after it did not answer. */
   retry(): void;
+  /**
+   * Whether anyone is signed in, as the bar's control and a page that needs a sign-in both read it,
+   * so the two never disagree. `unknown`: the wallet has not said yet. `signed-out`: it said so, or
+   * it has not loaded after `WAY_IN_MS` for someone nobody knows to be signed in.
+   */
+  who: Who;
+  /**
+   * Someone was signed in on this browser when the page was last open (the hint), or has been seen
+   * signed in since: what the control's placeholder stands for while `who` is `unknown`.
+   */
+  expected: boolean;
+  /**
+   * What the bar's control and a page that needs a sign-in show: `loading` while it is not known
+   * who is here or the person signed in is not settled yet, `signed-out`, or `signed-in` (settled,
+   * even with no chain: a wallet could not be made, or our server did not say).
+   */
+  view: AccountView;
 };
+
+export type Who = 'unknown' | 'signed-out' | 'signed-in';
+export type AccountView = 'loading' | 'signed-out' | 'signed-in';
 
 const AccountContext = createContext<AccountValue | null>(null);
 
@@ -151,7 +175,17 @@ const whyNot = (e: unknown): Unknown => {
   return e.kind === 'no_wallet' || e.kind === 'not_offered' ? 'refused' : 'unreachable';
 };
 
-export function AccountProvider({ children }: { children: ReactNode }) {
+export function AccountProvider({
+  children,
+  hinted,
+}: {
+  children: ReactNode;
+  /**
+   * The signed-in hint as the server read it from the request, so the first paint already draws the
+   * placeholder of the right control. Left out (the landing's panel, a test), the browser's cookie.
+   */
+  hinted?: boolean;
+}) {
   const port = useWalletPort();
   const apiFetch = useApiFetch();
   const restart = useWalletRestart();
@@ -312,7 +346,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   // Someone who reloads is known before the provider says so, by the hint this app keeps while a
   // person is signed in (`SIGNED_IN_COOKIE`): they are never shown "Sign in" while it loads.
   const seen = useRef<boolean | null>(null);
-  if (seen.current === null) seen.current = signedInHint();
+  if (seen.current === null) seen.current = hinted ?? signedInHint();
   if (port.userId !== null) seen.current = true;
   else if (port.status === 'signed-out') seen.current = false;
   // And nobody known at all: the sign-in service has not loaded, so it has not said who is here.
@@ -384,6 +418,15 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   // A visitor the sign-in service never answered for browses as one signed out: the chain is theirs
   // to look at and to switch.
   const chain = current ?? (account.status === 'signed-out' || stalled ? browsing : null);
+  const here: Who =
+    port.status === 'signed-out' || (nobody && stalled)
+      ? 'signed-out'
+      : port.userId !== null
+        ? 'signed-in'
+        : 'unknown';
+  const expected = seen.current === true;
+  const view: AccountView =
+    here === 'signed-out' ? 'signed-out' : here === 'unknown' || waiting ? 'loading' : 'signed-in';
   const value = useMemo(
     () => ({
       account,
@@ -395,8 +438,11 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       chain,
       choose,
       retry,
+      who: here,
+      expected,
+      view,
     }),
-    [account, slow, again, leave, stalled, port.test, chain, choose, retry],
+    [account, slow, again, leave, stalled, port.test, chain, choose, retry, here, expected, view],
   );
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
 }

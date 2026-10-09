@@ -38,7 +38,7 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
 
   // the bar's "Sign in" opens the sign-in dialog over the goal (SIGN-IN-FLOW); nothing more is asked
   await page.goto('/goal');
-  await page.locator('header a[href="/sign-in"]').click();
+  await page.locator('header a[href^="/sign-in"]').click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await expect(dialog).toHaveCount(0);
