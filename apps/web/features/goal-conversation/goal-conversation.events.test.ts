@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement, useState } from 'react';
+import { act, createElement, StrictMode, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   click,
@@ -574,23 +574,82 @@ describe('the deposit step of a new goal', () => {
     expect(calls.some((call) => call.path.includes('/v1/baskets/'))).toBe(false);
   });
 
-  it('asks by a tap what an older server or the person left unsaid, never a default', async () => {
+  it('asks nothing by a tap: what an older server or the person left unsaid is sent as not said', async () => {
     // a reply with no goal or risk at all, and one with a value this app does not know
     replies({}, { goal: 'speculate', risk: 'medium' });
     const host = await show();
     await send(host, 'Some stocks');
     await click(find(host, '[data-action="deposit"]'));
     expect(host.querySelector('[data-ui="deposit-purpose"]')).toBeNull();
-    expect(host.querySelectorAll('[data-ui="deposit-goal"] button')).toHaveLength(3);
-    expect(host.querySelectorAll('[data-ui="deposit-risk"] button')).toHaveLength(3);
-    expect(host.querySelectorAll('[aria-pressed="true"]')).toHaveLength(0);
+    expect(host.querySelector('[data-ui="deposit-goal"]')).toBeNull();
+    expect(host.querySelector('[data-ui="deposit-risk"]')).toBeNull();
+    expect(host.querySelectorAll('[aria-pressed]')).toHaveLength(0);
+    await type(amount(host), '250');
+    await settle(CHECK_MS + 50);
+    expect(calls.filter((call) => call.path === accept).at(-1)?.body).toMatchObject({
+      goal: null,
+      risk: null,
+      amountUsd: 250,
+    });
     await send(host, 'medium risk please');
     await click(find(host, '[data-action="deposit"]'));
     expect(find(host, '[data-ui="deposit-purpose"]').textContent).toContain(
       en.mix.deposit.purpose(null, 'medium'),
     );
-    expect(host.querySelectorAll('[data-ui="deposit-goal"] button')).toHaveLength(3);
-    expect(host.querySelector('[data-ui="deposit-risk"]')).toBeNull();
+    expect(host.querySelector('[data-ui="deposit-goal"]')).toBeNull();
+  });
+
+  // In StrictMode as `next dev` runs it, where React runs a state update twice.
+  it.each([
+    ['', false],
+    [', in StrictMode', true],
+  ])(
+    'starts the amount from the sum the person wrote, and never replaces one they typed%s',
+    async (_, strict) => {
+      replies(
+        { amountUsd: 2000 },
+        { amountUsd: 3000 },
+        { amountUsd: 'lots' },
+        { amountUsd: 5000 },
+        { amountUsd: null },
+      );
+      const host = await (strict
+        ? mount(withAccount('en', createElement(StrictMode, null, createElement(GoalHome))))
+        : show());
+      await send(host, 'I want to invest 2k, 70% in safe income and 30% in AI stocks');
+      await click(find(host, '[data-action="deposit"]'));
+      expect(amount(host).value).toBe('2000');
+      // focused and selected: what the person types replaces it
+      expect(document.activeElement).toBe(amount(host));
+      expect([amount(host).selectionStart, amount(host).selectionEnd]).toEqual([0, 4]);
+      expect(find(host, '[data-action="deposit-review"]').textContent).toContain(
+        en.mix.deposit.reviewOf('$2,000'),
+      );
+      // a newer sum replaces the one filled in, and something the app cannot read leaves it
+      await send(host, 'make it 3k');
+      await click(find(host, '[data-action="deposit"]'));
+      expect(amount(host).value).toBe('3000');
+      await send(host, 'lots');
+      await click(find(host, '[data-action="deposit"]'));
+      expect(amount(host).value).toBe('3000');
+      // what the person typed is theirs: no later sum replaces it, nor one that is not said
+      await type(amount(host), '2500');
+      await send(host, 'and 5k?');
+      await click(find(host, '[data-action="deposit"]'));
+      expect(amount(host).value).toBe('2500');
+      await send(host, 'ok');
+      await click(find(host, '[data-action="deposit"]'));
+      expect(amount(host).value).toBe('2500');
+    },
+  );
+
+  it('writes a sum with cents the way the page reads an amount back', async () => {
+    replies({ amountUsd: 1500.5 });
+    const host = await show('pt');
+    await send(host, 'US$ 1.500,50 em ouro');
+    await click(find(host, '[data-action="deposit"]'));
+    expect(amount(host).value).toBe('1500,5');
+    expect(host.querySelector('[data-ui="amount-large"] [aria-invalid="true"]')).toBeNull();
   });
 
   it('changes the mix in the conversation: the box takes focus, and the proposal and amount stay', async () => {

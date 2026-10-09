@@ -24,18 +24,18 @@ import { linesOf, WeightEditor, type Weights, weightsOf } from './WeightEditor';
 // The deposit step of a new goal (gate DEPOSIT-STEP): after the conversation proposes a mix, one
 // amount is typed and one press leads to the server's review, its ticks, and the buy screen, where the
 // order is signed. Nothing is signed here. There is no form: the mix is the conversation's and is
-// changed there, the goal and the risk are the ones the person said there, and what the amount becomes
-// in each asset is the server's own check of this mix at this amount, never worked out on this screen.
-// Editing a weight by hand is behind its own control, closed until asked for, and a mix edited that way
-// is marked and is the one checked.
+// changed there, the amount starts from the sum the person wrote there, the goal and the risk are the
+// ones the person said there, and one they did not say is worked out by the server from the mix and
+// said as such (gate DEPOSIT-DERIVE): nothing is asked here. What the amount becomes in each asset is
+// the server's own check of this mix at this amount, never worked out on this screen. Editing a weight
+// by hand is behind its own control, closed until asked for, and a mix edited that way is marked and
+// is the one checked.
 
 export type Goal = 'grow' | 'income' | 'protect';
 export type Risk = 'low' | 'medium' | 'high';
 /** What the person said in the conversation, as the server served it. Null: not said. */
 export type Purpose = { goal: Goal | null; risk: Risk | null };
 
-const GOALS = ['grow', 'income', 'protect'] as const;
-const RISKS = ['low', 'medium', 'high'] as const;
 /** The amounts one tap types. They are amounts to type, not figures of anybody's. */
 export const QUICK_USD = [100, 500, 1000] as const;
 /** How long the amount has to be still before the server is asked what it becomes in each asset. */
@@ -60,7 +60,10 @@ export function DepositStep({
   chain: ChainId;
   userId: string;
   allocations: readonly (MixLine & { symbol?: string })[];
-  /** The goal and risk the person said in the conversation. Never a default: null is asked, by one tap. */
+  /**
+   * The goal and risk the person said in the conversation. Null is sent as not said, and the server
+   * works it out from the mix (DEPOSIT-DERIVE); this screen never fills one in.
+   */
   said: Purpose;
   /** The amount as typed, kept by the host so another proposal does not empty it. */
   amountText: string;
@@ -84,7 +87,6 @@ export function DepositStep({
   const titleId = useId();
   const editorId = useId();
   const reasonId = useId();
-  const [picked, setPicked] = useState<Partial<Purpose>>({});
   const [weights, setWeights] = useState<Weights | null>(null);
   const [editing, setEditing] = useState(false);
   const [checked, setChecked] = useState<Checked | null>(null);
@@ -99,8 +101,12 @@ export function DepositStep({
   const root = useRef<HTMLDivElement>(null);
   const focus = (selector: string) => root.current?.querySelector<HTMLElement>(selector)?.focus();
   // The step opens with the one thing to type. Focus never falls to the page when a screen changes.
+  // An amount filled in from the conversation is selected, so what the person types replaces it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the step opens
-  useEffect(() => focus('[data-ui="amount-large"] input'), []);
+  useEffect(() => {
+    focus('[data-ui="amount-large"] input');
+    root.current?.querySelector<HTMLInputElement>('[data-ui="amount-large"] input')?.select();
+  }, []);
   // From the review back to the step: the press that led there.
   const reviewing = review !== null;
   const wasReviewing = useRef(false);
@@ -129,9 +135,6 @@ export function DepositStep({
           : typed > MAX_USD
             ? d.errors.aboveMax
             : undefined;
-  // What the person said in the conversation stands; a tap answers only what they have not said.
-  const goal = said.goal ?? picked.goal ?? null;
-  const risk = said.risk ?? picked.risk ?? null;
 
   const mock = onMock(port, chain);
   const units = unitsFor(chain, mock);
@@ -146,13 +149,13 @@ export function DepositStep({
   const broken = weights !== null && lines === null;
 
   const body =
-    amount !== null && goal && risk && lines && cash
+    amount !== null && lines && cash
       ? {
           version: 1 as const,
           origin: edited ? ('person' as const) : ('model' as const),
           language: lang,
-          goal,
-          risk,
+          goal: said.goal,
+          risk: said.risk,
           amountUsd: amount,
           allocations: mixOf(lines, cash),
         }
@@ -161,8 +164,8 @@ export function DepositStep({
   const sending = useRef({ key, body, failureText });
   sending.current = { key, body, failureText };
 
-  // What the amount becomes in each asset: asked of the server once the amount, the goal, the risk and
-  // the weights have been still for a moment. Only the answer to what is on the screen now is shown.
+  // What the amount becomes in each asset: asked of the server once the amount and the weights have
+  // been still for a moment. Only the answer to what is on the screen now is shown.
   useEffect(() => {
     if (key === null || review) return;
     const timer = setTimeout(async () => {
@@ -249,6 +252,17 @@ export function DepositStep({
     router.push(`/plan/${encodeURIComponent(proposalId)}/buy`);
   }
 
+  // The goal and risk as one sentence: the server's, once it has checked this mix, which names what it
+  // worked out from the mix; until then only what the person said, and nothing where they said neither.
+  const purposeOf = (r: MixReview) =>
+    [
+      d.purpose(r.goal, r.risk ?? said.risk),
+      r.fromMix?.length ? d.fromMix(r.fromMix.includes('goal'), r.fromMix.includes('risk')) : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+  const purpose = live ? purposeOf(live) : d.purpose(said.goal, said.risk);
+
   if (review)
     return (
       <div ref={root} data-ui="deposit-review" className="flex min-w-0 flex-col gap-4">
@@ -260,7 +274,7 @@ export function DepositStep({
           onConfirm={confirm}
           onBack={() => setReview(null)}
           backLabel={d.backToDeposit}
-          purpose={d.purpose(review.goal ?? goal, risk)}
+          purpose={purposeOf(review)}
           focusOnOpen
           busy={busy}
           changed={changed}
@@ -304,9 +318,7 @@ export function DepositStep({
         ? d.blocked.weights
         : amount === null
           ? d.blocked.amount
-          : !goal || !risk
-            ? d.blocked.purpose
-            : null;
+          : null;
   const status = refused
     ? null
     : live
@@ -317,34 +329,7 @@ export function DepositStep({
           ? amountError
             ? null
             : d.needAmount
-          : !goal || !risk
-            ? d.needPurpose
-            : null;
-
-  const choice = <T extends string>(
-    name: 'goal' | 'risk',
-    question: string,
-    options: readonly T[],
-    labels: Record<T, string>,
-    value: T | null,
-  ) => (
-    <fieldset data-ui={`deposit-${name}`} className="flex min-w-0 flex-col gap-2">
-      <legend className="text-caption font-medium">{question}</legend>
-      <div className="flex flex-wrap gap-2">
-        {options.map((option) => (
-          <Button
-            key={option}
-            variant="chip"
-            pressed={value === option}
-            data-value={option}
-            onClick={() => setPicked((old) => ({ ...old, [name]: option }))}
-          >
-            {labels[option]}
-          </Button>
-        ))}
-      </div>
-    </fieldset>
-  );
+          : null;
 
   return (
     <div ref={root} data-ui="deposit-step" className="min-w-0">
@@ -358,27 +343,16 @@ export function DepositStep({
       >
         <CardHeader id={titleId} title={d.title} level={2} meta={t.chain.names[chain]} />
         <CardBody className="flex min-w-0 flex-col gap-5">
-          {(said.goal || said.risk) && (
+          {purpose && (
             <p
               data-ui="deposit-purpose"
               className="flex flex-wrap items-baseline gap-x-3 text-body"
             >
-              <span>{d.purpose(said.goal, said.risk)}</span>
+              <span>{purpose}</span>
               <Button variant="link" aria-label={d.changePurposeLabel} onClick={onChangeMix}>
                 {d.changePurpose}
               </Button>
             </p>
-          )}
-          {(!said.goal || !said.risk) && (
-            <div inert={busy} className="flex min-w-0 flex-col gap-3">
-              {!said.goal &&
-                choice('goal', d.askGoal, GOALS, t.mix.goal.goals, picked.goal ?? null)}
-              {!said.risk &&
-                choice('risk', d.askRisk, RISKS, t.mix.goal.risks, picked.risk ?? null)}
-              <p className="max-w-(--tf-measure-body) text-caption text-muted-foreground">
-                {d.askWhy}
-              </p>
-            </div>
           )}
 
           <div inert={busy} className="flex min-w-0 flex-col gap-2">

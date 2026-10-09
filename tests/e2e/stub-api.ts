@@ -6,6 +6,7 @@ import {
   mockAddress,
   mockRecipeId,
 } from '@colosseum/chain-mock';
+import { purposeOfMix } from '@colosseum/engine/personal';
 import {
   AcceptGoalMixRequest,
   AcceptGoalMixResponse,
@@ -42,6 +43,7 @@ import {
   type OrderApi,
 } from '@colosseum/sdk';
 import { z } from 'zod';
+import { statedAmountUsd } from '../../apps/api/src/orders/stated-amount';
 import {
   EXPOSURE,
   HISTORY,
@@ -565,10 +567,16 @@ function bodyOf<T>(schema: z.ZodType<T>, value: unknown): T {
 const GoalReply = VaultAgentReplyShape.extend({
   chain: ChainId,
   ...VaultAgentStatedPurpose.shape,
+  amountUsd: z.number().positive().nullable(),
 }).superRefine(warningsBelong);
 const cents = (n: number) => Math.round(n * 100) / 100;
 
-async function mixReview(body: MixBody, amountUsd: number, goal: MixReview['goal']) {
+async function mixReview(
+  body: MixBody,
+  amountUsd: number,
+  goal: MixReview['goal'],
+  said?: { risk: NonNullable<MixReview['risk']>; fromMix: ('goal' | 'risk')[] },
+) {
   const { adapter } = world;
   const cash = adapter.mock.cash;
   const listed = new Map((await adapter.listAssets()).map((a) => [a.id, a]));
@@ -635,6 +643,8 @@ async function mixReview(body: MixBody, amountUsd: number, goal: MixReview['goal
     chain: CHAIN,
     origin: body.origin,
     goal,
+    ...(said ? { risk: said.risk } : {}),
+    ...(said?.fromMix.length ? { fromMix: said.fromMix } : {}),
     amountUsd,
     lines,
     targets,
@@ -679,6 +689,13 @@ function goalReply(body: { messageId?: string; messages?: { who: string; text: s
     chain: CHAIN,
     goal,
     risk,
+    // the API's own reader of the sum the person wrote (DEPOSIT-DERIVE)
+    amountUsd: statedAmountUsd(
+      (body.messages ?? []).map((m) => ({
+        who: m.who === 'person' ? 'person' : 'app',
+        text: m.text,
+      })),
+    ),
     messageId: body.messageId,
     message: 'Sample: a broad fund and gold, split equally. Nothing is bought until you confirm.',
     question: null,
@@ -945,15 +962,29 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     return send(res, 200, goalReply((await read(req)) as Parameters<typeof goalReply>[0]));
   if (path === `/v1/conversations/${CHAIN}/goal/accept` && method === 'POST') {
     const body = bodyOf(AcceptGoalMixRequest, await read(req));
-    const review = await mixReview(body, body.amountUsd, body.goal);
+    // What the person did not say is worked out from the mix, as the API does (DEPOSIT-DERIVE).
+    const classes = new Map((await world.adapter.listAssets()).map((a) => [a.id, a.cls]));
+    const mix = purposeOfMix(
+      body.allocations.map((l) => ({
+        cls: l.assetId === world.adapter.mock.cash ? 'cash' : (classes.get(l.assetId) ?? 'stock'),
+        weightBps: l.weightBps,
+      })),
+    );
+    const goal = body.goal ?? mix.goal;
+    const risk = body.risk ?? mix.risk;
+    const fromMix = [
+      ...(body.goal ? [] : (['goal'] as const)),
+      ...(body.risk ? [] : (['risk'] as const)),
+    ];
+    const review = await mixReview(body, body.amountUsd, goal, { risk, fromMix });
     if (!confirmed(body, review)) return send(res, 200, { status: 'review', review });
     const sheet: BasketSheet = {
       basketType: 'standard',
-      goal: body.goal,
+      goal,
       amountUsd: body.amountUsd,
       horizonMonths: body.horizonMonths ?? 120,
       ...(body.horizonMonths ? {} : { horizonOpen: true }),
-      risk: body.risk,
+      risk,
       themes: [],
       chains: [CHAIN],
       rules: { useHoldings: false, glide: false },

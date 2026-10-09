@@ -14,6 +14,7 @@ import { Refusal, refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { type PlanInputs, preparePersonalInputs } from '../../orders/personalize';
 import type { RelaxedGoalAgent } from '../../orders/relaxed-goal-agent';
+import { statedAmountUsd } from '../../orders/stated-amount';
 import {
   type AgentAnalytics,
   analyticsGap,
@@ -27,7 +28,8 @@ import { signedIn } from './orders';
 
 /**
  * `goal` and `risk` are what the person said the money is for and the risk they accept, each null
- * until they have said it: a mix is made into a plan with these (`goal/accept`), never with a default.
+ * until they have said it: a mix is made into a plan with these (`goal/accept`), and one still null is
+ * worked out from the mix there and said as such (gate DEPOSIT-DERIVE), never filled in here.
  */
 export const GoalConversationReply = VaultAgentReplyShape.extend({
   chain: ChainId,
@@ -37,11 +39,18 @@ export const GoalConversationReply = VaultAgentReplyShape.extend({
       'Which agent wrote this reply: the relaxed intake (gate RELAXED-INTAKE), or the model-led conversation the server answers with when it runs with `GOAL_AGENT=model-led`. Said so that neither is ever taken for the other.',
     ),
   goal: VaultAgentStatedPurpose.shape.goal.describe(
-    'What the person said the money is for, read by the server from plain statements in their own messages; the latest one stands. Null until they have plainly said it, and after they take it back or question it. Never the model’s reading and never defaulted.',
+    'What the person said the money is for, read by the server from plain statements in their own messages; the latest one stands. Null until they have plainly said it, and after they take it back or question it. Never the model’s reading, and never filled in here: `goal/accept` works out a null one from the mix and says so.',
   ),
   risk: VaultAgentStatedPurpose.shape.risk.describe(
-    'The risk the person said they accept, read the same way. Null until they have plainly said it; never defaulted.',
+    'The risk the person said they accept, read the same way. Null until they have plainly said it; never filled in here.',
   ),
+  amountUsd: z
+    .number()
+    .positive()
+    .nullable()
+    .describe(
+      'The sum the person said they start with, in dollars, read by the server from their own messages (gate DEPOSIT-DERIVE): the newest message that writes a sum in dollars, one sum there or none; never a rate a month, an age, a year or the model’s words. A starting value for the deposit step, which the person changes or confirms on the review. Null: not written, not in dollars, or two sums in one message.',
+    ),
 }).superRefine(warningsBelong);
 export const GoalConversationReplyError = z.strictObject({
   error: z.string(),
@@ -74,7 +83,7 @@ export function registerGoalConversationReplyRoute(
         tags: ['plans'],
         summary: 'Discuss a new goal and preview model-proposed allocations',
         description:
-          'Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. The relaxed intake answers when a model key is set, unless the server runs with `GOAL_AGENT=model-led`, which chooses the model-led conversation; `agent` says which wrote the reply. Either draws on the shared call quota, sets weights in code from the shares the server reads in the messages (an equal split otherwise), and serves no sentence of the model that states a figure. A preview requires separate fresh goal and amount confirmation before any financial review. No goal is stored for a new goal yet and none is taken from the request, so no pick is checked against one here and `proposal.unknowns` says so: `POST /v1/conversations/{chain}/goal/accept` checks the mix against the goal the person confirms.',
+          'Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. The relaxed intake answers when a model key is set, unless the server runs with `GOAL_AGENT=model-led`, which chooses the model-led conversation; `agent` says which wrote the reply. Either draws on the shared call quota, sets weights in code from the shares the server reads in the messages (an equal split otherwise), and serves no sentence of the model that states a figure. A preview is not a plan: the amount is confirmed on the review of `POST /v1/conversations/{chain}/goal/accept` before anything is stored. No goal is stored for a new goal yet and none is taken from the request, so no pick is checked against one here and `proposal.unknowns` says so: `goal/accept` checks the mix against the goal the person said, or, where they said none, the one it works out from the mix and names (gate DEPOSIT-DERIVE).',
         params: z.strictObject({ chain: ChainId }),
         body: VaultAgentRequest,
         response: {
@@ -189,6 +198,7 @@ export function registerGoalConversationReplyRoute(
         chain,
         agent: relaxed ? ('relaxed' as const) : ('model_led' as const),
         ...statedPurposeIn(req.body.messages, context),
+        amountUsd: statedAmountUsd(req.body.messages),
       };
     },
   );

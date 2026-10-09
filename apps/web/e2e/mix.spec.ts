@@ -150,25 +150,22 @@ test('a new goal’s mix from the conversation: one amount, edited by hand, revi
   );
 });
 
-test('the deposit step asks by one tap what the conversation did not hear, and holds the amount to its limits', async ({
+test('the deposit step asks nothing the conversation did not hear: the server works it out from the mix, and the amount is held to its limits', async ({
   page,
 }) => {
   await signIn(page);
   const step = await toDeposit(page, 'A broad fund and some gold');
+  // no question and no tap: nothing is said of a goal or risk before the server has read the mix
   await expect(step.locator('[data-ui="deposit-purpose"]')).toHaveCount(0);
-  const goal = step.getByRole('group', { name: en.mix.deposit.askGoal });
-  const risk = step.getByRole('group', { name: en.mix.deposit.askRisk });
-  await expect(goal.locator('[aria-pressed="true"]')).toHaveCount(0);
-  await expect(risk.locator('[aria-pressed="true"]')).toHaveCount(0);
+  await expect(step.locator('[data-ui="deposit-goal"], [data-ui="deposit-risk"]')).toHaveCount(0);
   const amount = page.getByLabel(en.buy.amount.label, { exact: true });
   await amount.fill('100');
-  // nothing is checked for a goal nobody said
-  await expect(step.locator('[data-ui="deposit-check"]')).toHaveText(en.mix.deposit.needPurpose);
-  await expect(dollarsOf(step, 'spy')).toHaveText(`—${en.mix.deposit.unchecked}`);
-  await check(page, 'deposit-unknown');
-  await goal.getByRole('button', { name: en.mix.goal.goals.grow }).click();
-  await risk.getByRole('button', { name: en.mix.goal.risks.high }).click();
   await expect(dollarsOf(step, 'spy')).toHaveText('$50.00');
+  // half in one fund is past every cap on one holding: grow, at high risk, said as worked out
+  await expect(step.locator('[data-ui="deposit-purpose"] span')).toHaveText(
+    `${en.mix.deposit.purpose('grow', 'high')} ${en.mix.deposit.fromMix(true, true)}`,
+  );
+  await check(page, 'deposit-unknown');
 
   // below the least: said on the field, the figures gone, the press held
   await amount.fill('5');

@@ -122,9 +122,19 @@ export function acceptGoalMix(
   return post(api, `/v1/conversations/${encodeURIComponent(chain)}/goal/accept`, body, (value) => {
     const read = AcceptGoalMixResponse.safeParse(value);
     if (!read.success || !matches(read.data.review, chain, body.allocations)) return null;
-    // The review is of what was asked: this amount, to the cent, and this goal. (It names no risk.)
+    // The review is of what was asked: this amount, to the cent, and the goal and risk the person said;
+    // one they did not say is the server's, named as worked out from the mix (DEPOSIT-DERIVE).
     const { review } = read.data;
-    return Math.abs(review.amountUsd - body.amountUsd) < 0.005 && review.goal === body.goal
+    const fromMix = new Set(review.fromMix ?? []);
+    const as = (
+      said: string | null | undefined,
+      served: string | null | undefined,
+      kind: 'goal' | 'risk',
+    ) =>
+      said == null ? served != null && fromMix.has(kind) : served === said && !fromMix.has(kind);
+    return Math.abs(review.amountUsd - body.amountUsd) < 0.005 &&
+      as(body.goal, review.goal, 'goal') &&
+      as(body.risk, review.risk, 'risk')
       ? read.data
       : null;
   });
