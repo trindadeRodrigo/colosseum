@@ -59,7 +59,7 @@ Grid: 5 / 7 columns (≥ 980px), stacked below. One case per row, 32px between c
 
 ## Accessibility
 
-`<article aria-labelledby>` per case; the drawing's label names each part and its share, as the legend does; chart has text alternative; KPI values in text. Contrast: all text ≥ 4.5 on `--card` in both modes (ink 18.05 on white, text 16.15 on night-2; muted-l 5.16, muted 6.77); the honey base-case line is 1.99 on white and 9.16 on night-2, so on light the chart's data are also in the hidden table and the direct labels are in `--foreground`.
+`<article aria-labelledby>` per case; the drawing's label names each part and its share, as the legend does; chart has text alternative; KPI values in text. Contrast: all text ≥ 4.5 on `--card` in both modes (ink 18.05 on white, text 16.15 on night-2; muted-l 5.39, muted 6.77); the honey base-case line is 1.99 on white and 9.16 on night-2, so on light the chart's data are also in the hidden table and the direct labels are in `--foreground`.
 
 ## Do / don't
 

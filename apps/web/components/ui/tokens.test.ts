@@ -129,7 +129,7 @@ describe('tokens: globals.css says what working-brand.yml says', () => {
     it('the pin is honey on night and honey-l on day, in an outline of muted-2 / line-l2', () => {
       expect(pinOf('live', 'light')).toMatchObject({
         outline: '#C9C4B9',
-        pin: '#A8640A SOLID SQUARE',
+        pin: '#9D5A00 SOLID SQUARE',
       });
       expect(pinOf('live', 'dark')).toMatchObject({
         outline: '#6E7282',

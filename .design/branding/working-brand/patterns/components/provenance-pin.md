@@ -42,14 +42,14 @@ Live and stale differ only by the pin's fill, so stale must never rely on the gl
 
 | Context | Outline (`--tf-pin-outline`) | Pin (`--tf-pin`) | Hatch (`--tf-hatch`) |
 |---|---|---|---|
-| Paper (light) | line-l2 `#C9C4B9` | honey-l `#A8640A` | muted-l `#6A6D78` |
+| Paper (light) | line-l2 `#C9C4B9` | honey-l `#9D5A00` | muted-l `#676A75` |
 | Night (dark) | muted-2 `#6E7282` | honey `#F5A83A` | muted `#9A9DAD` |
 | Embed | `--embed-muted` | `--embed-muted` (no brand colour) | `--embed-muted` |
 | On a status-tinted pill or a honey-tinted row | same as ground | same | same |
 
 ## Accessibility (WCAG 2.2 AA)
 
-- 1.4.11: the pin itself is the state carrier: honey-l 4.67:1 on white, honey 9.75:1 on night (8.45 on night-3). The outline is a non-text frame (line-l2 1.74 / muted-2 4.06) and carries no meaning on its own.
+- 1.4.11: the pin itself is the state carrier: honey-l 5.39:1 on white, honey 9.75:1 on night (8.45 on night-3). The outline is a non-text frame (line-l2 1.74 / muted-2 4.06) and carries no meaning on its own.
 - 2.5.8: 24×24 hit area via `::before`, even though the glyph is 12px.
 - 1.3.1: state is in the accessible name, not only in the drawing.
 - 2.4.7: the 2px chalk focus ring around the 24×24 hit area.

@@ -117,11 +117,11 @@
       }
     },
     "muted-l": {
-      "hex": "#6A6D78",
+      "hex": "#676A75",
       "oklch": {
-        "L": 0.5359,
-        "C": 0.0175,
-        "H": 273.64
+        "L": 0.5255,
+        "C": 0.0176,
+        "H": 273.62
       }
     },
     "honey": {
@@ -149,11 +149,11 @@
       }
     },
     "honey-l": {
-      "hex": "#A8640A",
+      "hex": "#9D5A00",
       "oklch": {
-        "L": 0.5669,
-        "C": 0.1248,
-        "H": 64.33
+        "L": 0.5333,
+        "C": 0.1218,
+        "H": 62.87
       }
     },
     "leaf": {
@@ -165,11 +165,11 @@
       }
     },
     "leaf-l": {
-      "hex": "#1B7F45",
+      "hex": "#117940",
       "oklch": {
-        "L": 0.527,
-        "C": 0.1264,
-        "H": 152.44
+        "L": 0.5072,
+        "C": 0.1257,
+        "H": 152.61
       }
     },
     "clay": {
@@ -181,11 +181,11 @@
       }
     },
     "clay-l": {
-      "hex": "#A8481A",
+      "hex": "#A64618",
       "oklch": {
-        "L": 0.521,
-        "C": 0.1386,
-        "H": 42.89
+        "L": 0.5147,
+        "C": 0.1387,
+        "H": 42.71
       }
     },
     "madder": {
@@ -468,11 +468,11 @@
         }
       },
       "600": {
-        "hex": "#1B7F45",
+        "hex": "#117940",
         "oklch": {
-          "L": 0.527,
-          "C": 0.1264,
-          "H": 152.44
+          "L": 0.5072,
+          "C": 0.1257,
+          "H": 152.61
         }
       },
       "700": {
@@ -558,11 +558,11 @@
         }
       },
       "600": {
-        "hex": "#A8481A",
+        "hex": "#A64618",
         "oklch": {
-          "L": 0.521,
-          "C": 0.1386,
-          "H": 42.89
+          "L": 0.5147,
+          "C": 0.1387,
+          "H": 42.71
         }
       },
       "700": {
@@ -888,28 +888,28 @@
     {
       "foreground": "muted-l",
       "background": "paper-2",
-      "ratio": 5.16,
+      "ratio": 5.39,
       "aa_text": true,
       "aa_large_or_control": true
     },
     {
       "foreground": "honey-l",
       "background": "paper-2",
-      "ratio": 4.67,
+      "ratio": 5.39,
       "aa_text": true,
       "aa_large_or_control": true
     },
     {
       "foreground": "leaf-l",
       "background": "paper-2",
-      "ratio": 5.04,
+      "ratio": 5.48,
       "aa_text": true,
       "aa_large_or_control": true
     },
     {
       "foreground": "clay-l",
       "background": "paper-2",
-      "ratio": 5.82,
+      "ratio": 5.98,
       "aa_text": true,
       "aa_large_or_control": true
     },

@@ -33,9 +33,9 @@ tokens:
     secondary-foreground: "#15161C"
     # accent = shadcn hover/selected surface = honey at 14% over the ground (opaque equivalent)
     accent: "#F7EAD6"
-    accent-foreground: "#A8640A"    # honey-l (4.67 on white)
+    accent-foreground: "#9D5A00"    # honey-l (5.39 on white)
     muted: "#EFECE5"                # paper-3 (table heads, input wells, code)
-    muted-foreground: "#6A6D78"     # muted-l (5.16 on white)
+    muted-foreground: "#676A75"     # muted-l (5.39 on white)
     destructive: "#B52F44"          # madder-l (off track / error), 6.08 on white
     border: "#E3DFD6"               # line-l — hairlines, card edges
     input: "#C9C4B9"                # line-l2 — control edges (controls also carry a fill)
@@ -46,7 +46,7 @@ tokens:
     sidebar-primary: "#F5A83A"
     sidebar-primary-foreground: "#15161C"
     sidebar-accent: "#F7EAD6"
-    sidebar-accent-foreground: "#A8640A"
+    sidebar-accent-foreground: "#9D5A00"
     sidebar-border: "#E3DFD6"
     sidebar-ring: "#2A73B0"
 
@@ -54,12 +54,12 @@ tokens:
     chart-1: "#F5A83A"   # honey
     chart-2: "#D9881B"   # honey-deep
     chart-3: "#B9803F"   # wood-deep
-    chart-4: "#6A6D78"   # muted-l
+    chart-4: "#676A75"   # muted-l
     chart-5: "#15161C"   # ink — base-case projection line (stress cases dashed muted / madder)
 
     # Extras → --success / --warning / --info
-    success: "#1B7F45"   # leaf-l — "On track" (+ solid square + word), 5.04 on white
-    warning: "#A8481A"   # clay-l — "Watch" (+ half-filled square + word), 5.82 on white
+    success: "#117940"   # leaf-l — "On track" (+ solid square + word), 5.48 on white
+    warning: "#A64618"   # clay-l — "Watch" (+ half-filled square + word), 5.98 on white
     info: "#2A73B0"      # chalk-l — guides, "today" lines, the test-network plate. Never a brand colour
 
   # Brand extension colours (not shadcn core; emitted as --tf-* custom props by the token mapping).
@@ -80,19 +80,19 @@ tokens:
     muted: "#9A9DAD"       # on night (6.77 on night-2)
     muted-2: "#6E7282"     # on night: captions, placeholders, the pin's outline (large or non-text only)
     ink: "#15161C"         # on paper
-    muted-l: "#6A6D78"     # on paper
+    muted-l: "#676A75"     # on paper
     # the brand colour
     honey: "#F5A83A"
     honey-hover: "#E99C2E"
     honey-deep: "#D9881B"   # pressed, chart-2
-    honey-l: "#A8640A"      # honey as text or link on light grounds (4.67 on white)
+    honey-l: "#9D5A00"      # honey as text or link on light grounds (5.39 on white)
     honey-tint: "rgba(245,168,58,0.14)"
     # direction colours (always with a word and a shape)
     leaf: "#3FC47C"
-    leaf-l: "#1B7F45"
+    leaf-l: "#117940"
     leaf-tint: "rgba(63,196,124,0.14)"
     clay: "#F0703A"
-    clay-l: "#A8481A"
+    clay-l: "#A64618"
     clay-tint: "rgba(240,112,58,0.14)"
     madder: "#EF5A6F"
     madder-l: "#B52F44"
@@ -113,8 +113,8 @@ tokens:
     # Hex ramps for tints, badges and data. The named tokens above stay the source of truth for UI.
     honey: { 50: "#FFF6E6", 100: "#FFE9C2", 200: "#FFD48A", 300: "#F9BE5C", 400: "#F5A83A", 500: "#E99C2E", 600: "#D9881B", 700: "#B06C12", 800: "#85500C", 900: "#5C3707", 950: "#3A2204" }
     neutral: { 50: "#F7F5F0", 100: "#EFECE5", 200: "#E3DFD6", 300: "#C9C4B9", 400: "#9A9DAD", 500: "#6E7282", 600: "#4B4F5E", 700: "#363B4B", 800: "#262A36", 900: "#1A1D26", 950: "#0C0D12" }
-    leaf: { 50: "#E8F8EE", 100: "#C9EFD9", 200: "#9AE1B8", 300: "#6AD39A", 400: "#3FC47C", 500: "#2AA866", 600: "#1B7F45", 700: "#156236", 800: "#0F4727", 900: "#092E19", 950: "#051B0E" }
-    clay: { 50: "#FEEFE7", 100: "#FDDACB", 200: "#FAB89A", 300: "#F5936A", 400: "#F0703A", 500: "#DA5F2A", 600: "#A8481A", 700: "#964215", 800: "#6F310F", 900: "#4A200A", 950: "#2D1306" }
+    leaf: { 50: "#E8F8EE", 100: "#C9EFD9", 200: "#9AE1B8", 300: "#6AD39A", 400: "#3FC47C", 500: "#2AA866", 600: "#117940", 700: "#156236", 800: "#0F4727", 900: "#092E19", 950: "#051B0E" }
+    clay: { 50: "#FEEFE7", 100: "#FDDACB", 200: "#FAB89A", 300: "#F5936A", 400: "#F0703A", 500: "#DA5F2A", 600: "#A64618", 700: "#964215", 800: "#6F310F", 900: "#4A200A", 950: "#2D1306" }
     madder: { 50: "#FDEDF0", 100: "#FBD6DC", 200: "#F7AEBA", 300: "#F38496", 400: "#EF5A6F", 500: "#DB4259", 600: "#B52F44", 700: "#9B2A3D", 800: "#70202D", 900: "#49151E", 950: "#2B0C12" }
     chalk: { 50: "#EAF4FC", 100: "#D1E6F8", 200: "#A8CFF1", 300: "#8FC1EC", 400: "#78B4E8", 500: "#4F93D0", 600: "#2A73B0", 700: "#1F588A", 800: "#174065", 900: "#0F2A43", 950: "#081827" }
     heatmap-dark: ["#1A1D26", "#5C3707", "#B06C12", "#F5A83A", "#FFE9C2"]   # low → high depth: night → honey → pale
@@ -230,15 +230,15 @@ tokens:
   provenance:
     glyph: "viewBox 0 0 18 12; outline rect 3:2, stroke 1.5, radius 2.5; square pin 4x4 radius 1 set toward the end; height .75em (1cap); U+202F before it"
     live:
-      light: { outline: "#C9C4B9", pin: "#A8640A solid square" }
+      light: { outline: "#C9C4B9", pin: "#9D5A00 solid square" }
       dark: { outline: "#6E7282", pin: "#F5A83A solid square" }
       paired: "popover: source · fetched_at · method (Plex Mono)"
     stale:
-      light: { outline: "#C9C4B9", pin: "#A8640A hollow square, stroke 1.5" }
+      light: { outline: "#C9C4B9", pin: "#9D5A00 hollow square, stroke 1.5" }
       dark: { outline: "#6E7282", pin: "#F5A83A hollow square" }
       paired: "the word 'stale' + age, always"
     mock:
-      light: { outline: "#C9C4B9", fill: "45deg hatch #6A6D78, 3px pitch", pin: "none" }
+      light: { outline: "#C9C4B9", fill: "45deg hatch #676A75, 3px pitch", pin: "none" }
       dark: { outline: "#6E7282", fill: "45deg hatch #9A9DAD", pin: "none" }
       paired: "aria-label 'sample figure'; the card's quiet line 'Sample figures' (gate MOCK-QUIET: never a boxed MOCK word); API carries \"provenance\": \"mock\""
     sandbox: "same as mock; the card's line reads 'Sample figures · test network'; the buy card says 'Test network · <chain> · not live'"
@@ -247,8 +247,8 @@ tokens:
 
   # Goal state: word + shape + colour, never colour alone
   status:
-    on-track: { light: "#1B7F45", dark: "#3FC47C", tint: "rgba(63,196,124,0.14)", shape: "solid square", word: "On track" }
-    watch: { light: "#A8481A", dark: "#F0703A", tint: "rgba(240,112,58,0.14)", shape: "half-filled square", word: "Watch" }
+    on-track: { light: "#117940", dark: "#3FC47C", tint: "rgba(63,196,124,0.14)", shape: "solid square", word: "On track" }
+    watch: { light: "#A64618", dark: "#F0703A", tint: "rgba(240,112,58,0.14)", shape: "half-filled square", word: "Watch" }
     off-track: { light: "#B52F44", dark: "#EF5A6F", tint: "rgba(239,90,111,0.14)", shape: "square outline with a notch", word: "Off track" }
     delta: "signed (+ / U+2212), leaf for up, madder for down, muted for flat; always beside the value it qualifies"
 

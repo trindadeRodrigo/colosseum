@@ -29,7 +29,7 @@ The one place where a person types to us in their own words. It is the roundest 
 | Container bg | `--card` white `#FFFFFF` | `--card` night-2 `#13151C` |
 | Container border | `--input` line-l2 `#C9C4B9` (1.74:1 on white: the fill, the label and the ring carry the boundary) | line-2 `#363B4B` (1.64:1 on night-2) |
 | Text | ink (18.05:1) | text (16.15:1 on night-2) |
-| Placeholder | muted-l (5.16:1) | muted (6.77:1 on night-2) |
+| Placeholder | muted-l (5.39:1) | muted (6.77:1 on night-2) |
 | Send fill / icon | honey / ink (9.06:1) | honey / ink (9.06:1) |
 | Focus ring | 2px `--ring` chalk-l `#2A73B0`, 2px offset | 2px chalk `#78B4E8`, 2px offset |
 | Radius | container `rounded-composer`, button `rounded-full` | same |

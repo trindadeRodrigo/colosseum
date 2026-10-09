@@ -89,9 +89,9 @@
   --secondary: oklch(94.35% 0.0099 87.47); /* paper-3 #EFECE5 */
   --secondary-foreground: oklch(20.19% 0.0121 277.81); /* ink #15161C */
   --accent: oklch(94.2% 0.03 78.78); /* honey at 14% over paper #F7EAD6 */
-  --accent-foreground: oklch(56.69% 0.1248 64.33); /* honey-l #A8640A */
+  --accent-foreground: oklch(53.33% 0.1218 62.87); /* honey-l #9D5A00 */
   --muted: oklch(94.35% 0.0099 87.47); /* paper-3 #EFECE5 */
-  --muted-foreground: oklch(53.59% 0.0175 273.64); /* muted-l #6A6D78 */
+  --muted-foreground: oklch(52.55% 0.0176 273.62); /* muted-l #676A75 */
   --destructive: oklch(51.82% 0.1696 16.89); /* madder-l #B52F44 */
   --border: oklch(90.43% 0.0129 86.83); /* line-l #E3DFD6: hairlines, card edges */
   --input: oklch(82.13% 0.0161 86.44); /* line-l2 #C9C4B9: every control edge */
@@ -101,16 +101,16 @@
   --sidebar-primary: oklch(78.86% 0.1494 71.36); /* honey #F5A83A */
   --sidebar-primary-foreground: oklch(20.19% 0.0121 277.81); /* ink #15161C */
   --sidebar-accent: oklch(94.2% 0.03 78.78); /* honey at 14% over paper #F7EAD6 */
-  --sidebar-accent-foreground: oklch(56.69% 0.1248 64.33); /* honey-l #A8640A */
+  --sidebar-accent-foreground: oklch(53.33% 0.1218 62.87); /* honey-l #9D5A00 */
   --sidebar-border: oklch(90.43% 0.0129 86.83); /* line-l #E3DFD6 */
   --sidebar-ring: oklch(54.02% 0.1193 247.65); /* chalk-l #2A73B0 */
   --chart-1: oklch(78.86% 0.1494 71.36); /* honey #F5A83A */
   --chart-2: oklch(69.58% 0.1471 66.59); /* honey-deep #D9881B */
   --chart-3: oklch(64.49% 0.1076 67.33); /* wood-deep #B9803F */
-  --chart-4: oklch(53.59% 0.0175 273.64); /* muted-l #6A6D78 */
+  --chart-4: oklch(52.55% 0.0176 273.62); /* muted-l #676A75 */
   --chart-5: oklch(20.19% 0.0121 277.81); /* ink #15161C: the base-case line */
-  --success: oklch(52.7% 0.1264 152.44); /* leaf-l #1B7F45: on track */
-  --warning: oklch(52.1% 0.1386 42.89); /* clay-l #A8481A: watch */
+  --success: oklch(50.72% 0.1257 152.61); /* leaf-l #117940: on track */
+  --warning: oklch(51.47% 0.1387 42.71); /* clay-l #A64618: watch */
   --info: oklch(54.02% 0.1193 247.65); /* chalk-l #2A73B0: a line only */
   --radius: 8px;
 }
@@ -164,7 +164,7 @@
   --tf-honey: #f5a83a;
   --tf-honey-hover: #e99c2e;
   --tf-honey-deep: #d9881b;
-  --tf-honey-text: #a8640a; /* honey-l: honey as text or link on light grounds */
+  --tf-honey-text: #9d5a00; /* honey-l: honey as text or link on light grounds */
   --tf-honey-tint: rgba(245, 168, 58, 0.14); /* selected rows, chips, badges */
   --tf-primary-hover: #e99c2e; /* honey-hover */
   --tf-primary-pressed: #d9881b; /* honey-deep */
@@ -183,13 +183,13 @@
   --tf-text: #f3f1ec;
   --tf-muted: #9a9dad;
   --tf-muted-2: #6e7282;
-  --tf-muted-l: #6a6d78;
+  --tf-muted-l: #676a75;
   /* the cut of the mark: night on dark grounds, ink elsewhere (LOGO-2) */
   --tf-mark-cut: #15161c;
   /* direction colours: always with a word and a square glyph */
-  --tf-leaf: #1b7f45; /* leaf-l */
+  --tf-leaf: #117940; /* leaf-l */
   --tf-leaf-tint: rgba(63, 196, 124, 0.14);
-  --tf-clay: #a8481a; /* clay-l */
+  --tf-clay: #a64618; /* clay-l */
   --tf-clay-tint: rgba(240, 112, 58, 0.14);
   --tf-madder: #b52f44; /* madder-l */
   --tf-madder-tint: rgba(239, 90, 111, 0.14);
@@ -201,14 +201,14 @@
   --tf-wood-deep: #b9803f;
   /* provenance pin: the tenon end in line mode, with its square pin */
   --tf-pin-outline: #c9c4b9; /* line-l2 */
-  --tf-pin: #a8640a; /* honey-l */
+  --tf-pin: #9d5a00; /* honey-l */
   /* the hatch means sample or stale, and nothing else */
-  --tf-hatch: #6a6d78; /* muted-l */
-  --tf-sample-fg: #6a6d78; /* muted-l: "Sample figures · test network" */
+  --tf-hatch: #676a75; /* muted-l */
+  --tf-sample-fg: #676a75; /* muted-l: "Sample figures · test network" */
   /* status: a word, a shape and a colour on its 14% tint, never the colour alone */
-  --tf-status-on: #1b7f45; /* leaf-l */
+  --tf-status-on: #117940; /* leaf-l */
   --tf-status-on-bg: rgba(63, 196, 124, 0.14); /* leaf-tint */
-  --tf-status-watch: #a8481a; /* clay-l */
+  --tf-status-watch: #a64618; /* clay-l */
   --tf-status-watch-bg: rgba(240, 112, 58, 0.14); /* clay-tint */
   --tf-status-off: #b52f44; /* madder-l */
   --tf-status-off-bg: rgba(239, 90, 111, 0.14); /* madder-tint */
@@ -235,20 +235,20 @@
   --tf-heat-4: #5c3707;
   --tf-heat-5: #1a1d26;
   /* Bearing charts: honey, wood and muted for series; leaf and madder for covered and not covered */
-  --tf-bearing-s1: #a8640a; /* honey-l */
-  --tf-bearing-s2: #6a6d78; /* muted-l */
+  --tf-bearing-s1: #9d5a00; /* honey-l */
+  --tf-bearing-s2: #676a75; /* muted-l */
   --tf-bearing-p1: #f5a83a; /* honey */
   --tf-bearing-p2: #d9881b; /* honey-deep */
   --tf-bearing-p3: #b9803f; /* wood-deep */
   --tf-bearing-p4: #e9c48e; /* wood */
-  --tf-bearing-po: #6a6d78; /* muted-l */
-  --tf-bearing-cv: #1b7f45; /* leaf-l */
+  --tf-bearing-po: #676a75; /* muted-l */
+  --tf-bearing-cv: #117940; /* leaf-l */
   --tf-bearing-un: #b52f44; /* madder-l */
   --tf-bearing-grid: #e3dfd6; /* line-l */
-  --tf-bearing-f1: #a8640a; /* honey-l */
+  --tf-bearing-f1: #9d5a00; /* honey-l */
   --tf-bearing-f2: #d9881b; /* honey-deep */
   --tf-bearing-f3: #b9803f; /* wood-deep */
-  --tf-bearing-f4: #6a6d78; /* muted-l */
+  --tf-bearing-f4: #676a75; /* muted-l */
 }
 
 .dark {

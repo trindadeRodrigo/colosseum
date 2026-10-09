@@ -49,7 +49,7 @@ Width, padding and wordmark size transition over 480ms `--ease-seat`; the menu f
 
 ## Accessibility
 
-`<header>` with `<nav aria-label="Main">`. The menu is `visibility: hidden` (not just `opacity: 0`) in the full state so hidden links are not focusable. Skip link "Skip to content" first in DOM. Fixed bar height ≤ 64px; anchors use `scroll-margin-top: 88px` so focused targets aren't obscured (2.4.11). Contrast: text on night-2 16.15, ink on white 18.05; muted links 6.77 / 5.16; CTA ink on honey 9.06.
+`<header>` with `<nav aria-label="Main">`. The menu is `visibility: hidden` (not just `opacity: 0`) in the full state so hidden links are not focusable. Skip link "Skip to content" first in DOM. Fixed bar height ≤ 64px; anchors use `scroll-margin-top: 88px` so focused targets aren't obscured (2.4.11). Contrast: text on night-2 16.15, ink on white 18.05; muted links 6.77 / 5.39; CTA ink on honey 9.06.
 
 ## Do / don't
 

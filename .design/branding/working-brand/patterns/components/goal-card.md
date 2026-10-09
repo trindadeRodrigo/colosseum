@@ -51,7 +51,7 @@ Optional meta (`variant="header"`): `profile · solver version · created` in `t
 
 ## Accessibility
 
-`<article aria-labelledby={eyebrowId}>`; status word in text; StatusMark `aria-hidden`; the progress bar is `role="progressbar"` with `aria-valuenow`. Contrast: leaf-l 5.04 / clay-l 5.82 / madder-l 6.08 on white; on their 14% tints 4.52 / 5.04 / 5.19, AA at 12px 600 (clay-l and madder-l were darkened on 2026-10-08 for this). Dark on night-2: leaf 8.16, clay 6.15, madder 5.52; on their tints 6.42 / 5.11 / 4.67. Amount ink 18.05 / text 16.15.
+`<article aria-labelledby={eyebrowId}>`; status word in text; StatusMark `aria-hidden`; the progress bar is `role="progressbar"` with `aria-valuenow`. Contrast: leaf-l 5.48 / clay-l 5.98 / madder-l 6.08 on white; on their 14% tints 4.90 / 5.18 / 5.19, AA at 12px 600 (clay-l and madder-l were darkened on 2026-10-08 for this). Dark on night-2: leaf 8.16, clay 6.15, madder 5.52; on their tints 6.42 / 5.11 / 4.67. Amount ink 18.05 / text 16.15.
 
 ## Do / don't
 

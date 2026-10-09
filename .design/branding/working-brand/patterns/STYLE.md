@@ -112,7 +112,7 @@ It takes the Sage's structure (a grid, hairlines, tabular figures, signed deltas
 |----------|------|
 | placement | After every yield, price and FX figure, at cap height, with a U+202F thin no-break space before it |
 | drawing | `viewBox 0 0 18 12`: outline rect 3:2, stroke 1.5, radius 2.5; the square pin 4×4, radius 1, set toward the end (x 11.5). `height: .75em` |
-| live | Solid square pin. Outline muted-2 `#6E7282` / line-l2 `#C9C4B9`; pin honey (night) / honey-l `#A8640A` (day) |
+| live | Solid square pin. Outline muted-2 `#6E7282` / line-l2 `#C9C4B9`; pin honey (night) / honey-l `#9D5A00` (day) |
 | stale | Hollow square pin (1.5px) **plus "stale · 3 h"**. Never without the word |
 | sample (MOCK) | No pin. The tenon is filled with a 3px-pitch hatch, `aria-label` "sample figure"; the card carries the quiet line "Sample figures" |
 | sandbox | As sample; the card's line reads "Sample figures · test network" |

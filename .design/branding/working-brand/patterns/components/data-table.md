@@ -40,7 +40,7 @@ Deposit 3.00 USDC → Kamino · failed: slippage exceeded (not retried)   Tx ↗
 
 ## Accessibility
 
-`<caption>`, `scope`, keyboard-reachable scroll region, status words in cells, link text that names the destination. Contrast: muted-l head text 4.37 on paper-3 (passes AA at 11px 500 only as uppercase caps with +0.05em; keep heads ≥ 11px), muted on night-3 6.25; row text ink 18.05 on white, text 16.15 on night-2; a selected row's text on the honey tint: ink 15.21 on `#F7EAD6` / text 13.63 on `#2D2318`; muted text on the tint 4.35 / 5.71.
+`<caption>`, `scope`, keyboard-reachable scroll region, status words in cells, link text that names the destination. Contrast: muted-l head text 4.57 on paper-3 (passes AA at 11px 500 only as uppercase caps with +0.05em; keep heads ≥ 11px), muted on night-3 6.25; row text ink 18.05 on white, text 16.15 on night-2; a selected row's text on the honey tint: ink 15.21 on `#F7EAD6` / text 13.63 on `#2D2318`; muted text on the tint 4.35 / 5.71.
 
 ## Do / don't
 

@@ -24,28 +24,28 @@
   --secondary: oklch(94.35% 0.0099 87.47);          /* paper-3 #EFECE5 */
   --secondary-foreground: oklch(20.19% 0.0121 277.81);
   --accent: oklch(94.20% 0.0300 78.78);             /* honey at 14% over the ground #F7EAD6 */
-  --accent-foreground: oklch(56.69% 0.1248 64.33);  /* honey-l #A8640A · 4.67 on white */
+  --accent-foreground: oklch(53.33% 0.1218 62.87);  /* honey-l #9D5A00 · 5.39 on white */
   --muted: oklch(94.35% 0.0099 87.47);
-  --muted-foreground: oklch(53.59% 0.0175 273.64);  /* muted-l #6A6D78 · 5.16 on white */
+  --muted-foreground: oklch(52.55% 0.0176 273.62);  /* muted-l #676A75 · 5.39 on white */
   --destructive: oklch(51.82% 0.1696 16.89);        /* madder-l #B52F44 (darkened 2026-10-08) */
   --border: oklch(90.43% 0.0129 86.83);             /* line-l #E3DFD6 — hairlines */
   --input: oklch(82.13% 0.0161 86.44);              /* line-l2 #C9C4B9 — control edges */
   --ring: oklch(54.02% 0.1193 247.65);              /* chalk-l #2A73B0 — focus only */
   --radius: 8px; --radius-sm: 6px; --radius-lg: 10px; --radius-xl: 16px; --radius-pill: 9999px; --radius-composer: 20px;
-  --chart-1: #F5A83A; --chart-2: #D9881B; --chart-3: #B9803F; --chart-4: #6A6D78; --chart-5: #15161C;
-  --success: #1B7F45; --warning: #A8481A; --info: #2A73B0;
+  --chart-1: #F5A83A; --chart-2: #D9881B; --chart-3: #B9803F; --chart-4: #676A75; --chart-5: #15161C;
+  --success: #117940; --warning: #A64618; --info: #2A73B0;
 
   /* brand extensions (--tf-*), from tokens.brand-color */
-  --tf-honey: #F5A83A; --tf-honey-hover: #E99C2E; --tf-honey-deep: #D9881B; --tf-honey-text: #A8640A;
+  --tf-honey: #F5A83A; --tf-honey-hover: #E99C2E; --tf-honey-deep: #D9881B; --tf-honey-text: #9D5A00;
   --tf-honey-tint: rgba(245,168,58,.14);
-  --tf-leaf: #1B7F45;   --tf-leaf-tint: rgba(63,196,124,.14);
-  --tf-clay: #A8481A;   --tf-clay-tint: rgba(240,112,58,.14);
+  --tf-leaf: #117940;   --tf-leaf-tint: rgba(63,196,124,.14);
+  --tf-clay: #A64618;   --tf-clay-tint: rgba(240,112,58,.14);
   --tf-madder: #B52F44; --tf-madder-tint: rgba(239,90,111,.14);
   --tf-chalk: #2A73B0;  --tf-chalk-tint: rgba(120,180,232,.14);
   --tf-wood: #E9C48E;   --tf-wood-deep: #B9803F;
-  --tf-pin: #A8640A; --tf-pin-outline: #C9C4B9;
-  --tf-hatch: #6A6D78;
-  --tf-sample-fg: #6A6D78;                          /* the "Sample figures" line: muted-l (gate MOCK-QUIET: no plate) */
+  --tf-pin: #9D5A00; --tf-pin-outline: #C9C4B9;
+  --tf-hatch: #676A75;
+  --tf-sample-fg: #676A75;                          /* the "Sample figures" line: muted-l (gate MOCK-QUIET: no plate) */
   --tf-glow: radial-gradient(60% 90% at 78% 30%, rgba(245,168,58,.28), rgba(245,168,58,0) 70%);
   --tf-curve-fill: linear-gradient(to bottom, rgba(245,168,58,.35), rgba(245,168,58,0));
   --tf-hm-1: #FFE9C2; --tf-hm-2: #F5A83A; --tf-hm-3: #B06C12; --tf-hm-4: #5C3707; --tf-hm-5: #1A1D26;
@@ -813,19 +813,19 @@ footer { padding: 48px 0 64px; }
         <tr><td>ink on paper</td><td><span class="sample-pair" style="background:#F7F5F0;color:#15161C">Aa 1,240</span></td><td>body text, light</td><td data-numeric>16.57</td></tr>
         <tr><td>ink on honey</td><td><span class="sample-pair" style="background:#F5A83A;color:#15161C;border-color:transparent">See plan</span></td><td>primary button, both modes</td><td data-numeric>9.06</td></tr>
         <tr><td>white on honey</td><td><span class="sample-pair" style="background:#F5A83A;color:#FFFFFF;border-color:transparent">See plan</span></td><td><span style="color:var(--tf-madder)">fails: never white on honey</span></td><td data-numeric>2.00</td></tr>
-        <tr><td>honey-l on white</td><td><span class="sample-pair" style="background:#FFFFFF;color:#A8640A">See plan</span></td><td>honey as text or link, light</td><td data-numeric>4.67</td></tr>
-        <tr><td>muted-l on white</td><td><span class="sample-pair" style="background:#FFFFFF;color:#6A6D78">Aa 1,240</span></td><td>muted text, light (4.37 on paper-3: the tightest)</td><td data-numeric>5.16</td></tr>
+        <tr><td>honey-l on white</td><td><span class="sample-pair" style="background:#FFFFFF;color:#9D5A00">See plan</span></td><td>honey as text or link, light</td><td data-numeric>5.39</td></tr>
+        <tr><td>muted-l on white</td><td><span class="sample-pair" style="background:#FFFFFF;color:#676A75">Aa 1,240</span></td><td>muted text, light (4.57 on paper-3: the tightest)</td><td data-numeric>5.39</td></tr>
         <tr><td>text on night</td><td><span class="sample-pair" style="background:#0C0D12;color:#F3F1EC">Aa 1,240</span></td><td>body text, dark</td><td data-numeric>17.20</td></tr>
         <tr><td>muted on night-2</td><td><span class="sample-pair" style="background:#13151C;color:#9A9DAD">Aa 1,240</span></td><td>muted text, dark</td><td data-numeric>6.77</td></tr>
         <tr><td>honey on night</td><td><span class="sample-pair" style="background:#0C0D12;color:#F5A83A">6.40%</span></td><td>the pin, links, deltas on dark</td><td data-numeric>9.75</td></tr>
         <tr><td>leaf · clay · madder on night</td><td><span class="sample-pair" style="background:#0C0D12;color:#3FC47C">On</span> <span class="sample-pair" style="background:#0C0D12;color:#F0703A">Watch</span> <span class="sample-pair" style="background:#0C0D12;color:#EF5A6F">Off</span></td><td>status words, dark</td><td data-numeric>8.69 · 6.55 · 5.88</td></tr>
-        <tr><td>leaf-l · clay-l · madder-l on white</td><td><span class="sample-pair" style="background:#FFFFFF;color:#1B7F45">On</span> <span class="sample-pair" style="background:#FFFFFF;color:#A8481A">Watch</span> <span class="sample-pair" style="background:#FFFFFF;color:#B52F44">Off</span></td><td>status words, light</td><td data-numeric>5.04 · 5.82 · 6.08</td></tr>
+        <tr><td>leaf-l · clay-l · madder-l on white</td><td><span class="sample-pair" style="background:#FFFFFF;color:#117940">On</span> <span class="sample-pair" style="background:#FFFFFF;color:#A64618">Watch</span> <span class="sample-pair" style="background:#FFFFFF;color:#B52F44">Off</span></td><td>status words, light</td><td data-numeric>5.48 · 5.98 · 6.08</td></tr>
         <tr><td>chalk on night · chalk-l on white</td><td><span class="sample-pair" style="background:#0C0D12;border:2px solid #78B4E8;color:#F3F1EC">focus</span> <span class="sample-pair" style="background:#FFFFFF;border:2px solid #2A73B0;color:#15161C">focus</span></td><td>the focus ring</td><td data-numeric>8.77 · 5.03</td></tr>
         <tr><td>muted-2 on night</td><td><span class="sample-pair" style="background:#0C0D12;color:#6E7282">Aa</span></td><td>captions ≥ 18 px, placeholders, the pin's outline: large or non-text only</td><td data-numeric>4.06</td></tr>
         <tr><td>wood-deep on paper</td><td><span class="sample-pair" style="background:#F7F5F0"><span style="display:block;width:48px;height:12px;background:#B9803F;border-radius:6px"></span></span></td><td>plan leg 3, light (non-text, ≥ 3:1)</td><td data-numeric>3.10</td></tr>
         <tr><td>honey-deep on paper</td><td><span class="sample-pair" style="background:#F7F5F0"><span style="display:block;width:48px;height:12px;background:#D9881B;border-radius:6px"></span></span></td><td>plan leg 2, light: below 3:1 alone, so legs always carry direct labels and 2 px ground gaps</td><td data-numeric>2.57</td></tr>
-        <tr><td>ink on hatch strokes</td><td><span class="sample-pair hatch" style="background-color:#F7F5F0;color:#15161C;--tf-hatch:#6A6D78">Aa</span></td><td><span style="color:var(--tf-madder)">fails: text never on hatch</span></td><td data-numeric>3.2</td></tr>
-        <tr><td>honey-l on honey</td><td><span class="sample-pair" style="background:#F5A83A;color:#A8640A;border-color:transparent">Aa</span></td><td><span style="color:var(--tf-madder)">never: honey on honey</span></td><td data-numeric>2.35</td></tr>
+        <tr><td>ink on hatch strokes</td><td><span class="sample-pair hatch" style="background-color:#F7F5F0;color:#15161C;--tf-hatch:#676A75">Aa</span></td><td><span style="color:var(--tf-madder)">fails: text never on hatch</span></td><td data-numeric>3.2</td></tr>
+        <tr><td>honey-l on honey</td><td><span class="sample-pair" style="background:#F5A83A;color:#9D5A00;border-color:transparent">Aa</span></td><td><span style="color:var(--tf-madder)">never: honey on honey</span></td><td data-numeric>2.35</td></tr>
       </tbody>
     </table>
     <div class="fix"><b>Binding usage notes:</b> honey carries <b>ink</b> in both modes; as text on light grounds it is <b>honey-l</b>. "Watch" is never shown by colour alone: clay sits close to honey, so the half-filled square and the word carry it. On light the status pills pass AA on their 14% tints: leaf-l 4.52, clay-l 5.04, madder-l 5.19 at 12 px 600 (clay-l and madder-l were darkened on 2026-10-08 for this).</div>
@@ -1289,9 +1289,9 @@ footer { padding: 48px 0 64px; }
   // swatches: name, hex, oklch, role · ratio (ratios from working-brand.yml comments)
   var S = {
     'sw-night': [['night','#0C0D12','oklch(16.0% 0.011 276.2)','ground, dark'],['night-2','#13151C','oklch(19.7% 0.014 272.5)','cards, tiles, nav'],['night-3','#1A1D26','oklch(23.2% 0.018 270.5)','raised: inputs, popovers, wells'],['line','#262A36','oklch(28.6% 0.023 270.5)','hairlines, card edges'],['line-2','#363B4B','oklch(35.4% 0.029 271.3)','control edges'],['text','#F3F1EC','oklch(95.8% 0.007 88.6)','text on night · 17.2'],['muted','#9A9DAD','oklch(69.9% 0.024 277.3)','muted text · 6.77 on night-2'],['muted-2','#6E7282','oklch(55.4% 0.025 274.4)','captions, placeholders, the pin outline · 4.06']],
-    'sw-day': [['paper','#F7F5F0','oklch(97.0% 0.007 88.6)','ground, light'],['paper-2','#FFFFFF','oklch(100% 0 0)','cards, popovers'],['paper-3','#EFECE5','oklch(94.3% 0.010 87.5)','wells, table heads, code'],['line-l','#E3DFD6','oklch(90.4% 0.013 86.8)','hairlines, card edges'],['line-l2','#C9C4B9','oklch(82.1% 0.016 86.4)','control edges, the pin outline'],['ink','#15161C','oklch(20.2% 0.012 277.8)','text on paper · 16.57'],['muted-l','#6A6D78','oklch(53.6% 0.018 273.6)','muted text · 5.16 on white']],
-    'sw-honey': [['honey','#F5A83A','oklch(78.9% 0.149 71.4)','the brand colour · ink on it 9.06 · 9.75 on night'],['honey-hover','#E99C2E','oklch(75.2% 0.148 70.4)','primary hover'],['honey-deep','#D9881B','oklch(69.6% 0.147 66.6)','pressed · plan leg 2 (light)'],['honey-l','#A8640A','oklch(56.7% 0.125 64.3)','honey as text on light · 4.67 on white']],
-    'sw-direction': [['leaf','#3FC47C','oklch(73.1% 0.156 155.3)','on track, up · 8.69 on night'],['leaf-l','#1B7F45','oklch(52.7% 0.126 152.4)','on track, light · 5.04 on white'],['clay','#F0703A','oklch(69.0% 0.172 41.8)','watch · 6.55 on night'],['clay-l','#A8481A','oklch(52.1% 0.139 42.9)','watch, light · 5.82 on white'],['madder','#EF5A6F','oklch(66.8% 0.183 15.2)','off track, down, destructive · 5.88 on night'],['madder-l','#B52F44','oklch(51.8% 0.170 16.9)','off track, light · 6.08 on white']],
+    'sw-day': [['paper','#F7F5F0','oklch(97.0% 0.007 88.6)','ground, light'],['paper-2','#FFFFFF','oklch(100% 0 0)','cards, popovers'],['paper-3','#EFECE5','oklch(94.3% 0.010 87.5)','wells, table heads, code'],['line-l','#E3DFD6','oklch(90.4% 0.013 86.8)','hairlines, card edges'],['line-l2','#C9C4B9','oklch(82.1% 0.016 86.4)','control edges, the pin outline'],['ink','#15161C','oklch(20.2% 0.012 277.8)','text on paper · 16.57'],['muted-l','#676A75','oklch(52.6% 0.018 273.6)','muted text · 5.39 on white']],
+    'sw-honey': [['honey','#F5A83A','oklch(78.9% 0.149 71.4)','the brand colour · ink on it 9.06 · 9.75 on night'],['honey-hover','#E99C2E','oklch(75.2% 0.148 70.4)','primary hover'],['honey-deep','#D9881B','oklch(69.6% 0.147 66.6)','pressed · plan leg 2 (light)'],['honey-l','#9D5A00','oklch(53.3% 0.122 62.9)','honey as text on light · 5.39 on white']],
+    'sw-direction': [['leaf','#3FC47C','oklch(73.1% 0.156 155.3)','on track, up · 8.69 on night'],['leaf-l','#117940','oklch(50.7% 0.126 152.6)','on track, light · 5.48 on white'],['clay','#F0703A','oklch(69.0% 0.172 41.8)','watch · 6.55 on night'],['clay-l','#A64618','oklch(51.5% 0.139 42.7)','watch, light · 5.98 on white'],['madder','#EF5A6F','oklch(66.8% 0.183 15.2)','off track, down, destructive · 5.88 on night'],['madder-l','#B52F44','oklch(51.8% 0.170 16.9)','off track, light · 6.08 on white']],
     'sw-lines': [['chalk','#78B4E8','oklch(74.9% 0.098 245.7)','the carpenter’s line, dark · 8.77 on night'],['chalk-l','#2A73B0','oklch(54.0% 0.119 247.7)','the carpenter’s line, light · 5.03 on white'],['wood','#E9C48E','oklch(84.0% 0.082 76.7)','imagery, the 3D joint · plan leg 2 (dark)'],['wood-deep','#B9803F','oklch(64.5% 0.108 67.3)','imagery · plan leg 3 (light) · 3.10 on paper']]
   };
   Object.keys(S).forEach(function (id) {
@@ -1304,8 +1304,8 @@ footer { padding: 48px 0 64px; }
   var R = {
     honey: ['#FFF6E6','#FFE9C2','#FFD48A','#F9BE5C','#F5A83A','#E99C2E','#D9881B','#B06C12','#85500C','#5C3707','#3A2204'],
     neutral: ['#F7F5F0','#EFECE5','#E3DFD6','#C9C4B9','#9A9DAD','#6E7282','#4B4F5E','#363B4B','#262A36','#1A1D26','#0C0D12'],
-    leaf: ['#E8F8EE','#C9EFD9','#9AE1B8','#6AD39A','#3FC47C','#2AA866','#1B7F45','#156236','#0F4727','#092E19','#051B0E'],
-    clay: ['#FEEFE7','#FDDACB','#FAB89A','#F5936A','#F0703A','#DA5F2A','#A8481A','#964215','#6F310F','#4A200A','#2D1306'],
+    leaf: ['#E8F8EE','#C9EFD9','#9AE1B8','#6AD39A','#3FC47C','#2AA866','#117940','#156236','#0F4727','#092E19','#051B0E'],
+    clay: ['#FEEFE7','#FDDACB','#FAB89A','#F5936A','#F0703A','#DA5F2A','#A64618','#964215','#6F310F','#4A200A','#2D1306'],
     madder: ['#FDEDF0','#FBD6DC','#F7AEBA','#F38496','#EF5A6F','#DB4259','#B52F44','#9B2A3D','#70202D','#49151E','#2B0C12'],
     chalk: ['#EAF4FC','#D1E6F8','#A8CFF1','#8FC1EC','#78B4E8','#4F93D0','#2A73B0','#1F588A','#174065','#0F2A43','#081827']
   };

@@ -180,7 +180,7 @@ describe('the forbidden things', () => {
       // the direction colours, and true greys
       for (const fine of [
         '#F5A83A',
-        '#A8640A',
+        '#9D5A00',
         '#0C0D12',
         '#13151C',
         '#1A1D26',
@@ -188,7 +188,7 @@ describe('the forbidden things', () => {
         '#363B4B',
         '#9A9DAD',
         '#6E7282',
-        '#6A6D78',
+        '#676A75',
         '#15161C',
         '#F7F5F0',
         '#3FC47C',
@@ -266,7 +266,7 @@ describe('the forbidden things', () => {
       ]);
       expect(
         kinds(
-          '.tf-hatch { background-image: repeating-linear-gradient(45deg, #6a6d78 0 1px, transparent 1px 6px) }',
+          '.tf-hatch { background-image: repeating-linear-gradient(45deg, #676a75 0 1px, transparent 1px 6px) }',
         ),
       ).toEqual([]);
     });

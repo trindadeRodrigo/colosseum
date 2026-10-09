@@ -56,6 +56,43 @@ export const TEXT: Pair[] = [
     use: 'docs navigation, filled item',
   },
   { fg: '--success', bg: '--background', use: 'success text' },
+  // The day-mode AA fix (Oct 9): the day pairs IDENTITY-2 left below AA, carried there by darker honey-l,
+  // muted-l, leaf-l and clay-l
+  ...on('--accent-foreground', 'a link on paper, in a well, on a hovered row', [
+    '--background',
+    '--muted',
+    '--accent',
+  ]),
+  { fg: '--muted-foreground', bg: '--muted', use: 'muted text in a well; a disabled button' },
+  { fg: '--tf-status-on', bg: '--muted', use: 'leaf text in a well' },
+  {
+    fg: '--tf-status-on',
+    bg: '--tf-status-on-bg',
+    use: 'badge on paper: on track',
+    over: '--background',
+  },
+  {
+    fg: '--tf-status-watch',
+    bg: '--tf-status-watch-bg',
+    use: 'badge on paper: watch',
+    over: '--background',
+  },
+  {
+    fg: '--tf-status-off',
+    bg: '--tf-status-off-bg',
+    use: 'badge on paper: off track',
+    over: '--background',
+  },
+  tint('--tf-honey-text', '--tf-honey-tint', 'selected chip: honey-l on the honey tint'),
+  tint('--muted-foreground', '--tf-status-watch-bg', 'muted cells of a row on watch'),
+  tint('--muted-foreground', '--tf-status-off-bg', 'muted cells of a row off track'),
+  tint('--accent-foreground', '--tf-status-off-bg', '"Go to field" in the error summary'),
+  { fg: '--sidebar-accent-foreground', bg: '--sidebar', use: 'docs navigation, current link' },
+  {
+    fg: '--sidebar-accent-foreground',
+    bg: '--sidebar-accent',
+    use: 'docs navigation, hovered item',
+  },
   { fg: '--warning', bg: '--background', use: 'warning text' },
 ];
 
@@ -73,64 +110,13 @@ export const NON_TEXT: Pair[] = [
 ];
 
 /**
- * Pairs the specs put together that the IDENTITY-2 values do not carry to AA in day mode, each with
- * what it measures. They are not passes: they are listed so that they stay in sight, and the test
- * fails when one of them is fixed (or gets worse), so the list can only shrink. Each is a design
- * question for the colour system (color-system.md rates honey-l, leaf-l and muted-l on white only),
- * not something a component can work around. Night passes every one.
+ * Pairs the specs put together that the day values do not carry to AA, each with what it measures.
+ * They are not passes: they are listed so that they stay in sight, and the test fails when one of
+ * them is fixed (or gets worse), so the list can only shrink. The text gaps IDENTITY-2 left (honey-l,
+ * muted-l and leaf-l in wells, on paper and on tints) closed when those three and clay-l were
+ * darkened (the day-mode AA fix of Oct 9); they now sit in TEXT above. Night passes every one.
  */
 export const GAPS: (Pair & { min: number; light: number })[] = [
-  { fg: '--accent-foreground', bg: '--background', use: 'a link on paper', min: 4.5, light: 4.29 },
-  { fg: '--accent-foreground', bg: '--muted', use: 'a link in a well', min: 4.5, light: 3.96 },
-  {
-    fg: '--accent-foreground',
-    bg: '--accent',
-    use: 'emphasis on a hovered row',
-    min: 4.5,
-    light: 3.94,
-  },
-  {
-    fg: '--muted-foreground',
-    bg: '--muted',
-    use: 'muted text in a well; a disabled button',
-    min: 4.5,
-    light: 4.37,
-  },
-  { fg: '--tf-status-on', bg: '--muted', use: 'leaf text in a well', min: 4.5, light: 4.27 },
-  {
-    ...tint('--tf-honey-text', '--tf-honey-tint', 'selected chip: honey-l on the honey tint'),
-    min: 4.5,
-    light: 4.25,
-  },
-  {
-    ...tint('--muted-foreground', '--tf-status-watch-bg', 'muted cells of a row on watch'),
-    min: 4.5,
-    light: 4.46,
-  },
-  {
-    ...tint('--muted-foreground', '--tf-status-off-bg', 'muted cells of a row off track'),
-    min: 4.5,
-    light: 4.4,
-  },
-  {
-    ...tint('--accent-foreground', '--tf-status-off-bg', '"Go to field" in the error summary'),
-    min: 4.5,
-    light: 3.98,
-  },
-  {
-    fg: '--sidebar-accent-foreground',
-    bg: '--sidebar',
-    use: 'docs navigation, current link',
-    min: 4.5,
-    light: 4.29,
-  },
-  {
-    fg: '--sidebar-accent-foreground',
-    bg: '--sidebar-accent',
-    use: 'docs navigation, hovered item',
-    min: 4.5,
-    light: 3.94,
-  },
   // a control is told by its well (`--secondary`) and its label; its edge alone is a hairline
   {
     fg: '--input',
@@ -185,8 +171,8 @@ describe('contrast: WCAG 2.2 AA in light and dark', () => {
     // color-system.md's figures
     expect(at('#15161C', '#F7F5F0')).toBeCloseTo(16.57, 1); // ink on paper
     expect(at('#15161C', '#F5A83A')).toBeCloseTo(9.06, 1); // ink on honey: the primary button
-    expect(at('#A8640A', '#FFFFFF')).toBeCloseTo(4.67, 1); // honey-l on white: honey as text
-    expect(at('#6A6D78', '#FFFFFF')).toBeCloseTo(5.16, 1); // muted-l on white
+    expect(at('#9D5A00', '#FFFFFF')).toBeCloseTo(5.39, 1); // honey-l on white: honey as text
+    expect(at('#676A75', '#FFFFFF')).toBeCloseTo(5.39, 1); // muted-l on white
     expect(at('#2A73B0', '#FFFFFF')).toBeCloseTo(5.03, 1); // chalk-l on white: the focus ring
     // why white never sits on honey, and honey is never small text on a light ground
     expect(at('#FFFFFF', '#F5A83A')).toBeLessThan(2.1);

@@ -10,7 +10,7 @@ Every portfolio states how money comes back out **before** the agent invests: ho
 ┃   Weekend exits are slower and cost more.
 ```
 
-- 2px left rule in `--tf-honey-text` (honey-l `#A8640A` on light, honey `#F5A83A` on dark), 12px left padding. (The landing prototype's `.exitline` pattern, kept.)
+- 2px left rule in `--tf-honey-text` (honey-l `#9D5A00` on light, honey `#F5A83A` on dark), 12px left padding. (The landing prototype's `.exitline` pattern, kept.)
 - J3 glyph 16px (`--muted-foreground`; lines in the text colour, the lifted tail in honey at ≥ 24px), then "Exit plan" (Inter 600), then the tiers separated by " · " (Inter 400 `text-body-sm`, tabular). Any cost or price carries a [pin](./provenance-pin.md); costs are estimates from the engine/Bearing, labelled "≤" or "about", never exact promises.
 - Optional second line: the caveat, `--muted-foreground`.
 
@@ -37,7 +37,7 @@ Card (`rounded-lg`, 10px) with header "Access to cash" in Inter 600 + J3 24px. B
 
 ## Accessibility
 
-The dimension drawing is `aria-hidden`; the tier table/sentence carries the content. Left rule is decorative (meaning is in the text "Exit plan"). Contrast: body text ink 18.05 / text 16.15 on the card; the rule honey-l 4.67 on white, honey 9.16 on night-2; chalk-l lines 5.03 on white, chalk 8.24 on night-2.
+The dimension drawing is `aria-hidden`; the tier table/sentence carries the content. Left rule is decorative (meaning is in the text "Exit plan"). Contrast: body text ink 18.05 / text 16.15 on the card; the rule honey-l 5.39 on white, honey 9.16 on night-2; chalk-l lines 5.03 on white, chalk 8.24 on night-2.
 
 ## Do / don't
 

@@ -36,7 +36,7 @@
 
 ## Accessibility
 
-Contrast on `--card`: ink 18.05 on white, text 16.15 on night-2; muted-l 5.16 / muted 6.77. The hairline is decorative; a card's boundary is also its fill against the ground.
+Contrast on `--card`: ink 18.05 on white, text 16.15 on night-2; muted-l 5.39 / muted 6.77. The hairline is decorative; a card's boundary is also its fill against the ground.
 
 ## Do / don't
 

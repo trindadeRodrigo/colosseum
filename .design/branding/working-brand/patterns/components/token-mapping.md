@@ -31,15 +31,15 @@ Values are `working-brand.theme.json` (OKLCH); the hex column is the `.yml` valu
 | `--primary-foreground` | ink | ink `#15161C` | **ink on honey, 9.06.** Never white on honey (2.0) |
 | `--secondary`, `--muted` | paper-3 `#EFECE5` → `oklch(94.35% 0.0099 87.47)` | night-3 | wells, table heads, code, secondary-button hover |
 | `--accent` | `#F7EAD6` → `oklch(94.20% 0.0300 78.78)` | `#2D2318` → `oklch(26.44% 0.0246 69.12)` | **honey at 14% over the ground** (opaque equivalent): selected rows, hover rows, chips |
-| `--accent-foreground` | honey-l `#A8640A` → `oklch(56.69% 0.1248 64.33)` | honey | honey as text: links, selected-chip text (4.67 on white / 9.75 on night) |
-| `--muted-foreground` | muted-l `#6A6D78` → `oklch(53.59% 0.0175 273.64)` | muted `#9A9DAD` → `oklch(69.87% 0.0235 277.32)` | muted text (5.16 on white / 6.77 on night-2). Also the hatch colour |
+| `--accent-foreground` | honey-l `#9D5A00` → `oklch(53.33% 0.1218 62.87)` | honey | honey as text: links, selected-chip text (5.39 on white / 9.75 on night) |
+| `--muted-foreground` | muted-l `#676A75` → `oklch(52.55% 0.0176 273.62)` | muted `#9A9DAD` → `oklch(69.87% 0.0235 277.32)` | muted text (5.39 on white / 6.77 on night-2). Also the hatch colour |
 | `--destructive` | madder-l `#B52F44` → `oklch(55.88% 0.1797 16.38)` | madder `#EF5A6F` → `oklch(66.77% 0.1832 15.21)` | off track, negative deltas, validation error, destructive action |
 | `--border` | line-l `#E3DFD6` → `oklch(90.43% 0.0129 86.83)` | line `#262A36` → `oklch(28.63% 0.0228 270.50)` | hairlines, card edges |
 | `--input` | line-l2 `#C9C4B9` → `oklch(82.13% 0.0161 86.44)` | line-2 `#363B4B` → `oklch(35.43% 0.0287 271.32)` | control edges (controls also carry a fill: `--secondary`) |
 | `--ring` | chalk-l `#2A73B0` → `oklch(54.02% 0.1193 247.65)` | chalk `#78B4E8` → `oklch(74.90% 0.0978 245.75)` | **focus only**: 2px outline, 2px offset. The carpenter's line, never a fill |
 | `--chart-1…4` | honey, honey-deep `#D9881B`, wood-deep `#B9803F`, muted-l | honey, wood `#E9C48E`, honey-deep, muted | plan legs 1–4 |
 | `--chart-5` | ink | text | base-case line (stress cases dashed `--muted-foreground` / `--destructive`) |
-| `--success` / `--warning` / `--info` | leaf-l `#1B7F45` / clay-l `#A8481A` / chalk-l | leaf `#3FC47C` / clay `#F0703A` / chalk | status words (never colour alone); info = guides and the "test network" plate |
+| `--success` / `--warning` / `--info` | leaf-l `#117940` / clay-l `#A64618` / chalk-l | leaf `#3FC47C` / clay `#F0703A` / chalk | status words (never colour alone); info = guides and the "test network" plate |
 | `--sidebar-*` | mirrors background / primary / accent / border / ring | night-2 sidebar | docs nav |
 | `--radius` | `8px` | — | buttons, inputs, popovers. `calc(var(--radius) - 2px)` = 6px tags; `+ 2px` = 10px cards |
 | `--font-sans` / `--font-mono` / `--font-display` | Inter / IBM Plex Mono / Inter Tight stacks | — | from `cssVars.theme` in `theme.json` |
@@ -52,27 +52,27 @@ Hand-written; values are `tokens.brand-color` verbatim. Kept out of `theme-css.j
 :root {
   /* the brand colour and its states */
   --tf-honey: #F5A83A; --tf-honey-hover: #E99C2E; --tf-honey-deep: #D9881B;
-  --tf-honey-text: #A8640A;                 /* honey-l: honey as text or link on light grounds (4.67 on white) */
+  --tf-honey-text: #9D5A00;                 /* honey-l: honey as text or link on light grounds (5.39 on white) */
   --tf-honey-tint: rgba(245,168,58,0.14);   /* selected rows, chips, badges */
   /* grounds and lines, by name (for drawings and the embed boundary) */
   --tf-paper: #F7F5F0; --tf-paper-2: #FFFFFF; --tf-paper-3: #EFECE5; --tf-line-l: #E3DFD6; --tf-line-l2: #C9C4B9;
   --tf-night: #0C0D12; --tf-night-2: #13151C; --tf-night-3: #1A1D26; --tf-line: #262A36; --tf-line-2: #363B4B;
-  --tf-ink: #15161C; --tf-text: #F3F1EC; --tf-muted: #9A9DAD; --tf-muted-2: #6E7282; --tf-muted-l: #6A6D78;
+  --tf-ink: #15161C; --tf-text: #F3F1EC; --tf-muted: #9A9DAD; --tf-muted-2: #6E7282; --tf-muted-l: #676A75;
   /* direction colours: always with a word and a square glyph */
-  --tf-leaf: #1B7F45;   --tf-leaf-tint: rgba(63,196,124,0.14);
-  --tf-clay: #A8481A;   --tf-clay-tint: rgba(240,112,58,0.14);
+  --tf-leaf: #117940;   --tf-leaf-tint: rgba(63,196,124,0.14);
+  --tf-clay: #A64618;   --tf-clay-tint: rgba(240,112,58,0.14);
   --tf-madder: #B52F44; --tf-madder-tint: rgba(239,90,111,0.14);
   /* the carpenter's line: focus, "today", guides, dimension lines, the test-network plate. Never a fill */
   --tf-chalk: #2A73B0;  --tf-chalk-tint: rgba(120,180,232,0.14);
   /* wood: imagery and the 3D joint only (and dark chart-2) */
   --tf-wood: #E9C48E; --tf-wood-deep: #B9803F;
   /* provenance pin: outline + square pin */
-  --tf-pin: #A8640A;                /* honey-l */
+  --tf-pin: #9D5A00;                /* honey-l */
   --tf-pin-outline: #C9C4B9;        /* line-l2 */
   /* P4 hatch: sample and stale only; the sample line's text colour (gate MOCK-QUIET: no plate vars) */
-  --tf-hatch: #6A6D78;              /* muted-l, 5.16 on white */
+  --tf-hatch: #676A75;              /* muted-l, 5.39 on white */
   --tf-hatch-pitch-ui: 6px; --tf-hatch-pitch-glyph: 3px;
-  --tf-sample-fg: #6A6D78;          /* muted-l: "Sample figures · test network", once per sample card */
+  --tf-sample-fg: #676A75;          /* muted-l: "Sample figures · test network", once per sample card */
   /* light as gradient: the only gradients allowed */
   --tf-glow: radial-gradient(60% 90% at 78% 30%, rgba(245,168,58,0.28), rgba(245,168,58,0) 70%);   /* glow-l */
   --tf-curve-fill: linear-gradient(to bottom, rgba(245,168,58,0.35), rgba(245,168,58,0));

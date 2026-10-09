@@ -42,11 +42,11 @@
 | Hairline | `line-l` | **#E3DFD6** | Card edges, rows | decorative |
 | Control edge | `line-l2` | **#C9C4B9** | Inputs, secondary buttons, the pin's outline | |
 | Text | `ink` | **#15161C** | Body, headings, numbers | 16.57 on paper |
-| Muted | `muted-l` | **#6A6D78** | Secondary text, captions | 5.16 on white |
+| Muted | `muted-l` | **#676A75** | Secondary text, captions | 5.39 on white |
 | **Brand** | `honey` | **#F5A83A** | Primary button fill, progress bars, chart leg 1, large type | ink on honey 9.06; **never as small text on light** |
-| Brand as text | `honey-l` | **#A8640A** | Links, the pin, honey as text | 4.67 on white |
-| On track | `leaf-l` | **#1B7F45** | Status, positive deltas | 5.04 on white |
-| Watch | `clay-l` | **#A8481A** | Status | 4.52 on white |
+| Brand as text | `honey-l` | **#9D5A00** | Links, the pin, honey as text | 5.39 on white |
+| On track | `leaf-l` | **#117940** | Status, positive deltas | 5.48 on white |
+| Watch | `clay-l` | **#A64618** | Status | 5.98 on white |
 | Off track | `madder-l` | **#B52F44** | Status, negative deltas, destructive | 5.14 on white |
 | Line | `chalk-l` | **#2A73B0** | Focus ring, guides | 5.03 on white |
 
@@ -67,8 +67,8 @@ Always **word + shape + colour**, never colour alone (WCAG 2.2, 1.4.1).
 
 | State | Night | Day | Tint (fill) | Shape | Word |
 |---|---|---|---|---|---|
-| **On track** | `leaf` #3FC47C | `leaf-l` #1B7F45 | rgba(63,196,124,.14) | Solid square | On track |
-| **Watch** | `clay` #F0703A | `clay-l` #A8481A | rgba(240,112,58,.14) | Half-filled square | Watch |
+| **On track** | `leaf` #3FC47C | `leaf-l` #117940 | rgba(63,196,124,.14) | Solid square | On track |
+| **Watch** | `clay` #F0703A | `clay-l` #A64618 | rgba(240,112,58,.14) | Half-filled square | Watch |
 | **Off track / error** | `madder` #EF5A6F | `madder-l` #B52F44 | rgba(239,90,111,.14) | Square outline with a notch | Off track |
 | **Sample (mock)** | `muted` + 45° hatch | `muted-l` + hatch | none | Hatched pin or glyph, hatched card edge | the quiet line "Sample figures" (gate `MOCK-QUIET`: never a boxed MOCK word) |
 | **Stale** | hollow pin | hollow pin | none | Hollow square | stale · age |
@@ -142,7 +142,7 @@ A second brand colour. Chalk as a fill, a button or a brand element. A blue bran
 | 300 | #F9BE5C | #C9C4B9 | #6AD39A | #F5936A | #F38496 | #8FC1EC |
 | **400** | **#F5A83A** honey | #9A9DAD muted | **#3FC47C** leaf | **#F0703A** clay | **#EF5A6F** madder | **#78B4E8** chalk |
 | 500 | #E99C2E | #6E7282 | #2AA866 | #DA5F2A | #DB4259 | #4F93D0 |
-| 600 | #D9881B | #4B4F5E | #1B7F45 leaf-l | #A8481A clay-l | #B52F44 madder-l | #2A73B0 chalk-l |
+| 600 | #D9881B | #4B4F5E | #117940 leaf-l | #A64618 clay-l | #B52F44 madder-l | #2A73B0 chalk-l |
 | 700 | #B06C12 | #363B4B | #156236 | #964215 | #9B2A3D | #1F588A |
 | 800 | #85500C | #262A36 | #0F4727 | #6F310F | #70202D | #174065 |
 | 900 | #5C3707 | #1A1D26 | #092E19 | #4A200A | #49151E | #0F2A43 |
@@ -164,9 +164,9 @@ Text needs 4.5:1 (3:1 at ≥ 24 px or ≥ 18.66 px bold). Controls, focus rings 
 | leaf / clay / madder on night | 8.69 / 6.55 / 5.88 | pass |
 | chalk on night (focus ring) | 8.77 | pass |
 | ink on paper / white | 16.57 / 17.4 | pass |
-| muted-l on white | 5.16 | pass |
-| honey-l on white | 4.67 | pass |
-| leaf-l / clay-l / madder-l on white | 5.04 / 4.52 / 5.14 | pass |
+| muted-l on white | 5.39 | pass |
+| honey-l on white | 5.39 | pass |
+| leaf-l / clay-l / madder-l on white | 5.48 / 5.98 / 5.14 | pass |
 | chalk-l on white (focus ring) | 5.03 | pass |
 | white on honey | 2.0 | **fail: banned** |
 | honey on white | 1.9 | **fail: fills and large type only** |

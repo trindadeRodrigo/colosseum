@@ -15,7 +15,7 @@ The P4 hatch is still a word, not a texture: it means *not finished*, and it app
 ```
 
 Three parts, together, always:
-1. **Hatched edge** `.tf-sample-card`: a 6px band on the card's left edge (`::before`, absolute, full height), `repeating-linear-gradient(45deg, var(--tf-hatch) 0 1px, transparent 1px var(--tf-hatch-pitch-ui))`. 1px strokes, **6px pitch** in UI, 3px inside the pin glyph, 4px in SVG drawings. Colour `--tf-hatch`: muted-l `#6A6D78` / muted `#9A9DAD` (5.16 on white / 6.77 on night-2). The card's padding grows by the band (24 → 30px) so content never sits on the strokes. For a whole mocked panel or showcase case the band may be the frame margin instead (8px between the outer 1px border and the inner solid surface).
+1. **Hatched edge** `.tf-sample-card`: a 6px band on the card's left edge (`::before`, absolute, full height), `repeating-linear-gradient(45deg, var(--tf-hatch) 0 1px, transparent 1px var(--tf-hatch-pitch-ui))`. 1px strokes, **6px pitch** in UI, 3px inside the pin glyph, 4px in SVG drawings. Colour `--tf-hatch`: muted-l `#676A75` / muted `#9A9DAD` (5.39 on white / 6.77 on night-2). The card's padding grows by the band (24 → 30px) so content never sits on the strokes. For a whole mocked panel or showcase case the band may be the frame margin instead (8px between the outer 1px border and the inner solid surface).
 2. **The quiet line** `<SampleLine>`: Inter 400, `text-sample-line` (12.5px / 18px), colour `--tf-sample-fg` (muted-l / muted), sentence case, no border, no fill, no icon. One per card, at its foot or in its head, beside the edge. Wording by context:
    - app, plan, risk, charts, Bearing: "Sample figures" · with a reason where useful: "Sample figures · Kamino rate feed not connected";
    - test network (`"provenance": "sandbox"`): "Sample figures · test network" / "Números de exemplo · rede de teste";
@@ -42,7 +42,7 @@ There is no hover, active or dismiss state. The line is not interactive. If the 
 ## Accessibility
 
 - The line is real text, read by screen readers, once per card. The hatched pin and glyph carry `aria-label="sample figure"` (or ", sample figure, test network" on the pin's button), so a figure is never announced as live.
-- Muted-l on white 5.16, muted on night-2 6.77: the line passes AA at 12.5px. Ink on muted-l strokes is about 3.2:1, which is why text never sits on the hatch.
+- Muted-l on white 5.39, muted on night-2 6.77: the line passes AA at 12.5px. Ink on muted-l strokes is about 3.2:1, which is why text never sits on the hatch.
 - Hatch is `aria-hidden` (CSS background). Forced-colors: the hatch disappears, the edge becomes a 1px dashed `CanvasText` rule, and the line remains.
 
 ## Enforcement

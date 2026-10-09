@@ -9,7 +9,7 @@
 |---|---|---|
 | `primary` | The single committing action per view ("Generate plan", "Sign and send") | `h-10 px-4 rounded-md bg-primary text-primary-foreground font-semibold hover:bg-honey-hover active:bg-honey-deep` — honey `#F5A83A` with **ink** `#15161C` on it, in both modes |
 | `secondary` | Alternatives ("Edit sheet", "Run policy now" when it is not the main action) | `h-10 px-4 rounded-md border border-input bg-transparent text-foreground font-semibold hover:bg-secondary hover:border-muted-foreground` |
-| `link` | Consumer next steps ("See your plan"), preferred over primary in consumer flows | `text-honey-text underline decoration-1 underline-offset-4 hover:decoration-2` (honey-l `#A8640A` on light, honey on dark) |
+| `link` | Consumer next steps ("See your plan"), preferred over primary in consumer flows | `text-honey-text underline decoration-1 underline-offset-4 hover:decoration-2` (honey-l `#9D5A00` on light, honey on dark) |
 | `chip` | Goal suggestions, filter toggles | `h-8 px-3 rounded-full border border-input text-body-sm font-medium hover:bg-secondary text-left`; selected / `aria-pressed="true"`: `bg-honey-tint text-honey-text border-transparent` (a pill with a 14% honey tint, no border) |
 | `icon` | Copy, close, menu | `size-10` (`size-8` dense) `grid place-items-center rounded-md border border-input hover:bg-secondary`; `aria-label` + tooltip |
 | `destructive` | "Revoke delegation" | secondary shape, `border-destructive text-destructive`; always a confirm step with the consequence in words |
@@ -36,7 +36,7 @@ Sizes: `default` 40px, `dense` 32px (Monitor, Bearing). Text Inter 600, 15px (`d
 
 ## Accessibility
 
-Native `<button>` (or `<a>` for navigation). Targets ≥ 24px (2.5.8): dense 32px passes. Contrast: ink on honey 9.06 (both modes); ink on honey-hover 7.96, on honey-deep 6.44; secondary label ink on white 18.05 / text on night-2 16.15. The secondary edge (line-l2 1.74 on white, line-2 1.64 on night-2) is below 3:1 on its own: the label identifies the control, the hover fill and the chalk ring (5.03 / 8.77) carry state. Link text honey-l 4.67 on white, honey 9.75 on night.
+Native `<button>` (or `<a>` for navigation). Targets ≥ 24px (2.5.8): dense 32px passes. Contrast: ink on honey 9.06 (both modes); ink on honey-hover 7.96, on honey-deep 6.44; secondary label ink on white 18.05 / text on night-2 16.15. The secondary edge (line-l2 1.74 on white, line-2 1.64 on night-2) is below 3:1 on its own: the label identifies the control, the hover fill and the chalk ring (5.03 / 8.77) carry state. Link text honey-l 5.39 on white, honey 9.75 on night.
 
 ## Do / don't
 
