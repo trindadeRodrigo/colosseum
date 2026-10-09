@@ -2137,6 +2137,9 @@ export const en = {
       reviewing: 'Checking…',
       changeMix: 'Change the mix',
       next: 'Nothing is bought or signed on this page. Next you check the review, then sign each step on the buy screen.',
+      brokenMix:
+        'The weights in the editor don’t add up yet, so there is no mix to show. Fix them below, or go back to the proposed weights.',
+      balance: 'Your wallet’s balance is checked on the buy screen.',
       editByHand: 'Edit weights by hand',
       editorLead:
         'Type a weight for each asset, in percent. Whatever you leave unassigned stays in cash. The weights here are the ones I check.',
@@ -2145,6 +2148,7 @@ export const en = {
       backToDeposit: 'Back to the deposit',
       invalidNext: 'Ask for a change in the conversation, or edit the weights by hand.',
       blocked: {
+        reply: 'Wait for the reply in the conversation first.',
         weights: 'Fix the weights in the editor first.',
         amount: 'Type an amount first.',
         purpose: 'Choose the goal and the risk first.',

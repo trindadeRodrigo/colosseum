@@ -41,7 +41,7 @@ export function StrategyPreview({
    * The one action this preview leads to: a deposit for a new goal, which is the card's primary
    * button, or applying it to the vault.
    */
-  use?: { label: string; onUse: () => void; primary?: boolean };
+  use?: { label: string; onUse: () => void; primary?: boolean; disabled?: boolean };
 }) {
   const id = useId();
   const t = useT();
@@ -185,6 +185,7 @@ export function StrategyPreview({
                   variant={use.primary ? 'primary' : 'secondary'}
                   size={use.primary ? 'default' : 'dense'}
                   data-action={use.primary ? 'deposit' : 'use-mix'}
+                  disabled={use.disabled}
                   onClick={use.onUse}
                 >
                   {use.label}

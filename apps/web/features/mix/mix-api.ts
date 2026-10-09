@@ -121,7 +121,12 @@ export function acceptGoalMix(
 ): Promise<MixCall<AcceptGoalMixResponse>> {
   return post(api, `/v1/conversations/${encodeURIComponent(chain)}/goal/accept`, body, (value) => {
     const read = AcceptGoalMixResponse.safeParse(value);
-    return read.success && matches(read.data.review, chain, body.allocations) ? read.data : null;
+    if (!read.success || !matches(read.data.review, chain, body.allocations)) return null;
+    // The review is of what was asked: this amount, to the cent, and this goal. (It names no risk.)
+    const { review } = read.data;
+    return Math.abs(review.amountUsd - body.amountUsd) < 0.005 && review.goal === body.goal
+      ? read.data
+      : null;
   });
 }
 

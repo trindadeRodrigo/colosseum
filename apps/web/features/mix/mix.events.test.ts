@@ -3,7 +3,7 @@ import type { MixReview } from '@colosseum/schemas';
 import { vaultOf } from '@colosseum/sdk';
 import { createElement, StrictMode, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
+import { click, find, fire, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
 import { withAccount } from '../account/test/screen';
 import { recallOrder } from '../order/order-record';
@@ -191,6 +191,12 @@ const amounts = (host: HTMLElement) =>
       row.querySelector('[data-ui="mix-line-amount"]')?.textContent,
     ]),
   );
+
+/** What a review echoes of the request it answers: the amount and the goal it was checked for. */
+const of = (body: { amountUsd: number; goal: MixReview['goal'] }) => ({
+  amountUsd: body.amountUsd,
+  goal: body.goal,
+});
 
 type Call = { url: string; body: Record<string, unknown> };
 beforeEach(() => {
@@ -442,11 +448,11 @@ describe('a new goal’s mix, made into a plan', () => {
       return body.confirm
         ? json({
             status: 'stored',
-            review: reviewOf({ unconfirmed: [] }),
+            review: reviewOf({ ...of(body), unconfirmed: [] }),
             proposalId,
             proposal: plan.proposal,
           })
-        : json({ status: 'review', review: reviewOf() });
+        : json({ status: 'review', review: reviewOf(of(body)) });
     });
     const host = await goalMix('en', { goal: 'protect', risk: 'low' });
     // no form: nothing to choose from, the goal and risk said as one sentence, the editor closed
@@ -503,7 +509,7 @@ describe('a new goal’s mix, made into a plan', () => {
       if (!url.endsWith('/goal/accept')) return json({}, 404);
       const body = JSON.parse(String(init?.body ?? '{}'));
       // figures no arithmetic on the screen would give: only the server's can be what is shown
-      const review = reviewFor(body.allocations, { amountUsd: body.amountUsd });
+      const review = reviewFor(body.allocations, of(body));
       return json({
         status: 'review',
         review: {
@@ -537,8 +543,9 @@ describe('a new goal’s mix, made into a plan', () => {
     const calls: Call[] = [];
     portStore.setApi(async (url, init) => {
       if (!url.endsWith('/goal/accept')) return json({}, 404);
-      calls.push({ url, body: JSON.parse(String(init?.body ?? '{}')) });
-      return json({ status: 'review', review: reviewOf() });
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      calls.push({ url, body });
+      return json({ status: 'review', review: reviewOf(of(body)) });
     });
     const host = await goalMix();
     const press = () => find(host, '[data-action="deposit-review"]');
@@ -572,7 +579,7 @@ describe('a new goal’s mix, made into a plan', () => {
       if (!url.endsWith('/goal/accept')) return json({}, 404);
       const body = JSON.parse(String(init?.body ?? '{}'));
       calls.push({ url, body });
-      return json({ status: 'review', review: reviewOf() });
+      return json({ status: 'review', review: reviewOf(of(body)) });
     });
     const host = await goalMix('en', { goal: null, risk: null });
     expect(host.querySelector('[data-ui="deposit-purpose"]')).toBeNull();
@@ -602,8 +609,9 @@ describe('a new goal’s mix, made into a plan', () => {
     const calls: Call[] = [];
     portStore.setApi(async (url, init) => {
       if (!url.endsWith('/goal/accept')) return json({}, 404);
-      calls.push({ url, body: JSON.parse(String(init?.body ?? '{}')) });
-      return json({ status: 'review', review: reviewOf() });
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      calls.push({ url, body });
+      return json({ status: 'review', review: reviewOf(of(body)) });
     });
     const host = await goalMix('en', { goal: 'grow', risk: null });
     expect(find(host, '[data-ui="deposit-purpose"]').textContent).toContain(
@@ -623,7 +631,10 @@ describe('a new goal’s mix, made into a plan', () => {
       if (!url.endsWith('/goal/accept')) return json({}, 404);
       const body = JSON.parse(String(init?.body ?? '{}'));
       n += 1;
-      return json({ status: 'review', review: body.confirm ? reviewOf(moved()) : reviewOf() });
+      return json({
+        status: 'review',
+        review: body.confirm ? reviewOf(moved(of(body))) : reviewOf(of(body)),
+      });
     });
     const host = await goalMix();
     await deposit(host, '100');
@@ -646,7 +657,7 @@ describe('a new goal’s mix, made into a plan', () => {
       // the same warning id at 40% and at 90%; the hash is the review's own
       return json({
         status: 'review',
-        review: reviewFor(body.allocations, gold.weightBps === 4000 ? {} : moved()),
+        review: reviewFor(body.allocations, gold.weightBps === 4000 ? of(body) : moved(of(body))),
       });
     });
     const host = await goalMix();
@@ -672,7 +683,7 @@ describe('a new goal’s mix, made into a plan', () => {
       if (!url.endsWith('/goal/accept')) return json({}, 404);
       const body = JSON.parse(String(init?.body ?? '{}'));
       calls.push({ url, body });
-      return json({ status: 'review', review: reviewOf({ amountUsd: body.amountUsd }) });
+      return json({ status: 'review', review: reviewOf(of(body)) });
     });
     const pt = dictionary('pt');
     const host = await goalMix('pt');
@@ -719,8 +730,10 @@ describe('a new goal’s mix, made into a plan', () => {
 
   it('says a check that did not get through, and asks again on the press', async () => {
     let up = false;
-    portStore.setApi(async () =>
-      up ? json({ status: 'review', review: reviewOf() }) : json({}, 502),
+    portStore.setApi(async (_url, init) =>
+      up
+        ? json({ status: 'review', review: reviewOf(of(JSON.parse(String(init?.body ?? '{}')))) })
+        : json({}, 502),
     );
     const host = await goalMix();
     await deposit(host, '100');
@@ -741,6 +754,174 @@ describe('a new goal’s mix, made into a plan', () => {
   });
 });
 
+describe('the deposit step, kept honest while things move', () => {
+  const accepts = (answer: (body: Record<string, unknown>, n: number) => Promise<Response>) => {
+    const calls: Call[] = [];
+    portStore.setApi(async (url, init) => {
+      if (!url.endsWith('/goal/accept')) return json({}, 404);
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      calls.push({ url, body });
+      return answer(body, calls.length);
+    });
+    return calls;
+  };
+  const later = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  it('drops a late answer about an amount that is no longer the one typed', async () => {
+    // the check of 100 answers after the check of 250 has
+    accepts(async (body) => {
+      if (body.amountUsd === 100) await later(400);
+      return json({
+        status: 'review',
+        review: reviewFor(body.allocations as never, of(body as never)),
+      });
+    });
+    const host = await goalMix();
+    await type(amountBox(host), '100');
+    await settle(CHECK_MS + 20);
+    await type(amountBox(host), '250');
+    await settle(CHECK_MS + 100);
+    const shown = amounts(host);
+    await settle(400);
+    // the rows are still the newer amount's check, and the review opens at it
+    expect(amounts(host)).toEqual(shown);
+    expect(find(host, '[data-ui="deposit-check"]').textContent).toBe(en.mix.deposit.checked);
+    await toReview(host);
+    expect(find(host, '[data-ui="mix-review-total"]').textContent).toContain('$250.00');
+  });
+
+  it('locks the amount, the taps and the editor while the press is checked', async () => {
+    let release: () => void = () => {};
+    const calls = accepts(async (body) => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return json({ status: 'review', review: reviewOf(of(body as never)) });
+    });
+    const host = await goalMix('en', { goal: 'grow', risk: null });
+    await click(find(host, '[data-ui="deposit-risk"] [data-value="low"]'));
+    await openEditor(host);
+    await type(amountBox(host), '200');
+    // pressed before the check of the pause has gone out: the press asks, and the step is held
+    await click(find(host, '[data-action="deposit-review"]'));
+    expect(amountBox(host).disabled).toBe(true);
+    for (const held of [
+      amountBox(host).closest('[inert]'),
+      find(host, '[data-ui="deposit-risk"]').closest('[inert]'),
+      find(host, '[data-ui="weight-editor"]').closest('[inert]'),
+    ])
+      expect(held).not.toBeNull();
+    release();
+    await settle(CHECK_MS + 50);
+    release();
+    await settle();
+    // the review is of the amount in the field, and says what it was checked for
+    expect(calls.every((call) => call.body.amountUsd === 200)).toBe(true);
+    expect(find(host, '[data-ui="mix-review-total"]').textContent).toContain('$200.00');
+    expect(find(host, '[data-ui="mix-review-purpose"]').textContent).toBe(
+      en.mix.deposit.purpose('grow', 'low'),
+    );
+  });
+
+  it('refuses a review that is not of the amount or the goal it was asked for', async () => {
+    let wrong: Record<string, unknown> = { amountUsd: 200 };
+    accepts(async (body) =>
+      json({ status: 'review', review: reviewOf({ ...of(body as never), ...wrong }) }),
+    );
+    const host = await goalMix();
+    await deposit(host, '500');
+    expect(find(host, '[data-ui="deposit-refused"]').textContent).toBe(en.mix.failure.unreadable);
+    expect(amounts(host)['solana:gldx']).toBe(`—${en.mix.deposit.unchecked}`);
+    wrong = { goal: 'protect' };
+    await toReview(host);
+    expect(host.querySelector('[data-ui="mix-review-lines"]')).toBeNull();
+    expect(find(host, '[data-ui="deposit-refused"]').textContent).toBe(en.mix.failure.unreadable);
+  });
+
+  it('moves focus on purpose: the amount on open, the heading of the review, the press on the way back', async () => {
+    accepts(async (body) => json({ status: 'review', review: reviewOf(of(body as never)) }));
+    const host = await goalMix();
+    expect(document.activeElement).toBe(amountBox(host));
+    await deposit(host, '100');
+    await toReview(host);
+    const heading = find(host, '[data-ui="deposit-review"] h2');
+    expect(heading.textContent).toBe(en.mix.review.title);
+    expect(document.activeElement).toBe(heading);
+    await click(buttonNamed(host, en.mix.deposit.backToDeposit));
+    expect(document.activeElement).toBe(find(host, '[data-action="deposit-review"]'));
+  });
+
+  it('keeps focus in the editor when a row is removed', async () => {
+    accepts(async (body) =>
+      json({ status: 'review', review: reviewFor(body.allocations as never, of(body as never)) }),
+    );
+    const host = await goalMix();
+    await openEditor(host);
+    await click(buttonNamed(host, en.mix.editor.remove('GLDx')));
+    await settle(50);
+    // the only row is gone: the way to add one takes focus
+    expect(document.activeElement).toBe(find(host, '[data-ui="weight-editor"] select'));
+  });
+
+  it('does not call an amount wrong on the first digit, only after a pause or on leaving the field', async () => {
+    accepts(async (body) => json({ status: 'review', review: reviewOf(of(body as never)) }));
+    const host = await goalMix();
+    await type(amountBox(host), '5');
+    expect(host.textContent).not.toContain(en.mix.deposit.errors.belowMin);
+    expect(amountBox(host).getAttribute('aria-invalid')).toBeNull();
+    await fire(amountBox(host), new FocusEvent('focusout', { bubbles: true }));
+    expect(host.textContent).toContain(en.mix.deposit.errors.belowMin);
+    await type(amountBox(host), '7');
+    expect(host.textContent).not.toContain(en.mix.deposit.errors.belowMin);
+    await settle(CHECK_MS + 50);
+    expect(host.textContent).toContain(en.mix.deposit.errors.belowMin);
+  });
+
+  it('says the wallet is checked on the buy screen, and holds the press while a reply is on its way', async () => {
+    const host = await mount(
+      withAccount(
+        'en',
+        createElement(DepositStep, {
+          chain: 'solana',
+          userId,
+          allocations: [{ assetId: 'solana:gldx', weightBps: 4000 }],
+          said: SAID,
+          amountText: '100',
+          onAmountText: () => {},
+          provenance: 'sandbox',
+          onChangeMix: () => {},
+          onClose: () => {},
+          waiting: true,
+        }),
+      ),
+    );
+    expect(host.textContent).toContain(en.mix.deposit.balance);
+    const press = find(host, '[data-action="deposit-review"]');
+    expect(press.getAttribute('aria-disabled')).toBe('true');
+    await click(press);
+    expect(host.textContent).toContain(en.mix.deposit.blocked.reply);
+  });
+
+  it('keeps the edited mark and the way back while the hand weights do not add up, and shows no stale mix', async () => {
+    accepts(async (body) =>
+      json({ status: 'review', review: reviewFor(body.allocations as never, of(body as never)) }),
+    );
+    const host = await goalMix();
+    await deposit(host, '100');
+    await openEditor(host);
+    await type(find<HTMLInputElement>(host, '[data-ui="targets-lines"] input'), '140');
+    expect(find(host, '[data-ui="deposit-edited"]').textContent).toBe(en.mix.deposit.edited);
+    expect(host.querySelector('[data-action="reset-mix"]')).not.toBeNull();
+    // the proposal's 40% is not shown as if it were the mix now
+    expect(host.querySelector('[data-ui="mix-lines"]')).toBeNull();
+    expect(find(host, '[data-ui="deposit-broken"]').textContent).toBe(en.mix.deposit.brokenMix);
+    expect(find(host, '[data-action="deposit-review"]').getAttribute('aria-disabled')).toBe('true');
+    await click(find(host, '[data-action="reset-mix"]'));
+    expect(host.querySelector('[data-ui="deposit-edited"]')).toBeNull();
+    expect(find(host, '[data-ui="mix-lines"]').textContent).toContain('40%');
+  });
+});
+
 describe('a new goal’s mix, with a weight the person changed', () => {
   it('keeps the editor closed until asked, marks the mix as edited, and sends the person’s weights', async () => {
     const calls: Call[] = [];
@@ -748,7 +929,10 @@ describe('a new goal’s mix, with a weight the person changed', () => {
       if (!url.endsWith('/goal/accept')) return json({}, 404);
       const body = JSON.parse(String(init?.body ?? '{}'));
       calls.push({ url, body });
-      return json({ status: 'review', review: reviewFor(body.allocations, { origin: 'person' }) });
+      return json({
+        status: 'review',
+        review: reviewFor(body.allocations, { ...of(body), origin: 'person' }),
+      });
     });
     const host = await goalMix();
     const open = find(host, '[data-action="edit-by-hand"]');

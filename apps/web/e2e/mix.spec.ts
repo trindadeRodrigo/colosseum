@@ -75,7 +75,7 @@ async function toDeposit(page: Page, words: string, use = en.mix.preview.deposit
   await box.press('Enter');
   const strategy = page.locator('[data-ui="goal-strategy"]');
   await expect(strategy.locator('[data-ui="weight-notes"]')).toBeVisible();
-  await strategy.getByRole('button', { name: use }).click();
+  await strategy.getByRole('button', { name: use, exact: true }).click();
   return page.locator('[data-ui="deposit-step"]');
 }
 const dollarsOf = (step: ReturnType<Page['locator']>, asset: string) =>
@@ -185,28 +185,42 @@ test('the deposit step by keyboard, in Portuguese', async ({ page }) => {
     .getByRole('button', { name: 'Português' })
     .click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR');
-  const step = await toDeposit(
-    page,
-    'Um fundo amplo e ouro, para crescer, com risco alto',
-    pt.mix.preview.deposit,
-  );
+  // by keyboard from the conversation: Enter sends, Enter on "Depositar" opens the step
+  const box = page.locator('textarea');
+  await box.fill('Um fundo amplo e ouro, para crescer, com risco alto');
+  await box.press('Enter');
+  const strategy = page.locator('[data-ui="goal-strategy"]');
+  await expect(strategy.locator('[data-ui="weight-notes"]')).toBeVisible();
+  await strategy.getByRole('button', { name: pt.mix.preview.deposit, exact: true }).press('Enter');
+  const step = page.locator('[data-ui="deposit-step"]');
   await expect(step.locator('[data-ui="deposit-purpose"]')).toContainText(
     pt.mix.deposit.purpose('grow', 'high'),
   );
+  // focus lands on the amount: the person types straight away
   const amount = page.getByLabel(pt.buy.amount.label, { exact: true });
-  await amount.focus();
+  await expect(amount).toBeFocused();
   await page.keyboard.type('100,50');
   await expect(dollarsOf(step, 'spy')).toHaveText(/50,25/);
   await check(page, 'deposit-pt');
   // from the amount: the three quick amounts, then the press, which Enter takes to the review
   for (let i = 0; i < 4; i += 1) await page.keyboard.press('Tab');
-  await expect(
-    step.getByRole('button', { name: pt.mix.deposit.reviewOf('US$ 100,50') }),
-  ).toBeFocused();
+  const press = page.getByRole('button', { name: pt.mix.deposit.reviewOf('US$ 100,50') });
+  await expect(press).toBeFocused();
   await page.keyboard.press('Enter');
+  // the review's heading takes focus, and it says what the mix was checked for
+  await expect(page.getByRole('heading', { name: pt.mix.review.title })).toBeFocused();
+  await expect(page.locator('[data-ui="mix-review-purpose"]')).toHaveText(
+    pt.mix.deposit.purpose('grow', 'high'),
+  );
   await expect(page.locator('[data-ui="mix-review-total"]')).toContainText('100,50');
-  await page.getByRole('button', { name: pt.mix.deposit.backToDeposit }).click();
-  await expect(page.getByLabel(pt.buy.amount.label, { exact: true })).toHaveValue('100,50');
+  await page.getByRole('button', { name: pt.mix.deposit.backToDeposit }).press('Enter');
+  // back on the step: the press that led to the review, with the amount as it was
+  await expect(press).toBeFocused();
+  await expect(amount).toHaveValue('100,50');
+  await step.getByRole('button', { name: pt.mix.deposit.backToProposal }).press('Enter');
+  await expect(
+    strategy.getByRole('button', { name: pt.mix.preview.deposit, exact: true }),
+  ).toBeFocused();
 });
 
 test('a vault’s own weights, edited by hand: reviewed, ordered, every step signed', async ({

@@ -2032,6 +2032,9 @@ export const pt: Dictionary = {
       reviewing: 'Conferindo…',
       changeMix: 'Mudar a mistura',
       next: 'Nada é comprado nem assinado nesta página. Em seguida você confere a revisão e assina cada passo na tela de compra.',
+      brokenMix:
+        'Os pesos no editor ainda não fecham, então não há mistura para mostrar. Corrija abaixo, ou volte aos pesos propostos.',
+      balance: 'O saldo da sua carteira é conferido na tela de compra.',
       editByHand: 'Editar os pesos à mão',
       editorLead:
         'Digite um peso para cada ativo, em porcentagem. O que você deixar sem atribuir fica em caixa. Os pesos daqui são os que eu confiro.',
@@ -2040,6 +2043,7 @@ export const pt: Dictionary = {
       backToDeposit: 'Voltar ao depósito',
       invalidNext: 'Peça uma mudança na conversa, ou edite os pesos à mão.',
       blocked: {
+        reply: 'Espere a resposta na conversa primeiro.',
         weights: 'Corrija os pesos no editor primeiro.',
         amount: 'Digite um valor primeiro.',
         purpose: 'Escolha o objetivo e o risco primeiro.',

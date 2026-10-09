@@ -559,6 +559,47 @@ describe('the deposit step of a new goal', () => {
     );
   });
 
+  it('moves focus with the screen: to the amount when the step opens, to the button on the way back', async () => {
+    replies({ goal: 'grow', risk: 'high' });
+    const host = await show();
+    await send(host, 'Stocks to grow, high risk');
+    await click(find(host, '[data-action="deposit"]'));
+    expect(document.activeElement).toBe(amount(host));
+    await click(
+      [...host.querySelectorAll('button')].find(
+        (button) => button.textContent === en.mix.deposit.backToProposal,
+      ) as HTMLElement,
+    );
+    expect(document.activeElement).toBe(find(host, '[data-action="deposit"]'));
+  });
+
+  it('holds the deposit action while a reply is being worked on', async () => {
+    let release: () => void = () => {};
+    let n = 0;
+    portStore.setApi(async (url, init) => {
+      if (init?.method !== 'POST') return baseApi(url);
+      const body = JSON.parse(String(init.body));
+      n += 1;
+      if (n === 2)
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      return json({ ...response(body.messageId), goal: 'grow', risk: 'high' });
+    });
+    const host = await show();
+    await send(host, 'Stocks to grow, high risk');
+    await type(find<HTMLTextAreaElement>(host, 'textarea'), 'more of the first');
+    await click(find(host, '[data-ui="composer-send"]'));
+    // the last mix stays on the screen, and its button waits for the reply
+    const press = find(host, '[data-action="deposit"]');
+    expect(press.getAttribute('aria-disabled')).toBe('true');
+    await click(press);
+    expect(host.querySelector('[data-ui="deposit-step"]')).toBeNull();
+    release();
+    await settle();
+    expect(find(host, '[data-action="deposit"]').getAttribute('aria-disabled')).toBeNull();
+  });
+
   it('starts over with no mix, no amount and no deposit step', async () => {
     replies({ goal: 'grow', risk: 'high' });
     const host = await show();

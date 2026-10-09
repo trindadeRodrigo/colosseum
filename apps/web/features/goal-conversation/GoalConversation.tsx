@@ -205,6 +205,14 @@ export function GoalConversation({
   }
   // What the person said the money is for and the risk, as the newest reply read the whole conversation.
   const said: Purpose = { goal: reply?.goal ?? null, risk: reply?.risk ?? null };
+  // "Back to the proposal": focus goes to the button that opened the step, never to the page. A new
+  // proposal closing the step leaves focus where the person is typing.
+  const backToPreview = useRef(false);
+  useEffect(() => {
+    if (depositing || !backToPreview.current) return;
+    backToPreview.current = false;
+    box.current?.parentElement?.querySelector<HTMLElement>('[data-action="deposit"]')?.focus();
+  }, [depositing]);
   /** Weights, the goal and the risk are changed by saying so: back to the box, the mix kept. */
   const toChat = () => box.current?.querySelector('textarea')?.focus();
   // The person's last words with no reply after them: a failed reply, or one a reload cut short.
@@ -340,7 +348,11 @@ export function GoalConversation({
               onAmountText={setAmountText}
               provenance={provenance}
               onChangeMix={toChat}
-              onClose={() => setDepositing(false)}
+              waiting={busy}
+              onClose={() => {
+                backToPreview.current = true;
+                setDepositing(false);
+              }}
             />
             {reply && !reply.proposal && reply.notes && <WeightNotes notes={reply.notes} />}
           </>
@@ -355,6 +367,8 @@ export function GoalConversation({
                       label: t.mix.preview.deposit,
                       onUse: () => setDepositing(true),
                       primary: true,
+                      // a reply is being worked on: the mix may be about to change
+                      disabled: busy,
                     },
                   }
                 : {})}

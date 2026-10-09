@@ -1,6 +1,6 @@
 'use client';
 import type { ChainId } from '@colosseum/schemas';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Field, Input, Select } from '../../components/ui/Field';
 import { StatusMark } from '../../components/ui/StatusMark';
@@ -67,6 +67,15 @@ export function WeightEditor({
   const lang = useLang();
   const e = t.mix.editor;
   const [adding, setAdding] = useState('');
+  const list = useRef<HTMLUListElement>(null);
+  const addBox = useRef<HTMLDivElement>(null);
+  /** After a row is removed: the row that took its place, the one before it, or the way to add one. */
+  const focusAfterRemove = (index: number, left: number) =>
+    requestAnimationFrame(() => {
+      const inputs = list.current?.querySelectorAll<HTMLElement>('input') ?? [];
+      const next = inputs[Math.min(index, left - 1)];
+      (left > 0 && next ? next : addBox.current?.querySelector<HTMLElement>('select'))?.focus();
+    });
   const { rows, unit } = value;
   const read = rows.map((row) => ({ assetId: row.assetId, weightBps: bpsOf(row.text, unit) }));
   // A weight that does not read is said on its own field; here it stands as one that is not whole.
@@ -118,7 +127,7 @@ export function WeightEditor({
           </Field>
         </>
       )}
-      <ul data-ui="targets-lines" className="flex flex-col gap-3">
+      <ul ref={list} data-ui="targets-lines" className="flex flex-col gap-3">
         {rows.map((row, i) => {
           const name = nameOf(row.assetId);
           return (
@@ -148,7 +157,10 @@ export function WeightEditor({
               <Button
                 variant="secondary"
                 size="dense"
-                onClick={() => edit(rows.filter((_, j) => j !== i))}
+                onClick={() => {
+                  edit(rows.filter((_, j) => j !== i));
+                  focusAfterRemove(i, rows.length - 1);
+                }}
               >
                 {e.remove(name)}
               </Button>
@@ -160,7 +172,7 @@ export function WeightEditor({
         {e.cash(left < 0 ? `−${share(left)}` : share(left))}
       </p>
       {listed.length > 0 && rows.length < MAX_LINES ? (
-        <div className="flex flex-wrap items-end gap-3">
+        <div ref={addBox} className="flex flex-wrap items-end gap-3">
           <Field label={e.add}>
             {(control) => (
               <Select

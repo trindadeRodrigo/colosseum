@@ -55,6 +55,7 @@ export function DepositStep({
   provenance,
   onChangeMix,
   onClose,
+  waiting = false,
 }: {
   chain: ChainId;
   userId: string;
@@ -70,6 +71,8 @@ export function DepositStep({
   onChangeMix: () => void;
   /** Back to the proposal as the conversation showed it. */
   onClose: () => void;
+  /** The conversation is working on a reply: the mix may be about to change, so no review starts. */
+  waiting?: boolean;
 }) {
   const t = useT();
   const lang = useLang();
@@ -91,12 +94,33 @@ export function DepositStep({
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
+  // The amount has been still for a moment, or the field was left: only then is it said to be wrong.
+  const [settled, setSettled] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const focus = (selector: string) => root.current?.querySelector<HTMLElement>(selector)?.focus();
+  // The step opens with the one thing to type. Focus never falls to the page when a screen changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the step opens
+  useEffect(() => focus('[data-ui="amount-large"] input'), []);
+  // From the review back to the step: the press that led there.
+  const reviewing = review !== null;
+  const wasReviewing = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `focus` reads a ref
+  useEffect(() => {
+    if (wasReviewing.current && !reviewing) focus('[data-action="deposit-review"]');
+    wasReviewing.current = reviewing;
+  }, [reviewing]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a pause after each change of the text
+  useEffect(() => {
+    setSettled(false);
+    const timer = setTimeout(() => setSettled(true), CHECK_MS);
+    return () => clearTimeout(timer);
+  }, [amountText]);
 
   // Read as the buy screen reads an amount: in Portuguese "100,50" is a hundred dollars and fifty cents.
   const typed = parseNumber(amountText, lang);
   const amount = typed !== null && typed >= MIN_USD && typed <= MAX_USD ? typed : null;
   const amountError =
-    !amountText.trim() && !tried
+    (!amountText.trim() || !settled) && !tried
       ? undefined
       : typed === null || Number.isNaN(typed)
         ? d.errors.notAmount
@@ -117,7 +141,9 @@ export function DepositStep({
     .map(({ assetId, weightBps }) => ({ assetId, weightBps }));
   const shown = weights ?? weightsOf(start);
   const lines = cash ? linesOf(shown, cash) : null;
-  const edited = lines !== null && !sameMix(lines, start);
+  // Edited means the person changed a weight, whether or not the weights add up yet.
+  const edited = weights !== null && !(lines !== null && sameMix(lines, start));
+  const broken = weights !== null && lines === null;
 
   const body =
     amount !== null && goal && risk && lines && cash
@@ -184,6 +210,8 @@ export function DepositStep({
       acceptedWarnings: [],
     });
     setBusy(false);
+    // The step is locked while this runs; an answer about anything else is still dropped.
+    if (sending.current.key !== key) return;
     if (answer.kind !== 'ok')
       return setChecked({
         key,
@@ -223,7 +251,7 @@ export function DepositStep({
 
   if (review)
     return (
-      <>
+      <div ref={root} data-ui="deposit-review" className="flex min-w-0 flex-col gap-4">
         <MixReviewCard
           review={review}
           ticked={ticked}
@@ -232,6 +260,8 @@ export function DepositStep({
           onConfirm={confirm}
           onBack={() => setReview(null)}
           backLabel={d.backToDeposit}
+          purpose={d.purpose(review.goal ?? goal, risk)}
+          focusOnOpen
           busy={busy}
           changed={changed}
         />
@@ -243,7 +273,7 @@ export function DepositStep({
             {failure}
           </p>
         )}
-      </>
+      </div>
     );
 
   const nameOf = (asset: string) =>
@@ -268,13 +298,15 @@ export function DepositStep({
   // Why the press does nothing yet, in the order a person would fix it.
   const blocked = !cash
     ? t.mix.failure.readOnly
-    : !lines
-      ? d.blocked.weights
-      : amount === null
-        ? d.blocked.amount
-        : !goal || !risk
-          ? d.blocked.purpose
-          : null;
+    : waiting
+      ? d.blocked.reply
+      : !lines
+        ? d.blocked.weights
+        : amount === null
+          ? d.blocked.amount
+          : !goal || !risk
+            ? d.blocked.purpose
+            : null;
   const status = refused
     ? null
     : live
@@ -315,7 +347,7 @@ export function DepositStep({
   );
 
   return (
-    <div data-ui="deposit-step" className="min-w-0">
+    <div ref={root} data-ui="deposit-step" className="min-w-0">
       <Card
         as="section"
         aria-labelledby={titleId}
@@ -338,7 +370,7 @@ export function DepositStep({
             </p>
           )}
           {(!said.goal || !said.risk) && (
-            <div className="flex min-w-0 flex-col gap-3">
+            <div inert={busy} className="flex min-w-0 flex-col gap-3">
               {!said.goal &&
                 choice('goal', d.askGoal, GOALS, t.mix.goal.goals, picked.goal ?? null)}
               {!said.risk &&
@@ -349,9 +381,11 @@ export function DepositStep({
             </div>
           )}
 
-          <div className="flex min-w-0 flex-col gap-2">
+          <div inert={busy} className="flex min-w-0 flex-col gap-2">
             <AmountField
               large
+              disabled={busy}
+              onBlur={() => setSettled(true)}
               text={amountText}
               onText={onAmountText}
               hint={d.limits}
@@ -383,8 +417,14 @@ export function DepositStep({
                 </span>
               )}
             </h3>
-            <MixLines rows={rows} caption={d.mix} amounts />
-            {status && (
+            {broken ? (
+              <p data-ui="deposit-broken" className="text-body-sm">
+                {d.brokenMix}
+              </p>
+            ) : (
+              <MixLines rows={rows} caption={d.mix} amounts />
+            )}
+            {status && !broken && (
               <p
                 role="status"
                 data-ui="deposit-check"
@@ -431,7 +471,9 @@ export function DepositStep({
                 {blocked}
               </p>
             )}
-            <p className="max-w-(--tf-measure-body) text-caption text-muted-foreground">{d.next}</p>
+            <p className="max-w-(--tf-measure-body) text-caption text-muted-foreground">
+              {d.next} {d.balance}
+            </p>
           </div>
 
           {cash && (
@@ -455,7 +497,12 @@ export function DepositStep({
                   {d.backToProposal}
                 </Button>
               </div>
-              <div id={editorId} hidden={!editing} className="flex min-w-0 flex-col gap-3">
+              <div
+                id={editorId}
+                hidden={!editing}
+                inert={busy}
+                className="flex min-w-0 flex-col gap-3"
+              >
                 {editing && (
                   <>
                     <p className="max-w-(--tf-measure-body) text-body-sm">{d.editorLead}</p>

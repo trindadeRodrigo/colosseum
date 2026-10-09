@@ -17,6 +17,7 @@ export function AmountField({
   large = false,
   unit,
   error,
+  onBlur,
 }: {
   text: string;
   onText: (text: string) => void;
@@ -31,9 +32,12 @@ export function AmountField({
   unit?: string;
   /** What to change, where the host knows more than "not an amount": below the least, above the most. */
   error?: string;
+  onBlur?: () => void;
 }) {
   const t = useT();
-  const said = error ?? (text.trim() && value === null ? t.buy.blocked.amount : undefined);
+  // The large field's host says when an amount is wrong (after a pause, never on the first digit).
+  const said =
+    error ?? (!large && text.trim() && value === null ? t.buy.blocked.amount : undefined);
   return (
     <Field
       label={t.buy.amount.label}
@@ -62,6 +66,7 @@ export function AmountField({
               disabled={disabled}
               value={text}
               onChange={(e) => onText(e.currentTarget.value)}
+              onBlur={onBlur}
               className="h-full min-w-0 flex-1 bg-transparent text-h3 text-foreground tabular-nums outline-none placeholder:text-muted-foreground"
             />
             {unit && <span className="shrink-0 text-body-sm text-muted-foreground">{unit}</span>}
