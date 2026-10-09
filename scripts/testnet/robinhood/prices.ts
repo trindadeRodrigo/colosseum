@@ -7,6 +7,10 @@
 //   PRICE_WRITER_KEY_FILE=<path> pnpm exec tsx scripts/testnet/robinhood/prices.ts --once
 //   PRICE_WRITER_KEY_FILE=<path> pnpm exec tsx scripts/testnet/robinhood/prices.ts --loop [--every 60]
 //
+// --hold-last, with any of the three: a price whose mainnet feed has posted nothing newer (a closed
+// market) is written again, same value, when it is four hours from the age the vault takes, and logged as
+// `held <token> at <price> (source last posted <time>)`. Off unless said.
+//
 // RH_TESTNET_RPC_URL replaces the test network's public RPC and SOURCE_RPC_URL mainnet's; FACTORY names
 // the vault's factory so that its ranges are held to; TESTNET_RECORD the kit's record. The key file holds
 // the price writer's key as hex; it is read, never printed. The runbook is contracts/README.md, "The
@@ -26,7 +30,7 @@ const RECORD = resolve(
 );
 const TESTNET_RPC = process.env.RH_TESTNET_RPC_URL ?? 'https://rpc.testnet.chain.robinhood.com';
 
-type Mode = { dryRun: boolean; loop: boolean; everySeconds: number };
+type Mode = { dryRun: boolean; loop: boolean; everySeconds: number; holdLast: boolean };
 
 export function parseArgs(argv: string[]): Mode {
   const dryRun = argv.includes('--dry-run');
@@ -38,7 +42,7 @@ export function parseArgs(argv: string[]): Mode {
   const everySeconds = at === -1 ? 60 : Number(argv[at + 1]);
   if (!Number.isInteger(everySeconds) || everySeconds < 15)
     throw new Error('--every takes whole seconds, 15 or more');
-  return { dryRun, loop, everySeconds };
+  return { dryRun, loop, everySeconds, holdLast: argv.includes('--hold-last') };
 }
 
 /** The price writer's key from its file: 32 bytes of hex, with or without 0x. Never echoed. */
@@ -61,12 +65,13 @@ export function forgeArgs(dryRun: boolean, priceWriter: string): string[] {
   return dryRun ? [...args, '--sender', priceWriter] : [...args, '--broadcast', '--slow'];
 }
 
-/** The lines of forge's output a person reads: the source block, each token, the round's totals. */
+/** The lines of forge's output a person reads: the source block, each token, each held value, the
+ * round's totals. */
 export function roundLines(output: string): string[] {
   return output
     .split('\n')
     .map((line) => line.replace(/^ {2}/, ''))
-    .filter((line) => /^(source:|round:| {2}t[A-Za-z]+:)/.test(line))
+    .filter((line) => /^(source:|round:| {2}t[A-Za-z]+:| {2}held t[A-Za-z]+ )/.test(line))
     .map((line) => line.trimEnd());
 }
 
@@ -76,6 +81,8 @@ function round(mode: Mode, priceWriter: string, key: string | null): Promise<boo
       ...process.env,
       TESTNET_RECORD: RECORD,
       FOUNDRY_DISABLE_NIGHTLY_WARNING: '1',
+      // Said here every round, so that a HOLD_LAST left in the shell decides nothing.
+      HOLD_LAST: mode.holdLast ? 'true' : 'false',
     };
     if (key) env.PRICE_WRITER_KEY = key;
     const child = spawn('forge', forgeArgs(mode.dryRun, priceWriter), { cwd: CONTRACTS, env });

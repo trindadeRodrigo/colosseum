@@ -224,6 +224,104 @@ contract CopyPricesTest is KitFixture {
         assertEq(bytes(copier.refusal("price", 1e8, block.timestamp + 60, 0, 0, 0, 0, 1000)).length, 0);
     }
 
+    // ---- holding the last price (`--hold-last`)
+
+    function _copyHolding() internal returns (CopyPrices.Result memory) {
+        return copier.copy(record, _read(), 1000, address(factory), true);
+    }
+
+    /// A market that has closed: nothing is written until a value is four hours from the vault's 26, with
+    /// the flag or without it; then, with the flag, the price and the average keep their value and take
+    /// the time of the block read, and the vault's age limit is not passed.
+    function test_copier_holding_writesTheSameValueAgain_fourHoursBeforeItsAgeLimit() public {
+        vm.warp(T0);
+        _sourcesAt(T0 - 10);
+        _copy();
+        uint256 n = d.tokens.length;
+
+        vm.warp(T0 - 10 + 22 hours - 1);
+        CopyPrices.Result memory result = _copyHolding();
+        assertEq(result.held, 0, "not yet within four hours of the limit");
+        assertEq(result.unchanged, n);
+
+        vm.warp(T0 + 22 hours);
+        result = _copy();
+        assertEq(result.held, 0, "without the flag nothing is held");
+        assertEq(result.unchanged, n);
+        (, uint256 at) = _held(d.tokens[0].feed);
+        assertEq(at, T0 - 10);
+
+        result = _copyHolding();
+        assertEq(result.held, n);
+        assertEq(result.written, 0);
+        assertEq(result.refused, 0);
+        for (uint256 i; i < n; ++i) {
+            (int256 price, uint256 priceAt) = _held(d.tokens[i].feed);
+            assertEq(price, cfg.tokens[i].answer);
+            assertEq(priceAt, T0 + 22 hours);
+            (int256 average, uint256 averageAt) = _held(d.tokens[i].average);
+            assertEq(average, cfg.tokens[i].answer);
+            assertEq(averageAt, T0 + 22 hours);
+        }
+        assertEq(_copyHolding().held, 0, "a second round holds nothing");
+
+        // Thirty hours after the source's last round the price is eight hours old, not thirty.
+        vm.warp(T0 + 30 hours);
+        (, at) = _held(d.tokens[0].feed);
+        assertLe(block.timestamp - at, factory.asset(d.tokens[0].token).maxAge);
+    }
+
+    /// A round the source posts after a hold is newer than the held time, and is copied.
+    function test_copier_holding_aRealRoundAfterAHold_isCopied() public {
+        vm.warp(T0);
+        _sourcesAt(T0 - 10);
+        _copy();
+        vm.warp(T0 + 23 hours);
+        _copyHolding();
+
+        int256 p = cfg.tokens[0].answer * 101 / 100;
+        vm.warp(T0 + 23 hours + 30);
+        sources[0].write(p, T0 + 23 hours + 30);
+        vm.warp(T0 + 23 hours + 60);
+        CopyPrices.Result memory result = _copyHolding();
+        assertEq(result.written, 1);
+        assertEq(result.held, 0);
+        (int256 price, uint256 at) = _held(d.tokens[0].feed);
+        assertEq(price, p);
+        assertEq(at, T0 + 23 hours + 30);
+    }
+
+    /// A value the source does not hold is never held: here the test network's price was written by hand.
+    function test_copier_holding_aValueThatIsNotTheSources_isLeftAlone() public {
+        vm.warp(T0);
+        _sourcesAt(T0 - 10);
+        _copy();
+        int256 other = cfg.tokens[0].answer * 101 / 100;
+        vm.prank(address(kit));
+        TestPriceFeed(d.tokens[0].feed).write(other, T0);
+
+        vm.warp(T0 + 23 hours);
+        CopyPrices.Result memory result = _copyHolding();
+        (int256 price, uint256 at) = _held(d.tokens[0].feed);
+        assertEq(price, other);
+        assertEq(at, T0, "the price is not the source's: not held");
+        (, uint256 averageAt) = _held(d.tokens[0].average);
+        assertEq(averageAt, T0 + 23 hours, "its average is");
+        assertEq(result.held, d.tokens.length);
+    }
+
+    /// Holding writes nowhere that is a mainnet either.
+    function test_copier_holding_refusesAMainnet() public {
+        vm.warp(T0);
+        _sourcesAt(T0 - 10);
+        _copy();
+        vm.warp(T0 + 23 hours);
+        CopyPrices.Reading[] memory readings = _read();
+        vm.chainId(4663);
+        vm.expectRevert(abi.encodeWithSelector(CopyPrices.MainnetRefused.selector, 4663));
+        copier.copy(record, readings, 1000, address(factory), true);
+    }
+
     /// After a copy that moves the price, each pool goes back to its test price.
     function test_copier_recentresThePools() public {
         vm.warp(KIT_TIME + 60);

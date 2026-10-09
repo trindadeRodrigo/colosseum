@@ -29,6 +29,9 @@ import type { Deployment } from './src/testnet/setup';
 //   --max-jump-bps <bps>   refuse a value further than this from what devnet holds, per hour since
 //                          devnet's entry was stamped (default 1000; at least an hour's worth, at most 5000)
 //   --record <file>        the deployment record (default deployments/solana-devnet.json)
+//   --hold-last            while a source posts nothing new (a closed market), write its last value
+//                          again with the cluster's time so the price does not go stale; each one is
+//                          logged as `held <token> at <price> (source last posted <time>)`
 //
 // MAINNET_RPC_URL is read only (default https://api.mainnet-beta.solana.com): the source must answer
 // with mainnet's genesis hash, and nothing is ever sent to it. The destination must not: its genesis
@@ -76,6 +79,7 @@ async function main(): Promise<void> {
   const loop = flag('--loop');
   if (once === loop) throw new Error('say --once or --loop');
   const dryRun = flag('--dry-run');
+  const holdLast = flag('--hold-last');
   const interval = Number(value('--interval') ?? 30);
   const maxJumpBps = Number(value('--max-jump-bps') ?? 1000);
   if (!(interval >= 5) || !(maxJumpBps > 0))
@@ -101,7 +105,7 @@ async function main(): Promise<void> {
   const writer = await keypairFromFile(need('SOLANA_PRICE_WRITER_KEYPAIR'));
   const sources = loadSources();
   log(
-    `copying mainnet prices onto ${cluster} as ${writer.address}; ${loop ? `every ${interval} s` : 'once'}${dryRun ? '; dry run: nothing is sent' : ''}; provenance sandbox`,
+    `copying mainnet prices onto ${cluster} as ${writer.address}; ${loop ? `every ${interval} s` : 'once'}${dryRun ? '; dry run: nothing is sent' : ''}${holdLast ? '; holding the last price of a source that has stopped' : ''}; provenance sandbox`,
   );
 
   let stopping = false;
@@ -116,6 +120,7 @@ async function main(): Promise<void> {
       const result = await copyRound(chain, writer, deployment, readings, {
         dryRun,
         maxJumpBps,
+        holdLast,
         log,
       });
       log(roundLine(new Date(), round, result, dryRun));
