@@ -2111,6 +2111,7 @@ export type GetFundingQuery = {
   amountUsd?: number;
   proposalId?: string;
   family?: string;
+  chain?: 'solana' | 'base' | 'robinhood';
   vault?: string | string;
   vaultChain?: 'solana' | 'base' | 'robinhood';
 };
@@ -2445,6 +2446,7 @@ export type PostOrdersBody =
       maxSlippageBps?: number;
       proposalId?: string;
       family?: string;
+      chain?: 'solana' | 'base' | 'robinhood';
       version?: number;
       vault?: {
         chain: 'solana' | 'base' | 'robinhood';
@@ -3711,6 +3713,7 @@ export type PostTestnetFundBody = {
   amountUsd: number;
   proposalId?: string;
   family?: string;
+  chain?: 'solana' | 'base' | 'robinhood';
   vault?: string | string;
   vaultChain?: 'solana' | 'base' | 'robinhood';
 };

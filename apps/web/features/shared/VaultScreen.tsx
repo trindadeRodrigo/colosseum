@@ -146,10 +146,12 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
           </a>
         )}
       </p>
-      {mine && account.status === 'ready' && account.chain === read.chain && (
+      {/* The owner's, on the vault's own chain: offered where a wallet of theirs signs on it,
+          whatever chain their new plans start on (gate CHAIN-AT-THE-PLAN). */}
+      {mine && account.status === 'ready' && account.options.includes(read.chain) && (
         <Link
           data-ui="vault-share-strategy"
-          href={`/publish?vault=${encodeURIComponent(vault.address)}`}
+          href={`/publish?vault=${encodeURIComponent(vault.address)}&chain=${read.chain}`}
           className={buttonClass({ variant: 'secondary' })}
         >
           {t.shared.publish.shareStrategy}

@@ -21,7 +21,7 @@ import { withAccount } from '../account/test/screen';
 import { acceptTrust, keepOrder, recallOrder, trustAccepted } from '../order/order-record';
 import { basketOfPlan, explorerAddressUrlFor, publishableOn } from '../order/readiness';
 import { PLAN_ID, planOn, recordOf } from '../order/test/fixtures';
-import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port';
+import { EMBEDDED, EVM, fakePort, json, METAMASK, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { FamilyBuyScreen } from './FamilyBuyScreen';
@@ -87,8 +87,8 @@ vi.mock('./publish-vault', async (original) => {
   };
 });
 
-// The shared-portfolio screens with real events, against a double of the API (WEB-4): the shelf of the
-// person's chain, the creator's words as text, the auto-follow switch only where it is offered (gate
+// The shared-portfolio screens with real events, against a double of the API (WEB-4): the one shelf of
+// every chain's portfolios (gate CHAIN-AT-THE-PLAN), the creator's words as text, the auto-follow switch only where it is offered (gate
 // GOLD-ONE-TAP), the prompt when a followed portfolio changed, a follow that names the vault's own plan
 // number, and the publish form, whose family id and text are its own.
 
@@ -103,11 +103,33 @@ const person: Person = {
   chainOptions: [],
 };
 
+/** The same portfolio's recipe on Robinhood Chain, run on the mock. */
+const RH_RECIPE = () =>
+  recipeOf({
+    chain: 'robinhood',
+    name: 'Robinhood Chain',
+    onchainId: '0x5fbdb2315678afecb367f032d93f642f64180aa3',
+    creator: '0x1111111111111111111111111111111111111111',
+    provenance: 'mock',
+  });
+/** The recipes on the page, each by its pane's title ("On Solana"). */
+const panes = (host: HTMLElement) =>
+  [...host.querySelectorAll('[data-ui="plan-pane"]')].map(
+    (pane) => pane.querySelector('h1, h2, h3')?.textContent,
+  );
+/** A portfolio with a recipe on each chain. */
+const BOTH = () =>
+  familyOf(FAMILY_ID, { chains: ['solana', 'robinhood'], recipes: [recipeOf(), RH_RECIPE()] });
+
 /** The vault of the fake port's wallet for plan 42, as the guard derives it on Solana. */
 const MY_VAULT = solanaVaultAddress('529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW', SOLANA, '42');
 
 function api(o: {
   family?: ReturnType<typeof familyOf> | null;
+  /** The shelf, when it holds more than the one portfolio. */
+  families?: ReturnType<typeof familyOf>[];
+  /** The person's wallets and the chains they sign on; a passkey's two unless said. */
+  person?: Partial<Person>;
   vaults?: (ReturnType<typeof vaultOf> & { name?: string | null })[];
   order?: () => unknown;
   portfolio?: () => Promise<Response>;
@@ -120,14 +142,15 @@ function api(o: {
   portStore.setApi(async (path, init) => {
     const method = init?.method ?? 'GET';
     calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-    if (path === '/v1/me') return json({ ...person, chain: o.chain ?? person.chain });
+    if (path === '/v1/me')
+      return json({ ...person, ...o.person, chain: o.chain ?? o.person?.chain ?? person.chain });
     if (path === '/v1/me/chain' && method === 'PUT') {
       const { chain } = JSON.parse(String(init?.body));
       o.chain = chain;
-      return json({ ...person, chain });
+      return json({ ...person, ...o.person, chain });
     }
     if (path.startsWith('/v1/shelf'))
-      return json({ families: o.family ? [o.family] : [], disclaimer: 'd' });
+      return json({ families: o.families ?? (o.family ? [o.family] : []), disclaimer: 'd' });
     if (path.startsWith(`/v1/indexes/${SLUG}/versions`))
       return json({ familyId: FAMILY_ID, slug: SLUG, chains: [] });
     if (path.startsWith('/v1/indexes/'))
@@ -174,7 +197,7 @@ beforeEach(() => {
 afterEach(unmountAll);
 
 describe('the shelf', () => {
-  it('asks for the person’s chain only, and shows a creator’s words as text, never markup', async () => {
+  it('asks for every chain’s portfolios, and shows a creator’s words as text, never markup', async () => {
     const calls = api({
       family: familyOf(FAMILY_ID, {
         name: '<img src=x onerror=alert(1)>Three',
@@ -185,7 +208,9 @@ describe('the shelf', () => {
       }),
     });
     const host = await show(createElement(ShelfScreen));
-    expect(calls.some((c) => c.path === '/v1/shelf?chain=solana')).toBe(true);
+    expect(calls.map((c) => c.path).filter((p) => p.startsWith('/v1/shelf'))).toEqual([
+      '/v1/shelf',
+    ]);
     const card = find(host, '[data-ui="shelf-card"]');
     expect(card.textContent).toContain('<img src=x onerror=alert(1)>Three');
     expect(card.querySelector('img')).toBeNull();
@@ -205,31 +230,130 @@ describe('the shelf', () => {
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
 
-  describe('for someone signed out (CHAIN-SWITCH)', () => {
+  /** A portfolio on Robinhood Chain, on the mock, and the one on Solana's test network. */
+  const onRobinhood = () =>
+    familyOf('cd'.repeat(32), {
+      slug: 'on-robinhood',
+      name: 'Robinhood three',
+      chains: ['robinhood'],
+      recipes: [RH_RECIPE()],
+    });
+  const cardsOf = (host: HTMLElement) =>
+    [...host.querySelectorAll<HTMLElement>('[data-ui="shelf-card"]')].map((card) => ({
+      name: card.querySelector('a')?.textContent,
+      chains: [...card.querySelectorAll('[data-ui="chain-badge"]')].map((b) => b.textContent),
+      note: card.querySelector('[data-ui="sample-note"]')?.textContent,
+    }));
+
+  it('lists both chains’ portfolios together, each with its chain and its own sample mark', async () => {
+    // whatever chain the person's new plans start on: the list is not of one chain
+    const calls = api({
+      chain: 'robinhood',
+      families: [
+        familyOf(FAMILY_ID),
+        onRobinhood(),
+        familyOf('ef'.repeat(32), {
+          slug: 'on-both',
+          name: 'On both',
+          chains: ['solana', 'robinhood'],
+          // another recipe on Robinhood Chain: other tokens, weights, publisher and version
+          recipes: [
+            recipeOf(),
+            {
+              ...RH_RECIPE(),
+              active: {
+                ...RH_RECIPE().active,
+                version: 5,
+                components: [
+                  { asset: 'robinhood:tspy', weightBps: 7000 },
+                  { asset: 'robinhood:tnvda', weightBps: 3000 },
+                ],
+              },
+            },
+          ],
+        }),
+        // every recipe on a chain our server has switched off: nothing to show
+        familyOf('01'.repeat(32), { slug: 'off', name: 'Off', chains: ['base'], recipes: [] }),
+      ],
+    });
+    const host = await show(createElement(ShelfScreen));
+    expect(calls.map((c) => c.path).filter((p) => p.startsWith('/v1/shelf'))).toEqual([
+      '/v1/shelf',
+    ]);
+    expect(cardsOf(host)).toEqual([
+      { name: 'Three of the largest', chains: ['Solana'], note: en.shell.testNetworkLine },
+      { name: 'Robinhood three', chains: ['Robinhood Chain'], note: en.shell.mockAnnounce },
+      // run differently on each chain: the card's line is the plain one, and each chain says its own
+      { name: 'On both', chains: ['Solana', 'Robinhood Chain'], note: en.shell.mockAnnounce },
+    ]);
+    // A portfolio on one chain shows that chain's figures under its one badge.
+    const [solanaCard, , bothCard] = [
+      ...host.querySelectorAll<HTMLElement>('[data-ui="shelf-card"]'),
+    ];
+    expect(solanaCard?.querySelector('[data-ui="holdings-bar"]')).not.toBeNull();
+    expect(solanaCard?.querySelector('[data-ui="shelf-recipe"]')).toBeNull();
+    // One on both shows no figure of one chain as the family's: no bar, no yield line, and each
+    // chain's weights, publisher and version under that chain's own name and mark.
+    expect(bothCard?.querySelector('[data-ui="holdings-bar"]')).toBeNull();
+    expect(bothCard?.querySelector('[data-ui="product-yield"]')).toBeNull();
+    expect(bothCard?.textContent).toContain(en.shared.family.perChain);
+    const whose = [...(bothCard?.querySelectorAll<HTMLElement>('[data-ui="shelf-recipe"]') ?? [])];
+    expect(
+      whose.map((li) => [
+        li.getAttribute('data-chain'),
+        li.querySelector('[data-ui="chain-badge"]')?.textContent,
+      ]),
+    ).toEqual([
+      ['solana', 'Solana'],
+      ['robinhood', 'Robinhood Chain'],
+    ]);
+    expect(whose[0]?.textContent).toContain('SPYx 40% · NVDAx 30% · TSLAx 30%');
+    expect(whose[0]?.textContent).toContain(en.shared.shelf.card.version(2));
+    expect(whose[0]?.textContent).toContain('US51…ELFx');
+    expect(whose[0]?.textContent).toContain(en.shell.testNetwork);
+    expect(whose[0]?.textContent).not.toContain('0x11');
+    expect(whose[1]?.textContent).toContain('SPY 70% · NVDA 30%');
+    expect(whose[1]?.textContent).toContain(en.shared.shelf.card.version(5));
+    expect(whose[1]?.textContent).toContain('0x11…1111');
+    expect(whose[1]?.textContent).not.toContain('US51');
+    expect(whose[1]?.textContent).not.toContain('40%');
+    // the family's own, said once: its name and its creator's words
+    expect(bothCard?.textContent).toContain('Three test tokens.');
+    expect(host.textContent).toContain(en.shared.shelf.lead);
+    // the address names no chain, and none is stored for the person
+    expect(window.location.search).toBe('');
+    expect(calls.some((c) => c.path === '/v1/me/chain')).toBe(false);
+    expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
+  });
+
+  describe('for someone signed out', () => {
     beforeEach(() => {
       portStore.set(fakePort());
       window.history.replaceState(null, '', '/shelf');
     });
     afterEach(() => window.history.replaceState(null, '', '/'));
 
-    it('shows the chain picked in the bar, and names it in the address', async () => {
+    it('shows the same one list, whatever chain this browser was last on', async () => {
       window.localStorage.setItem('tf-chain', 'robinhood');
-      const calls = api({ family: familyOf(FAMILY_ID) });
+      const calls = api({ families: [familyOf(FAMILY_ID), onRobinhood()] });
       const host = await show(createElement(ShelfScreen));
       expect(calls.map((c) => c.path).filter((p) => p.startsWith('/v1/shelf'))).toEqual([
-        '/v1/shelf?chain=robinhood',
+        '/v1/shelf',
       ]);
-      expect(window.location.search).toBe('?chain=robinhood');
-      expect(host.textContent).toContain(en.shared.shelf.lead('Robinhood Chain'));
+      expect(cardsOf(host).map((c) => c.chains)).toEqual([['Solana'], ['Robinhood Chain']]);
+      expect(window.location.search).toBe('');
+      expect(host.textContent).toContain(en.shared.shelf.lead);
     });
 
-    it('opens on the chain a link names, and keeps it in this browser', async () => {
+    it('does not move to a chain an old link names: the list is whole, and this browser keeps its own', async () => {
       window.history.replaceState(null, '', '/shelf?chain=robinhood');
-      const calls = api({ family: familyOf(FAMILY_ID) });
-      await show(createElement(ShelfScreen));
-      expect(calls.at(-1)?.path).toBe('/v1/shelf?chain=robinhood');
-      expect(calls.some((c) => c.path === '/v1/shelf?chain=solana')).toBe(false);
-      expect(window.localStorage.getItem('tf-chain')).toBe('robinhood');
+      window.localStorage.setItem('tf-chain', 'solana');
+      const calls = api({ families: [familyOf(FAMILY_ID), onRobinhood()] });
+      const host = await show(createElement(ShelfScreen));
+      expect(calls.map((c) => c.path).filter((p) => p.startsWith('/v1/shelf'))).toEqual([
+        '/v1/shelf',
+      ]);
+      expect(cardsOf(host)).toHaveLength(2);
     });
   });
 });
@@ -360,8 +484,9 @@ describe('a portfolio’s page (gate GOLD-ONE-TAP)', () => {
       expect(allocations[3].querySelector('[data-ui="holdings-bar"]')).toBeNull();
       expect(allocations[3].textContent).toContain('PAXG —');
       expect(allocations[3].textContent).toContain(t.portfolio.vault.unpriced(1));
-      // Existing page reads: other-chain vaults and owned-vault cards; bars add no per-vault requests.
-      expect(calls.filter((call) => call.path === '/v1/portfolio')).toHaveLength(2);
+      // One page read, for the owned-vault cards (a portfolio on one chain has no other chain to
+      // look on); bars add no per-vault requests.
+      expect(calls.filter((call) => call.path === '/v1/portfolio')).toHaveLength(1);
       expect(calls.some((call) => call.path === '/v1/orders')).toBe(false);
     },
   );
@@ -542,7 +667,7 @@ describe('a portfolio’s page (gate GOLD-ONE-TAP)', () => {
     ['chain', 'placed'],
     ['chain', 'refused'],
   ] as const)(
-    'ignores a late %s-context follow reply (%s) before storing or navigating',
+    'after a change of %s, a late follow reply (%s) is ignored for another person and kept for another chain',
     async (context, outcome) => {
       let release!: () => void;
       const waiting = new Promise<void>((resolve) => {
@@ -586,6 +711,18 @@ describe('a portfolio’s page (gate GOLD-ONE-TAP)', () => {
         await click(button(host, 'Test chain switch') as HTMLElement);
       }
       await settle(50);
+      if (context === 'chain') {
+        // The chain new plans start on is not this page's: the vault and its follow are on their
+        // own chain (gate CHAIN-AT-THE-PLAN), so the follow in flight is still this page's.
+        expect(host.querySelector('[data-ui="review-follow"]')).not.toBeNull();
+        release();
+        await settle(50);
+        if (outcome === 'placed') {
+          expect(recallOrder(ORDER_ID, USER)?.chain).toBe('solana');
+          expect(router.push).toHaveBeenCalledWith(`/orders/${ORDER_ID}`);
+        } else expect(host.querySelector('[role="alert"]')).not.toBeNull();
+        return;
+      }
       expect(host.querySelector('[data-ui="review-follow"]')).toBeNull();
       release();
       await settle(50);
@@ -740,37 +877,85 @@ describe('a portfolio’s page (gate GOLD-ONE-TAP)', () => {
     ).toBe(false);
   });
 
-  it('is not offered on another chain than the person’s (gate ONE-CHAIN)', async () => {
+  it('is offered on its own chain, whatever chain the person’s new plans start on', async () => {
     api({
-      family: familyOf(FAMILY_ID, {
-        recipes: [recipeOf({ chain: 'robinhood', name: 'Robinhood Chain' })],
-        chains: ['robinhood'],
-      }),
+      family: familyOf(FAMILY_ID, { recipes: [RH_RECIPE()], chains: ['robinhood'] }),
     });
     const host = await show(createElement(FamilyScreen, { slug: SLUG }));
-    expect(host.textContent).toContain(en.shared.family.notHere('Solana'));
-    expect(host.textContent).not.toContain(en.shared.family.buy);
+    // the person is on Solana for new plans; the portfolio's one recipe is Robinhood Chain's
+    expect(panes(host)).toEqual([en.shared.family.recipe('Robinhood Chain')]);
+    expect(host.querySelector('[data-ui="product-invest"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="family-no-wallet"]')).toBeNull();
+    // one recipe a wallet of theirs signs on: nothing to choose
+    expect(host.querySelector('[data-ui="family-chain"]')).toBeNull();
   });
 
-  it('says a vault on another chain follows it, and switches there to update it (CHAIN-SWITCH)', async () => {
+  it('asks which chain where it has a recipe on both, starting on the one new plans start on', async () => {
+    const calls = api({ chain: 'robinhood', family: BOTH() });
+    const host = await show(createElement(FamilyScreen, { slug: SLUG }));
+    const choice = find(host, 'fieldset[data-ui="family-chain"]');
+    expect(find(choice, 'legend').textContent).toBe(en.shared.family.which);
+    const radios = [...choice.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+    expect(radios.map((r) => [r.value, r.checked])).toEqual([
+      ['solana', false],
+      ['robinhood', true],
+    ]);
+    // each with the wallet that would own the vault, and its own mark
+    expect(find(choice, 'label[data-chain="solana"]').textContent).toContain(en.shell.testNetwork);
+    expect(find(choice, 'label[data-chain="robinhood"]').textContent).toContain('0x20…0498');
+    // one recipe on the page at a time
+    expect(panes(host)).toEqual([en.shared.family.recipe('Robinhood Chain')]);
+    await click(radios[0] as HTMLElement);
+    for (let i = 0; i < 4; i += 1) await settle(50);
+    expect(panes(host)).toEqual([en.shared.family.recipe('Solana')]);
+    // a choice of this page: the chain new plans start on is not moved
+    expect(calls.some((c) => c.path === '/v1/me/chain')).toBe(false);
+  });
+
+  it('shows a person whose wallet signs on one chain that chain’s recipe alone', async () => {
+    portStore.set(signedInPort(METAMASK, { userId: USER }));
+    const evmOnly: Partial<Person> = {
+      wallets: METAMASK,
+      chain: 'robinhood',
+      chainSource: 'wallet',
+      chainOptions: ['robinhood'],
+    };
+    api({ person: evmOnly, family: BOTH() });
+    const host = await show(createElement(FamilyScreen, { slug: SLUG }));
+    expect(host.querySelector('[data-ui="family-chain"]')).toBeNull();
+    expect(panes(host)).toEqual([en.shared.family.recipe('Robinhood Chain')]);
+    expect(host.querySelector('[data-ui="product-invest"]')).not.toBeNull();
+    await unmountAll();
+    // and a portfolio that is only where no wallet of theirs signs: shown, with why nothing is offered
+    api({ person: evmOnly, family: familyOf(FAMILY_ID) });
+    const solanaOnly = await show(createElement(FamilyScreen, { slug: SLUG }));
+    expect(find(solanaOnly, '[data-ui="family-no-wallet"]').textContent).toBe(
+      en.shared.family.noWalletFor('Solana'),
+    );
+    expect(solanaOnly.querySelector('[data-ui="plan-pane"]')).not.toBeNull();
+    expect(solanaOnly.querySelector('[data-ui="product-invest"]')).toBeNull();
+    expect(solanaOnly.textContent).not.toContain(en.shared.family.buy);
+  });
+
+  it('says a vault on the other chain follows it, and shows that chain’s recipe to update it', async () => {
     const calls = api({
       chain: 'robinhood',
-      family: familyOf(FAMILY_ID),
+      family: BOTH(),
       vaults: [vaultOf({ address: MY_VAULT })],
     });
-    portStore.set(signedInPort(EMBEDDED, { userId: USER }));
     const host = await show(createElement(FamilyScreen, { slug: SLUG }));
-    // on Robinhood Chain, where the portfolio is not published; the Solana vault follows it
-    expect(host.textContent).toContain(en.shared.family.notHere('Robinhood Chain'));
+    // on Robinhood Chain's recipe; the Solana vault follows the Solana one
     const note = find(host, '[data-ui="vaults-elsewhere"]');
     expect(note.textContent).toContain(en.shared.family.elsewhere('Solana'));
-    await click(button(note, en.shared.family.switchTo('Solana')) as HTMLElement);
+    await click(button(note, en.shared.family.showOn('Solana')) as HTMLElement);
     for (let i = 0; i < 4; i += 1) await settle(50);
-    expect(calls.filter((c) => c.path === '/v1/me/chain')).toEqual([
-      { method: 'PUT', path: '/v1/me/chain', body: { chain: 'solana' } },
-    ]);
-    // on Solana now: the vault is in the page's own panel, and the note is gone
+    // Solana's recipe now: the vault is in the page's own panel, and the note is gone
     expect(host.querySelector('[data-ui="vaults-elsewhere"]')).toBeNull();
+    expect(host.querySelector('[data-ui="my-vault"]')).not.toBeNull();
+    expect(
+      find<HTMLInputElement>(host, '[data-ui="family-chain"] input[value="solana"]').checked,
+    ).toBe(true);
+    expect(calls.some((c) => c.path === '/v1/me/chain')).toBe(false);
   });
 
   it('says nothing of a vault on another chain that follows something else', async () => {
@@ -860,8 +1045,14 @@ describe('buying a portfolio, which follows it', () => {
       owner: { solana: SOLANA },
       amountUsd: 10,
       family: SLUG,
+      // the chain of the recipe the page showed, named in the order
+      chain: 'solana',
       version: 2,
     });
+    // and the wallet was read for the same buy on the same chain
+    expect(calls.find((c) => c.path.startsWith('/v1/funding?'))?.path).toContain(
+      `family=${SLUG}&chain=solana`,
+    );
     expect(recallOrder(ORDER_ID, USER)?.terms).toEqual({
       kind: 'family',
       slug: SLUG,
@@ -870,6 +1061,92 @@ describe('buying a portfolio, which follows it', () => {
       targets: WEIGHTS,
       source: 'api',
     });
+  });
+});
+
+describe('buying on the chain of the recipe chosen (gate CHAIN-AT-THE-PLAN)', () => {
+  const ordered = (calls: Call[]) => calls.find((c) => c.path === '/v1/orders')?.body;
+  const buy = async (node: Parameters<typeof show>[0]) => {
+    const host = await show(node);
+    await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
+    await settle(400);
+    await settle(1050);
+    await settle(50);
+    return host;
+  };
+
+  it('buys the recipe the address names, from the wallet of that chain, whatever the current chain is', async () => {
+    const calls = api({ family: BOTH(), order: () => familyBuyOrder(), funded: true });
+    const host = await buy(createElement(FamilyBuyScreen, { slug: SLUG, chain: 'robinhood' }));
+    expect(host.textContent).toContain(en.shared.buy.lead('Robinhood Chain'));
+    expect(calls.find((c) => c.path.startsWith('/v1/funding?'))?.path).toContain(
+      `family=${SLUG}&chain=robinhood&wallet=${EVM}`,
+    );
+    expect(ordered(calls)).toEqual({
+      type: 'buy',
+      owner: { evm: EVM },
+      amountUsd: 10,
+      family: SLUG,
+      chain: 'robinhood',
+      version: 2,
+    });
+    // the person's current chain was not moved for it
+    expect(calls.some((c) => c.path === '/v1/me/chain')).toBe(false);
+    // an order that came back on another chain than the one asked for is not shown or kept
+    expect(recallOrder(ORDER_ID, USER)).toBeNull();
+    expect(find(host, '[role="alert"]').textContent).toBe(en.buy.failure.unreadable);
+  });
+
+  it('with no chain named, starts on the chain new plans start on, and lets the person choose the other', async () => {
+    const calls = api({ family: BOTH(), order: () => familyBuyOrder(), funded: true });
+    const host = await show(createElement(FamilyBuyScreen, { slug: SLUG }));
+    const radios = [
+      ...host.querySelectorAll<HTMLInputElement>('[data-ui="family-chain"] input[type="radio"]'),
+    ];
+    expect(radios.map((r) => [r.value, r.checked])).toEqual([
+      ['solana', true],
+      ['robinhood', false],
+    ]);
+    await click(radios[1] as HTMLElement);
+    await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
+    await settle(400);
+    await settle(1050);
+    await settle(50);
+    expect(ordered(calls)).toMatchObject({ chain: 'robinhood', owner: { evm: EVM } });
+  });
+
+  it('buys a portfolio that is on one chain there, with nothing to choose', async () => {
+    const calls = api({
+      // new plans start on Robinhood Chain; the portfolio is on Solana alone
+      chain: 'robinhood',
+      family: familyOf(FAMILY_ID),
+      order: () => familyBuyOrder(),
+      funded: true,
+    });
+    const host = await buy(createElement(FamilyBuyScreen, { slug: SLUG }));
+    expect(host.querySelector('[data-ui="family-chain"]')).toBeNull();
+    expect(ordered(calls)).toMatchObject({ chain: 'solana', owner: { solana: SOLANA } });
+    expect(recallOrder(ORDER_ID, USER)?.chain).toBe('solana');
+  });
+
+  it('offers no buy where no wallet of the person signs on a chain it is on, and says why', async () => {
+    portStore.set(signedInPort(METAMASK, { userId: USER }));
+    const calls = api({
+      person: {
+        wallets: METAMASK,
+        chain: 'robinhood',
+        chainSource: 'wallet',
+        chainOptions: ['robinhood'],
+      },
+      family: familyOf(FAMILY_ID),
+      funded: true,
+    });
+    const host = await show(createElement(FamilyBuyScreen, { slug: SLUG, chain: 'solana' }));
+    expect(host.textContent).toContain(en.shared.family.noWalletFor('Solana'));
+    expect(host.querySelector('input')).toBeNull();
+    expect(calls.some((c) => c.path === '/v1/orders' || c.path.startsWith('/v1/funding'))).toBe(
+      false,
+    );
   });
 });
 
@@ -1049,7 +1326,7 @@ describe('the publish form', () => {
   it('is offered on Robinhood Chain, whose deployment names its registry (AGT-4)', async () => {
     const calls = api({ family: null, chain: 'robinhood' });
     const shelf = await show(createElement(ShelfScreen));
-    expect(calls.some((c) => c.path === '/v1/shelf?chain=robinhood')).toBe(true);
+    expect(calls.some((c) => c.path === '/v1/shelf')).toBe(true);
     expect(shelf.querySelector('a[href="/publish"]')).not.toBeNull();
   });
 
@@ -1428,9 +1705,7 @@ describe('the flow audit’s findings on these screens (34, 38, 42)', () => {
     expect(host.querySelector('[data-ui="shelf-signed-out"]')).toBeNull();
     await act(async () => portStore.set(fakePort()));
     for (let i = 0; i < 4; i += 1) await settle(50);
-    expect(find(host, '[data-ui="shelf-signed-out"]').textContent).toBe(
-      en.shared.shelf.signedOut('Solana'),
-    );
+    expect(find(host, '[data-ui="shelf-signed-out"]').textContent).toBe(en.shared.shelf.signedOut);
     await unmountAll();
     // a visitor who was never signed in is told nothing of the kind
     portStore.set(fakePort());

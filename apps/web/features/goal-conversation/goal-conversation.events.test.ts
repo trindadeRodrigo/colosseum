@@ -261,7 +261,8 @@ describe('private strategy exploration for a new goal', () => {
     const saved = [...find<HTMLSelectElement>(host, '[data-ui="goal-picker"]').options].find((o) =>
       o.value.startsWith('conversation:'),
     );
-    expect(saved?.textContent).toBe('Consider gold');
+    // with its chain as text: the picker lists what lives on one chain (gate CHAIN-AT-THE-PLAN)
+    expect(saved?.textContent).toBe('Consider gold · Solana');
     await mode(host, saved?.value ?? '');
     await settle();
     expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain('Consider gold');
@@ -1319,7 +1320,7 @@ describe('the relaxed intake’s plan on /goal (RELAXED-INTAKE)', () => {
     expect(options.map((o) => o.textContent)).toEqual([
       en.goal.explore.picker.current,
       en.goal.explore.picker.fresh,
-      'Consider gold',
+      'Consider gold · Solana',
     ]);
     expect(find(host, '[data-ui="goal-transcript"]').textContent).toBe('');
   });
