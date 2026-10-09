@@ -1906,7 +1906,7 @@ export const en = {
       docs: 'Docs',
     },
     hero: {
-      title: 'Tell it the goal. Get the portfolio cut for it.',
+      title: 'No product fits everyone. So we make the products fit your goals.',
       lead: 'A plan made to measure, with an exit plan before it invests, in your own vault. Every number carries its source.',
       start: 'Start a plan',
       see: 'See a plan',

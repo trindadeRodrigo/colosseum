@@ -1765,7 +1765,8 @@ export const pt: Dictionary = {
       docs: 'Docs',
     },
     hero: {
-      title: 'Diga o objetivo. Receba o portfólio cortado para ele.',
+      title:
+        'Nenhum produto serve para todo mundo. Então fazemos os produtos se ajustarem aos seus objetivos.',
       lead: 'Um plano sob medida, com um plano de saída antes de investir, no seu próprio cofre. Cada número traz a sua fonte.',
       start: 'Começar um plano',
       see: 'Ver um plano',

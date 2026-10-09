@@ -70,7 +70,7 @@ test('his landing page: the hero alone, its faces, its numbers, and "Start a pla
       const ctx = document.createElement('canvas').getContext('2d');
       if (!ctx) return 0;
       ctx.font = font;
-      return ctx.measureText('Tell it the goal').width;
+      return ctx.measureText('No product fits everyone').width;
     };
     return {
       heading: family(document.querySelector('h1')),

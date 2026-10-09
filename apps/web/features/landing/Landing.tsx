@@ -9,10 +9,10 @@ import { LandingSignIn } from './LandingSignIn';
 import type { PlatformStats } from './stats';
 
 // His landing page on the new identity (IDENTITY-2; the first demonstration of it, in
-// identity-reassessment.html): the hero is the whole page. A static bar; the line "Tell it the goal.
-// Get the portfolio cut for it." with "Start a plan" in front; the slow honey fog behind it; and the
-// platform's numbers under it, each with its pin. Nothing more. Dark unless the visitor chose light
-// (token-mapping.md: marketing is dark by default).
+// identity-reassessment.html): the hero is the whole page. A static bar; the line "No product fits
+// everyone. So we make the products fit your goals." (Rodrigo, Oct 8) with "Start a plan" in front;
+// the slow honey fog behind it; and the platform's numbers under it, each with its pin. Nothing
+// more. Dark unless the visitor chose light (token-mapping.md: marketing is dark by default).
 
 /** A plan to look at before starting one: the shared portfolios. */
 export const SEE_A_PLAN = '/shelf';
