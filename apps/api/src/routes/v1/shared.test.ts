@@ -730,7 +730,7 @@ describe('a person buys a shared portfolio, following it on their own chain', ()
     expect(res.statusCode, res.body).toBe(200);
     const placed = OrderDetail.parse(res.json());
     expect(placed.summary).toBe(
-      'Buy $100.00 of a shared portfolio on Robinhood Chain, following it',
+      'Deposit $100.00 into a vault on Robinhood Chain that follows a shared portfolio',
     );
     // one order, one chain: every step is on the recipe's, from the person's wallet there
     expect([...new Set(placed.legs.map((l) => l.chain))]).toEqual(['robinhood']);
