@@ -576,7 +576,7 @@ export const en = {
     /** A chain of the person's that this server has switched off: asking again will not help. */
     chainOff: (chain: string) => `${chain} is switched off on our server for now.`,
     title: (vaults: number): string =>
-      vaults > 1 ? 'What your vaults hold.' : 'What your vault holds.',
+      vaults > 1 ? 'What your vaults hold' : 'What your vault holds',
     planDetails: 'Goal and target details',
     /** The page's description in its metadata; the screen itself does not show it. */
     lead: 'Your vaults, their holdings and their targets. Open a vault to continue its conversation or add money.',
@@ -1177,8 +1177,8 @@ export const en = {
       vault: 'Vault',
     },
     shelf: {
-      title: 'Portfolios people have shared.',
-      lead: 'Explore published strategies on every chain we run. Each names the chain it is on. Open one to review its assets, sources and options for investing or following.',
+      title: 'Shared portfolios',
+      lead: 'Explore shared portfolios on every chain we run. Each names the chain it is on. Open one to see its assets and sources, then deposit or follow.',
       loading: 'Reading the shared portfolios…',
       empty: 'No portfolio is shared yet.',
       publish: 'Publish a portfolio',
@@ -1253,7 +1253,7 @@ export const en = {
         'One asset of this portfolio isn’t available on this chain now, so the portfolio can’t take a deposit as it stands.',
     },
     family: {
-      nextStep: 'Review the strategy, then choose how much to invest.',
+      nextStep: 'Review the portfolio, then choose how much to deposit.',
       loading: 'Reading this portfolio…',
       missing: 'I can’t find a shared portfolio with that name.',
       backToShelf: 'Back to the shared portfolios',
@@ -1261,9 +1261,9 @@ export const en = {
         `A list of assets and weights its creator published on ${chain}. Following it means a vault of yours takes its weights; a new version takes effect after a delay, and you see it before it does.`,
       /** Signed in, and no wallet of theirs signs on a chain the portfolio is on. */
       noWalletFor: (chains: string) =>
-        `This portfolio is on ${chains}, and the wallet you signed in with doesn’t sign there. It can’t be invested in or followed from this sign-in.`,
+        `This portfolio is on ${chains}, and the wallet you signed in with doesn’t sign there. It can’t take a deposit or be followed from this sign-in.`,
       /** A portfolio with a recipe on more than one chain the person can use: which to invest on. */
-      which: 'Chain to invest on',
+      which: 'Chain to deposit on',
       whichHint: 'The vault you open follows this portfolio on the chain you choose.',
       /** In place of the hint while a deposit runs: the choice is locked until it ends. */
       whichLocked: 'The chain is fixed while this deposit runs.',
@@ -1287,7 +1287,7 @@ export const en = {
         superseded: 'Replaced',
         cancelled: 'Taken back',
       },
-      buy: 'Invest in this portfolio',
+      buy: 'Deposit and follow',
       signIn: 'Sign in to follow',
       chainNotReady: (chain: string) =>
         `${chain} isn’t ready for following yet: its vaults aren’t deployed on this network.`,
@@ -1383,30 +1383,30 @@ export const en = {
       accept: (n: number) => `Accept version ${n}`,
     },
     publish: {
-      title: 'Share your vault strategy.',
+      title: 'Publish your vault as a portfolio',
       lead: (chain: string) =>
-        `Share the strategy recorded in your own vault on ${chain}. Review its exact assets and target weights, give it a public name and description, then sign the publication.`,
+        `Publish the targets recorded in your own vault on ${chain} as a shared portfolio. Review its exact assets and target weights, give it a public name and description, then sign the publication.`,
       signIn: 'Sign in to publish a portfolio.',
-      shareStrategy: 'Share strategy',
+      shareStrategy: 'Publish as a portfolio',
       sourceVault: 'Your source vault',
       sourceHint: 'Choose a vault you own on the active chain.',
       chooseVault: 'Choose your vault',
-      noVaults: 'Choose an owned vault on this chain before sharing a strategy.',
+      noVaults: 'Choose an owned vault on this chain before publishing a portfolio.',
       readingVaults: 'Reading your vaults…',
-      readingStrategy: 'Reading the vault’s strategy…',
-      sourceUnavailable: 'Your vaults could not be read. Open the vault and try sharing again.',
+      readingStrategy: 'Reading the vault’s targets…',
+      sourceUnavailable: 'Your vaults could not be read. Open the vault and try publishing again.',
       editStrategy: 'Return to the vault conversation',
       privacy:
-        'Only this reviewed strategy, name and description become public. Your vault conversation stays private.',
+        'Only these reviewed targets, the name and the description become public. Your vault conversation stays private.',
       holdings: 'Tokens held now · separate from target weights',
-      strategySource: (source: string) => `Strategy read from ${source}.`,
+      strategySource: (source: string) => `Targets read from ${source}.`,
       strategyChanged:
-        'The vault strategy changed. The latest targets are now shown. Review them before sharing again.',
+        'The vault’s targets changed. The latest are now shown. Review them before publishing again.',
       sourceProblems: {
         unsupported:
-          'This vault’s full strategy cannot be shared under the current registry rules. Missing, nested, unknown or cash targets are not replaced. Return to the vault conversation to refine the strategy.',
+          'This vault’s targets cannot be published as they are under the current registry rules. Missing, nested, unknown or cash targets are not replaced. Return to the vault conversation to change them.',
         unverified:
-          'I could not verify the strategy and owner from this chain. Sharing is paused. Return to the vault and try again.',
+          'I could not verify the targets and owner from this chain. Publishing is paused. Return to the vault and try again.',
         missing: 'This vault could not be found on chain. Choose a current vault you own.',
         owner:
           'This vault does not match the connected owner, chain, address and plan number. Choose a vault you own.',
@@ -1422,7 +1422,7 @@ export const en = {
       familyId: 'Its id, worked out from the address',
       assets: 'Assets and weights',
       assetsHint:
-        'These are the vault’s target weights. Sharing requires 3 to 12 listed assets, each from 2% to 50% in 0.5% steps, with no cash target. Change the strategy in your vault before sharing if it does not fit.',
+        'These are the vault’s target weights. Publishing requires 3 to 12 listed assets, each from 2% to 50% in 0.5% steps, with no cash target. Change your vault’s targets before publishing if they do not fit.',
       asset: 'Asset',
       weight: 'Weight, in %',
       /** The labels of a row's two fields. */
