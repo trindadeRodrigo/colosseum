@@ -12,6 +12,7 @@ One list of tasks for the vault work and the repository around it. Status is `to
 | ORG-4 | The `staging` branch and the flow into `main` | Thom | done | `staging` created from `main` on 2026-10-01 | |
 | ORG-5 | `main` and `staging` protected: no direct push, checks required | Rodrigo | todo | | Needs repository admin |
 | ORG-6 | A decision on what early planning material stays in the public tree: the first handoff, plan and video script under `docs/structurer/`, and `discover/` and `strategy/naming.md` in the design folder | Rodrigo, Thom | todo | | |
+| ORG-7 | The root `README.md` and `docs/README.md` for the submission: what works today and on which test network, how to try it, the deployed addresses, and every document under `docs/` listed once with its standing | Thom | in-review | PR #217, 2026-10-09, documents only. `pnpm verify:quick` exit 0; all 91 relative links of the two files resolve; the README's mermaid block parses and renders in mermaid 10.9.1; the two programs on devnet and the factory, registry and beacon on 46630 answer at the recorded addresses. Not run: `pnpm db:up` and `pnpm dev` (Docker would not start on the machine), so the local quick start is as CI runs it, not as tried by hand | Thom's links: demo video, pitch deck, screenshots |
 
 ## Before the build
 
