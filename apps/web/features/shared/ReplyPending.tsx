@@ -1,6 +1,6 @@
 'use client';
 import { type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Skeleton } from '../../components/ui/Skeleton';
+import { Skeleton, SkeletonLine } from '../../components/ui/Skeleton';
 import { WaitMark } from '../../components/ui/WaitMark';
 
 // Waiting for a reply in a conversation (/goal and a vault's own), said where the reply will be: a row
@@ -151,7 +151,7 @@ export function DraftBuilding({
   title,
   line,
   note,
-  rows = 3,
+  rows = 2,
 }: {
   title: string;
   line: string;
@@ -161,34 +161,58 @@ export function DraftBuilding({
 }) {
   return (
     <div data-ui="draft-building" className="flex w-full min-w-0 flex-col gap-4">
-      <div className="flex min-w-0 items-center gap-4">
+      <div className="flex min-w-0 items-center gap-4 sm:min-h-[4.875rem]">
         <WaitMark size={48} />
         <div className="flex min-w-0 flex-col gap-1">
           <h2 className="font-display font-semibold text-[1.25rem]/7">{title}</h2>
           <p className="max-w-[48ch] text-body-sm text-muted-foreground">{line}</p>
         </div>
       </div>
-      <div aria-hidden="true" data-ui="draft-skeleton" className="flex min-w-0 flex-col gap-2">
-        {/* the beam, then a row for each of a few holdings: swatch, mark, name, reason, share */}
-        <Skeleton className="h-11 w-full" />
-        <Skeleton className="h-3 w-48 max-w-full" />
-        <div className="flex flex-col">
+      {/* The draft's own outline (StrategyPreview): its summary, the bar with a label a holding,
+          the table with its head and a row a holding, its action and its fold. Each box is the
+          size of what lands there, so the card is the draft's from the first frame. */}
+      <div aria-hidden="true" data-ui="draft-skeleton" className="flex min-w-0 flex-col gap-4">
+        {/* on a phone the words over it already take the summary's room */}
+        <SkeletonLine className="text-body-sm max-sm:hidden" width="w-3/5" />
+        <div data-wait="legs" className="flex flex-col gap-3">
+          <Skeleton className="h-6 w-full rounded-full" />
+          <div className="flex flex-col">
+            {Array.from({ length: rows }, (_, i) => (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: still boxes with no identity of their own
+                key={i}
+                className="flex h-[2.9375rem] items-center gap-2 border-b border-border first:border-t"
+              >
+                <Skeleton className="size-2.5 rounded-none" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div data-wait="table" className="flex flex-col">
+          <div className="flex h-[3.0625rem] items-center justify-between border-b border-border">
+            <Skeleton className="h-2.5 w-10" />
+            <Skeleton className="h-2.5 w-14" />
+          </div>
           {Array.from({ length: rows }, (_, i) => (
             <div
               // biome-ignore lint/suspicious/noArrayIndexKey: still boxes with no identity of their own
               key={i}
-              className="flex items-start gap-2 border-b border-border py-3"
+              className="flex h-[4.5625rem] items-start justify-between gap-2 border-b border-border py-3 pr-1 pl-1"
             >
-              <Skeleton className="mt-1.5 size-2.5 rounded-none" />
-              <Skeleton className="size-6 rounded-full" />
-              <span className="flex min-w-0 flex-1 flex-col gap-3 pt-1">
-                <Skeleton className="h-3.5 w-24" />
-                <Skeleton className="h-3 w-4/5" />
+              <span className="flex min-w-0 flex-1 flex-col gap-2">
+                <span className="flex items-center gap-2">
+                  <Skeleton className="size-2.5 rounded-none" />
+                  <Skeleton className="size-6 rounded-full" />
+                  <Skeleton className="h-3.5 w-24" />
+                </span>
+                <Skeleton className="h-3 w-4/5 max-w-80" />
               </span>
-              <Skeleton className="mt-1 h-3.5 w-10" />
+              <Skeleton className="mt-1.5 h-3.5 w-10" />
             </div>
           ))}
         </div>
+        <Skeleton className="h-9 w-28 rounded-md" />
       </div>
       {note && <p className="text-caption text-muted-foreground">{note}</p>}
     </div>
