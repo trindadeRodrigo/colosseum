@@ -8,6 +8,7 @@ import { ChainBadge } from '../../components/ui/ChainBadge';
 import { type Column, DataTable } from '../../components/ui/DataTable';
 import { shorten } from '../../components/ui/format';
 import { Hint } from '../../components/ui/Hint';
+import { MarketNote } from '../../components/ui/MarketNote';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { pinSourceOfPrice } from '../../components/ui/price-source';
 import { LOCALE } from '../../i18n';
@@ -93,15 +94,19 @@ export function VaultPanel({
         // cash is counted at one dollar, which the pin of its value says: it has no price to show
         if (row.cash && !price) return '—';
         return price ? (
-          <ProvenancePin
-            value={dollars(lang, price.usdPerToken)}
-            obs={pinSourceOfPrice({
-              ...price,
-              provenance: worst(vault.provenance, price.provenance),
-            })}
-            what={words.columns.price}
-            labels={t.pin}
-          />
+          <>
+            <ProvenancePin
+              value={dollars(lang, price.usdPerToken)}
+              obs={pinSourceOfPrice({
+                ...price,
+                provenance: worst(vault.provenance, price.provenance),
+              })}
+              what={words.columns.price}
+              {...(price.market === 'closed' ? { detail: t.shell.marketClosedWhy } : {})}
+              labels={t.pin}
+            />
+            <MarketNote market={price.market} label={t.shell.marketClosed} />
+          </>
         ) : (
           <span className="text-caption text-muted-foreground">{words.noPrice}</span>
         );

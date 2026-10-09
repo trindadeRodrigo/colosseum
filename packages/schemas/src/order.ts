@@ -264,7 +264,7 @@ export const IntentRequest = z.discriminatedUnion('type', [
     amountUsd: z
       .number()
       .positive()
-      .max(ORDER_LIMITS.maxAmountUsd, 'one order buys at most $1,000,000'),
+      .max(ORDER_LIMITS.maxAmountUsd, 'one deposit is at most $1,000,000'),
     /**
      * The slippage each trade of this order is built with: the least a trade accepts is its quote
      * less this. Left out, the server's own figure applies. Never more than

@@ -5,7 +5,7 @@
 
 export const bearingEn = {
   head: 'Bearing · analytics',
-  notAdvice: 'Not advice',
+  notAdvice: 'Not licensed advice',
   menu: {
     region: 'Analytics pages',
     nav: 'Analytics',
@@ -40,7 +40,7 @@ export const bearingEn = {
   },
   banner: {
     loading: 'Reading the risk API…',
-    live: (time: string) => `Live from the collectors, as of ${time}.`,
+    live: (time: string) => `Newest reading from the collectors: ${time}.`,
     unknownTime: 'an unknown time',
     now: (regime: string, et: string) => `now: ${regime} (${et})`,
     stale: (when: string, age: string) =>
@@ -73,7 +73,7 @@ export const bearingEn = {
     us_holiday: 'holiday',
   },
   reasons: {
-    no_samples_in_regime: 'no samples in this regime yet',
+    no_samples_in_regime: 'not measured at this time of week yet',
     insufficient_samples: 'too few samples to fit',
     not_a_number: 'the stored value could not be used',
     beyond_measured_size: 'beyond the largest size measured',

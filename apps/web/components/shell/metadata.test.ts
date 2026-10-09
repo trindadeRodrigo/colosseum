@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import * as missingPage from '../../app/(app)/[...missing]/page';
 import * as goalPage from '../../app/(app)/goal/page';
 import * as monitorPage from '../../app/(app)/monitor/page';
 import * as orderPage from '../../app/(app)/orders/[id]/page';
@@ -36,7 +39,7 @@ describe('the title and description of each product page', () => {
       monitorMetadata(),
       shellMetadata(),
     ]);
-    expect(onGoal).toEqual({ title: t.goal.composer.label, description: t.goal.title });
+    expect(onGoal).toEqual({ title: t.shell.invest, description: t.goal.title });
     expect(onSignIn).toEqual({ title: t.shell.signIn, description: t.signIn.title });
     expect(onMonitor).toEqual({ title: t.shell.portfolio, description: t.portfolio.lead });
     // three pages, three titles, and none carries another's description
@@ -65,7 +68,7 @@ describe('the title and description of each product page', () => {
       const t = dictionary(lang);
       const pages = [await planMetadata(), await buyMetadata(), await orderMetadata()];
       expect(pages).toEqual([
-        { title: t.plan.title, description: t.plan.buy },
+        { title: t.plan.title, description: t.plan.description },
         { title: t.buy.title, description: t.buy.funding.title },
         { title: t.order.title, description: t.order.review.title },
       ]);
@@ -75,4 +78,16 @@ describe('the title and description of each product page', () => {
       expect(await orderPage.generateMetadata()).toEqual(pages[2]);
     },
   );
+
+  it('names an address with no page in the product’s own words, never the first shell’s', async () => {
+    preference.lang = 'en';
+    const t = dictionary('en');
+    expect(await missingPage.generateMetadata()).toEqual({ title: t.shell.missing.title });
+    const first = readFileSync(join(__dirname, '../../app/(structurer)/layout.tsx'), 'utf8');
+    expect(first).not.toMatch(/Colosseum —|pt-BR|DISCLAIMER\.pt|Policy in your wallet/);
+    expect(first).toContain('lang="en"');
+    expect(readFileSync(join(__dirname, '../Nav.tsx'), 'utf8')).not.toMatch(
+      /wallet-adapter|Structurer|\/monitor/,
+    );
+  });
 });

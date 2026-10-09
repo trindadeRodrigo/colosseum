@@ -374,7 +374,7 @@ describe('private model-led vault reply route', () => {
     expect(reply.proposal.allocations).toHaveLength(3);
     expect(reply.warnings).toEqual([]);
     expect(reply.proposal.unknowns).toContain(
-      'The current investment goal is unavailable; this preview has not been checked against income or protection eligibility.',
+      'The goal of this vault is unavailable; this draft has not been checked against income or protection eligibility.',
     );
   });
 

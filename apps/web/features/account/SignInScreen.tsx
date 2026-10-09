@@ -116,7 +116,7 @@ export function SignInScreen({ next = AFTER_SIGN_IN, onDone, titleId }: SignInSc
   const owed = port.walletsOwed;
   const signedIn = port.status === 'ready' || owed !== null;
   const noWallet = owed === 'failed' || (port.status === 'ready' && account.status === 'no-wallet');
-  const labels = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.sampleFigure };
+  const labels = { testNetwork: t.shell.testNetworkLine, sample: t.shell.sample };
   const chainName = (chain: ChainId) => port.network(chain)?.name ?? t.chain.names[chain];
 
   // After a sign-in the port loads once more while the wallets of a passkey are made.
@@ -296,6 +296,7 @@ export function SignInScreen({ next = AFTER_SIGN_IN, onDone, titleId }: SignInSc
                   <span>{chainName(account.chain)}</span>
                 ) : (
                   <ChainName
+                    chain={account.chain}
                     name={chainName(account.chain)}
                     provenance={port.network(account.chain)?.provenance ?? 'mock'}
                     labels={labels}

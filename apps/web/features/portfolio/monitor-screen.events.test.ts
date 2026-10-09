@@ -31,6 +31,7 @@ import {
   labelled,
   portfolioBody,
   portfolioOf,
+  price,
   RH_VAULT,
   robinhoodChain,
   SECOND_VAULT,
@@ -371,6 +372,55 @@ describe('the monitor, for a person with a vault on their chain', () => {
     // and every pin can be opened, by its name
     for (const pin of pins(host))
       expect(pin.querySelector('button')?.getAttribute('aria-label')).toMatch(/^Source for /);
+  });
+
+  it('says "Market closed · last price" under a price whose market the server says is closed, and under no other', async () => {
+    api({
+      person: onSolana,
+      portfolio: () =>
+        json(
+          portfolioBody(
+            chainOf(undefined, {
+              prices: [
+                price('solana:usdy', '1.1', { market: 'closed' }),
+                price('solana:paxg', '2600', { market: 'open' }),
+              ],
+            }),
+          ),
+        ),
+    });
+    signIn();
+    const host = await screen();
+    const rows = [...find(host, 'table').querySelectorAll('tbody tr')];
+    const closed = rows[0]?.children[2];
+    expect(closed?.querySelector('[data-ui="market-closed"]')?.textContent).toBe(
+      en.shell.marketClosed,
+    );
+    // beside the pin, not in its place
+    expect(closed?.querySelector('[data-ui="figure"]')).not.toBeNull();
+    // an open market, and cash, which has no price here: nothing
+    expect(find(host, 'table').querySelectorAll('[data-ui="market-closed"]')).toHaveLength(1);
+  });
+
+  it('says nothing under a price whose market the server does not know', async () => {
+    api({
+      person: onSolana,
+      portfolio: () =>
+        json(
+          portfolioBody(
+            chainOf(undefined, {
+              prices: [
+                price('solana:usdy', '1.1', { market: 'unknown' }),
+                price('solana:paxg', '2600'),
+              ],
+            }),
+          ),
+        ),
+    });
+    signIn();
+    const host = await screen();
+    expect(find(host, 'table').querySelectorAll('[data-ui="figure"]').length).toBeGreaterThan(0);
+    expect(host.querySelectorAll('[data-ui="market-closed"]')).toHaveLength(0);
   });
 
   it('draws a test network as the hatch and a quiet line with the words, never as live (rule 2)', async () => {

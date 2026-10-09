@@ -74,6 +74,10 @@ export function DepositSign({
   const [running, setRunning] = useState(false);
   // Done is what the order's screen says on this visit, read from our server: never a kept flag.
   const [done, setDone] = useState<{ vault: string | null } | null>(null);
+  // An order that finishes this one took the card: it adds no money, and is never said as a deposit
+  // of the amount (the vault page says the same, VaultAction).
+  const [finishes, setFinishes] = useState(false);
+  const f = t.shared.vault.page.finish;
   const to = useRef(host);
   to.current = host;
   // The pane took the place of the review: its heading takes focus, so it is read from the top.
@@ -96,7 +100,7 @@ export function DepositSign({
     >
       <header className="flex min-w-0 flex-col gap-2">
         <h2 id={titleId} className="font-display text-h4 font-semibold outline-none">
-          {done ? s.doneTitle : s.title}
+          {done ? s.doneTitle : finishes ? f.title : s.title}
         </h2>
         <p
           data-ui="deposit-sign-amount"
@@ -115,7 +119,7 @@ export function DepositSign({
         </p>
         {!done && (
           <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
-            {resume ? s.resumed : s.lead}
+            {finishes ? f.lead : resume ? s.resumed : s.lead}
           </p>
         )}
       </header>
@@ -168,7 +172,10 @@ export function DepositSign({
           }}
           onStopped={() => run(false)}
           // an order that finishes this one took the card: it is to review, not running
-          onFollowUp={() => run(false)}
+          onFollowUp={() => {
+            setFinishes(true);
+            run(false);
+          }}
         />
       </div>
       {approved && !running && !done && (

@@ -9,6 +9,7 @@ import { cn } from '../../components/ui/cn';
 import { DataTable } from '../../components/ui/DataTable';
 import { shorten } from '../../components/ui/format';
 import { Hint } from '../../components/ui/Hint';
+import { MarketNote } from '../../components/ui/MarketNote';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { pinSourceOfPrice } from '../../components/ui/price-source';
 import { LOCALE } from '../../i18n';
@@ -180,13 +181,17 @@ export function VaultHoldings({
               cell: (r) => {
                 const price = priceOf(r.asset);
                 return price ? (
-                  <ProvenancePin
-                    value={dollars(lang, price.usdPerToken)}
-                    // each address in the price's details links to this network's explorer
-                    obs={{ ...pinSourceOfPrice(price), explorer: addressPage }}
-                    what={v.columns.price}
-                    labels={t.pin}
-                  />
+                  <>
+                    <ProvenancePin
+                      value={dollars(lang, price.usdPerToken)}
+                      // each address in the price's details links to this network's explorer
+                      obs={{ ...pinSourceOfPrice(price), explorer: addressPage }}
+                      what={v.columns.price}
+                      {...(price.market === 'closed' ? { detail: t.shell.marketClosedWhy } : {})}
+                      labels={t.pin}
+                    />
+                    <MarketNote market={price.market} label={t.shell.marketClosed} />
+                  </>
                 ) : (
                   // a missing price says why, one hover, focus or tap away
                   <Hint tip={t.portfolio.vault.noPriceWhy} label={t.portfolio.vault.noPrice}>
