@@ -7,6 +7,7 @@ import {
   type VaultAgentResult,
 } from '@colosseum/schemas';
 import { z } from 'zod';
+import type { ModelQuota } from '../model-quota';
 import { goalFit } from './mix';
 import { catalogCap, holdingConstraints } from './relaxed-limits';
 import { project, type Reading, readingsOf, series } from './relaxed-projection';
@@ -34,6 +35,7 @@ export const GOAL_AGENT_MODEL_LED = 'model-led';
  */
 export function relaxedGoalAgentFromEnv(
   env: Record<string, string | undefined>,
+  quota: ModelQuota,
 ): RelaxedGoalAgent | null {
   const choice = env.GOAL_AGENT?.trim() || GOAL_AGENT_RELAXED;
   if (choice !== GOAL_AGENT_RELAXED && choice !== GOAL_AGENT_MODEL_LED)
@@ -43,7 +45,7 @@ export function relaxedGoalAgentFromEnv(
   const apiKey = env.ANTHROPIC_API_KEY?.trim();
   if (choice === GOAL_AGENT_MODEL_LED || !apiKey) return null;
   const model = env.RELAXED_MODEL?.trim();
-  return createRelaxedGoalAgent({ apiKey, ...(model ? { model } : {}) });
+  return createRelaxedGoalAgent({ apiKey, quota, ...(model ? { model } : {}) });
 }
 
 const SHAPES = ['pick', 'grow', 'income', 'protect', 'split'] as const;
@@ -373,6 +375,8 @@ export function createRelaxedGoalAgent(options: {
   apiKey: string;
   model?: string;
   timeoutMs?: number;
+  /** The allowance of model calls shared with the other conversations; one is reserved before each call. */
+  quota?: ModelQuota;
   log?: (msg: string, detail?: unknown) => void;
   /** The model call; tests pass a stub so no request leaves the machine. Default: the Anthropic API. */
   create?: (
@@ -408,6 +412,9 @@ export function createRelaxedGoalAgent(options: {
       const readings = readingsOf(context.evidence, (id) => catalog.get(id)?.symbol ?? id);
 
       // ---- the model: talks freely, names ids ----
+      // A paid call: reserved from the shared budget first, as the model-led conversation does.
+      const denied = options.quota?.reserve(context.person) ?? null;
+      if (denied !== null) return { kind: 'failure', reason: 'budget', detail: denied };
       let raw: unknown;
       try {
         const response = await create({

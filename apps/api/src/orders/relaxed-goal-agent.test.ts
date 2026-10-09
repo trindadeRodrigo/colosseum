@@ -1,5 +1,6 @@
 import type { BasketAsset, VaultAgentReply, VaultAgentSource } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
+import { createModelQuota, type ModelQuota } from '../model-quota';
 import { goalFit } from './mix';
 import { createRelaxedGoalAgent, splitShares } from './relaxed-goal-agent';
 import type { GoalAgentContext } from './vault-agent';
@@ -363,6 +364,70 @@ describe('relaxed intake: the split', () => {
       'The deposit step buys exactly these holdings and shares, after the server checks every line again.',
     );
     expect(notes(reply)).not.toContain('solver');
+  });
+});
+
+describe('relaxed intake: the shared call budget', () => {
+  const ask = async (quota: { reserve(person: string): ReturnType<ModelQuota['reserve']> }) => {
+    const order: string[] = [];
+    const agent = createRelaxedGoalAgent({
+      apiKey: 'placeholder',
+      log: () => {},
+      quota: {
+        reserve(person) {
+          order.push(`reserve:${person}`);
+          return quota.reserve(person);
+        },
+      },
+      create: async () => {
+        order.push('call');
+        return {
+          stop_reason: 'end_turn',
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                say: 'Here is a draft.',
+                shape: 'pick',
+                lines: [line('solana:usdy')],
+                buckets: null,
+                stated: STATED,
+                not_available: [],
+                open: [],
+              }),
+              citations: null,
+            },
+          ],
+        };
+      },
+    });
+    const result = await agent.reply(
+      {
+        version: 1,
+        language: 'en',
+        messageId: 'm1',
+        messages: [{ who: 'person', text: 'I want USDY' }],
+      },
+      context(),
+    );
+    return { order, result };
+  };
+  it('reserves a call for the person before the model is asked', async () => {
+    const { order, result } = await ask({ reserve: () => null });
+    expect(order).toEqual(['reserve:person-1', 'call']);
+    expect(result.kind).toBe('reply');
+  });
+  it('makes no call once the budget is spent, and says which budget', async () => {
+    for (const denied of ['model_budget_spent', 'model_person_budget_spent'] as const) {
+      const { order, result } = await ask({ reserve: () => denied });
+      expect(order).toEqual(['reserve:person-1']);
+      expect(result).toEqual({ kind: 'failure', reason: 'budget', detail: denied });
+    }
+  });
+  it('draws on the same allowance as the other conversations', async () => {
+    const quota = createModelQuota({ dailyCalls: 5, dailyCallsPerPerson: 1 });
+    expect((await ask(quota)).result.kind).toBe('reply');
+    expect((await ask(quota)).result).toMatchObject({ kind: 'failure', reason: 'budget' });
   });
 });
 

@@ -4,6 +4,7 @@ import { parseChainConfigs, parseFlags, type VaultAgentStatedShare } from '@colo
 import Fastify from 'fastify';
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createModelQuota } from '../../model-quota';
 import { createChainRegistry } from '../../orders/chains';
 import { Refusal } from '../../orders/errors';
 import {
@@ -609,6 +610,8 @@ describe('new-goal model preview route', () => {
 });
 
 describe('the goal agent behind /goal (gate RELAXED-INTAKE)', () => {
+  const fromEnv = (env: Record<string, string | undefined>) =>
+    relaxedGoalAgentFromEnv(env, createModelQuota({ dailyCalls: 1, dailyCallsPerPerson: 1 }));
   const relaxedReply = (messageId: string) => ({
     version: 1 as const,
     messageId,
@@ -624,22 +627,20 @@ describe('the goal agent behind /goal (gate RELAXED-INTAKE)', () => {
       { ANTHROPIC_API_KEY: 'placeholder', GOAL_AGENT: 'relaxed' },
       { ANTHROPIC_API_KEY: 'placeholder', GOAL_AGENT: '  ' },
     ])
-      expect(relaxedGoalAgentFromEnv(env)?.id).toBe('claude-sonnet-5-5');
-    expect(
-      relaxedGoalAgentFromEnv({ ANTHROPIC_API_KEY: 'placeholder', RELAXED_MODEL: 'claude-x' })?.id,
-    ).toBe('claude-x');
+      expect(fromEnv(env)?.id).toBe('claude-sonnet-5-5');
+    expect(fromEnv({ ANTHROPIC_API_KEY: 'placeholder', RELAXED_MODEL: 'claude-x' })?.id).toBe(
+      'claude-x',
+    );
   });
   it('leaves the model-led conversation to answer only on the explicit opt-out, or with no key', () => {
-    expect(
-      relaxedGoalAgentFromEnv({ ANTHROPIC_API_KEY: 'placeholder', GOAL_AGENT: 'model-led' }),
-    ).toBeNull();
-    expect(relaxedGoalAgentFromEnv({})).toBeNull();
-    expect(relaxedGoalAgentFromEnv({ GOAL_AGENT: 'relaxed' })).toBeNull();
+    expect(fromEnv({ ANTHROPIC_API_KEY: 'placeholder', GOAL_AGENT: 'model-led' })).toBeNull();
+    expect(fromEnv({})).toBeNull();
+    expect(fromEnv({ GOAL_AGENT: 'relaxed' })).toBeNull();
   });
   it('refuses a GOAL_AGENT value it does not know, so a misspelt opt-out is never ignored', () => {
-    expect(() =>
-      relaxedGoalAgentFromEnv({ ANTHROPIC_API_KEY: 'placeholder', GOAL_AGENT: 'vault' }),
-    ).toThrow(/GOAL_AGENT/);
+    expect(() => fromEnv({ ANTHROPIC_API_KEY: 'placeholder', GOAL_AGENT: 'vault' })).toThrow(
+      /GOAL_AGENT/,
+    );
   });
   it('answers through the relaxed intake when it is there, and never calls the model-led one', async () => {
     const reply = vi.fn(async (request: { messageId: string }) => ({
