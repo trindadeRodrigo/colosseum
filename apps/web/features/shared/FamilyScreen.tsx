@@ -384,7 +384,15 @@ function RecipeSection({
           f.versionN(active.version),
           f.since(utcMinute(new Date(active.effectiveAt * 1000).toISOString())),
         )}
-        answer={p.answer(list(kindShares(holdings, locale, t.plan.kinds)), chainName)}
+        answer={p.answer(
+          // a sentence: only its first kind keeps its capital
+          list(
+            kindShares(holdings, locale, t.plan.kinds).map((kind, i) =>
+              i === 0 ? kind : kind.charAt(0).toLowerCase() + kind.slice(1),
+            ),
+          ),
+          chainName,
+        )}
         chain={recipe.chain}
         provenance={recipe.provenance}
         holdings={holdings.map((h) => ({

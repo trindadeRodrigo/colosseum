@@ -261,7 +261,7 @@ describe('a product’s page, on the plan view', () => {
     const host = await show(createElement(FamilyScreen, { slug: SLUG }));
     const pane = find(host, '[data-ui="plan-pane"]');
     expect(find(pane, '[data-ui="plan-answer"]').textContent).toBe(
-      en.shared.product.answer('Funds 50% and Dollar yield 50%', 'Solana'),
+      en.shared.product.answer('Funds 50% and dollar yield 50%', 'Solana'),
     );
     expect(find(pane, 'h2').textContent).toBe(en.shared.family.recipe('Solana'));
     expect(pane.textContent).toContain(en.shared.family.versionN(2));
