@@ -1314,6 +1314,8 @@ export const pt: Dictionary = {
         removed: 'Removido da estratégia proposta',
         details: 'Detalhes do cofre e fontes dos preços',
         draftIntro: 'Proposta preliminar, não aplicada:',
+        figureSaid: '{value}, um valor medido',
+        figureSaidAged: '{value}, um valor medido, {age}',
         comparison: 'Meta atual → fatia proposta',
         reasons: 'Escolhas e fontes',
         tradeoffs: 'Escolhas e consequências',

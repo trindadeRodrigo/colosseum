@@ -1441,6 +1441,9 @@ export const en = {
         removed: 'Removed from the proposed strategy',
         details: 'Vault details and price sources',
         draftIntro: 'Draft proposal, not applied:',
+        /** A figure stated in a reply, named for screen readers: the value, what it is, how old. */
+        figureSaid: '{value}, a measured figure',
+        figureSaidAged: '{value}, a measured figure, {age}',
         comparison: 'Current target → proposed share',
         reasons: 'Tradeoffs and sources',
         tradeoffs: 'Tradeoffs',

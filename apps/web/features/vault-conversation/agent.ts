@@ -1,7 +1,60 @@
-import { AssetId, type ChainId, Provenance, type VaultResponse } from '@colosseum/schemas';
+import {
+  AssetId,
+  type ChainId,
+  FIGURE_REFERENCE,
+  Provenance,
+  VaultAgentFigure,
+  type VaultResponse,
+} from '@colosseum/schemas';
 import type { ApiFetch } from '../account/person';
 import { sameAddress } from '../portfolio/vault-name';
 import type { Turn } from './storage';
+
+/**
+ * A figure a reply stated by reference (gate FIGURES-BY-REFERENCE): written by our server from what it
+ * measured, with its source and time, or null with the reason. Never the model's own number.
+ */
+export type Figure = VaultAgentFigure;
+/** A text with each figure a `{{fact:<id>}}` placeholder, and what each one is. */
+export type Figured = { template: string; facts: Figure[] };
+/** The reply's prose with its placeholders, field by field. */
+export type ReplyFigures = {
+  prose: {
+    message: string;
+    question?: string;
+    proposal?: {
+      objective: string;
+      summary: string;
+      tradeoffs: string[];
+      unknowns: string[];
+      why: Record<string, string>;
+    };
+  };
+  facts: Figure[];
+};
+
+/** The facts as our server wrote them, each once; null when any is not one. */
+export function factsOf(value: unknown): Figure[] | null {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 64) return null;
+  const facts: Figure[] = [];
+  for (const raw of value) {
+    const fact = VaultAgentFigure.safeParse(raw);
+    if (!fact.success || facts.some((old) => old.id === fact.data.id)) return null;
+    facts.push(fact.data);
+  }
+  return facts;
+}
+
+/** The ids a template's placeholders name, in order. */
+export const referencesIn = (template: string): string[] =>
+  [...template.matchAll(FIGURE_REFERENCE)].map((match) => match[1] ?? '');
+
+/** `template` with the facts its placeholders name, or undefined when it names none of them. */
+export function figuredOf(template: string, facts: readonly Figure[]): Figured | undefined {
+  const named = new Set(referencesIn(template));
+  const own = facts.filter((fact) => named.has(fact.id));
+  return own.length > 0 && own.length === named.size ? { template, facts: own } : undefined;
+}
 
 export type VaultStrategyPreview = {
   objective: string;
@@ -125,6 +178,11 @@ export type VaultAgentRequest = {
 export type VaultAgentReply = {
   message: string;
   question?: string;
+  /**
+   * Present when the reply stated figures by reference. `message`, `question` and the proposal's prose
+   * are then plain text with each value written in; this is the same prose with its placeholders.
+   */
+  figures?: ReplyFigures;
   proposal?: VaultStrategyPreview;
   /** Notes on a reply with no proposal: a share the server did not apply, could not meet, or dropped. */
   notes?: WeightNote[];
@@ -166,6 +224,64 @@ export function replyText(message: string, question?: string | null): string {
   return asked && bare(message).endsWith('?') && words(message).endsWith(asked)
     ? message
     : `${message}\n\n${question}`;
+}
+
+/**
+ * The figures of a reply, when every placeholder of its prose names one of its facts. Anything else
+ * and the reply is shown from its plain fields, which hold the same values as text: a malformed
+ * `figures` never voids the reply, and never shows a brace.
+ */
+function replyFiguresOf(value: unknown, withProposal: boolean): ReplyFigures | undefined {
+  const row = record(value);
+  const prose = record(row?.prose);
+  const facts = factsOf(row?.facts);
+  if (!prose || !facts || !text(prose.message, 9600)) return undefined;
+  if (prose.question != null && !text(prose.question, 2000)) return undefined;
+  let proposal: ReplyFigures['prose']['proposal'];
+  if (withProposal) {
+    const p = record(prose.proposal);
+    const why = record(p?.why);
+    if (
+      !p ||
+      !why ||
+      !text(p.objective, 3200) ||
+      !text(p.summary, 6400) ||
+      !texts(p.tradeoffs, 2400) ||
+      !texts(p.unknowns, 2400) ||
+      !Object.values(why).every((reason) => text(reason, 4000))
+    )
+      return undefined;
+    proposal = {
+      objective: p.objective,
+      summary: p.summary,
+      tradeoffs: p.tradeoffs,
+      unknowns: p.unknowns,
+      why: why as Record<string, string>,
+    };
+  }
+  const known = new Set(facts.map((fact) => fact.id));
+  const all = [
+    prose.message,
+    (prose.question as string | null | undefined) ?? '',
+    ...(proposal
+      ? [
+          proposal.objective,
+          proposal.summary,
+          ...proposal.tradeoffs,
+          ...proposal.unknowns,
+          ...Object.values(proposal.why),
+        ]
+      : []),
+  ];
+  if (all.some((words) => referencesIn(words).some((id) => !known.has(id)))) return undefined;
+  return {
+    prose: {
+      message: prose.message,
+      ...(prose.question ? { question: prose.question as string } : {}),
+      ...(proposal ? { proposal } : {}),
+    },
+    facts,
+  };
 }
 
 /** A provider reply is plain data. A preview grants no signing or funded-vault update capability. */
@@ -313,9 +429,11 @@ export function strategyReplyOf(value: unknown, chain: ChainId): VaultAgentReply
       ...(projectionOf(p.projection) ? { projection: projectionOf(p.projection) } : {}),
     };
   }
+  const figures = replyFiguresOf(row.figures, proposal !== undefined);
   return {
     message: row.message,
     ...(row.question ? { question: row.question as string } : {}),
+    ...(figures ? { figures } : {}),
     ...(proposal ? { proposal } : notes.length ? { notes } : {}),
   };
 }
@@ -346,7 +464,12 @@ export function vaultAgent(
         body: JSON.stringify({
           version: 1,
           language: request.language,
-          messages: request.transcript.map(({ who, text }) => ({ who, text })),
+          // An earlier reply goes back with its placeholders, not with the values of its day: the
+          // model never reads a number of its own there to repeat.
+          messages: request.transcript.map(({ who, text, figures }) => ({
+            who,
+            text: figures?.template ?? text,
+          })),
           messageId: request.transcript.at(-1)?.id,
         }),
       },
