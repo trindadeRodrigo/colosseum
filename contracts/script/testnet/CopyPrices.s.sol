@@ -35,6 +35,11 @@ interface IAggregator {
 /// for the token (with `FACTORY` set), or further from what the test network holds than `MAX_JUMP_BPS` per
 /// hour since that was stamped (at least one hour's worth, at most `MAX_GAP_JUMP_BPS`): the Solana copier's
 /// rules (TNET-5).
+///
+/// With `HOLD_LAST=true` (the loop's `--hold-last`) a price or an average whose source has posted nothing
+/// newer is written again once it is within `HOLD_MARGIN` of the age the vault takes: the value the test
+/// network already holds, which must be the source's own, stamped with the time of the mainnet block read.
+/// A round mainnet posts later is newer than that stamp and is copied as any other.
 contract CopyPrices is Script {
     using stdJson for string;
 
@@ -46,6 +51,15 @@ contract CopyPrices is Script {
     /// The furthest back the average looks for rounds; a stock feed writes a few an hour.
     uint256 public constant MAX_ROUNDS_BACK = 64;
     string internal constant NO_ANSWER = "the source feed did not answer";
+    /// Holding: how long before a value passes the vault's age limit it is written again. Eight of the
+    /// stock tokens' 26 hours: a held value is never older than 70% of its limit, under the 75% at which
+    /// `scripts/testnet/health.ts` calls a price old.
+    uint256 public constant HOLD_MARGIN = 8 hours;
+    /// The age limit taken for a token when no factory is named: the stock tokens' 26 hours.
+    uint256 public constant HOLD_MAX_AGE = 26 hours;
+    /// A source that has posted nothing for this long is not held any more: a long weekend is under four
+    /// days, and a feed that died or a halted stock has to go stale here as it does on mainnet.
+    uint256 public constant HOLD_SOURCE_MAX_AGE = 4 days;
 
     struct Asset {
         string symbol;
@@ -79,6 +93,8 @@ contract CopyPrices is Script {
         uint256 unchanged;
         uint256 refused;
         uint256 recentred;
+        /// Tokens whose price or average was only written again with a new time (`holdLast`).
+        uint256 held;
     }
 
     error NotTheWriter(address signer, address writer);
@@ -104,12 +120,14 @@ contract CopyPrices is Script {
         checkSigner(r, signer);
         if (key == 0) vm.startBroadcast(signer);
         else vm.startBroadcast(key);
-        result = copy(r, readings, vm.envOr("MAX_JUMP_BPS", uint256(1000)), vm.envOr("FACTORY", address(0)));
+        bool holdLast = vm.envOr("HOLD_LAST", false);
+        result = copy(r, readings, vm.envOr("MAX_JUMP_BPS", uint256(1000)), vm.envOr("FACTORY", address(0)), holdLast);
         vm.stopBroadcast();
         console2.log(
             string.concat(
                 "round: wrote ",
                 vm.toString(result.written),
+                holdLast ? string.concat(", held ", vm.toString(result.held)) : "",
                 ", unchanged ",
                 vm.toString(result.unchanged),
                 ", refused ",
@@ -199,8 +217,18 @@ contract CopyPrices is Script {
 
     // ---- writing the test network
 
-    /// Writes what is newer and passes, as the caller, then re-centres every pool off its test price.
+    /// A round that holds nothing.
     function copy(Record memory r, Reading[] memory readings, uint256 maxJumpBps, address factory)
+        public
+        returns (Result memory result)
+    {
+        return copy(r, readings, maxJumpBps, factory, false);
+    }
+
+    /// Writes what is newer and passes, as the caller, then re-centres every pool off its test price. With
+    /// `holdLast`, a token with nothing newer has its price and its average written again when they near the
+    /// vault's age limit.
+    function copy(Record memory r, Reading[] memory readings, uint256 maxJumpBps, address factory, bool holdLast)
         public
         returns (Result memory result)
     {
@@ -221,11 +249,15 @@ contract CopyPrices is Script {
             bool newerAverage = reading.averageAt > heldAverageAt
                 && (newerPrice || (reading.averageAt >= heldAverageAt + AVERAGE_EVERY && reading.average != heldAverage));
             if (!newerPrice && !newerAverage) {
+                if (holdLast && _hold(a, reading, _holdAfter(factory, a.token))) {
+                    ++result.held;
+                    continue;
+                }
                 ++result.unchanged;
                 console2.log(string.concat("  ", a.symbol, ": unchanged"));
                 continue;
             }
-            (uint256 min, uint256 max) = _range(factory, a.token);
+            (uint256 min, uint256 max,) = _range(factory, a.token);
             string memory why;
             if (newerPrice) {
                 why = refusal("price", reading.answer, reading.updatedAt, heldPrice, heldPriceAt, min, max, maxJumpBps);
@@ -350,10 +382,100 @@ contract CopyPrices is Script {
         (, answer,, updatedAt,) = abi.decode(ret, (uint80, int256, uint256, uint256, uint80));
     }
 
-    function _range(address factory, address token) private view returns (uint256 min, uint256 max) {
-        if (factory == address(0)) return (0, 0);
+    function _range(address factory, address token) private view returns (uint256 min, uint256 max, uint256 maxAge) {
+        if (factory == address(0)) return (0, 0, 0);
         AssetConfig memory c = IVaultConfig(factory).asset(token);
-        return (c.minPrice, c.maxPrice);
+        return (c.minPrice, c.maxPrice, c.maxAge);
+    }
+
+    /// The age at which a held value is written again: `HOLD_MARGIN` before the vault's limit for the token,
+    /// or half the limit where that is shorter than the margin.
+    function _holdAfter(address factory, address token) private view returns (uint256) {
+        (,, uint256 maxAge) = _range(factory, token);
+        if (maxAge == 0) maxAge = HOLD_MAX_AGE;
+        return maxAge > HOLD_MARGIN ? maxAge - HOLD_MARGIN : maxAge / 2;
+    }
+
+    /// Writes again, with the time of the mainnet block read, each of the token's two values that is
+    /// `holdAfter` old or older. Only a value the source still holds is held, never with a time that is not
+    /// newer than its last or is past the test network's clock by more than `MAX_AHEAD`, and not once the
+    /// source has posted nothing for `HOLD_SOURCE_MAX_AGE`. A value that is due and left says why.
+    function _hold(Asset memory a, Reading memory reading, uint256 holdAfter) private returns (bool held) {
+        uint256 stamp = reading.averageAt;
+        (int256 price, uint256 priceAt) = _held(a.feed);
+        (int256 average, uint256 averageAt) = _held(a.average);
+        bool priceDue = price > 0 && stamp > priceAt && block.timestamp >= priceAt + holdAfter;
+        bool averageDue = average > 0 && stamp > averageAt && block.timestamp >= averageAt + holdAfter;
+        if (!priceDue && !averageDue) return false;
+        if (stamp > block.timestamp + MAX_AHEAD) {
+            console2.log(
+                string.concat(
+                    "  ",
+                    a.symbol,
+                    ": not held, the mainnet block is ",
+                    vm.toString(stamp - block.timestamp),
+                    " s ahead of the test network's latest"
+                )
+            );
+            return false;
+        }
+        string memory posted = string.concat(" (source last posted ", _iso(reading.updatedAt), ")");
+        if (stamp > reading.updatedAt + HOLD_SOURCE_MAX_AGE) {
+            console2.log(string.concat("  ", a.symbol, ": not held, too long ago", posted));
+            return false;
+        }
+        bool priceHeld = priceDue && price == reading.answer;
+        if (priceHeld) {
+            TestPriceFeed(a.feed).write(price, stamp);
+            console2.log(string.concat("  held ", a.symbol, " at ", _dollars(price), posted));
+        } else if (priceDue) {
+            console2.log(string.concat("  ", a.symbol, ": price not held, it is not the source's"));
+        }
+        bool averageHeld = averageDue && average == reading.average;
+        if (averageHeld) {
+            TestPriceFeed(a.average).write(average, stamp);
+            console2.log(
+                string.concat(
+                    "  held ", a.symbol, priceHeld ? " average at " : " average only at ", _dollars(average), posted
+                )
+            );
+        } else if (averageDue) {
+            console2.log(string.concat("  ", a.symbol, ": average not held, it is not the source's"));
+        }
+        return priceHeld || averageHeld;
+    }
+
+    /// Unix seconds as `2026-10-10T20:00:00Z`.
+    function _iso(uint256 at) private pure returns (string memory) {
+        // Days to a civil date, after Howard Hinnant's `civil_from_days`.
+        uint256 z = at / 1 days + 719_468;
+        uint256 era = z / 146_097;
+        uint256 doe = z - era * 146_097;
+        uint256 yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+        uint256 doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        uint256 mp = (5 * doy + 2) / 153;
+        uint256 day = doy - (153 * mp + 2) / 5 + 1;
+        uint256 month = mp < 10 ? mp + 3 : mp - 9;
+        uint256 year = yoe + era * 400 + (month <= 2 ? 1 : 0);
+        uint256 second = at % 1 days;
+        return string.concat(
+            vm.toString(year),
+            "-",
+            _two(month),
+            "-",
+            _two(day),
+            "T",
+            _two(second / 3600),
+            ":",
+            _two(second % 3600 / 60),
+            ":",
+            _two(second % 60),
+            "Z"
+        );
+    }
+
+    function _two(uint256 n) private pure returns (string memory) {
+        return string.concat(n < 10 ? "0" : "", vm.toString(n));
     }
 
     function _refuse(Result memory result, string memory symbol, string memory why) private pure {

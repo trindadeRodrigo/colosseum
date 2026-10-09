@@ -23,12 +23,20 @@ import { rangeAround, vaultAssets } from '../scripts/testnet/robinhood/vault-con
 
 describe('the price copier loop', () => {
   it('takes exactly one of --dry-run, --once and --loop', () => {
-    expect(parseArgs(['--dry-run'])).toEqual({ dryRun: true, loop: false, everySeconds: 60 });
+    expect(parseArgs(['--dry-run'])).toEqual({
+      dryRun: true,
+      loop: false,
+      everySeconds: 60,
+      holdLast: false,
+    });
     expect(parseArgs(['--loop', '--every', '30'])).toEqual({
       dryRun: false,
       loop: true,
       everySeconds: 30,
+      holdLast: false,
     });
+    // Holding the last price is asked for, never assumed.
+    expect(parseArgs(['--loop', '--hold-last'])).toMatchObject({ loop: true, holdLast: true });
     expect(() => parseArgs([])).toThrow('say one of');
     expect(() => parseArgs(['--once', '--loop'])).toThrow('say one of');
     expect(() => parseArgs(['--loop', '--every', '5'])).toThrow('15 or more');
@@ -78,6 +86,23 @@ describe('the price copier loop', () => {
       '  tSPY: wrote price 776.16661047 at 1791222309 average 776.10000000 at 1791222400',
       '  tGLD: unchanged',
       'round: wrote 1, unchanged 1, refused 0, pools re-centred 1',
+    ]);
+  });
+  it("keeps a held value's line, which says when the source last posted", () => {
+    const out = [
+      '== Logs ==',
+      '  source: Robinhood Chain mainnet, block 1234',
+      '    held tSPY at 776.16661047 (source last posted 2026-10-09T20:00:00Z)',
+      '    held tSPY average at 776.16661047 (source last posted 2026-10-09T20:00:00Z)',
+      '    tGLD: unchanged',
+      '  round: wrote 0, held 1, unchanged 1, refused 0, pools re-centred 0',
+    ].join('\n');
+    expect(roundLines(out)).toEqual([
+      'source: Robinhood Chain mainnet, block 1234',
+      '  held tSPY at 776.16661047 (source last posted 2026-10-09T20:00:00Z)',
+      '  held tSPY average at 776.16661047 (source last posted 2026-10-09T20:00:00Z)',
+      '  tGLD: unchanged',
+      'round: wrote 0, held 1, unchanged 1, refused 0, pools re-centred 0',
     ]);
   });
 });
