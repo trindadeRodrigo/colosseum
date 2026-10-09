@@ -587,7 +587,7 @@ describe('planRetarget: a vault the person owns, to its new targets', () => {
       ['set_targets', "Set your vault's targets: SPYx 30%, mGOLD 50%, and 20% in cash"],
       ['swap', 'Sell TSLAx for cash'],
       ['swap', 'Sell SPYx for cash'],
-      ['swap', 'Buy mGOLD'],
+      ['swap', 'Swap into mGOLD'],
     ]);
     expect(request).toEqual({
       type: 'rebalance',

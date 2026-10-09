@@ -180,11 +180,11 @@ async function buildFor(
   // A buy of a shared portfolio reaches the vault numbered from the family's id.
   const family = request.family ? await familyBySlug(deps.db, request.family) : null;
   if (request.family && !family)
-    throw new Refusal(409, 'the shared portfolio this order buys is gone');
+    throw new Refusal(409, 'the shared portfolio this order deposits into is gone');
   // A plan's order is built only while its plan is there: a plan made from a link that nobody bought is
   // deleted after a few days, and an order that raced that is refused here, not signed half way.
   if (!family && request.proposalId && !(await proposalExists(deps.db, request.proposalId)))
-    throw new Refusal(409, 'the plan this order buys is gone', {
+    throw new Refusal(409, 'the plan this order deposits into is gone', {
       code: 'PLAN_GONE',
       fix: 'Make the plan again, then the order.',
     });
@@ -271,7 +271,7 @@ async function buildFor(
       }
       const proposal = await loadProposal(deps.db, request.proposalId ?? '');
       const recipe = proposal?.recipes.find((r) => r.chain === leg.chain);
-      if (!recipe) throw new Refusal(409, 'the plan this order buys is no longer stored');
+      if (!recipe) throw new Refusal(409, 'the plan this order deposits into is no longer stored');
       const assets = await adapter.listAssets();
       const cash = assets.find((x) => x.cls === 'cash');
       if (!cash) throw new Error(`${entry.chain} lists no cash token`);

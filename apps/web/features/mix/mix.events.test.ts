@@ -167,6 +167,7 @@ function Deposit({ said, onChangeMix }: { said: Purpose; onChangeMix: () => void
     provenance: 'sandbox',
     onChangeMix,
     onClose: () => {},
+    host: { onOpen: () => {}, onRunning: () => {}, onLeave: () => {} },
   });
 }
 const goalMix = (lang: 'en' | 'pt' = 'en', said: Purpose = SAID, onChangeMix = () => {}) =>
@@ -452,24 +453,27 @@ describe('a vault conversation’s preview, applied to the vault', () => {
 });
 
 describe('a new goal’s mix, made into a plan', () => {
-  it('takes one amount with the goal the person said, checks, reviews, and stores the plan for the existing buy', async () => {
+  it('takes one amount with the goal the person said, checks, reviews, stores the plan and shows its steps in the same pane', async () => {
     const calls: Call[] = [];
     const proposalId = '0f6a3b9e-2c4d-4e5f-8a7b-1c2d3e4f5a6b';
-    const { planOn } = await import('../order/test/fixtures');
+    const { planOn, serverKeepsPlans } = await import('../order/test/fixtures');
     const plan = planOn('solana');
-    portStore.setApi(async (url, init) => {
-      if (!url.endsWith('/goal/accept')) return json({}, 404);
-      const body = JSON.parse(String(init?.body ?? '{}'));
-      calls.push({ url, body });
-      return body.confirm
-        ? json({
-            status: 'stored',
-            review: reviewOf({ ...of(body), unconfirmed: [] }),
-            proposalId,
-            proposal: plan.proposal,
-          })
-        : json({ status: 'review', review: reviewOf(of(body)) });
-    });
+    // the server keeps the plan it stored, and answers it to the pane that then reads it
+    portStore.setApi(
+      serverKeepsPlans(async (url, init) => {
+        if (!url.endsWith('/goal/accept')) return json({}, 404);
+        const body = JSON.parse(String(init?.body ?? '{}'));
+        calls.push({ url, body });
+        return body.confirm
+          ? json({
+              status: 'stored',
+              review: reviewOf({ ...of(body), unconfirmed: [] }),
+              proposalId,
+              proposal: plan.proposal,
+            })
+          : json({ status: 'review', review: reviewOf(of(body)) });
+      }),
+    );
     const host = await goalMix('en', { goal: 'protect', risk: 'low' });
     // no form: nothing to choose from, the goal and risk said as one sentence, the editor closed
     expect(host.querySelectorAll('select')).toHaveLength(0);
@@ -516,8 +520,18 @@ describe('a new goal’s mix, made into a plan', () => {
       goal: 'protect',
       risk: 'low',
     });
-    expect(router.push).toHaveBeenCalledWith(`/plan/${proposalId}/buy`);
+    // the steps to sign take the same pane, at the amount typed: nobody is sent to another page
+    expect(router.push).not.toHaveBeenCalled();
     expect(localStorage.getItem(`tf-plan:${proposalId}`)).not.toBeNull();
+    const pane = find(host, '[data-ui="deposit-sign"]');
+    expect(pane.getAttribute('data-state')).toBe('ready');
+    expect(find(pane, '[data-ui="deposit-sign-amount"]').textContent).toContain('$100');
+    expect(pane.querySelector('input[inputmode="decimal"]')).toBeNull();
+    // "Change" leads back to the amount, as typed
+    await click(buttonNamed(pane, en.mix.deposit.signing.change));
+    expect(host.querySelector('[data-ui="deposit-sign"]')).toBeNull();
+    expect(amountBox(host).value).toBe('100');
+    expect(document.activeElement).toBe(amountBox(host));
   });
 
   it('says on each press what is being done while it waits: the check, the saving, the way to the next step', async () => {
@@ -587,10 +601,11 @@ describe('a new goal’s mix, made into a plan', () => {
     expect(calls.filter((call) => call.body.confirm)).toHaveLength(1);
     expect(router.push).not.toHaveBeenCalled();
     await release();
-    // stored: the route change is asked for, and the button says so until the next screen takes over
-    expect(router.push).toHaveBeenCalledWith(`/plan/${proposalId}/buy`);
-    expect(shown(confirm)).toEqual([en.mix.goal.opening, true]);
-    expect(confirm.getAttribute('aria-busy')).toBe('true');
+    // stored: nobody is sent anywhere, and the steps to sign take the review's place in the same pane
+    // (gate DEPOSIT-IN-PLACE), so no button is left waiting on a route
+    expect(router.push).not.toHaveBeenCalled();
+    expect(host.querySelector('[data-action="mix-confirm"]')).toBeNull();
+    expect(find(host, '[data-ui="deposit-sign"]').getAttribute('data-state')).toBe('ready');
     // what was sent is what was sent before this change: the same two requests, nothing added
     expect(calls.map((call) => Object.keys(call.body).sort())).toEqual([
       [
@@ -1007,7 +1022,7 @@ describe('the deposit step, kept honest while things move', () => {
     expect(host.textContent).toContain(en.mix.deposit.errors.belowMin);
   });
 
-  it('says the wallet is checked on the buy screen, and holds the press while a reply is on its way', async () => {
+  it('says the wallet is checked before signing, and holds the press while a reply is on its way', async () => {
     const host = await mount(
       withAccount(
         'en',
@@ -1021,6 +1036,7 @@ describe('the deposit step, kept honest while things move', () => {
           provenance: 'sandbox',
           onChangeMix: () => {},
           onClose: () => {},
+          host: { onOpen: () => {}, onRunning: () => {}, onLeave: () => {} },
           waiting: true,
         }),
       ),

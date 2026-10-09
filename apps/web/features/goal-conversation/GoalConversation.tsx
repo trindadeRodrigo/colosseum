@@ -9,7 +9,16 @@ import { LatticeGlyph } from '../../components/ui/Lattice';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
+import type { AccountView } from '../account/AccountProvider';
+import { signInHref } from '../account/account-control-parts';
+import {
+  type DepositHost,
+  DepositSign,
+  type OpenDeposit,
+  UnfinishedDeposit,
+} from '../mix/DepositSign';
 import { DepositStep, type Purpose } from '../mix/DepositStep';
+import { recallOrder } from '../order/order-record';
 import { share } from '../portfolio/figures';
 import { DraftBuilding, PendingReply, ReplyAnnouncer, useChatScroll } from '../shared/ReplyPending';
 import {
@@ -39,17 +48,29 @@ export const goalConversationKey = (
 ) =>
   `tf-goal-conversation:2:${encodeURIComponent(userId)}:${chain}:${network ?? 'unconfigured'}:${provenance}`;
 
-/** Plain browser history is never restored as a proposal, confirmation or executable order. */
+/**
+ * Plain browser history is never restored as a proposal, confirmation or executable order. The one
+ * thing taken up again after a reload is a deposit the person already approved here (gate
+ * DEPOSIT-IN-PLACE): this browser keeps its plan's and its order's ids beside the transcript, and the
+ * pane opens on that order as its own record and our server have it, never on anything kept here.
+ */
 export function GoalConversation({
   userId,
   chain,
   ready,
   provenance,
+  account = userId ? 'signed-in' : 'signed-out',
   conversationId = 'main',
   onSaved,
+  onDeposit,
   chainControl,
   carried,
 }: {
+  /**
+   * What the bar's account control shows (AccountProvider, `view`), so this page says the same:
+   * while it is not known who is here the page waits, and asks nobody to sign in.
+   */
+  account?: AccountView;
   userId: string | null;
   chain: ChainId | null;
   ready: boolean;
@@ -58,6 +79,11 @@ export function GoalConversation({
   conversationId?: string;
   /** Called with the person's first words each time the transcript is saved. */
   onSaved?: (title: string) => void;
+  /**
+   * Called as a deposit is open on the pane (approved, its steps not all confirmed) whichever way the
+   * pane came to show it, with whether a step is being signed now, and as it no longer is.
+   */
+  onDeposit?: (state: { open: boolean; signing: boolean }) => void;
   /**
    * The chain of this plan, drawn beside the box (GoalChain, gate CHAIN-AT-THE-PLAN): a choice while
    * the conversation has no words, its badge with "Change" once it has.
@@ -81,6 +107,7 @@ export function GoalConversation({
   // shown again on return. It is read back through the same check as a fresh server reply
   // (strategyReplyOf), and it stays a preview: nothing here can buy or sign from it.
   const previewKey = key ? `${key}:preview` : null;
+  const depositKey = key ? `${key}:deposit` : null;
   const current = useRef(context);
   current.current = context;
   const generation = useRef(0);
@@ -112,6 +139,25 @@ export function GoalConversation({
     typed.current = words !== '';
     setAmountText(words);
   };
+  // The deposit the person approved on this pane: from the press until every step is confirmed the
+  // conversation waits, so no reply can take the pane from under a step that is being signed.
+  const [open, setOpen] = useState<OpenDeposit | null>(null);
+  const [signing, setSigning] = useState(false);
+  // "Start over" was pressed with a deposit open: asked once more before it is left.
+  const [asking, setAsking] = useState(false);
+  // One state for every way the pane shows an approved deposit (just pressed, signing, stopped, taken
+  // up again after a reload): it holds the box and the chain, and is what every way out asks about.
+  const locked = open !== null && !open.done && !open.left;
+  const openNow = useRef(open);
+  openNow.current = open;
+  const lockedNow = useRef(locked);
+  lockedNow.current = locked;
+  const tellDeposit = useRef(onDeposit);
+  tellDeposit.current = onDeposit;
+  useEffect(() => {
+    tellDeposit.current?.({ open: locked, signing: locked && signing });
+  }, [locked, signing]);
+  useEffect(() => () => tellDeposit.current?.({ open: false, signing: false }), []);
   const [error, setError] = useState<string>();
   // The reply did not come: said in the transcript, where the reply would have been.
   const [failure, setFailure] = useState<string>();
@@ -136,6 +182,28 @@ export function GoalConversation({
     } catch {
       restored = null;
     }
+    // A deposit approved here before a reload: only one whose order this browser kept for this person,
+    // approved, for that plan and chain. Its amount is the order record's own.
+    let resumed: OpenDeposit | null = null;
+    try {
+      const raw = depositKey && chain ? localStorage.getItem(depositKey) : null;
+      const read = raw ? (JSON.parse(raw) as Partial<OpenDeposit>) : null;
+      const record =
+        read && typeof read.orderId === 'string' ? recallOrder(read.orderId, userId) : null;
+      if (read && record?.approved && record.proposalId === read.planId && record.chain === chain)
+        resumed = {
+          planId: record.proposalId,
+          orderId: record.orderId,
+          amountUsd: record.amountUsd,
+          ...(read.left === true ? { left: true as const } : {}),
+        };
+      else if (raw && depositKey) localStorage.removeItem(depositKey);
+    } catch {
+      resumed = null;
+    }
+    setOpen(resumed);
+    setSigning(false);
+    setAsking(false);
     setReply(null);
     setMix(held.current.length ? restored : null);
     setKept(Boolean(held.current.length && restored));
@@ -155,7 +223,36 @@ export function GoalConversation({
       ++generation.current;
       cancel.current?.abort();
     };
-  }, [api, key, context, userId, ready, previewKey, chain]);
+  }, [api, key, context, userId, ready, previewKey, depositKey, chain]);
+
+  /** The open deposit's ids are kept beside the transcript, so a reload finds its order again. */
+  function keepOpen(next: OpenDeposit | null) {
+    setOpen(next);
+    if (!next || next.left) setSigning(false);
+    if (!depositKey) return;
+    try {
+      // only the ids and whether it was left: done is the server's to say, each visit
+      if (next)
+        localStorage.setItem(
+          depositKey,
+          JSON.stringify({
+            planId: next.planId,
+            orderId: next.orderId,
+            amountUsd: next.amountUsd,
+            ...(next.left ? { left: true } : {}),
+          }),
+        );
+      else localStorage.removeItem(depositKey);
+    } catch {
+      // storage full or blocked: the deposit is still on the pane for this visit
+    }
+  }
+  /** Leaves the deposit on the pane: one that is not done is set aside and said to be waiting. */
+  function setAside() {
+    const now = openNow.current;
+    keepOpen(now && !now.done ? { ...now, left: true } : null);
+  }
+  const host: DepositHost = { onOpen: keepOpen, onRunning: setSigning, onLeave: setAside };
 
   /** The last mix is kept beside the transcript, read back through the same check as a reply. */
   function keepPreview(next: VaultStrategyPreview | null) {
@@ -189,8 +286,13 @@ export function GoalConversation({
     if (saved && first) onSaved?.(first.length > 60 ? `${first.slice(0, 59)}…` : first);
     return saved;
   }
-  function startOver() {
+  function startOver(sure = false) {
     if (sending.current) return;
+    // A deposit is open: leaving it is asked once more. What was sent stays sent.
+    if (lockedNow.current && !sure) return setAsking(true);
+    setAsking(false);
+    // an unfinished deposit outlives the conversation's words: it is still said to be waiting
+    setAside();
     ++generation.current;
     held.current = [];
     setTurns([]);
@@ -208,7 +310,7 @@ export function GoalConversation({
     persist([]);
   }
   async function send(words: string) {
-    if (!ready || !chain || !key || !loaded || sending.current) return;
+    if (!ready || !chain || !key || !loaded || sending.current || lockedNow.current) return;
     // Words that got no reply are sent again as the turn they already are, never as a second copy.
     const last = held.current.at(-1);
     const next =
@@ -292,6 +394,8 @@ export function GoalConversation({
         setMix(result.proposal);
         setKept(false);
         setDepositing(false);
+        // a deposit that is done gives the pane back to the next proposal
+        if (openNow.current?.done) keepOpen(null);
         keepPreview(result.proposal);
       }
       persist(completed);
@@ -353,10 +457,17 @@ export function GoalConversation({
           >
             {chatOpen ? t.talk.hideChat : t.talk.showChat}
           </Button>
-          {turns.length > 0 && (
-            <Button variant="link" disabled={busy} onClick={startOver}>
+          {turns.length > 0 && !asking && (
+            <Button variant="link" disabled={busy} onClick={() => startOver()}>
               {t.talk.startOver}
             </Button>
+          )}
+          {asking && (
+            <LeaveDeposit
+              signing={signing}
+              onLeave={() => startOver(true)}
+              onStay={() => setAsking(false)}
+            />
           )}
         </div>
       </header>
@@ -433,13 +544,29 @@ export function GoalConversation({
             </li>
           )}
         </ol>
-        {!ready && (
-          <p className="text-body-sm text-muted-foreground">
-            {userId ? copy.readingAccount : copy.signIn}
-          </p>
-        )}
-        {!userId && (
-          <Link href="/sign-in?next=/goal" className="text-body-sm underline">
+        {/* The page agrees with the bar: it waits while the bar's control waits, and asks for a
+            sign-in only once the bar offers one, through the same link. The wait is said once, by
+            the bar's control: this line is read in place, and is no second announcement. */}
+        {!ready &&
+          (account === 'loading' ? (
+            <p
+              data-ui="goal-account-loading"
+              className="inline-flex items-center gap-3 self-start text-body-sm text-muted-foreground"
+            >
+              <LatticeGlyph />
+              <span>{copy.loadingAccount}</span>
+            </p>
+          ) : (
+            <p data-ui="goal-account" className="text-body-sm text-muted-foreground">
+              {account === 'signed-in' ? copy.readingAccount : copy.signIn}
+            </p>
+          ))}
+        {account === 'signed-out' && (
+          <Link
+            href={signInHref('/goal')}
+            data-ui="goal-sign-in"
+            className="text-body-sm underline"
+          >
             {t.shell.signIn}
           </Link>
         )}
@@ -448,7 +575,8 @@ export function GoalConversation({
         {loaded &&
           chainControl?.({
             started: turns.some((turn) => turn.who === 'app'),
-            busy: busy || depositing,
+            // and while a deposit is open on the pane, however it came to be there (after a reload too)
+            busy: busy || depositing || locked,
           })}
         <Composer
           label={copy.invitation}
@@ -461,9 +589,16 @@ export function GoalConversation({
           busy={busy}
           // the next thought can be typed while a reply is on its way; only sending waits
           typeWhileBusy
-          hint={t.shared.vault.conversation.hint}
+          // a deposit open on the pane holds the box whatever else: its own line says why
+          hint={
+            locked
+              ? signing
+                ? copy.deposit.signing
+                : copy.deposit.open
+              : t.shared.vault.conversation.hint
+          }
           busyHint={t.shared.vault.conversation.busyHint}
-          disabled={!ready || !loaded}
+          disabled={!ready || !loaded || locked}
           error={error}
           lang={lang}
           labels={{ submit: t.shared.vault.conversation.submitMessage, busy: '' }}
@@ -497,6 +632,17 @@ export function GoalConversation({
         aria-busy={busy}
         className={`tf-scroll-thin relative flex min-w-0 flex-col gap-4 ${chatOpen ? 'md:col-span-7' : 'md:col-span-12'} md:min-h-0 md:overflow-y-auto md:pr-2`}
       >
+        {open?.left && (
+          <UnfinishedDeposit
+            orderId={open.orderId}
+            amountUsd={open.amountUsd}
+            onBack={() => {
+              setDepositing(false);
+              keepOpen({ planId: open.planId, orderId: open.orderId, amountUsd: open.amountUsd });
+            }}
+            onGone={() => keepOpen(null)}
+          />
+        )}
         {mix && chain && userId && depositing && !kept ? (
           <>
             <DepositStep
@@ -513,9 +659,19 @@ export function GoalConversation({
                 backToPreview.current = true;
                 setDepositing(false);
               }}
+              host={host}
             />
             {reply && !reply.proposal && reply.notes && <WeightNotes notes={reply.notes} />}
           </>
+        ) : open && !open.left && chain && ready ? (
+          // approved before a reload: the same steps, from the order's own record
+          <DepositSign
+            chain={chain}
+            planId={open.planId}
+            amountUsd={open.amountUsd}
+            resume={open}
+            host={host}
+          />
         ) : mix ? (
           <>
             <StrategyPreview
@@ -560,5 +716,40 @@ export function GoalConversation({
         )}
       </div>
     </section>
+  );
+}
+
+/** Asked before a deposit that is open is left: what was sent stays sent, the rest stays unsigned. */
+export function LeaveDeposit({
+  signing,
+  onLeave,
+  onStay,
+}: {
+  signing: boolean;
+  onLeave: () => void;
+  onStay: () => void;
+}) {
+  const w = useT().goal.explore.deposit;
+  const id = useId();
+  const group = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    group.current?.querySelector<HTMLElement>('[data-action="stay"]')?.focus();
+  }, []);
+  return (
+    <div
+      ref={group}
+      role="alertdialog"
+      aria-labelledby={id}
+      data-ui="leave-deposit"
+      className="flex max-w-(--tf-measure-body) flex-wrap items-baseline gap-x-3 gap-y-1 text-body-sm"
+    >
+      <span id={id}>{signing ? w.leaveSigning : w.leave}</span>
+      <Button variant="link" data-action="stay" onClick={onStay}>
+        {w.stay}
+      </Button>
+      <Button variant="link" data-action="leave" onClick={onLeave}>
+        {w.leaveYes}
+      </Button>
+    </div>
   );
 }
