@@ -3,6 +3,7 @@ import {
   decide,
   HOLD_AVERAGE_AFTER_S,
   HOLD_PRICE_AFTER_S,
+  HOLD_SOURCE_MAX_AGE_S,
   type Stamped,
 } from '../programs/tests/src/testnet/hold';
 
@@ -38,10 +39,22 @@ describe('the Solana price copier, one entry', () => {
 
   it("holds the source's own value once the entry is older than the limit, and not before", () => {
     const source = at(100n, NOW - 86_400n);
-    expect(decide(source, at(100n, NOW - 61n), NOW, HOLD_PRICE_AFTER_S)).toBe('hold');
-    expect(decide(source, at(100n, NOW - 60n), NOW, HOLD_PRICE_AFTER_S)).toBe('unchanged');
+    expect(decide(source, at(100n, NOW - 46n), NOW, HOLD_PRICE_AFTER_S)).toBe('hold');
+    expect(decide(source, at(100n, NOW - 45n), NOW, HOLD_PRICE_AFTER_S)).toBe('unchanged');
     expect(decide(source, at(100n, NOW - 1_801n), NOW, HOLD_AVERAGE_AFTER_S)).toBe('hold');
     expect(decide(source, at(100n, NOW - 1_800n), NOW, HOLD_AVERAGE_AFTER_S)).toBe('unchanged');
+  });
+
+  it('stops holding a source that has posted nothing for four days', () => {
+    const held = at(100n, NOW - 100n);
+    expect(decide(at(100n, NOW - HOLD_SOURCE_MAX_AGE_S), held, NOW, HOLD_PRICE_AFTER_S)).toBe(
+      'hold',
+    );
+    expect(decide(at(100n, NOW - HOLD_SOURCE_MAX_AGE_S - 1n), held, NOW, HOLD_PRICE_AFTER_S)).toBe(
+      'unchanged',
+    );
+    // A long weekend, Friday 20:00 to Tuesday 13:30 UTC, is inside it.
+    expect(HOLD_SOURCE_MAX_AGE_S).toBeGreaterThan(322_200n);
   });
 
   it('leaves a stale entry alone without the flag', () => {
@@ -51,7 +64,9 @@ describe('the Solana price copier, one entry', () => {
   });
 
   it('stays inside what the program takes: 120 s for a price, an hour for the average', () => {
-    expect(HOLD_PRICE_AFTER_S).toBeLessThan(120n);
-    expect(HOLD_AVERAGE_AFTER_S).toBeLessThan(3_600n);
+    // Held every second round of 30 s, a price is at most 60 s old; with one round lost, 90 s.
+    expect(HOLD_PRICE_AFTER_S).toBeGreaterThan(30n);
+    expect(HOLD_PRICE_AFTER_S).toBeLessThanOrEqual(60n);
+    expect(HOLD_AVERAGE_AFTER_S).toBeLessThanOrEqual(1_800n);
   });
 });

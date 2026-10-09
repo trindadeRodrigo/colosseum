@@ -550,5 +550,29 @@ describe('the price copier', () => {
     setClock(svm, t + 1_930n);
     expect((await round(quote(next, t + 1_890n))).written).toEqual(['tGOOGLx']);
     expect(read(googl.priceIndex)).toEqual(p15(next, t + 1_890n));
+
+    // A value that differs is a copy, held to the jump limit like any other: 12% away is refused,
+    // nothing is written, and the entry is not stamped again, so it ages until the limit allows it.
+    setClock(svm, t + 2_000n);
+    const far = await round(quote('394', t + 1_990n));
+    expect(far.refused).toEqual([
+      {
+        id: 'tGOOGLx',
+        why: `price 394 is more than 1000 bps from the 351.75 devnet holds; ${HINT.jump}`,
+      },
+    ]);
+    expect(far.held).toEqual([]);
+    expect(read(googl.priceIndex)).toEqual(p15(next, t + 1_890n));
+    // Two hours on the allowance is two hours' worth, and the same price is copied.
+    setClock(svm, t + 1_890n + 7_300n);
+    expect((await round(quote('394', t + 1_990n))).written).toEqual(['tGOOGLx']);
+    expect(read(googl.priceIndex)).toEqual(p15('394', t + 1_990n));
+
+    // A source that cannot be read is not held, however old the entry.
+    setClock(svm, t + 20_000n);
+    const unread = await round({ id: 'solana:googlx', none: 'the node timed out' });
+    expect(unread.held).toEqual([]);
+    expect(unread.unchanged).toEqual(['tGOOGLx (no source: the node timed out)']);
+    expect(read(googl.priceIndex)).toEqual(p15('394', t + 1_990n));
   });
 });
