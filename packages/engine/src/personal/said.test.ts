@@ -24,14 +24,7 @@ const ctx = fixtureContext();
 const line = (plan: PersonalProposal, id: string) => plan.lines.find((l) => l.assetId === id);
 const rulesOn = (plan: PersonalProposal, id: string) => line(plan, id)?.reasons.map((r) => r.rule);
 /** The rules that say something was left out. */
-const LEFT_OUT = [
-  'MAX_LINES',
-  'BELOW_MINIMUM',
-  'EXCLUDED',
-  'NOT_FOR_GOAL',
-  'NOT_IN_COUNTRY',
-  'NOT_ON_CHAIN',
-];
+const LEFT_OUT = ['MAX_LINES', 'BELOW_MINIMUM', 'EXCLUDED', 'NOT_FOR_GOAL', 'NOT_ON_CHAIN'];
 
 describe('a reason names what it is about', () => {
   it('at $20 the dollar-yield share is too small to hold, and the cash line says that, not " is left out"', () => {
@@ -374,6 +367,30 @@ describe('what the person already holds', () => {
     expect(rulesOn(plan, 'solana:nvdax')).toContain('ALREADY_HELD');
   });
 
+  it('a holding that leaves a name too small for a line is said of that name, with why it is left out', () => {
+    // $1,262 of NVDA beside a $10,000 plan leaves $28.18 of it to buy: under the least a line can be,
+    // so NVDA is left out. The holding is why its part was that small. The sentence was on the name's
+    // line only, and went with it: here the other lines still say a holding moved them, and a plan in
+    // which none of them had a line either said nothing of the holding at all (mix.test.ts has one).
+    const plan = withHeld(1_262);
+    expect(line(plan, 'solana:nvdax')).toBeUndefined();
+    expect(plan.removed.find((r) => r.ref === 'NVDA')?.reasons.map((r) => r.text)).toEqual([
+      'NVDA is left out: $28 is too small to be a part of your plan.',
+      'Less NVDA: you already hold $1,262 of it.',
+    ]);
+    expect(
+      violations(
+        plan,
+        shelf,
+        fixtureContext({ holdings: [{ underlying: 'NVDA', valueUsd: 1_262 }] }),
+      ),
+    ).toEqual([]);
+    // A name that keeps its line says it there, as before, and is not listed as left out.
+    const kept = withHeld(1_000);
+    expect(rulesOn(kept, 'solana:nvdax')).toContain('ALREADY_HELD');
+    expect(kept.removed.find((r) => r.ref === 'NVDA')).toBeUndefined();
+  });
+
   it('holding more than the plan would buy: nothing of it is bought, and its money is held in dollar yield, with why', () => {
     // A table with half in stocks and half in gold, and a person who cannot hold gold and already
     // has $20,000 of the S&P 500. The target for stocks is half of $30,000, less than they hold.
@@ -660,19 +677,22 @@ describe('the words', () => {
     ]);
   });
 
-  it('names a country, not its code, and reads as a Brazilian would say it', () => {
+  // Gate COUNTRY-REMOVED (Oct 6): this test held that NVDAx blocked in Brazil was left out of a
+  // Brazilian's plan, said "in Brazil". It is now held, and no sentence names a country.
+  it("holds an asset blocked in the person's country, says no country, and reads as a Brazilian would say it", () => {
     const blocked = {
       ...shelf,
       assets: shelf.assets.map((a) =>
         a.id === 'solana:nvdax' ? { ...a, blockedCountries: ['BR'] } : a,
       ),
     };
-    const said = (language: 'en' | 'pt') =>
-      compose(sheet({ themes: ['the-seven'], language }), blocked, ctx)
-        .removed.find((r) => r.ref === 'NVDA')
-        ?.reasons.map((r) => r.text);
-    expect(said('en')).toEqual(['NVDAx is left out: it is not offered in Brazil.']);
-    expect(said('pt')).toEqual(['NVDAx fica de fora: não é oferecido no Brasil.']);
+    for (const language of ['en', 'pt'] as const) {
+      const plan = compose(sheet({ themes: ['the-seven'], language }), blocked, ctx);
+      expect(plan.removed.find((r) => r.ref === 'NVDA')).toBeUndefined();
+      expect(line(plan, 'solana:nvdax')).toBeDefined();
+      for (const r of allReasons(plan))
+        expect(r.text).not.toMatch(/Brazil|Brasil|not offered|não é oferecido/);
+    }
     const pt = compose(sheet({ language: 'pt' }), shelf, ctx);
     expect(line(pt, 'solana:syrupusdc')?.reasons.map((r) => r.text)).toEqual([
       'Para um objetivo de crescimento, com risco médio, a parcela inicial de rendimento em dólar é 15%.',

@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { pinState } from '../../components/ui/provenance';
+import { dictionary } from '../../i18n';
+import { tokenName } from '../order/amounts';
+import { displayName, plainNames } from '../order/plain';
 import { json } from '../wallet/test/fake-port';
-import { dollars, drift, share, tokens, utc } from './figures';
+import { dollars, drift, share, shareExact, sharesOf, tokens, utc } from './figures';
 import {
   addDecimals,
-  assetName,
   chainTotal,
+  holdingsOf,
   PORTFOLIO_PATH,
   positionValueSource,
   readPortfolio,
@@ -32,6 +35,8 @@ const answering = (res: Response | Error) =>
     if (res instanceof Error) throw res;
     return res;
   });
+
+const en = dictionary('en');
 
 describe('reading the portfolio', () => {
   it('asks the one route, and hands back the chain it answered for', async () => {
@@ -268,13 +273,56 @@ describe('how the figures are written', () => {
     expect(dollars('pt', '1040').replace(/\s/g, ' ')).toBe('US$ 1.040,00');
   });
 
-  it('as shares and drifts with two decimals, and a true minus', () => {
-    expect(share('en', 6346)).toBe('63.46%');
-    expect(drift('en', 346)).toBe('+3.46%');
-    expect(drift('en', -250)).toBe('−2.50%');
+  it('as shares and differences with one decimal at most, and a true minus', () => {
+    expect(share('en', 6346)).toBe('63.5%');
+    // a plan's round share is said round: 24.99% beside 25.00% read as noise
+    expect(share('en', 2500)).toBe('25%');
+    expect(share('en', 2499)).toBe('25%');
+    expect(drift('en', 346)).toBe('+3.5%');
+    expect(drift('en', -250)).toBe('−2.5%');
     expect(drift('en', -250)).not.toContain('-');
-    expect(drift('en', 0)).toBe('0.00%');
-    expect(drift('pt', -250).replace(/\s/g, ' ')).toBe('−2,50%');
+    expect(drift('en', 0)).toBe('0%');
+    expect(drift('pt', -250).replace(/\s/g, ' ')).toBe('−2,5%');
+  });
+
+  it('rounds the shares of one whole together, so they add up to it', () => {
+    // each rounded alone: 33.4 + 33.4 + 33.3 = 100.1
+    expect(sharesOf('en', [3335, 3335, 3330])).toEqual(['33.4%', '33.3%', '33.3%']);
+    expect(sharesOf('en', [6346, 1250, 2404])).toEqual(['63.5%', '12.5%', '24%']);
+    expect(sharesOf('en', [2499, 7501])).toEqual(['25%', '75%']);
+    for (const bps of [
+      [3335, 3335, 3330],
+      [6346, 1250, 2404],
+      [1111, 2222, 3333, 3334],
+      [9999, 1],
+    ]) {
+      const tenths = sharesOf('en', bps).map((s) => Math.round(Number.parseFloat(s) * 10));
+      expect(
+        tenths.reduce((a, b) => a + b, 0),
+        String(bps),
+      ).toBe(1000);
+    }
+    // a vault with nothing in it has no whole to add up to
+    expect(sharesOf('en', [0, 0])).toEqual(['0%', '0%']);
+    expect(shareExact('en', 12)).toBe('0.12%');
+  });
+
+  it('counts cash among what a vault holds, so the shares add up to the whole', () => {
+    const rows = holdingsOf(vault());
+    expect(rows.map((row) => [row.asset, row.weightBps, row.targetBps, row.driftBps])).toEqual([
+      ['solana:usdy', 6346, 6000, 346],
+      ['solana:paxg', 1250, 1500, -250],
+      ['solana:usdc', 2404, 2500, -96],
+    ]);
+    expect(rows.reduce((sum, row) => sum + row.weightBps, 0)).toBe(10_000);
+    expect(rows.reduce((sum, row) => sum + row.targetBps, 0)).toBe(10_000);
+    expect(rows.at(-1)).toMatchObject({ cash: true, valueUsd: vault().cash.display });
+    // a vault with nothing in it has no share to give its cash, and cash is never counted twice
+    expect(holdingsOf(vault({ positions: [], valueUsd: '0' })).at(-1)?.weightBps).toBe(0);
+    const [usdy] = vault().positions;
+    if (!usdy) throw new Error('fixture');
+    const cashHeld = vault({ positions: [{ ...usdy, asset: vault().cash.asset }] });
+    expect(holdingsOf(cashHeld)).toHaveLength(1);
   });
 
   it('as token amounts, and instants in UTC that say so', () => {
@@ -284,12 +332,45 @@ describe('how the figures are written', () => {
     expect(utc('en', Date.parse(READ_AT) / 1000)).toBe('Oct 5, 2026, 14:00 UTC');
   });
 
-  it('names an asset by the part of its id after the chain', () => {
-    expect(assetName('solana:usdy')).toBe('USDY');
-    expect(assetName('robinhood:tsla-x')).toBe('TSLA-X');
+  it('names a token one way on every screen, and a test token by the token it stands in for', () => {
+    expect(tokenName('solana:usdy')).toBe('USDY');
+    expect(tokenName('robinhood:tsla-x')).toBe('TSLA-X');
     // Robinhood Chain's dollar is tUSDG, on the mock too, where its id says usdc
-    expect(assetName('robinhood:usdc')).toBe('tUSDG');
-    expect(assetName('robinhood:tusdg')).toBe('tUSDG');
-    expect(assetName('solana:usdc')).toBe('USDC');
+    expect(tokenName('robinhood:usdc')).toBe('tUSDG');
+    expect(tokenName('robinhood:tusdg')).toBe('tUSDG');
+    expect(tokenName('solana:usdc')).toBe('USDC');
+    // the flow audit, finding 13: syrupUSDC / tsyrupUSDC / SYRUPUSDC, USDC / tUSDC, SPY / TSPY
+    for (const id of ['solana:syrupusdc', 'solana:tsyrupusdc', 'solana:SYRUPUSDC'])
+      expect(tokenName(id)).toBe('syrupUSDC');
+    expect(tokenName('solana:tusdc')).toBe('USDC');
+    expect(tokenName('robinhood:tspy')).toBe('SPY');
+    expect(tokenName('robinhood:tgld')).toBe('GLD');
+    expect(tokenName('solana:tsla')).toBe('TSLA');
+    expect(tokenName('solana:tslax')).toBe('TSLAx');
+    // the label of a row is the same name, with who issues it, and cash as cash
+    expect(displayName('solana:tsyrupusdc', en.plan)).toBe('syrupUSDC (Maple)');
+    expect(displayName('solana:tusdc', en.plan)).toBe('Cash (USDC)');
+    expect(displayName('robinhood:usdc', en.plan)).toBe('Cash (tUSDG)');
+    // and a sentence of the engine names them the same way, changing no other word
+    expect(plainNames('tsyrupUSDC is left out: tUSDC stays. A meta de tUSDG fica.')).toBe(
+      'syrupUSDC is left out: USDC stays. A meta de tUSDG fica.',
+    );
+  });
+});
+
+// Gate GLIDE-OPT-IN (Oct 6): a goal with no date has no due date; its months are a parameter.
+describe('the due date of a goal', () => {
+  it('is the order day plus the months for a dated goal, and none for a goal with no date', async () => {
+    const { dueOf } = await import('./vault-goal');
+    const { planOn } = await import('../order/test/fixtures');
+    const { sheet, card } = planOn().proposal;
+    const placedAt = '2026-10-06T12:00:00.000Z';
+    expect(dueOf({ sheet, card, verdict: null, placedAt })?.toISOString().slice(0, 7)).toBe(
+      '2029-10',
+    );
+    const open = { ...sheet, horizonMonths: 120, horizonOpen: true };
+    expect(
+      dueOf({ sheet: open, card: { ...card, termMonths: null }, verdict: null, placedAt }),
+    ).toBeNull();
   });
 });

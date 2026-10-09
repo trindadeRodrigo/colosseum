@@ -10,6 +10,7 @@ import {
   DISCLAIMER,
   type FundingNeed,
   type IntentRequest,
+  isAddressOf,
   type Leg,
   ORDER_LIMITS,
   type Order,
@@ -24,6 +25,7 @@ import { holds } from '../plugins/auth';
 import { assertBuilds, type ChainEntry, type ChainRegistry } from './chains';
 import { Refusal, refusing } from './errors';
 import { followedOn, planFollow, planPublish, recipeTargets, type SharedContext } from './shared';
+import { planWithdraw } from './withdraw';
 
 // DESIGN-VAULT 3.3: the one function behind the web buttons, REST, the SDK and MCP. It plans the legs
 // of an order and builds nothing: a leg is built just before it is signed.
@@ -32,6 +34,9 @@ import { followedOn, planFollow, planPublish, recipeTargets, type SharedContext 
  * The numbers the order layer applies. One place, so the review screen and the bytes agree. The most
  * a request may ask for is `ORDER_LIMITS` in packages/schemas, which the request's own schema holds.
  */
+/** The `engineVersion` of a plan stored from a mix the person confirmed (orders/mix.ts). */
+export const MIX_VERSION = 'mix-1';
+
 export const ORDER_POLICY = {
   /**
    * The slippage a build is given where the buy names none (`maxSlippageBps`), and what a leg's
@@ -46,9 +51,10 @@ export const ORDER_POLICY = {
   maxLines: 16,
 } as const;
 
-/** The slippage every trade of an order is built with: the buy's own figure, or the server's. */
+/** The slippage every trade of an order is built with: the buy's or the rebalance's own figure, or the server's. */
 export function slippageOf(request: IntentRequest): number {
-  return request.type === 'buy' && request.maxSlippageBps !== undefined
+  return (request.type === 'buy' || request.type === 'rebalance') &&
+    request.maxSlippageBps !== undefined
     ? request.maxSlippageBps
     : ORDER_POLICY.slippageBps;
 }
@@ -235,7 +241,15 @@ export type BuyPlan = {
   need: FundingNeed;
   /** For a buy of a shared portfolio: the version in effect, which the order holds to. */
   version?: number;
+  /** What the review says about this buy, beside what any buy is told. */
+  warnings?: Order['warnings'];
 };
+
+/** An add to a vault with auto-follow on only deposits: said on the order's review. */
+export const KEEPER_INVESTS = {
+  code: 'KEEPER_INVESTS',
+  text: 'This vault has auto-follow on, so this order only deposits the cash. The keeper buys the vault’s assets with it when it next rebalances this vault.',
+} as const;
 
 /**
  * The one recipe of a stored plan, and so its chain (ONE-CHAIN). A plan is bought on its own chain,
@@ -267,8 +281,17 @@ export async function planBuy(
   // The owner in the body is a claim. It stands only where the verified tokens say the same.
   if (!holds(ctx.principal, req.owner))
     throw new Refusal(403, 'the owner in the request is not a wallet of the signed-in person');
-  if (req.family !== undefined && req.proposalId !== undefined)
-    throw new Refusal(400, 'a buy names a plan or a shared portfolio, not both');
+  const named = [req.proposalId, req.family, req.vault].filter((x) => x !== undefined).length;
+  if (named > 1)
+    throw new Refusal(400, 'a buy names one thing: a plan, a shared portfolio or a vault of yours');
+  if (req.vault !== undefined) {
+    if (req.version !== undefined)
+      throw new Refusal(
+        400,
+        '`version` is the version of a shared portfolio: send it with `family`',
+      );
+    return planVaultBuy(req, req.vault, ctx);
+  }
   if (req.family !== undefined) return planFamilyBuy(req, req.family, ctx);
   if (req.version !== undefined)
     throw new Refusal(400, '`version` is the version of a shared portfolio: send it with `family`');
@@ -288,6 +311,14 @@ export async function planBuy(
     );
 
   const cents = amountOf(req);
+  // A mix's warnings were confirmed at the amount it was reviewed at (gate ANY-COMPOSITION): an exit
+  // ceiling that was no warning then can be one at a larger size, so it is bought at no more.
+  if (proposal.engineVersion === MIX_VERSION && cents > centsOf(proposal.sheet.amountUsd))
+    throw new Refusal(
+      422,
+      `this mix was reviewed at ${usd(centsOf(proposal.sheet.amountUsd))}: it is bought at no more than that`,
+      { code: 'AMOUNT_OVER_REVIEW', fix: 'Review the mix again at the new amount, then buy it.' },
+    );
 
   return refusing(async () => {
     const assets = await entry.adapter.listAssets();
@@ -403,6 +434,56 @@ async function planFamilyBuy(
   });
 }
 
+/** One answer for a vault that is not there, one on another chain and one that is another person's. */
+export const NO_SUCH_VAULT = 'no vault with that address that you can add to';
+
+/** Two addresses of one chain are the same vault: an EVM address in any case. */
+export const sameVaultAddress = (chain: ChainId, a: string, b: string) =>
+  chainFamily(chain) === 'evm' ? a.toLowerCase() === b.toLowerCase() : a === b;
+
+/**
+ * More money into a vault the person already has (add money): the amount is deposited into THAT vault
+ * and buys to the targets the vault has on chain now, so a vault that follows a shared portfolio buys
+ * the version it follows and a plan's vault its plan's lines; the cash share the targets leave stays
+ * as cash. The vault is found among the vaults of the signing wallet, read from the chain: one that
+ * is not there is answered like one that does not exist, whoever it belongs to. The order is the
+ * vault's number and no plan's: its steps are the deposit, then the swaps, as for any buy into an open
+ * vault.
+ */
+async function planVaultBuy(
+  req: Extract<IntentRequest, { type: 'buy' }>,
+  named: { chain: ChainId; address: string },
+  ctx: Omit<PrepareContext, 'now'>,
+): Promise<BuyPlan> {
+  const family = chainFamily(named.chain);
+  if (!isAddressOf(family, named.address)) throw new Refusal(404, NO_SUCH_VAULT);
+  // Refuses a chain that is off before anything is read.
+  const entry = ctx.chains.get(named.chain);
+  assertBuilds(entry);
+  const owner = req.owner[family];
+  if (!owner) throw new Refusal(404, NO_SUCH_VAULT);
+  const cents = amountOf(req);
+  return refusing(async () => {
+    const vault = (await entry.adapter.getVaults(owner)).find((v) =>
+      sameVaultAddress(named.chain, v.address, named.address),
+    );
+    if (!vault) throw new Refusal(404, NO_SUCH_VAULT);
+    const assets = await entry.adapter.listAssets();
+    // The targets the vault has on chain now, whatever newer version the portfolio it follows has
+    // (gate ADD-CURRENT-TARGETS). With auto-follow on the keeper keeps the vault at its targets, so
+    // the add is the deposit alone: trades of the owner's beside the keeper's would cross.
+    if (vault.autoFollow)
+      return {
+        ...(await buySteps(entry, owner, vault.basketId, cents, assets, [])),
+        warnings: [KEEPER_INVESTS],
+      };
+    const targets: Target[] = vault.positions
+      .filter((p) => p.targetBps > 0)
+      .map((p) => ({ asset: p.asset, weightBps: p.targetBps }));
+    return buySteps(entry, owner, vault.basketId, cents, assets, targets);
+  });
+}
+
 /**
  * The steps of a buy of these targets into the vault `basketId`: an approval where the chain needs
  * one, the create or the deposit with the whole amount, then the swaps.
@@ -494,6 +575,14 @@ export async function expectedOf(
     const quote = await entry.adapter.quote({ ...trade, amountInRaw: total.toString() }, taker);
     const out = BigInt(quote.outRaw) - prior.out;
     before.set(pair, { in: total, out: BigInt(quote.outRaw) });
+    // A trade that quotes nothing, or whose minimum rounds to nothing, would state a minimum that
+    // accepts any price: the order is not made.
+    if (out <= 0n || lessBps(out, slippageBps) <= 0n)
+      throw new Refusal(
+        422,
+        `${trade.amountInRaw} raw ${trade.sell} buys no ${trade.buy} that can be held to a minimum: the amount is too small`,
+        { fix: 'Buy a larger amount.' },
+      );
     expected.push({
       inRaw: trade.amountInRaw,
       outRaw: (out > 0n ? out : 0n).toString(),
@@ -513,7 +602,8 @@ export async function prepareIntent(req: IntentRequest, ctx: PrepareContext): Pr
 
 /**
  * Plans an order from an intent. A buy (of a stored plan, or of a shared portfolio by its slug), a
- * follow of a shared portfolio by a vault the person has, and a creator's publish. The rest answer 501.
+ * follow of a shared portfolio by a vault the person has, a creator's publish, and a withdrawal in
+ * kind from a vault the person has. The rest answer 501.
  */
 export async function prepareOrder(req: IntentRequest, ctx: PrepareContext): Promise<Prepared> {
   if (req.type === 'buy') return prepareBuy(req, ctx);
@@ -549,18 +639,39 @@ export async function prepareOrder(req: IntentRequest, ctx: PrepareContext): Pro
       request: { ...req, version: plan.version },
     };
   }
+  if (req.type === 'withdraw') {
+    const plan = await refusing(() => planWithdraw(req, ctx));
+    return {
+      order: sharedOrder(
+        ctx,
+        { [chainFamily(plan.entry.chain)]: plan.owner },
+        'withdraw',
+        `Withdraw from your vault on ${plan.entry.config.name} to your own wallet`,
+        plan.steps,
+        [],
+        plan.entry.provenance,
+      ),
+      request: req,
+    };
+  }
   throw new Refusal(501, `a ${req.type} order is not built yet`);
 }
 
-/** An order of steps that trade nothing: a publish or a follow. */
+/** An order of steps that trade nothing: a publish, a follow or a withdrawal. */
 function sharedOrder(
   ctx: PrepareContext,
   owner: Order['owner'],
-  type: 'publish' | 'follow',
+  type: 'publish' | 'follow' | 'withdraw',
   summary: string,
-  steps: { chain: ChainId; kind: Leg['kind']; description: string }[],
+  steps: {
+    chain: ChainId;
+    kind: Leg['kind'];
+    description: string;
+    withdrawals?: Leg['withdrawals'];
+  }[],
   needsConsent: Order['needsConsent'],
   provenance?: Leg['provenance'],
+  warnings: Order['warnings'] = [],
 ): Order {
   const id = randomUUID();
   const seqs = new Map<ChainId, number>();
@@ -574,6 +685,7 @@ function sharedOrder(
       seq,
       kind: step.kind,
       description: step.description,
+      ...(step.withdrawals ? { withdrawals: step.withdrawals } : {}),
       trades: [],
       signer: 'owner',
       expected: [],
@@ -595,7 +707,7 @@ function sharedOrder(
     // Written by the server: no word of the creator's text is in it.
     summary: type === 'publish' ? `${summary} on ${names}` : summary,
     legs,
-    warnings: [],
+    warnings,
     needsConsent,
     fees: [],
     preparedBy: ctx.principal.kind === 'service' ? 'mcp' : 'app',
@@ -662,14 +774,17 @@ async function prepareBuy(
     // The vault it is for, kept with it: a step is built for this number whatever becomes of the plan.
     basketId: plan.basketId,
     legs,
-    warnings: closed
-      ? [
-          {
-            code: 'MARKET_CLOSED',
-            text: 'The US stock market is closed now. You can still buy; stock tokens may trade at a wider price.',
-          },
-        ]
-      : [],
+    warnings: [
+      ...(closed
+        ? [
+            {
+              code: 'MARKET_CLOSED',
+              text: 'The US stock market is closed now. You can still buy; stock tokens may trade at a wider price.',
+            },
+          ]
+        : []),
+      ...(plan.warnings ?? []),
+    ],
     needsConsent: [],
     fees: [],
     preparedBy: ctx.principal.kind === 'service' ? 'mcp' : 'app',

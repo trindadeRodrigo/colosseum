@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ApiError } from './api';
 import {
   Address,
+  AssetId,
   Bps,
   ChainId,
   chainFamily,
@@ -9,10 +10,11 @@ import {
   Hex32,
   RawAmount,
   SolanaAddress,
+  Sourced,
 } from './chain';
 import { ChainErrorCode } from './chain-error';
 import { Provenance } from './enums';
-import { RecipeDraft } from './recipe';
+import { RecipeDraft, Target } from './recipe';
 import { Trade } from './vault';
 import { WalletAccount } from './wallet';
 
@@ -62,6 +64,24 @@ export const TradeExpected = z.object({
 });
 export type TradeExpected = z.infer<typeof TradeExpected>;
 
+/**
+ * One token a `withdraw` step takes out of a vault, in kind, to the vault's owner and nobody else.
+ * `amountRaw` null is all the vault holds of it when the step is built; `heldRaw` is what the vault
+ * held when the order was planned, which is what a review shows beside it.
+ */
+export const LegWithdrawal = z.object({
+  asset: AssetId,
+  amountRaw: RawAmount.nullable(),
+  heldRaw: RawAmount,
+  /**
+   * What it was worth in dollars when the order was made, with where the price came from: the amount
+   * (all that was held, where no amount is named) at the chain's reference price then, cash at one
+   * dollar. Absent for a token with no price. A portfolio counts what was taken out from it.
+   */
+  valued: Sourced.extend({ usd: z.string().regex(/^\d+(\.\d+)?$/) }).optional(),
+});
+export type LegWithdrawal = z.infer<typeof LegWithdrawal>;
+
 export const LegBase = z.object({
   id: z.string().min(1),
   /** Null for keeper legs. */
@@ -83,6 +103,8 @@ export const LegBase = z.object({
    * moves is `Order.depositRaw`.
    */
   cashRaw: RawAmount.optional(),
+  /** What a `withdraw` step takes out, each token once. Absent on any other step. */
+  withdrawals: z.array(LegWithdrawal).min(1).optional(),
   trades: z.array(Trade),
   /**
    * One entry per trade, in the order of `trades`: entry `i` is trade `i`. Empty for a leg with no
@@ -181,6 +203,12 @@ export const OrderBase = z.object({
     .string()
     .regex(/^\d{1,20}$/)
     .optional(),
+  /**
+   * For an order that finishes another (`POST /v1/orders/{id}/continue`): the id of the buy whose
+   * swaps it makes, with the cash that buy already put in the vault. It deposits nothing
+   * (`depositRaw` is absent) and its steps spend only the vault's cash.
+   */
+  continues: z.string().min(1).optional(),
   legs: z.array(Leg),
   warnings: z.array(z.object({ code: z.string(), text: z.string() })),
   /** Granted only on the approval page. */
@@ -256,6 +284,12 @@ export const IntentRequest = z.discriminatedUnion('type', [
      */
     version: z.number().int().min(1).optional(),
     /**
+     * A vault of the person's, in place of `proposalId` and `family`: the buy adds the amount to that
+     * vault and buys to the targets the vault has on chain now, the cash share they leave kept as cash.
+     * A vault that is not the caller's is answered as one that does not exist.
+     */
+    vault: z.object({ chain: ChainId, address: Address }).optional(),
+    /**
      * Never sent. A buy names no chain: it is on the chain of the person's wallet, where the plan
      * lives (gate ONE-CHAIN). The field a buy once took is refused with a sentence, not ignored, so a
      * caller that still asks for a split across chains is told instead of getting another order.
@@ -271,6 +305,13 @@ export const IntentRequest = z.discriminatedUnion('type', [
     type: z.literal('rebalance'),
     vaults: z.array(Address).min(1),
     reason: z.enum(['manual', 'index_update', 'drift']),
+    /**
+     * Written by the server, never taken from this route: the vault's new own targets, for an order
+     * made by `POST /v1/vaults/{chain}/{address}/targets`. `POST /v1/orders` plans no rebalance yet.
+     */
+    targets: z.array(Target).max(16).optional(),
+    /** With `targets`: the slippage the order's trades are built with. */
+    maxSlippageBps: Bps.max(ORDER_LIMITS.maxSlippageBps).optional(),
   }),
   z.object({
     type: z.literal('follow'),
@@ -297,8 +338,18 @@ export const IntentRequest = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('withdraw'),
+    /** One vault per order for now: the first, and a second is refused. */
     vaults: z.array(Address).min(1),
+    /** Not offered yet: `true` is refused. The tokens leave as they are, to the vault's owner. */
     sellToCash: z.boolean(),
+    /**
+     * Which tokens, each once. `amountRaw` left out or null: all the vault holds of that token. The
+     * whole list left out: everything the vault holds.
+     */
+    withdrawals: z
+      .array(z.object({ asset: AssetId, amountRaw: RawAmount.nullable().optional() }))
+      .min(1)
+      .optional(),
   }),
   z.object({ type: z.literal('settings'), vault: Address, autoFollow: z.boolean() }),
 ]);
@@ -335,6 +386,38 @@ export const OrderErrorCode = z.enum([
   'CURRENCY_UNSUPPORTED',
   /** A switch to a chain none of the person's wallets signs on: an EVM wallet alone cannot sign on Solana. */
   'NO_WALLET_FOR_CHAIN',
+  /**
+   * A step's trade would now give less than the least the order stated. The order's terms are never
+   * changed after it is made: it is made again, at the price now.
+   */
+  'PRICE_MOVED',
+  // What `POST /v1/orders/{id}/continue` refuses with, and a build of a step for the same reasons.
+  /** Another order already finishes this one: `details.continuedBy` is its id, and it is the one to open. */
+  'ORDER_CONTINUED',
+  /** A transaction built for a step can still land, so the step is not made again yet. Retryable. */
+  'STEP_IN_FLIGHT',
+  /**
+   * A step's transaction landed and nobody had reported it: the step has settled on it now, and the
+   * order reads differently. Read the order again; nothing else is to be done.
+   */
+  'STEP_LANDED',
+  /** Every step of the order is done: there is nothing to finish. */
+  'NOTHING_LEFT',
+  /** The vault holds less cash than the steps left would spend. */
+  'VAULT_CASH_SHORT',
+  /** The order's deposit has not landed: its own steps are signed first. */
+  'DEPOSIT_NOT_LANDED',
+  /** Another request is working on the order, and the wait for it ran out. Retryable. */
+  'ORDER_BUSY',
+  /** The order is not one this route finishes: a buy on a chain that trades inside its deposit, or not a buy with a vault. */
+  'CONTINUE_NOT_SUPPORTED',
+  /**
+   * A mix that cannot be bought or applied as sent (gate ANY-COMPOSITION): `details.issues` says
+   * why, one `MixIssueCode` each, with the asset where there is one.
+   */
+  'MIX_NOT_VALID',
+  /** A buy of a confirmed mix above the amount it was reviewed at: its warnings were confirmed at that size. */
+  'AMOUNT_OVER_REVIEW',
 ]);
 export type OrderErrorCode = z.infer<typeof OrderErrorCode>;
 
@@ -360,6 +443,10 @@ export const OrderError = ApiError.extend({
        * one could land. Report that step or cancel it, then build again.
        */
       blocking: z.object({ orderId: z.string().min(1), legId: z.string().min(1) }).optional(),
+      /** With `ORDER_CONTINUED`: the id of the order that finishes this one. */
+      continuedBy: z.string().min(1).optional(),
+      /** With `MIX_NOT_VALID`: what is wrong with the mix, `CODE` or `CODE:assetId` each. */
+      issues: z.array(z.string().min(1)).optional(),
     })
     .optional(),
 });

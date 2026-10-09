@@ -1,10 +1,11 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
-import { throughBuySteps } from './buy-steps';
+import { readyToInvest } from './invest';
+import { inTheme } from './theme';
 
 // Shared portfolios end to end in a browser, on the mock chain (WEB-4): sign in with the throwaway
-// wallet, publish a portfolio through the form, review it and sign it, find it on the shelf, open its
+// wallet, share an already-owned vault's fixture strategy, review it and sign it, find it on the shelf, open its
 // page, buy it (which opens a vault that follows it), and see the vault and its public page. Every
 // signature goes through the order screen's executor and the real guard: the publish is held to the
 // form's id, text and weights, the buy to the version the page showed. A second portfolio holds gold,
@@ -24,12 +25,7 @@ const REFERENCE = new URL('../../../.design/branding/working-brand/patterns/', i
 
 async function check(page: Page, name: string) {
   for (const theme of ['light', 'dark'] as const) {
-    await page.evaluate((t) => {
-      const html = document.documentElement;
-      html.classList.remove('light', 'dark', 'tf-auto');
-      html.classList.add(t);
-    }, theme);
-    await page.waitForTimeout(600);
+    await inTheme(page, theme);
     const result = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
       .analyze();
@@ -82,20 +78,48 @@ async function toFamily(page: Page, name: string) {
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(name);
 }
 
-/** Fills the publish form and signs the publish on the order screen, to its last step. */
+/** Share an owned source's exact strategy and sign the publish, through the unchanged guard. */
 async function publish(page: Page, name: string, weights: [string, string][], photograph = false) {
+  await toShelf(page);
+  await page.getByRole('link', { name: en.shared.shelf.publish }).first().click();
+  await expect(page.getByText(en.shared.publish.noVaults, { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: en.shared.publish.review })).toBeDisabled();
+  await expect(page.locator('[data-ui="publish-row"]')).toHaveCount(0);
+  const shownWallet = page.locator('[data-ui="account-menu-button"] span[title]').first();
+  await expect(shownWallet).toHaveAttribute('title', /.+/);
+  const owner = await shownWallet.getAttribute('title');
+  const source = await page.request.post(`${STUB}/__stub/source-vault`, {
+    data: {
+      owner,
+      targets: weights.map(([asset, weight]) => ({ asset, weightBps: Number(weight) * 100 })),
+    },
+  });
+  expect(source.ok(), await source.text()).toBe(true);
+  const { address } = await source.json();
   await toShelf(page);
   await page.getByRole('link', { name: en.shared.shelf.publish }).first().click();
   await expect(page).toHaveURL(/\/publish$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.shared.publish.title);
+  await page
+    .getByRole('combobox', { name: en.shared.publish.sourceVault, exact: true })
+    .selectOption(address);
   await page.getByLabel(en.shared.publish.name, { exact: true }).fill(name);
   await page.getByLabel(en.shared.publish.copy, { exact: true }).fill('Three test tokens.');
-  for (const [i, [asset, weight]] of weights.entries()) {
-    await page
-      .getByLabel(`${en.shared.publish.asset} ${i + 1}`, { exact: true })
-      .selectOption(asset);
-    await page.getByLabel(`${en.shared.publish.weight} ${i + 1}`, { exact: true }).fill(weight);
+  const allocation = page.getByRole('region', { name: en.shared.publish.assets, exact: true });
+  const symbols: Record<string, string> = {
+    'solana:spy': 'SPY',
+    'solana:nvda': 'NVDA',
+    'solana:tsla': 'TSLA',
+    'solana:gold': 'Gold',
+  };
+  const rows = allocation.locator('[data-ui="publish-row"]');
+  await expect(rows).toHaveCount(weights.length);
+  for (const [asset, weight] of weights) {
+    const row = rows.filter({ has: page.getByText(symbols[asset] ?? asset, { exact: true }) });
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText(`${weight}%`);
   }
+  await expect(allocation.locator('input,select')).toHaveCount(0);
   await expect(page.locator('[data-ui="family-id"]')).not.toHaveText('—');
   if (photograph) await check(page, 'publish');
   await page.getByRole('button', { name: en.shared.publish.review }).click();
@@ -149,21 +173,17 @@ test('publish a portfolio, find it on the shelf, buy it and follow it, every ste
   );
   await check(page, 'family');
 
-  await page.getByRole('link', { name: en.shared.family.buy }).click();
-  await expect(page).toHaveURL(/\/indexes\/three-of-the-largest\/buy$/);
-  await throughBuySteps(page, { amount: '40' });
+  // The invest step is on the portfolio's own page, under what it holds (gate PRODUCTS-PLAN-PANE).
+  const press = await readyToInvest(page, { amount: '40' });
   await check(page, 'family-buy');
-  await page.getByRole('button', { name: en.shared.buy.review('$40') }).click();
-
-  await expect(page).toHaveURL(/\/orders\/[^/]+$/);
+  // the review is on the invest card, under where the version and weights were read from
+  await expect(page).toHaveURL(/\/indexes\/three-of-the-largest$/);
   const steps = page.locator('[data-ui="order-step"]');
   // a vault that follows the portfolio, opened with the deposit, then a swap per asset
   await expect(steps).toHaveCount(4);
-  await expect(page.getByRole('region', { name: en.order.shared.followTitle })).toContainText(
-    'three-of-the-largest',
-  );
+  await expect(page.locator('[data-ui="source-mark"]')).toBeVisible();
   await check(page, 'family-review');
-  await page.getByRole('button', { name: en.order.signAndBuy('$40') }).click();
+  await press.click();
   await expect(page.locator('[data-ui="order-status"]')).toHaveText(
     en.order.outcome.done('Solana'),
     { timeout: 90_000 },
@@ -179,8 +199,26 @@ test('publish a portfolio, find it on the shelf, buy it and follow it, every ste
   await expect(mine.getByRole('button', { name: en.shared.vaults.autoOn })).toBeVisible();
   await mine.getByRole('link').first().click();
   await expect(page).toHaveURL(/\/vaults\/solana\/[^/]+$/);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.shared.vault.title);
-  await expect(page.locator('[data-ui="vault-screen"]')).toContainText('SPY');
+  // This fixture follows a shared strategy and has no private name or goal record.
+  // The owner-proved workspace calls it by its chain, with the existing deposit route.
+  const workspace = page.locator('[data-ui="vault-screen"]');
+  const ownedName = workspace.locator('h1[data-ui="vault-name"]');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+    en.portfolio.actions.unnamed('Solana'),
+  );
+  await expect(ownedName).toHaveText(en.portfolio.actions.unnamed('Solana'));
+  await expect(ownedName).toHaveAttribute('data-named', 'false');
+  const addMoney = workspace.locator('[data-ui="vault-add-money"]');
+  await expect(addMoney).toBeVisible();
+  await expect(addMoney).toHaveAttribute('href', `${new URL(page.url()).pathname}/add`);
+  await expect(addMoney).toHaveClass(/(?:^|\s)bg-primary(?:\s|$)/);
+  const resume = workspace.getByRole('link', {
+    name: en.shared.vault.conversation.resume,
+    exact: true,
+  });
+  await expect(resume).toBeVisible();
+  await expect(resume).toHaveAttribute('href', '#vault-conversation');
+  await expect(workspace).toContainText('SPY');
   await check(page, 'vault');
 });
 
@@ -194,7 +232,7 @@ test('a portfolio that holds gold offers no auto-follow, and says why', async ({
   await toFamily(page, 'With some gold');
   const offer = page.locator('[data-ui="auto-follow-offer"]');
   await expect(offer).toHaveAttribute('data-offered', 'false');
-  await expect(offer).toContainText(en.shared.offer.noOracle('GOLD', 'Solana'));
+  await expect(offer).toContainText(en.shared.offer.noOracle('Gold', 'Solana'));
   await check(page, 'family-gold');
 });
 

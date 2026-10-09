@@ -39,6 +39,8 @@ export function signInFailure(error: unknown, attempt: SignInAttempt): SignInFai
       return 'tooMany';
     case 'offline':
       return 'offline';
+    case 'origin_refused':
+      return 'originRefused';
     case 'wallet_not_made':
       return 'walletNotMade';
     default:
@@ -46,7 +48,9 @@ export function signInFailure(error: unknown, attempt: SignInAttempt): SignInFai
   if (code === 'rejected') return passkey ? cancelled : 'walletRefused';
   if (code === 'expired') return 'expired';
   if (code === 'not_connected' && !passkey) return 'walletSilent';
-  return 'other';
+  // A passkey that was offered and not taken, for a reason the provider does not name: said as that,
+  // not as a failure nobody can explain (the flow audit, finding 39).
+  return attempt === 'passkey-use' ? 'passkeyNotAccepted' : 'other';
 }
 
 /**
@@ -101,5 +105,7 @@ export function walletChoices(found: readonly FoundWallet[]): WalletChoice[] {
  * off for the app, or the browser has none.
  */
 export function offersNewPasskey(failure: SignInFailure): boolean {
-  return failure !== 'passkeyOff' && failure !== 'passkeyUnsupported';
+  return (
+    failure !== 'passkeyOff' && failure !== 'passkeyUnsupported' && failure !== 'originRefused'
+  );
 }

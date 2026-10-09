@@ -11,7 +11,7 @@ import { dictionary, type Lang } from '../../i18n';
 import { inLanguage } from '../account/test/screen';
 import { GOAL_HANDOFF } from '../goal/draft';
 import { router } from '../wallet/test/mock-next';
-import { sceneModule } from './JointStage';
+import { FADE, sceneModule, shownAt } from './JointStage';
 import { Landing } from './Landing';
 
 const scene = vi.hoisted(() => ({
@@ -794,4 +794,81 @@ describe('the bar’s action', () => {
       expect(open?.className).toBe(action(visitor)[0]?.className);
     },
   );
+});
+
+describe('the landing’s type (the design pass, Oct 6)', () => {
+  const classesOf = (host: HTMLElement) =>
+    [...host.querySelectorAll<HTMLElement>('[class]')].map((el) => el.getAttribute('class') ?? '');
+
+  it('sets a KPI’s label as a sans caption and its value in the mono face at 18px', async () => {
+    browser();
+    const host = await landing();
+    const cells = [...host.querySelectorAll('[data-ui="showcase-case"] dl > div')];
+    expect(cells.length).toBe(8);
+    for (const cell of cells) {
+      const dt = cell.querySelector('dt')?.className ?? '';
+      expect(dt).toContain('text-caption');
+      expect(dt).toContain('font-medium');
+      expect(dt).not.toContain('font-mono');
+      const dd = cell.querySelector('dd')?.className ?? '';
+      expect(dd).toContain('font-mono');
+      expect(dd).toContain('text-[1.125rem]/7');
+      expect(dd).toContain('font-medium');
+    }
+  });
+
+  it('sets nothing under 12px, in the page or in its charts', async () => {
+    browser();
+    const host = await landing();
+    expect(classesOf(host).filter((c) => /text-\[(?:[0-9]|1[01])(?:\.\d+)?px\]/.test(c))).toEqual(
+      [],
+    );
+    const charts = [...host.querySelectorAll<SVGElement>('[data-ui="showcase-chart"] svg')];
+    expect(charts.length).toBe(2);
+    for (const svg of charts) expect(svg.style.fontSize).toBe('12px');
+  });
+
+  it('keeps every line height on the 4px grid: no bare ratio, a fluid size rounds to 4px', async () => {
+    browser();
+    const host = await landing();
+    // a ratio like /[1.15] lands between grid lines on a fluid size
+    expect(classesOf(host).filter((c) => /\/\[\d+(?:\.\d+)?\](?:\s|$)/.test(c))).toEqual([]);
+    const rounded = classesOf(host).filter((c) => c.includes('round('));
+    expect(rounded.length).toBeGreaterThanOrEqual(4);
+    for (const c of rounded) expect(c).toMatch(/round\(\d+(?:\.\d+)?em,4px\)/);
+  });
+
+  it('keeps a part’s reason under its own name, whatever the name beside it wraps to', async () => {
+    browser();
+    const host = await landing();
+    const legs = [...host.querySelectorAll('[data-ui="case-leg"]')];
+    expect(legs.length).toBe(7);
+    for (const leg of legs) expect(leg.className).toContain('content-start');
+  });
+});
+
+describe('where the hero hands over to the showcase', () => {
+  afterEach(unmountAll);
+
+  it('has the joint whole until the stage is nearly through, and gone before the pin lets go', () => {
+    const vh = 836;
+    expect(shownAt(vh * 3, vh)).toBe(1);
+    expect(shownAt(vh * (1 + FADE), vh)).toBe(1);
+    expect(shownAt(vh * (1 + FADE / 2), vh)).toBeCloseTo(0.5);
+    // the stage's foot at the window's foot: the pin lets go here, and the showcase comes on screen
+    expect(shownAt(vh, vh)).toBe(0);
+    expect(shownAt(vh * 0.4, vh)).toBe(0);
+  });
+
+  it('lets the pin go at the foot of the stage: the layer keeps its own screen of height', async () => {
+    browser();
+    const host = await landing();
+    const layer = find(host, '[data-ui="joint-layer"]');
+    // a layer pulled up under the copy by a negative margin stays pinned a screen too long, and the
+    // showcase rises over the joint and cuts it
+    expect(layer.className).toContain('sticky');
+    expect(layer.className).not.toContain('-mb-');
+    expect(layer.nextElementSibling?.className).toContain('-mt-[100svh]');
+    expect(layer.nextElementSibling?.className).toContain('motion-reduce:mt-0');
+  });
 });

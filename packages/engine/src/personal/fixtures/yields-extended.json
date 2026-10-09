@@ -1,0 +1,97 @@
+{
+  "solana": [
+    {
+      "assetId": "solana:usdy",
+      "quotedYield": 0.0363,
+      "haircutYield": 0.02541,
+      "haircutRule": "HC-AGGREGATOR, taken by hand: three tenths off an aggregator-reported figure",
+      "source": "docs/vault/research/yield-shelf/solana.md [3]: the figure an aggregator reports for USDY on Solana, read 2026-10-06",
+      "method": "aggregator_figure_read_on_a_date_not_a_reading",
+      "fetchedAt": "2026-10-06T15:35:00.000Z",
+      "provenance": "fixture"
+    },
+    {
+      "assetId": "solana:wylds",
+      "quotedYield": 0.0354,
+      "haircutYield": 0.02478,
+      "haircutRule": "HC-AGGREGATOR, taken by hand: three tenths off an aggregator-reported figure",
+      "source": "docs/vault/research/yield-shelf/solana.md [3]: the figure an aggregator reports for the wYLDS pool, read 2026-10-06",
+      "method": "aggregator_figure_read_on_a_date_not_a_reading",
+      "fetchedAt": "2026-10-06T15:35:00.000Z",
+      "provenance": "fixture"
+    },
+    {
+      "assetId": "solana:kusdc",
+      "quotedYield": 0.0442,
+      "haircutYield": 0.03315,
+      "haircutRule": "HC-LEND-VAR, taken by hand: a quarter off a variable rate",
+      "source": "docs/vault/research/yield-shelf/solana.md [6]: the supply rate of the reserve as the protocol's public endpoint gives it, read 2026-10-06",
+      "method": "protocol_rate_read_on_a_date_not_a_reading",
+      "fetchedAt": "2026-10-06T15:35:00.000Z",
+      "provenance": "fixture"
+    },
+    {
+      "assetId": "solana:jljupusd",
+      "quotedYield": 0.0379,
+      "haircutYield": 0.028425,
+      "haircutRule": "HC-LEND-VAR, taken by hand: a quarter off a variable rate",
+      "source": "docs/vault/research/yield-shelf/solana.md [5]: the supply rate from borrowers as the protocol's public endpoint gives it, incentives left out, read 2026-10-06",
+      "method": "protocol_rate_read_on_a_date_not_a_reading",
+      "fetchedAt": "2026-10-06T15:35:00.000Z",
+      "provenance": "fixture"
+    },
+    {
+      "assetId": "solana:pst",
+      "quotedYield": 0.08,
+      "haircutYield": 0.04,
+      "haircutRule": "HC-INPUT-LIST, taken by hand: half off a figure only the input list gives",
+      "source": "docs/vault/research/yield-shelf/solana.md [sheet]: about 8% in the input list of 2026-10-06, not verified against the issuer",
+      "method": "input_list_claim_not_verified_not_a_reading",
+      "fetchedAt": "2026-10-06T00:00:00.000Z",
+      "provenance": "fixture"
+    },
+    {
+      "assetId": "solana:prime",
+      "quotedYield": 0.0594,
+      "haircutYield": 0.04158,
+      "haircutRule": "HC-AGGREGATOR, taken by hand: three tenths off an aggregator-reported figure",
+      "source": "docs/vault/research/yield-shelf/solana.md [113]: the figure an aggregator reports for the PRIME pool, read 2026-10-06",
+      "method": "aggregator_figure_read_on_a_date_not_a_reading",
+      "fetchedAt": "2026-10-06T15:35:00.000Z",
+      "provenance": "fixture"
+    },
+    {
+      "assetId": "solana:auto",
+      "quotedYield": 0.0924,
+      "haircutYield": 0.06468,
+      "haircutRule": "HC-AGGREGATOR, taken by hand: three tenths off an aggregator-reported figure",
+      "source": "docs/vault/research/yield-shelf/solana.md [113]: the figure an aggregator reports for the AUTO pool, read 2026-10-06",
+      "method": "aggregator_figure_read_on_a_date_not_a_reading",
+      "fetchedAt": "2026-10-06T15:35:00.000Z",
+      "provenance": "fixture"
+    }
+  ],
+  "what": "Yield figures claimed on a date in the research notes of docs/vault/research/yield-shelf/, by chain. Not readings of a feed: every row is a fixture and is plated MOCK wherever shown.",
+  "robinhood": [
+    {
+      "assetId": "robinhood:steakusdg",
+      "quotedYield": 0.0399,
+      "haircutYield": 0.029925,
+      "haircutRule": "HC-LEND-VAR, taken by hand: a quarter off a variable rate",
+      "source": "docs/vault/research/yield-shelf/robinhood.md [2]: the vault's net rate as the lending protocol's public API gives it, read 2026-10-06",
+      "method": "protocol_rate_read_on_a_date_not_a_reading",
+      "fetchedAt": "2026-10-06T15:35:00.000Z",
+      "provenance": "fixture"
+    },
+    {
+      "assetId": "robinhood:syrupusdg",
+      "quotedYield": 0.046,
+      "haircutYield": 0.023,
+      "haircutRule": "HC-INPUT-LIST, taken by hand: half off a figure only the input list gives",
+      "source": "docs/vault/research/yield-shelf/robinhood.md [sheet]: the low end of the 4.6 to 5.0% in the input list of 2026-10-06, which dates it September 2026 and gives the issuer and a newsletter as its source; not verified against the issuer",
+      "method": "input_list_claim_not_verified_not_a_reading",
+      "fetchedAt": "2026-10-06T00:00:00.000Z",
+      "provenance": "fixture"
+    }
+  ]
+}

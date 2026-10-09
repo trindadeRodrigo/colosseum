@@ -118,6 +118,7 @@ describe('signed out', () => {
     await settle();
     toggle(host).focus();
     await click(toggle(host));
+    option(host, 'robinhood').focus();
     await press(option(host, 'robinhood'), 'Escape');
     expect(host.querySelector('[data-ui="chain-switch-panel"]')).toBeNull();
     expect(document.activeElement).toBe(toggle(host));

@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 import { cn } from './cn';
 import { HatchBand, MockWord } from './internal/mock-parts';
 import { ProvenancePin } from './ProvenancePin';
-import { type PinSource, pinState } from './provenance';
+import { type PinLabels, type PinSource, pinState } from './provenance';
 
 // plan-leg.md. The plan as pieces: a stacked bar of at most four legs, each with its own label right
 // under it. The bar shows proportion; the labels carry the meaning. Never a legend away from the bar,
@@ -67,6 +67,8 @@ export type PlanLegsProps = {
    */
   parted?: boolean;
   labels?: Partial<PlanLegsLabels>;
+  /** What each leg's pin says, in the view's language. */
+  pinLabels?: PinLabels;
   className?: string;
 };
 
@@ -90,6 +92,7 @@ export function PlanLegs({
   lock = false,
   parted,
   labels,
+  pinLabels,
   className,
 }: PlanLegsProps) {
   if (legs.length > MAX_LEGS)
@@ -181,6 +184,7 @@ export function PlanLegs({
                           value={leg.rate.afterHaircut}
                           obs={leg.rate.obs}
                           drop={lock}
+                          labels={pinLabels}
                         />
                       </span>
                     </>
