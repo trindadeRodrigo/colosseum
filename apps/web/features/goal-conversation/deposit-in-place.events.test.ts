@@ -774,6 +774,10 @@ describe('a deposit that stopped after its cash landed, finished in the pane', (
     expect(sign.textContent).toContain(en.order.review.fromVault);
     // its press says what it does: it deposits nothing
     expect(label(find(host, PRESS))).toBe(en.order.outcome.finishSign);
+    // and so does the pane's own heading: never "Sign your deposit" of the whole amount
+    expect(find(sign, 'h2').textContent).toBe(en.shared.vault.page.finish.title);
+    expect(sign.textContent).toContain(en.shared.vault.page.finish.lead);
+    expect(sign.textContent).not.toContain(en.mix.deposit.signing.lead);
     expect(box(host).disabled).toBe(true);
     run.script = async (order) => ({
       status: 'done',
