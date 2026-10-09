@@ -8,8 +8,8 @@ import { Hint } from '../../components/ui/Hint';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import type { PinSource } from '../../components/ui/provenance';
-import { SkeletonChart } from '../../components/ui/Skeleton';
 import { Status } from '../../components/ui/StatusMark';
+import { ScreenWait } from '../../components/waits/ScreenWait';
 import { type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { displayName } from '../order/plain';
@@ -45,6 +45,7 @@ import { addDecimals, putInPin, snapshotPin, sumPin } from './pins';
 import { sameVault } from './plan-blocks';
 import { sayStatus } from './status';
 import { vaultTitle } from './vault-title';
+import { BoardChartWait, OverviewWait, PnlWait } from './waits';
 import { useWords } from './words';
 
 // The overview (/portfolio), as a board: on the left what the person's vaults are worth together, how
@@ -67,7 +68,9 @@ export function OverviewPage() {
   return (
     <div data-ui="portfolio-overview" className="flex flex-col gap-8">
       <h1 className={`${PAGE_TITLE} sr-only`}>{w.overview.title}</h1>
-      <SectionGate read={plans}>{(answer) => <Board answer={answer} />}</SectionGate>
+      <SectionGate read={plans} skeleton={<OverviewWait />}>
+        {(answer) => <Board answer={answer} />}
+      </SectionGate>
     </div>
   );
 }
@@ -519,9 +522,12 @@ function Figures({
             {periodWord}
           </span>
         </div>
-        {periods.length === 0 ? (
+        {periods.length === 0 && reading ? (
+          // the history the result stands on is on its way: its own boxes, and the chart says so
+          <PnlWait />
+        ) : periods.length === 0 ? (
           <p data-ui="board-pnl-none" className="text-body-sm text-muted-foreground">
-            {reading ? words.chart.reading : words.noPnl}
+            {words.noPnl}
           </p>
         ) : (
           <>
@@ -593,10 +599,17 @@ function Chart({
   const w = useWords();
   const lang = useLang();
   const nameOfChain = useChainName();
+  const { again } = usePortfolioSection();
   if (reading.kind === 'idle' || reading.kind === 'reading')
     return (
-      <div role="status" aria-label={w.overview.board.chart.reading}>
-        <SkeletonChart />
+      // Said in words, with the slow line and the retry of every other wait: the result beside it
+      // (PnlWait) stands on the same read and is said by this one line.
+      <div data-ui="chart-wait">
+        <ScreenWait
+          label={w.overview.board.chart.reading}
+          skeleton={<BoardChartWait />}
+          onRetry={again}
+        />
       </div>
     );
   if (reading.kind !== 'read')

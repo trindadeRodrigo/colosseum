@@ -72,7 +72,7 @@ export const en = {
     sampleFigure: 'sample figure',
     /** A wait for data (components/ui/Skeleton.tsx). */
     wait: {
-      slow: 'Waking the data service: this can take up to a minute the first time.',
+      slow: 'Still loading. The server may be waking up.',
       over: 'Our server didn’t answer in time, so nothing is shown here yet.',
       retry: 'Try again',
     },

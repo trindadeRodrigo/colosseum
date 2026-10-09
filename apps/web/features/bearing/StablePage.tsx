@@ -41,6 +41,24 @@ import {
 // lender exits by withdrawing, so "available now" takes the place of exit capacity. Stablecoins the
 // registry lists and the collectors do not measure yet are rows with their reason.
 
+/** The stablecoins page while its reserves are read: five figures by their labels. */
+export function StableWait() {
+  const words = useWords();
+  const k = words.stable.kpi;
+  return (
+    <PageWait
+      label={words.stable.reading}
+      kpis={[
+        { label: k.supplied },
+        { label: k.borrowed },
+        { label: k.available, note: k.availableNote },
+        { label: k.lent },
+        { label: k.reserves, note: k.reservesNote },
+      ]}
+    />
+  );
+}
+
 /** Lending pools are Solana's: on another chain the page says it is not collected there. */
 export function StablePage() {
   const { chain } = useBearing();
@@ -53,21 +71,7 @@ function StableOnSolana() {
   const all = useAnswer(() => lending(), [lending]);
   const words = useWords();
   const reading = words.stable.reading;
-  if (!b || !all) {
-    const k = words.stable.kpi;
-    return (
-      <PageWait
-        label={reading}
-        kpis={[
-          { label: k.supplied },
-          { label: k.borrowed },
-          { label: k.available, note: k.availableNote },
-          { label: k.lent },
-          { label: k.reserves, note: k.reservesNote },
-        ]}
-      />
-    );
-  }
+  if (!b || !all) return <StableWait />;
   if (!b.lendList.ok)
     return (
       <p className="mt-6">

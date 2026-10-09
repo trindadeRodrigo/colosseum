@@ -106,7 +106,7 @@ describe('EmbedShell (embed-shell.md)', () => {
     expect(all(loading, ui('embed-slow'))).toHaveLength(0);
     const slow = render(embed.slow);
     expect(text(one(slow, (e) => e.attrs.role === 'status'))).toBe(
-      'Loading plan…Waking the data service: this can take up to a minute the first time.',
+      'Loading plan…Still loading. The server may be waking up.',
     );
   });
 

@@ -55,7 +55,7 @@ export const pt: Dictionary = {
     mockAnnounce: 'Números de exemplo',
     sampleFigure: 'número de exemplo',
     wait: {
-      slow: 'Acordando o serviço de dados: da primeira vez isso pode levar até um minuto.',
+      slow: 'Ainda carregando. O servidor pode estar acordando.',
       over: 'Nosso servidor não respondeu a tempo, então nada aparece aqui ainda.',
       retry: 'Tentar de novo',
     },

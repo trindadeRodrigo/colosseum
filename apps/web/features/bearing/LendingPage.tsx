@@ -50,6 +50,27 @@ import type { AssetsBody, HistBody } from './types';
 // box (0.1% to 10%, default 1%) sets it for the whole page: counters, chart and table re-read the
 // capacity at that tolerance.
 
+/** The lending page while its pools are read: six figures by their labels. */
+export function LendingWait() {
+  const t = useWords();
+  return (
+    <PageWait
+      label={t.lending.reading}
+      kpis={[
+        { label: t.lending.kpi.supplied },
+        { label: t.lending.kpi.borrowed },
+        { label: t.lending.kpi.collateral, note: t.lending.kpi.collateralNote },
+        {
+          label: t.lending.kpi.covered,
+          note: t.lending.kpi.coveredNote('1.00%', t.regimes.us_market_hours),
+        },
+        { label: t.lending.kpi.largest, note: t.lending.kpi.largestNote('1.00%') },
+        { label: t.lending.kpi.loss, note: t.lending.kpi.lossNote('00.00%') },
+      ]}
+    />
+  );
+}
+
 /** Lending pools are Solana's: on another chain the page says it is not collected there. */
 export function LendingPage() {
   const { chain } = useBearing();
@@ -78,22 +99,7 @@ function LendingOnSolana() {
         : null,
     [key, reader],
   );
-  if (!b || !rows || !assets || (assets.ok && b.lendList.ok && !hist))
-    return (
-      <PageWait
-        label={t.lending.reading}
-        kpis={[
-          { label: t.lending.kpi.supplied },
-          { label: t.lending.kpi.borrowed },
-          { label: t.lending.kpi.collateral, note: t.lending.kpi.collateralNote },
-          {
-            label: t.lending.kpi.covered,
-            note: t.lending.kpi.coveredNote('1.00%', t.regimes.us_market_hours),
-          },
-          { label: t.lending.kpi.largest, note: t.lending.kpi.largestNote('1.00%') },
-        ]}
-      />
-    );
+  if (!b || !rows || !assets || (assets.ok && b.lendList.ok && !hist)) return <LendingWait />;
   if (!b.lendList.ok || !assets.ok)
     return (
       <p className="mt-6">
