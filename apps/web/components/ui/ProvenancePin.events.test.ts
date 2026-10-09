@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LIVE_SPECIMEN, SANDBOX_OBS } from './fixtures/mock';
 import { pinSourceOfPrice } from './price-source';
-import { PIN_CLOSE_MS, PIN_OPEN_MS, type PinSource, sourceLine } from './provenance';
+import { PIN_CLOSE_MS, PIN_OPEN_MS, type PinSource, pinWords, sourceLine } from './provenance';
 import { click, find, fire, mount, press, settle, unmountAll } from './test/dom';
 import { pinOnPage, twoPins } from './test/events.cases';
 
@@ -362,6 +362,36 @@ describe('how fresh, and only what is known (review of #214, finding 1)', () => 
       'Test network, not live',
     ]);
     expect(find(host, '[data-ui="pin-popover"]').textContent).not.toContain('less than a minute');
+  });
+});
+
+describe('a price’s age now, not at the read (re-check of #214)', () => {
+  const read = { ...PRICE, fetchedAt: '2026-10-09T18:00:00Z' };
+
+  it('adds the time since the read to the age the API stated', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-09T18:50:00Z'));
+    // thirty seconds old when the snapshot was read, fifty minutes ago
+    const host = await mount(pinOnPage({ ...read, ageSec: 30 }, { what: 'Price' }));
+    await click(pin(host));
+    expect(lines(host)[1]).toBe('Updated 50 minutes ago');
+    expect(find(host, '[data-ui="pin-popover"]').textContent).not.toContain('less than a minute');
+  });
+
+  it('brings a stale price’s age to now too', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-09T20:00:00Z'));
+    const stale = pinSourceOfPrice({ ...read, ageSeconds: 600, maxAgeSeconds: 120 });
+    const host = await mount(pinOnPage(stale, { what: 'Price' }));
+    await click(pin(host));
+    expect(lines(host)[0]).toBe('Last updated 2 hours ago, older than this feed’s 2 minute limit');
+  });
+
+  it('says only the read until the browser’s clock is known', () => {
+    expect(pinWords({ ...read, ageSec: 30 }).lines[1]).toEqual({
+      key: 'read',
+      text: 'Read 9 Oct 2026, 18:00:00 UTC',
+    });
   });
 });
 

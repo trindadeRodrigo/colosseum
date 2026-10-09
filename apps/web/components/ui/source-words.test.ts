@@ -306,7 +306,10 @@ describe('how long ago', () => {
     expect(agoWords(44)).toBe('less than a minute ago');
     expect(agoWords(60)).toBe('1 minute ago');
     expect(agoWords(120)).toBe('2 minutes ago');
-    expect(agoWords(3599)).toBe('60 minutes ago');
+    // whole units that have passed, never rounded up
+    expect(agoWords(3599)).toBe('59 minutes ago');
+    expect(agoWords(50 * 60 + 30)).toBe('50 minutes ago');
+    expect(agoWords(3600 + 3599)).toBe('1 hour ago');
     expect(agoWords(3600)).toBe('1 hour ago');
     expect(agoWords(19 * 3600)).toBe('19 hours ago');
     expect(agoWords(3 * 86_400)).toBe('3 days ago');

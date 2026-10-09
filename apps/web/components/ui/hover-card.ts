@@ -70,8 +70,13 @@ export type HoverCard = {
 };
 
 /** The behaviour of the one tooltip: what opens it, what closes it and where it goes. */
-export function useHoverCard(defaultOpen = false): HoverCard {
-  const [open, setOpen] = useState(defaultOpen);
+/**
+ * `enabled` false: there is nothing to show for now. It opens on nothing and hears no Escape, and
+ * the element it is on stays as it is.
+ */
+export function useHoverCard(defaultOpen = false, enabled = true): HoverCard {
+  const [isOpen, setOpen] = useState(defaultOpen);
+  const open = isOpen && enabled;
   const [pinned, setPinned] = useState(defaultOpen);
   const [place, setPlace] = useState<Place | null>(null);
   const wrap = useRef<HTMLSpanElement>(null);
@@ -175,7 +180,7 @@ export function useHoverCard(defaultOpen = false): HoverCard {
         if (event.pointerType !== 'mouse') return;
         if (leave.current) clearTimeout(leave.current);
         leave.current = null;
-        if (!open) hover.current = setTimeout(() => setOpen(true), HINT_OPEN_MS);
+        if (!open && enabled) hover.current = setTimeout(() => setOpen(true), HINT_OPEN_MS);
       },
       onPointerLeave() {
         if (hover.current) clearTimeout(hover.current);
@@ -198,6 +203,7 @@ export function useHoverCard(defaultOpen = false): HoverCard {
       onClick() {
         if (hover.current) clearTimeout(hover.current);
         pressed.current = false;
+        if (!enabled) return;
         const next = !(open && pinned);
         setOpen(next);
         setPinned(next);
@@ -205,7 +211,7 @@ export function useHoverCard(defaultOpen = false): HoverCard {
       // The keyboard arriving opens it; it closes when focus goes elsewhere.
       onFocus() {
         if (pressed.current || returning.current) return;
-        setOpen(true);
+        if (enabled) setOpen(true);
       },
     },
     panel,

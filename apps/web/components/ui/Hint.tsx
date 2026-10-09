@@ -133,10 +133,11 @@ export function Hint({
   className,
   triggerClassName,
 }: HintProps) {
-  const card = useHoverCard(defaultOpen);
+  const says = tip != null && tip !== '' && tip !== false;
+  const card = useHoverCard(defaultOpen, says);
   const id = useId();
   const own = interactive(children);
-  const shown = card.open && tip != null && tip !== '' && tip !== false;
+  const shown = card.open;
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: it only listens for its own trigger's focus and pointer; the trigger is the control
     <span

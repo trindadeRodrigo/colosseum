@@ -281,12 +281,13 @@ export const AGO_WORDS: AgoWords = {
   about: 'about',
 };
 
+// Whole units that have passed, never rounded up: fifty and a half minutes is "50 minutes ago".
 const span = (seconds: number): { count: number; unit: Age['unit'] } =>
   seconds < 3600
-    ? { count: Math.max(1, Math.round(seconds / 60)), unit: 'minute' }
+    ? { count: Math.max(1, Math.floor(seconds / 60)), unit: 'minute' }
     : seconds < 172_800
-      ? { count: Math.round(seconds / 3600), unit: 'hour' }
-      : { count: Math.round(seconds / 86_400), unit: 'day' };
+      ? { count: Math.floor(seconds / 3600), unit: 'hour' }
+      : { count: Math.floor(seconds / 86_400), unit: 'day' };
 
 /** "2 minutes ago". Null when what was handed is not an age. A time ahead of the clock is "now". */
 export function agoWords(seconds: number, words: AgoWords = AGO_WORDS): string | null {

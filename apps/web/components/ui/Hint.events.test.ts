@@ -116,9 +116,20 @@ describe('Hint, opened', () => {
 
   it('leaves the element as it is when there is nothing to say', async () => {
     const host = await mount(hintOnPage({ tip: null }));
-    await click(trigger(host));
-    expect(panels(host)).toHaveLength(0);
-    expect(trigger(host).getAttribute('aria-describedby')).toBeNull();
+    const heard = vi.fn();
+    document.addEventListener('keydown', heard);
+    try {
+      await click(trigger(host));
+      await focusOn(trigger(host));
+      expect(panels(host)).toHaveLength(0);
+      expect(trigger(host).getAttribute('aria-describedby')).toBeNull();
+      expect(trigger(host).getAttribute('aria-expanded')).toBe('false');
+      // it is not open, so the Escape is not its own: whatever is around it hears it
+      await press(trigger(host), 'Escape');
+      expect(heard).toHaveBeenCalledTimes(1);
+    } finally {
+      document.removeEventListener('keydown', heard);
+    }
   });
 
   it('stays open while the pointer crosses to it and rests inside, and closes once it has left', async () => {

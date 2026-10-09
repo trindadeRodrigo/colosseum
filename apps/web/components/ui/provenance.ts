@@ -228,8 +228,15 @@ export function pinWords(
   };
   // A sample or test-network reading can be old too: its glyph stays hatched (it is never drawn as
   // live, stale or not), and the popover still says how old it is before anything else.
+  // `ageSec` is the figure's age when it was read: its age now is that plus the time since the
+  // read, which only the browser's clock gives. Until that clock is known nothing is said from it.
+  const iso = isoUtc(obs.fetchedAt) ?? obs.fetchedAt;
+  const since = now == null ? null : Math.max(0, (now - Date.parse(iso)) / 1000);
+  const ageNow =
+    typeof obs.ageSec === 'number' && obs.ageSec >= 0 && since !== null ? obs.ageSec + since : null;
   if (obs.staleAgeSec != null) {
-    const ago = agoWords(obs.staleAgeSec as number, labels.ago);
+    // the age the API states, brought to now where it is the figure's own (a price's)
+    const ago = agoWords(ageNow ?? (obs.staleAgeSec as number), labels.ago);
     const limit = obs.staleLimitSec == null ? null : limitWords(obs.staleLimitSec, labels.ago);
     const text =
       ago === null || (obs.staleAgeSec as number) < 0
@@ -243,9 +250,7 @@ export function pinWords(
   }
   // The figure's own age where the API states one. Otherwise only when it was read, said as a read:
   // the time of a read says nothing of how old what was read is.
-  const own =
-    typeof obs.ageSec === 'number' && obs.ageSec >= 0 ? agoWords(obs.ageSec, labels.ago) : null;
-  const iso = isoUtc(obs.fetchedAt) ?? obs.fetchedAt;
+  const own = ageNow === null ? null : agoWords(ageNow, labels.ago);
   const read = now == null ? null : agoWords((now - Date.parse(iso)) / 1000, labels.ago);
   const fresh: PinLine = {
     key: own ? 'fresh' : 'read',
