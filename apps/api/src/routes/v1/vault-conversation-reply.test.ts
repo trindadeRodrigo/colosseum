@@ -432,7 +432,8 @@ describe('private model-led vault reply route', () => {
         unit: 'USD',
         source: price.source,
         method: price.method,
-        fetchedAt: price.fetchedAt,
+        // the mock chain stamps each read with its own second: an instant, not this later read's
+        fetchedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/),
         provenance: price.provenance,
       }),
     ]);
