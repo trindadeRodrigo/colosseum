@@ -1,6 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { batchTrades, RebalanceError, rebalancePlan } from '@colosseum/basket';
-import { eligibleForGoal, fixedMix, PERSONAL_PARAMS, reason } from '@colosseum/engine/personal';
+import {
+  eligibleForGoal,
+  fixedMix,
+  PERSONAL_PARAMS,
+  purposeOfMix,
+  reason,
+} from '@colosseum/engine/personal';
 import {
   type Address,
   type BasketAsset,
@@ -176,6 +182,25 @@ export function goalFit(asset: Pick<BasketAsset, 'cls'>, goal: Goal | null): Goa
   return asset.cls === 'stock' || asset.cls === 'etf' ? 'stock_outside' : 'barred';
 }
 
+/**
+ * The goal and risk a new goal's mix is reviewed and stored with: the ones the person said, and for
+ * one they did not, the one the mix itself stands for (gate DEPOSIT-DERIVE, `purposeOfMix`), named in
+ * `fromMix` so the screen can say it was worked out and not said.
+ */
+export function purposeFor(
+  checked: Pick<CheckedMix, 'picks'>,
+  said: { goal?: Goal | null | undefined; risk?: BasketSheet['risk'] | null | undefined },
+): { goal: Goal; risk: BasketSheet['risk']; fromMix: ('goal' | 'risk')[] } {
+  const mix = purposeOfMix(
+    checked.picks.map(({ asset, weightBps }) => ({ cls: asset.cls, weightBps })),
+  );
+  return {
+    goal: said.goal ?? mix.goal,
+    risk: said.risk ?? mix.risk,
+    fromMix: [...(said.goal ? [] : (['goal'] as const)), ...(said.risk ? [] : (['risk'] as const))],
+  };
+}
+
 /** The sheet a mix's figures are read with: the person's goal, amount and term on the one chain. */
 export function mixSheet(
   ctx: MixContext,
@@ -222,6 +247,8 @@ export function reviewMix(
     language: Language;
     accepted: readonly string[];
     vault?: VaultState;
+    /** What the person did not say and the server worked out from the mix (gate DEPOSIT-DERIVE). */
+    fromMix?: readonly ('goal' | 'risk')[];
   },
 ) {
   const { entry, prepared } = ctx;
@@ -386,6 +413,8 @@ export function reviewMix(
     chain: entry.chain,
     origin: a.origin,
     goal: a.goal,
+    ...(a.vault ? {} : { risk: a.risk }),
+    ...(a.fromMix?.length ? { fromMix: [...a.fromMix] } : {}),
     amountUsd: a.amountUsd,
     lines,
     targets: checked.targets,
@@ -522,6 +551,8 @@ export function mixProposal(
       ...fixed.flags,
       `origin:${a.origin}`,
       ...review.warnings.map((w) => `confirmed:${w.id}`),
+      // what the person did not say and the server worked out from the mix (DEPOSIT-DERIVE)
+      ...(review.fromMix ?? []).map((kind) => `from_mix:${kind}`),
     ],
     observations,
     disclaimer: DISCLAIMER[a.language],

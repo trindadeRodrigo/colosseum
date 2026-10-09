@@ -1745,8 +1745,8 @@ export type PostConversationsByChainGoalAcceptBody = {
   confirm: boolean;
   acceptedWarnings?: string[];
   reviewHash?: string;
-  goal: 'grow' | 'income' | 'protect';
-  risk: 'low' | 'medium' | 'high';
+  goal?: ('grow' | 'income' | 'protect') | null;
+  risk?: ('low' | 'medium' | 'high') | null;
   amountUsd: number;
   horizonMonths?: number;
 };
@@ -1759,6 +1759,8 @@ export type PostConversationsByChainGoalAcceptResponse =
         chain: 'solana' | 'base' | 'robinhood';
         origin: 'model' | 'person';
         goal: ('grow' | 'income' | 'protect') | null;
+        risk?: 'low' | 'medium' | 'high';
+        fromMix?: ('goal' | 'risk')[];
         amountUsd: number;
         lines: {
           assetId: string;
@@ -1819,6 +1821,8 @@ export type PostConversationsByChainGoalAcceptResponse =
         chain: 'solana' | 'base' | 'robinhood';
         origin: 'model' | 'person';
         goal: ('grow' | 'income' | 'protect') | null;
+        risk?: 'low' | 'medium' | 'high';
+        fromMix?: ('goal' | 'risk')[];
         amountUsd: number;
         lines: {
           assetId: string;
@@ -2093,10 +2097,12 @@ export type PostConversationsByChainGoalReplyResponse = {
   chain: 'solana' | 'base' | 'robinhood';
   /** Which agent wrote this reply: the relaxed intake (gate RELAXED-INTAKE), or the model-led conversation the server answers with when it runs with `GOAL_AGENT=model-led`. Said so that neither is ever taken for the other. */
   agent: 'relaxed' | 'model_led';
-  /** What the person said the money is for, read by the server from plain statements in their own messages; the latest one stands. Null until they have plainly said it, and after they take it back or question it. Never the model’s reading and never defaulted. */
+  /** What the person said the money is for, read by the server from plain statements in their own messages; the latest one stands. Null until they have plainly said it, and after they take it back or question it. Never the model’s reading, and never filled in here: `goal/accept` works out a null one from the mix and says so. */
   goal: ('grow' | 'income' | 'protect') | null;
-  /** The risk the person said they accept, read the same way. Null until they have plainly said it; never defaulted. */
+  /** The risk the person said they accept, read the same way. Null until they have plainly said it; never filled in here. */
   risk: ('low' | 'medium' | 'high') | null;
+  /** The sum the person said they start with, in dollars, read by the server from their own messages (gate DEPOSIT-DERIVE): the newest message that writes a sum in dollars, one sum there or none; never a rate a month, an age, a year or the model’s words. A starting value for the deposit step, which the person changes or confirms on the review. Null: not written, not in dollars, or two sums in one message. */
+  amountUsd: number | null;
 };
 
 /** GET /v1/funding: query. What the signed-in wallet is missing on its chain: the dollar token and native gas */
@@ -4130,6 +4136,8 @@ export type PostVaultsByChainByAddressTargetsResponse =
         chain: 'solana' | 'base' | 'robinhood';
         origin: 'model' | 'person';
         goal: ('grow' | 'income' | 'protect') | null;
+        risk?: 'low' | 'medium' | 'high';
+        fromMix?: ('goal' | 'risk')[];
         amountUsd: number;
         lines: {
           assetId: string;
@@ -4190,6 +4198,8 @@ export type PostVaultsByChainByAddressTargetsResponse =
         chain: 'solana' | 'base' | 'robinhood';
         origin: 'model' | 'person';
         goal: ('grow' | 'income' | 'protect') | null;
+        risk?: 'low' | 'medium' | 'high';
+        fromMix?: ('goal' | 'risk')[];
         amountUsd: number;
         lines: {
           assetId: string;

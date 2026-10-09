@@ -25,6 +25,7 @@ import {
   mixContext,
   mixProposal,
   planRetarget,
+  purposeFor,
   reviewMix,
   vaultValueUsd,
 } from '../../orders/mix';
@@ -101,7 +102,7 @@ export function registerMixRoutes(
       schema: {
         tags: ['plans'],
         summary: 'Review a mix for a new goal, and store it as a plan once confirmed',
-        description: `Requires matching sign-in tokens and a verified wallet for the chain. The goal, risk, amount and term are the ones the person confirmed. ${DESCRIPTION_CHECKS} Confirmed with every warning accepted, the mix is stored as a plan in the engine’s shape (\`engineVersion\` \`mix-1\`, \`origin\`), its lines the weights sent, and \`proposalId\` is bought by \`POST /v1/orders\` like any plan. The same mix confirmed again by the same person answers the same id and the plan as first stored. A buy of it is refused above the amount it was reviewed at (\`AMOUNT_OVER_REVIEW\`). Nothing is bought or signed here. The plan is not advice: see \`disclaimer\`.`,
+        description: `Requires matching sign-in tokens and a verified wallet for the chain. The amount and term are the ones the person confirmed, and the goal and risk the ones they said; a goal or risk sent as null or left out is worked out from the mix (gate DEPOSIT-DERIVE: \`protect\` when a plan to protect may hold every line, else \`grow\`; the lowest risk whose cap per issuer holds the stocks and crypto together and whose cap per stock holds each), and the review names it in \`fromMix\`. ${DESCRIPTION_CHECKS} Confirmed with every warning accepted, the mix is stored as a plan in the engine’s shape (\`engineVersion\` \`mix-1\`, \`origin\`), its lines the weights sent, and \`proposalId\` is bought by \`POST /v1/orders\` like any plan. The same mix confirmed again by the same person answers the same id and the plan as first stored. A buy of it is refused above the amount it was reviewed at (\`AMOUNT_OVER_REVIEW\`). Nothing is bought or signed here. The plan is not advice: see \`disclaimer\`.`,
         params: z.strictObject({ chain: ChainId }),
         body: AcceptGoalMixRequest,
         response: { 200: AcceptGoalMixResponse, default: OrderError },
@@ -116,10 +117,13 @@ export function registerMixRoutes(
       const now = deps.now().toISOString();
       const ctx = await refusing(() => mixContext(entry, read, now));
       const checked = await refusing(() => checkMix(ctx, body.allocations));
+      // What the person did not say is worked out from the mix, and the review says so (DEPOSIT-DERIVE).
+      const purpose = purposeFor(checked, body);
       const reviewed = reviewMix(ctx, checked, {
         origin: body.origin,
-        goal: body.goal,
-        risk: body.risk,
+        goal: purpose.goal,
+        risk: purpose.risk,
+        fromMix: purpose.fromMix,
         amountUsd: body.amountUsd,
         ...(body.horizonMonths === undefined ? {} : { horizonMonths: body.horizonMonths }),
         language: body.language,

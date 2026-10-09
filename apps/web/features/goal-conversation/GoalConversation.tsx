@@ -8,7 +8,7 @@ import { WORKSPACE_TITLE } from '../../components/ui/heading';
 import { LatticeGlyph } from '../../components/ui/Lattice';
 import { LatticeLoader } from '../../components/ui/Skeleton';
 import { useWaitPhase } from '../../components/ui/wait';
-import { dictionary } from '../../i18n';
+import { dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { DepositStep, type Purpose } from '../mix/DepositStep';
 import { share } from '../portfolio/figures';
@@ -88,8 +88,15 @@ export function GoalConversation({
   const [mix, setMix] = useState<VaultStrategyPreview | null>(null);
   // The deposit step is open, for the mix on the screen. Another proposal is read as a preview first.
   const [depositing, setDepositing] = useState(false);
-  // The amount typed on the deposit step: kept while the mix is changed in the conversation.
+  // The amount typed on the deposit step: kept while the mix is changed in the conversation. It starts
+  // from the sum the person wrote in the conversation (DEPOSIT-DERIVE), and a newer sum replaces it
+  // only while the person has not typed in the field, or has emptied it.
   const [amountText, setAmountText] = useState('');
+  const typed = useRef(false);
+  const typeAmount = (words: string) => {
+    typed.current = words !== '';
+    setAmountText(words);
+  };
   const [error, setError] = useState<string>();
   // The mix on the screen was read back from this browser, not answered on this visit: it is shown, and
   // the deposit comes back with the next reply (Rodrigo, Oct 8: a kept plan is a preview only).
@@ -115,6 +122,7 @@ export function GoalConversation({
     setKept(Boolean(held.current.length && restored));
     setDepositing(false);
     setAmountText('');
+    typed.current = false;
     setBusy(false);
     sending.current = false;
     prefill.current = readGoalHandoff(userId, ready);
@@ -171,6 +179,7 @@ export function GoalConversation({
     setKept(false);
     setDepositing(false);
     setAmountText('');
+    typed.current = false;
     setError(undefined);
     persist([]);
   }
@@ -238,6 +247,14 @@ export function GoalConversation({
       held.current = completed;
       setTurns(completed);
       setReply(result);
+      // Written as this page reads an amount back: "1500,5" in Portuguese, "1500.5" in English.
+      if (result.amountUsd !== null && !typed.current)
+        setAmountText(
+          new Intl.NumberFormat(LOCALE[lang], {
+            useGrouping: false,
+            maximumFractionDigits: 2,
+          }).format(result.amountUsd),
+        );
       if (result.proposal) {
         setMix(result.proposal);
         setKept(false);
@@ -434,7 +451,7 @@ export function GoalConversation({
               allocations={mix.allocations}
               said={said}
               amountText={amountText}
-              onAmountText={setAmountText}
+              onAmountText={typeAmount}
               provenance={provenance}
               onChangeMix={toChat}
               waiting={busy}

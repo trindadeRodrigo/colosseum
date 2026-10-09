@@ -389,6 +389,25 @@ describe('new-goal model preview route', () => {
       (await s.post(s.owner, { ...s.body, messages: [person('Tell me about Tesla.')] })).statusCode,
     ).toBe(503);
   });
+  it('serves the sum the person wrote in dollars, never one the app wrote (DEPOSIT-DERIVE)', async () => {
+    const s = await setup();
+    const person = (text: string) => ({ who: 'person', text });
+    const app = (text: string) => ({ who: 'app', text });
+    const ask = async (messages: object[]) => {
+      vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal() });
+      const res = await s.post(s.owner, { ...s.body, messages });
+      expect(res.statusCode, res.body).toBe(200);
+      return res.json().amountUsd;
+    };
+    const split = person('I want to invest 2k, 70% in safe income and 30% in AI stocks');
+    expect(await ask([split])).toBe(2000);
+    expect(
+      await ask([split, app('When will you need this money? $2,500 is…'), person('In five years')]),
+    ).toBe(2000);
+    expect(await ask([split, person('make it $3,000')])).toBe(3000);
+    expect(await ask([person('70% in safe income and 30% in AI stocks')])).toBeNull();
+    expect(await ask([person('R$ 3.000 em renda fixa')])).toBeNull();
+  });
   it.each([
     [['I do not want growth, I am retired.']],
     [['Only low risk please.'], { goal: null, risk: 'low' }],
