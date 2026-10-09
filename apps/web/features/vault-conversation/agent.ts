@@ -36,6 +36,10 @@ export type VaultStrategyPreview = {
   }[];
   /** What the server did with the weights, so nothing it did is silent. Codes, assets and the person's words. */
   weightNotes: WeightNote[];
+  /** The relaxed intake's month-by-month projection from the server's sourced yields, when any. */
+  projection?: StrategyProjection;
+  /** The relaxed intake's engine sheet for "Invest in this plan"; personalize checks it. */
+  investSheet?: Record<string, unknown>;
 };
 export type WeightNote = {
   code:
@@ -61,6 +65,58 @@ const NOTE_CODES = new Set<WeightNote['code']>([
 /** The notes that can stand on a reply with no proposal: each is about the person's own words. */
 const ALONE_CODES = new Set<WeightNote['code']>(['share_unmet', 'share_unread', 'share_withdrawn']);
 const WARNING_CODES = new Set(['over_exit_capacity', 'outside_goal_requested']);
+export type StrategyProjection = {
+  currency: string;
+  rate: number;
+  /** Months between two points: 1, or 12 for a long term. */
+  step: 1 | 12;
+  months: { month: string; balance: number; earned: number; withdrawn: number }[];
+  basis: string;
+  sourceIds: string[];
+};
+const finite = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+/** A malformed projection is left out; it never voids the rest of the preview. */
+function projectionOf(value: unknown): StrategyProjection | undefined {
+  const p =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  if (
+    !p ||
+    typeof p.currency !== 'string' ||
+    !finite(p.rate) ||
+    typeof p.basis !== 'string' ||
+    !Array.isArray(p.sourceIds) ||
+    !p.sourceIds.every((id) => typeof id === 'string') ||
+    !Array.isArray(p.months) ||
+    p.months.length > 121
+  )
+    return undefined;
+  const months: StrategyProjection['months'] = [];
+  for (const raw of p.months) {
+    const m = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null;
+    if (
+      !m ||
+      typeof m.month !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(m.month) ||
+      !finite(m.balance) ||
+      !finite(m.earned) ||
+      !finite(m.withdrawn)
+    )
+      return undefined;
+    months.push({ month: m.month, balance: m.balance, earned: m.earned, withdrawn: m.withdrawn });
+  }
+  const step = p.step === 12 ? 12 : 1;
+  return {
+    currency: p.currency,
+    rate: p.rate,
+    step,
+    basis: p.basis,
+    sourceIds: p.sourceIds as string[],
+    months,
+  };
+}
 /** Independent from the new-goal wizard; the provider owns grounded dialogue and policy checks. */
 export type VaultAgentRequest = {
   vault: VaultResponse;
@@ -256,6 +312,10 @@ export function strategyReplyOf(value: unknown, chain: ChainId): VaultAgentReply
       sources,
       warnings,
       weightNotes: notes,
+      ...(projectionOf(p.projection) ? { projection: projectionOf(p.projection) } : {}),
+      ...(record(p.investSheet)
+        ? { investSheet: record(p.investSheet) as Record<string, unknown> }
+        : {}),
     };
   }
   return {

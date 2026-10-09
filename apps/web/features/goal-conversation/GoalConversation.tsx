@@ -1,7 +1,8 @@
 'use client';
-import type { ChainId, Network, Provenance } from '@colosseum/schemas';
+import type { BasketSheet, ChainId, Network, Provenance } from '@colosseum/schemas';
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Composer } from '../../components/ui/Composer';
 import { WORKSPACE_TITLE } from '../../components/ui/heading';
@@ -10,9 +11,16 @@ import { LatticeLoader } from '../../components/ui/Skeleton';
 import { useWaitPhase } from '../../components/ui/wait';
 import { dictionary } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
+import { buildPlan, PERSONALIZE_PATH } from '../goal/build-plan';
 import { UseGoalMix } from '../mix/UseGoalMix';
+import { rememberPlan } from '../order/plan-store';
 import { share } from '../portfolio/figures';
-import { replyText, VaultAgentError, type VaultAgentReply } from '../vault-conversation/agent';
+import {
+  replyText,
+  strategyReplyOf,
+  VaultAgentError,
+  type VaultAgentReply,
+} from '../vault-conversation/agent';
 import { StrategyPreview, WeightNotes } from '../vault-conversation/StrategyPreview';
 import {
   conversationNetwork,
@@ -23,6 +31,7 @@ import {
 } from '../vault-conversation/storage';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { goalAgent } from './agent';
+import { conversationStoreKey } from './conversations';
 import { consumeGoalHandoff, readGoalHandoff } from './handoff';
 
 export const goalConversationKey = (
@@ -39,18 +48,30 @@ export function GoalConversation({
   chain,
   ready,
   provenance,
+  conversationId = 'main',
+  onSaved,
 }: {
   userId: string | null;
   chain: ChainId | null;
   ready: boolean;
   provenance: Provenance | null;
+  /** Which saved conversation of this browser is on screen (conversations.ts). */
+  conversationId?: string;
+  /** Called with the person's first words each time the transcript is saved. */
+  onSaved?: (title: string) => void;
 }) {
   const t = useT();
   const lang = useLang();
   const copy = t.goal.explore;
   const api = useApiFetch();
-  const key = userId && chain && provenance ? goalConversationKey(userId, chain, provenance) : null;
+  const base =
+    userId && chain && provenance ? goalConversationKey(userId, chain, provenance) : null;
+  const key = base ? conversationStoreKey(base, conversationId) : null;
   const context = `${key}:${ready}`;
+  // Rodrigo, Oct 8: the last plan is kept in this browser beside the transcript and
+  // shown again on return. It is read back through the same check as a fresh server reply
+  // (strategyReplyOf), and it stays a preview: nothing here can buy or sign from it.
+  const previewKey = key ? `${key}:preview` : null;
   const current = useRef(context);
   current.current = context;
   const generation = useRef(0);
@@ -68,6 +89,36 @@ export function GoalConversation({
   // The preview the person chose to use: the flow stays only while that preview is the one shown.
   const [using, setUsing] = useState<VaultAgentReply | null>(null);
   const [error, setError] = useState<string>();
+  // "Invest in this plan" (RELAXED-INTAKE) hands the plan's sheet to the existing personalize route
+  // and the person on to the existing plan screen, where the deployed buy and vault creation run.
+  const router = useRouter();
+  const [investing, setInvesting] = useState(false);
+  const [investError, setInvestError] = useState<string>();
+  // The chat folds away so the plan can take the whole width.
+  const [chatOpen, setChatOpen] = useState(true);
+  async function investIn(sheet: Record<string, unknown>) {
+    if (investing || !userId) return;
+    setInvesting(true);
+    setInvestError(undefined);
+    const outcome = await buildPlan(api, sheet as BasketSheet, PERSONALIZE_PATH);
+    if (outcome.kind === 'built') {
+      for (const kept of [
+        { id: outcome.id, proposal: outcome.proposal, rollUp: outcome.rollUp },
+        ...outcome.candidates,
+      ])
+        rememberPlan({ id: kept.id, userId, proposal: kept.proposal, rollUp: kept.rollUp });
+      router.push(`/plan/${encodeURIComponent(outcome.id)}`);
+      return;
+    }
+    setInvesting(false);
+    setInvestError(
+      outcome.kind === 'no-plan'
+        ? copy.investFailed.noPlan
+        : outcome.kind === 'signed-out' || outcome.kind === 'no-identity'
+          ? copy.investFailed.signedOut
+          : copy.investFailed.other,
+    );
+  }
   useEffect(() => {
     ++generation.current;
     requestApi.current = api;
@@ -75,7 +126,17 @@ export function GoalConversation({
     cancel.current?.abort();
     held.current = key ? readLocal(key).transcript : [];
     setTurns(held.current);
-    setReply(null);
+    let restored: VaultAgentReply | null = null;
+    try {
+      const raw = previewKey && chain ? localStorage.getItem(previewKey) : null;
+      restored = raw && chain ? strategyReplyOf(JSON.parse(raw), chain) : null;
+    } catch {
+      restored = null;
+    }
+    // A saved plan is shown without a sheet for investing (one saved earlier may be stale).
+    if (restored?.proposal?.investSheet)
+      restored = { ...restored, proposal: { ...restored.proposal, investSheet: undefined } };
+    setReply(held.current.length ? restored : null);
     setBusy(false);
     sending.current = false;
     prefill.current = readGoalHandoff(userId, ready);
@@ -86,12 +147,36 @@ export function GoalConversation({
       ++generation.current;
       cancel.current?.abort();
     };
-  }, [api, key, context, userId, ready]);
+  }, [api, key, context, userId, ready, previewKey, chain]);
+
+  function keepPreview(next: VaultAgentReply | null) {
+    if (!previewKey || !chain) return;
+    try {
+      if (next?.proposal)
+        localStorage.setItem(
+          previewKey,
+          // The plan is kept without its sheet for investing: a sheet made by an older bridge is
+          // never invested from; the button comes back with the next reply.
+          JSON.stringify({
+            version: 1,
+            chain,
+            messageId: 'kept',
+            ...next,
+            proposal: next.proposal ? { ...next.proposal, investSheet: undefined } : next.proposal,
+          }),
+        );
+      else localStorage.removeItem(previewKey);
+    } catch {
+      // storage full or blocked: the plan is still on screen for this visit
+    }
+  }
 
   function persist(next: Turn[]) {
     if (!key) return false;
     const saved = writeLocal(key, { revision: 0, transcript: next });
     if (!saved) setError(copy.notSaved);
+    const first = next.find((turn) => turn.who === 'person')?.text.trim();
+    if (saved && first) onSaved?.(first.length > 60 ? `${first.slice(0, 59)}…` : first);
     return saved;
   }
   function startOver() {
@@ -101,6 +186,7 @@ export function GoalConversation({
     setTurns([]);
     setText('');
     setReply(null);
+    keepPreview(null);
     setError(undefined);
     persist([]);
   }
@@ -124,10 +210,9 @@ export function GoalConversation({
     setError(undefined);
     setText('');
     // The draft on the card stays while its successor is worked on, so the new one can show what
-    // changed; it is marked as the one before, and it can no longer be used.
-    setReply((now) => (now?.proposal ? now : null));
+    // changed; it is marked as the one before, and it can no longer be used. It changes when the new
+    // answer is in, and an answer with no plan, or none at all, leaves it in view (Rodrigo, Oct 8).
     setUsing(null);
-    let answered = false;
     held.current = next;
     setTurns(next);
     if (persist(next) && prefill.current && userId) {
@@ -170,8 +255,15 @@ export function GoalConversation({
       }
       held.current = completed;
       setTurns(completed);
-      setReply(result);
-      answered = true;
+      // An answer with no plan (a question only) keeps the last plan in view.
+      setReply((previous) => {
+        const shown =
+          result.proposal || !previous?.proposal
+            ? result
+            : { ...result, proposal: previous.proposal };
+        keepPreview(shown);
+        return shown;
+      });
       persist(completed);
     } catch (cause) {
       if (active()) {
@@ -191,8 +283,6 @@ export function GoalConversation({
       }
     } finally {
       if (active()) {
-        // no reply, no draft: the one before it does not stand in for an answer that did not come
-        if (!answered) setReply(null);
         sending.current = false;
         setBusy(false);
       }
@@ -202,23 +292,38 @@ export function GoalConversation({
   const unanswered = !busy && ready && loaded ? turns.at(-1) : undefined;
   // a wait under 400ms shows nothing; after that the lattice assembles beside the words (STYLE.md)
   const waiting = useWaitPhase(busy) !== 'quiet';
+  const chatId = useId();
   return (
     <section
       data-ui="goal-conversation"
-      className="grid min-w-0 gap-4 lg:grid-cols-12 lg:items-start"
+      data-workbench
+      className="grid min-w-0 gap-4 md:min-h-0 md:flex-1 md:grid-cols-12 md:grid-rows-[auto_minmax(0,1fr)] md:items-stretch"
     >
-      <header className="flex flex-wrap items-baseline justify-between gap-3 lg:col-span-12">
+      <header className="flex flex-wrap items-baseline justify-between gap-3 md:col-span-12">
         <h1 className={WORKSPACE_TITLE}>{t.talk.workbench.title}</h1>
-        {turns.length > 0 && (
-          <Button variant="link" disabled={busy} onClick={startOver}>
-            {t.talk.startOver}
+        <div className="flex flex-wrap items-baseline gap-3">
+          <Button
+            variant="link"
+            aria-expanded={chatOpen}
+            aria-controls={chatId}
+            data-ui="goal-chat-toggle"
+            onClick={() => setChatOpen((open) => !open)}
+          >
+            {chatOpen ? t.talk.hideChat : t.talk.showChat}
           </Button>
-        )}
+          {turns.length > 0 && (
+            <Button variant="link" disabled={busy} onClick={startOver}>
+              {t.talk.startOver}
+            </Button>
+          )}
+        </div>
       </header>
       <div
         ref={box}
+        id={chatId}
         data-ui="goal-chat"
-        className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-24 lg:col-span-5 lg:max-h-[calc(100dvh-8rem)]"
+        hidden={!chatOpen}
+        className={`${chatOpen ? 'flex' : 'hidden'} min-w-0 flex-col gap-4 md:col-span-5 md:min-h-0`}
       >
         {turns.length === 0 && (
           <div className="flex flex-col gap-2">
@@ -230,7 +335,7 @@ export function GoalConversation({
         <ol
           data-ui="goal-transcript"
           aria-live="polite"
-          className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto"
+          className="tf-scroll-thin relative flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto md:flex-1 md:pr-2"
         >
           {/* The person's own words sit on the honey glow, so they stand apart from the replies
               (Rodrigo, Oct 8); the column itself has no glow. */}
@@ -324,7 +429,11 @@ export function GoalConversation({
           </ul>
         )}
       </div>
-      <div data-ui="goal-strategy" className="flex min-w-0 flex-col gap-4 lg:col-span-7">
+      <div
+        data-ui="goal-strategy"
+        aria-busy={busy}
+        className={`tf-scroll-thin relative flex min-w-0 flex-col gap-4 ${chatOpen ? 'md:col-span-7' : 'md:col-span-12'} md:min-h-0 md:overflow-y-auto md:pr-2`}
+      >
         {reply?.proposal ? (
           <>
             <StrategyPreview
@@ -334,6 +443,14 @@ export function GoalConversation({
               {...(chain && userId && using !== reply
                 ? { use: { label: t.mix.preview.use, onUse: () => setUsing(reply) } }
                 : {})}
+              invest={{
+                onPress: () => {
+                  const sheet = reply.proposal?.investSheet;
+                  if (sheet) void investIn(sheet);
+                },
+                busy: investing,
+                ...(investError ? { error: investError } : {}),
+              }}
             />
             {chain && userId && using === reply && (
               <UseGoalMix

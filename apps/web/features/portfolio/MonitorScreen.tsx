@@ -457,12 +457,10 @@ export function MonitorScreen() {
   return (
     <div data-ui="monitor-screen" className="flex flex-col gap-8">
       <header className="flex flex-col gap-3">
-        {/* The serif answers once per screen: with goal cards below, their sentences are it, and the
-            page heading is the sans face (goal-card.md). */}
-        <h1 className={vaults.length > 0 ? 'font-sans text-h2 font-semibold' : PAGE_TITLE}>
+        {/* The page names itself to a screen reader only: the goal cards below say what each vault is. */}
+        <h1 className={vaults.length > 0 ? 'sr-only' : `${PAGE_TITLE} sr-only`}>
           {words.title(vaults.length)}
         </h1>
-        <p className="max-w-(--tf-measure-body) text-body-lg text-foreground">{words.lead}</p>
         {held.length > 0 && outcome && (
           <PortfolioSummary
             totals={held.map(totalOf)}
@@ -487,7 +485,8 @@ export function MonitorScreen() {
           <Link
             data-ui="new-plan"
             href="/goal"
-            className={buttonClass({ variant: 'secondary', size: 'dense' })}
+            // Honey, so the way to a new plan stands out: a honey edge on its tint, ink text (IDENTITY-2).
+            className="inline-flex h-8 items-center justify-center self-start rounded-md border border-primary bg-honey-tint px-3 text-body-sm font-medium text-foreground transition-colors hover:bg-primary hover:text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
             {words.actions.newPlan}
           </Link>

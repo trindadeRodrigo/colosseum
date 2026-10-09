@@ -83,6 +83,10 @@ describe('home', () => {
       const host = await home(lang);
       const switcher = find<HTMLDetailsElement>(host, '[data-ui="vault-switcher"]');
       expect(switcher.open).toBe(false);
+      // the conversation picker lists the same vaults, from the same one read.
+      expect(
+        [...find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').options].map((o) => o.value),
+      ).toEqual(['current', 'new', `vault:solana:${VAULT}`, `vault:solana:${SECOND_VAULT}`]);
       expect(find(switcher, 'summary').textContent).toBe(dictionary(lang).portfolio.summary.title);
       expect(find(switcher, 'summary + ul').className).not.toMatch(/grid-cols/);
       await click(find(switcher, 'summary'));
@@ -97,7 +101,7 @@ describe('home', () => {
       ).toBe(true);
       await click(find(switcher, 'summary'));
       expect(switcher.open).toBe(false);
-      expect(find(host, '[data-ui="portfolio-link"]').getAttribute('href')).toBe('/monitor');
+      expect(find(host, '[data-ui="portfolio-link"]').getAttribute('href')).toBe('/portfolio');
     },
   );
 
@@ -205,14 +209,10 @@ describe('home', () => {
     const link = find(card, '[data-ui="portfolio-link"]');
     expect([link.textContent, link.getAttribute('href')]).toEqual([
       en.portfolio.summary.see,
-      '/monitor',
-    ]);
-    // beside it, a text link to the same plans over time (PORT-3)
-    const overTime = find(card, '[data-ui="plans-over-time"]');
-    expect([overTime.textContent, overTime.getAttribute('href')]).toEqual([
-      en.portfolio.summary.overTime,
       '/portfolio',
     ]);
+    // that link is the portfolio section, the same plans over time (PORT-3): no second link to it
+    expect(card.querySelector('[data-ui="plans-over-time"]')).toBeNull();
     expect(card.querySelectorAll('[data-ui="button"]')).toHaveLength(0);
     // a test network: the hatch and one quiet line with the words, never MOCK
     expect(card.textContent).not.toContain('MOCK');
@@ -295,7 +295,7 @@ describe('home', () => {
     expect(find(owned(host)[0], 'a').textContent).toBe(pt.shared.vaults.open);
     expect(host.textContent?.replace(/\s/g, ' ')).toContain('US$ 1.040,00');
     expect(host.textContent).toContain(pt.portfolio.summary.see);
-    expect(find(host, 'a[href="/portfolio"]').textContent).toBe(pt.portfolio.summary.overTime);
+    expect(find(host, 'a[href="/portfolio"]').textContent).toBe(pt.portfolio.summary.see);
   });
   it('prefers a plain-text vault name, then its saved goal, then its short address, without history requests', async () => {
     const plan = planOn();

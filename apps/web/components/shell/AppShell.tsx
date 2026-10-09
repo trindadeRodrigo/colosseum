@@ -21,21 +21,22 @@ export function AppShell({ lang, children }: AppShellProps) {
   return (
     <div
       data-ui="app-shell"
-      className="group/shell mx-auto flex min-h-dvh w-full max-w-page flex-col px-[clamp(16px,4vw,56px)] has-[[data-ui=bearing]]:max-w-none has-[[data-ui=portfolio]]:max-w-[1600px] has-[[data-ui=portfolio]]:px-[clamp(12px,2vw,28px)]"
+      className="group/shell mx-auto flex min-h-dvh w-full max-w-page flex-col px-[clamp(16px,4vw,56px)] has-[[data-ui=bearing]]:max-w-none md:has-[[data-workbench]]:h-dvh md:has-[[data-workbench]]:min-h-0 md:has-[[data-workbench]]:max-w-[calc(640px+50vw)] md:has-[[data-workbench]]:overflow-hidden md:has-[[data-workbench]]:px-[clamp(8px,2vw,28px)] has-[[data-ui=portfolio]]:max-w-[1600px] has-[[data-ui=portfolio]]:px-[clamp(12px,2vw,28px)]"
     >
       <AppNav />
       <RouterLinks />
       <main
         id="content"
         tabIndex={-1}
-        className="flex-1 scroll-mt-24 pt-[calc(env(safe-area-inset-top,0px)+104px)] pb-10 outline-none"
+        className="flex-1 scroll-mt-24 pt-[calc(env(safe-area-inset-top,0px)+104px)] pb-10 outline-none md:group-has-[[data-workbench]]/shell:flex md:group-has-[[data-workbench]]/shell:min-h-0 md:group-has-[[data-workbench]]/shell:flex-col md:group-has-[[data-workbench]]/shell:pb-0"
       >
         {children}
       </main>
       {/* A page on one centred column (the sign-in screen) has the foot on the same column. */}
+      {/* On a workbench (invest, an owner's vault) the foot is a small blank strip. */}
       <footer
         data-ui="app-foot"
-        className="flex flex-col gap-6 border-t border-border py-8 group-has-[main_[data-column=centred]]/shell:mx-auto group-has-[main_[data-column=centred]]/shell:w-full group-has-[main_[data-column=centred]]/shell:max-w-[860px]"
+        className="flex flex-col gap-6 border-t border-border py-8 md:group-has-[[data-workbench]]/shell:h-6 md:group-has-[[data-workbench]]/shell:shrink-0 md:group-has-[[data-workbench]]/shell:border-t-0 md:group-has-[[data-workbench]]/shell:py-0 md:group-has-[[data-workbench]]/shell:*:hidden group-has-[main_[data-column=centred]]/shell:mx-auto group-has-[main_[data-column=centred]]/shell:w-full group-has-[main_[data-column=centred]]/shell:max-w-[860px]"
       >
         <Disclaimer
           lang={lang}

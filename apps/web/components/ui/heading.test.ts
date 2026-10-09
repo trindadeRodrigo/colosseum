@@ -14,7 +14,11 @@ const OWN = new Set([
   'features/wallet/dev/DevWallet.tsx',
 ]);
 
-const WORKSPACES = new Set(['features/goal-conversation/GoalConversation.tsx']);
+const WORKSPACES = new Set([
+  'features/goal-conversation/GoalConversation.tsx',
+  // An owner's vault opens as the invest workbench does (VaultScreen).
+  'features/shared/VaultScreen.tsx',
+]);
 
 /** Every <h1 …> in a file whose class is not the page title's. */
 export function otherTitles(text: string, file?: string): string[] {
@@ -37,7 +41,7 @@ describe('a page’s title', () => {
     expect(PAGE_TITLE.split(' ')).not.toEqual(expect.arrayContaining(['font-normal']));
   });
 
-  it('permits only the exact shared workspace title in the Invest workspace', () => {
+  it('permits only the exact shared workspace title in the Invest workspaces and the owner’s vault', () => {
     expect(WORKSPACE_TITLE).toBe('text-body-lg font-semibold');
     const title = '<h1 className={WORKSPACE_TITLE}>Invest</h1>';
     for (const file of WORKSPACES) {
@@ -50,7 +54,7 @@ describe('a page’s title', () => {
       ).toHaveLength(1);
       expect(otherTitles('<h1 className="text-h2">Another title</h1>', file)).toHaveLength(1);
     }
-    expect(otherTitles(title, 'features/shared/VaultScreen.tsx')).toHaveLength(1);
+    expect(otherTitles(title, 'features/portfolio/MonitorScreen.tsx')).toHaveLength(1);
     expect(otherTitles(title)).toHaveLength(1);
   });
 

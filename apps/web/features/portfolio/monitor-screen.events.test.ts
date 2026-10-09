@@ -927,10 +927,10 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
       `${en.portfolio.goalCard.putIn('$40,000')} · up to $40,000 within a day`,
     );
     const link = find(card, 'a');
-    // the plan is read back from the server in any tab, so the card leads to it
+    // the card leads to the vault's workbench: the chat beside the plan (VaultScreen)
     expect([link.textContent, link.getAttribute('href')]).toEqual([
       en.portfolio.goalCard.seePlan,
-      `/plan/${PLAN_ID}`,
+      `/vaults/solana/${VAULT}`,
     ]);
     // beside it, his plan: the parts by weight
     const titles = [...host.querySelectorAll('[data-ui="vault"] section h3')].map(
@@ -991,7 +991,7 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     const link = find(card, 'a');
     expect([link.textContent, link.getAttribute('href')]).toEqual([
       en.portfolio.goalCard.seePlan,
-      `/plan/${PLAN_ID}`,
+      `/vaults/solana/${VAULT}`,
     ]);
     // and what was done is the order's steps, read from the server by the order's id
     expect(server.to(`/v1/orders/${ORDER_ID}`)).toHaveLength(1);
@@ -1214,7 +1214,7 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     expect(find(card, 'h3').textContent).toBe(en.portfolio.goalCard.unknown('Solana'));
     expect(card.textContent).toContain(en.portfolio.goalCard.notJoined);
     expect(card.textContent).not.toMatch(/ of \$/);
-    expect(find(card, 'a').getAttribute('href')).toBe('/goal');
+    expect(find(card, 'a').getAttribute('href')).toBe(`/vaults/solana/${VAULT}`);
   });
 
   it('tags every activity line when one of them is on a chain the page’s head does not name', async () => {

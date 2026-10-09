@@ -17,16 +17,15 @@ import { shortAddress } from '../shared/use-person';
 import { useWalletPort } from '../wallet/WalletProvider';
 import { dollars, sharesOf } from './figures';
 import { holdingsOf, unpriced, vaultValueSource } from './portfolio';
-import { usePortfolio } from './use-portfolio';
+import type { PortfolioState } from './use-portfolio';
 import { goalOfVault } from './vault-goal';
 
 // A collapsed vault switcher below the workbench: each read value has its own source and chain, never a sum.
 // Names fall back to this browser's saved goal records, then the address. No history route is added.
-export function PortfolioSummary() {
+export function PortfolioSummary({ state }: { state: PortfolioState }) {
   const t = useT();
   const lang = useLang();
   const port = useWalletPort();
-  const { state } = usePortfolio();
   const heading = useId();
   const [history, setHistory] = useState<{ who: string | null; records: OrderRecord[] } | null>(
     null,
@@ -163,18 +162,11 @@ export function PortfolioSummary() {
         </details>
         <Link
           data-ui="portfolio-link"
-          href="/monitor"
-          className={`${buttonClass({ variant: 'link' })} shrink-0 text-body-sm`}
-        >
-          {t.portfolio.summary.see}
-        </Link>
-        {/* The same plans over time: the portfolio section (PORT-3). A text link beside the first. */}
-        <Link
-          data-ui="plans-over-time"
+          // the portfolio section (PORT-3): the same plans, over time
           href={SECTION}
           className={`${buttonClass({ variant: 'link' })} shrink-0 text-body-sm`}
         >
-          {t.portfolio.summary.overTime}
+          {t.portfolio.summary.see}
         </Link>
       </div>
     </section>

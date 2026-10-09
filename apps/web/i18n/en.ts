@@ -243,6 +243,22 @@ export const en = {
 
   goal: {
     explore: {
+      /** The conversation picker (GoalEntry): this conversation, a new one, the saved ones, the vaults. */
+      picker: {
+        label: 'Conversation',
+        current: 'This conversation',
+        fresh: 'New conversation',
+        vaults: 'Your vaults',
+        saved: 'Saved conversations',
+        untitled: 'Earlier conversation',
+      },
+      /** Why "Invest in this plan" did not lead to a plan. */
+      investFailed: {
+        noPlan:
+          "The engine found no plan for this split under today's rules. Adjust the split or the amount.",
+        signedOut: 'Sign in again to invest.',
+        other: 'The plan could not be built just now. Try again.',
+      },
       invitation: 'What would you like your strategy to do?',
       lead: 'Tell me your ideas, needs and limits. I can discuss an allocation with its sources and tradeoffs.',
       placeholder: 'Describe what you want to explore…',
@@ -512,6 +528,7 @@ export const en = {
     title: (vaults: number): string =>
       vaults > 1 ? 'What your vaults hold.' : 'What your vault holds.',
     planDetails: 'Goal and strategy details',
+    /** The page's description in its metadata; the screen itself does not show it. */
     lead: 'Your vaults, their holdings and the strategies they follow. Open a vault to continue its conversation or add money.',
     chain: 'Chain',
     reading: 'Reading your vault…',
@@ -719,6 +736,8 @@ export const en = {
       strategy: 'Strategy preview',
     },
     startOver: 'Start over',
+    hideChat: 'Hide chat',
+    showChat: 'Show chat',
     you: 'You',
     me: 'tenonfi',
   },
@@ -1401,6 +1420,26 @@ export const en = {
           'One piece per asset. Small shares are drawn wider so they can be seen; the figures in the list are exact.',
         /** On the last draft while a reply is on its way. */
         reworking: 'Reading what you said. This is the last draft.',
+        /** The preview's two views when the server projected the plan month by month. */
+        view: { label: 'Show', mix: 'Mix', monthly: 'Monthly evolution' },
+        /** The projection's chart (ProjectionChart): past-rate arithmetic, never a promise. */
+        projection: {
+          title: 'Monthly evolution',
+          yearly: 'Yearly evolution',
+          needsAmount:
+            'Tell the agent how much you will put in to see the month-by-month projection.',
+          balance: 'balance',
+          earned: 'earned so far',
+          withdrawn: 'withdrawn',
+          month: 'Month',
+          hint: 'Point at or tab to a month to read it.',
+        },
+        /** "Invest in this plan": the engine builds the plan on this split, then the plan screen. */
+        invest: {
+          press: 'Invest in this plan',
+          busy: 'Building the plan…',
+          note: "The engine builds the plan on this split, within today's rules; you review and sign before anything is bought.",
+        },
         resume: 'Resume conversation',
         holdings: 'Holdings',
         explain: 'Explain my holdings',

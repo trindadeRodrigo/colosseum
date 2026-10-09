@@ -200,6 +200,20 @@ export const pt: Dictionary = {
 
   goal: {
     explore: {
+      picker: {
+        label: 'Conversa',
+        current: 'Esta conversa',
+        fresh: 'Nova conversa',
+        vaults: 'Seus cofres',
+        saved: 'Conversas salvas',
+        untitled: 'Conversa anterior',
+      },
+      investFailed: {
+        noPlan:
+          'O motor não encontrou um plano para esta divisão com as regras de hoje. Ajuste a divisão ou o valor.',
+        signedOut: 'Entre de novo para investir.',
+        other: 'Não foi possível montar o plano agora. Tente de novo.',
+      },
       invitation: 'O que você quer que sua estratégia faça?',
       lead: 'Conte suas ideias, necessidades e limites. Eu posso discutir uma alocação com fontes e riscos.',
       placeholder: 'Descreva o que quer explorar…',
@@ -631,6 +645,8 @@ export const pt: Dictionary = {
       strategy: 'Prévia da estratégia',
     },
     startOver: 'Começar de novo',
+    hideChat: 'Ocultar conversa',
+    showChat: 'Mostrar conversa',
     you: 'Você',
     me: 'tenonfi',
   },
@@ -1278,6 +1294,22 @@ export const pt: Dictionary = {
         jointHintWidened:
           'Uma peça por ativo. Fatias pequenas são desenhadas mais largas para ficarem visíveis; os números da lista são exatos.',
         reworking: 'Lendo o que você disse. Este é o último rascunho.',
+        view: { label: 'Mostrar', mix: 'Composição', monthly: 'Evolução mensal' },
+        projection: {
+          title: 'Evolução mensal',
+          yearly: 'Evolução anual',
+          needsAmount: 'Diga ao agente quanto vai investir para ver a projeção mês a mês.',
+          balance: 'saldo',
+          earned: 'rendido até aqui',
+          withdrawn: 'retirado',
+          month: 'Mês',
+          hint: 'Aponte ou navegue até um mês para lê-lo.',
+        },
+        invest: {
+          press: 'Investir neste plano',
+          busy: 'Montando o plano…',
+          note: 'O motor monta o plano com esta divisão, dentro das regras de hoje; você revê e assina antes de qualquer compra.',
+        },
         resume: 'Retomar conversa',
         holdings: 'Ativos',
         explain: 'Explique meus ativos',

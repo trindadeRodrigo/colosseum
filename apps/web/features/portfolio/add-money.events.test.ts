@@ -717,9 +717,10 @@ describe('a vault’s own page, which anybody can open', () => {
     expect(find(host, 'h1').textContent).toBe('Rent');
     expect(host.querySelectorAll('h1')).toHaveLength(1);
     expect(server.to(PORTFOLIO_PATH)).toHaveLength(1);
-    expect(find(host, 'a[href="#vault-conversation"]').textContent).toBe(
-      en.shared.vault.conversation.resume,
-    );
+    // the owner's page is the vault's workbench (Rodrigo, Oct 8): its conversation is beside the plan,
+    // so no link has to lead down to it
+    expect(find(host, '#vault-conversation').getAttribute('data-workbench')).not.toBeNull();
+    expect(host.querySelector('a[href="#vault-conversation"]')).toBeNull();
     expect(find(host, '[data-ui="vault-name"]').textContent).toBe('Rent');
     expect(find(host, '[data-ui="vault-add-money"]').getAttribute('href')).toBe(
       `/vaults/solana/${VAULT}/add`,

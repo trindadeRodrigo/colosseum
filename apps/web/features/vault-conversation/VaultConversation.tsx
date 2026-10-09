@@ -1,6 +1,6 @@
 'use client';
 import type { VaultResponse } from '@colosseum/schemas';
-import { useEffect, useId, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Composer } from '../../components/ui/Composer';
@@ -34,17 +34,25 @@ import {
   writeLocal,
 } from './storage';
 
-/** Owner-only caller keys this component by the complete current identity/context. */
+/**
+ * Owner-only caller keys this component by the complete current identity/context. Laid out (Rodrigo,
+ * Oct 8) as the invest page is, the chat on one side and the plan on the other, so the owner comes
+ * back to a plan where it was made; `heading` is the page's own header, `aside` what follows the plan.
+ */
 export function VaultConversation({
   read,
   userId,
   agent,
   showValue = true,
+  heading,
+  aside,
 }: {
   read: VaultResponse;
   userId: string;
   agent?: VaultAgent;
   showValue?: boolean;
+  heading?: ReactNode;
+  aside?: ReactNode;
 }) {
   const t = useT();
   const copy = t.shared.vault.conversation;
@@ -69,6 +77,8 @@ export function VaultConversation({
   const [reply, setReply] = useState<VaultAgentReply | null>(null);
   // The preview the person chose to apply: its editor stays only while that preview is the one shown.
   const [applying, setApplying] = useState<VaultAgentReply | null>(null);
+  // The chat folds away so the plan can take the whole width, as on the invest page.
+  const [chatOpen, setChatOpen] = useState(true);
   const generation = useRef(0);
   const sending = useRef(false);
   const revision = useRef(0);
@@ -267,12 +277,30 @@ export function VaultConversation({
       data-ui="vault-conversation"
       id="vault-conversation"
       tabIndex={-1}
+      data-workbench
       aria-labelledby={`${id}-title`}
-      className="grid min-w-0 items-start gap-6 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]"
+      className="grid min-w-0 gap-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring md:min-h-0 md:flex-1 md:grid-cols-12 md:grid-rows-[auto_minmax(0,1fr)] md:items-stretch"
     >
-      <div className="flex min-w-0 flex-col gap-4 border-t border-border pt-5">
-        <header className="flex flex-col gap-2">
-          <h2 id={`${id}-title`} className="text-h3">
+      <header className="flex flex-wrap items-start justify-between gap-3 md:col-span-12">
+        <div className="flex min-w-0 flex-col gap-2">{heading}</div>
+        <Button
+          variant="link"
+          aria-expanded={chatOpen}
+          aria-controls={`${id}-chat`}
+          data-ui="vault-chat-toggle"
+          onClick={() => setChatOpen((open) => !open)}
+        >
+          {chatOpen ? t.talk.hideChat : t.talk.showChat}
+        </Button>
+      </header>
+      <div
+        id={`${id}-chat`}
+        data-ui="vault-chat"
+        hidden={!chatOpen}
+        className={`${chatOpen ? 'flex' : 'hidden'} min-w-0 flex-col gap-4 md:col-span-5 md:min-h-0`}
+      >
+        <div className="flex flex-col gap-1">
+          <h2 id={`${id}-title`} className="text-body font-medium">
             {copy.title}
           </h2>
           <p className="text-caption text-muted-foreground" role="status">
@@ -284,7 +312,7 @@ export function VaultConversation({
                   ? copy.conflict
                   : copy.local}
           </p>
-        </header>
+        </div>
         {turns.length === 0 ? (
           <div className="flex flex-col items-start gap-4 py-4">
             <p className="max-w-(--tf-measure-body) text-body text-muted-foreground">
@@ -315,7 +343,7 @@ export function VaultConversation({
             ref={transcript}
             // biome-ignore lint/a11y/noNoninteractiveTabindex: The scrollable transcript needs keyboard focus so arrow keys can read earlier messages.
             tabIndex={0}
-            className="flex max-h-[55vh] min-w-0 flex-col gap-5 overflow-y-auto pr-2 text-body focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="tf-scroll-thin flex max-h-[55vh] min-h-0 min-w-0 flex-col gap-5 overflow-y-auto pr-2 text-body focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring md:max-h-none md:flex-1"
             aria-label={copy.history}
           >
             {turns.map((turn) => (
@@ -356,7 +384,42 @@ export function VaultConversation({
           />
         </div>
       </div>
-      <div className="flex min-w-0 flex-col gap-4">
+      <div
+        data-ui="vault-plan"
+        aria-busy={busy}
+        className={`tf-scroll-thin flex min-w-0 flex-col gap-4 md:min-h-0 md:overflow-y-auto md:pr-2 ${chatOpen ? 'md:col-span-7' : 'md:col-span-12'}`}
+      >
+        {/* The proposal leads when there is one: it is what the person is working on. */}
+        {reply?.notes && !proposal && <WeightNotes notes={reply.notes} />}
+        {proposal && (
+          <section data-ui="vault-proposal">
+            <StrategyPreview
+              proposal={proposal}
+              targets={targets}
+              onDiscuss={() => draftMessage(copy.discussPrompt)}
+              {...(applying !== reply && reply
+                ? { use: { label: t.mix.preview.apply, onUse: () => setApplying(reply) } }
+                : {})}
+            />
+            {reply && applying === reply && (
+              <div className="mt-4">
+                <VaultMixFlow
+                  chain={read.chain}
+                  vault={read.vault}
+                  seed={proposal.allocations}
+                  from="model"
+                  provenance={read.provenance}
+                  names={Object.fromEntries(
+                    proposal.allocations.flatMap((line) =>
+                      line.symbol ? [[line.assetId, line.symbol]] : [],
+                    ),
+                  )}
+                  onClose={() => setApplying(null)}
+                />
+              </div>
+            )}
+          </section>
+        )}
         <Card
           as="section"
           aria-labelledby={`${id}-held`}
@@ -426,36 +489,7 @@ export function VaultConversation({
             </details>
           </CardBody>
         </Card>
-        {reply?.notes && !proposal && <WeightNotes notes={reply.notes} />}
-        {proposal && (
-          <section data-ui="vault-proposal">
-            <StrategyPreview
-              proposal={proposal}
-              targets={targets}
-              onDiscuss={() => draftMessage(copy.discussPrompt)}
-              {...(applying !== reply && reply
-                ? { use: { label: t.mix.preview.apply, onUse: () => setApplying(reply) } }
-                : {})}
-            />
-            {reply && applying === reply && (
-              <div className="mt-4">
-                <VaultMixFlow
-                  chain={read.chain}
-                  vault={read.vault}
-                  seed={proposal.allocations}
-                  from="model"
-                  provenance={read.provenance}
-                  names={Object.fromEntries(
-                    proposal.allocations.flatMap((line) =>
-                      line.symbol ? [[line.assetId, line.symbol]] : [],
-                    ),
-                  )}
-                  onClose={() => setApplying(null)}
-                />
-              </div>
-            )}
-          </section>
-        )}
+        {aside}
       </div>
     </section>
   );

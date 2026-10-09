@@ -20,7 +20,7 @@ import { fakePort, json, PHANTOM, signedInPort } from '../wallet/test/fake-port'
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { GoalConversation, goalConversationKey } from './GoalConversation';
-import { GoalEntry } from './GoalEntry';
+import { GoalHome } from './GoalHome';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -50,7 +50,12 @@ const send = async (host: HTMLElement, words: string) => {
   await click(find(host, '[data-ui="composer-send"]'));
   await settle();
 };
-const show = (lang: 'en' | 'pt' = 'en') => mount(withAccount(lang, createElement(GoalEntry)));
+const show = (lang: 'en' | 'pt' = 'en') => mount(withAccount(lang, createElement(GoalHome)));
+async function mode(host: HTMLElement, value: string) {
+  const selector = find<HTMLSelectElement>(host, '[data-ui="goal-mode"]');
+  selector.value = value;
+  await fire(selector, new Event('change', { bubbles: true }));
+}
 beforeEach(() => {
   window.history.replaceState(null, '', '/goal');
   router.push.mockClear();
@@ -150,7 +155,7 @@ describe('private strategy exploration for a new goal', () => {
     'defaults to truthful explore workbench with no fake vault or funding (%s)',
     async (lang) => {
       const host = await show(lang);
-      expect(host.querySelector('[data-ui="goal-mode"]')).toBeNull();
+      expect(find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').value).toBe('current');
       expect(find(host, '[data-ui="goal-empty-preview"]').textContent).toContain(
         dictionary(lang).goal.explore.empty,
       );
@@ -206,6 +211,46 @@ describe('private strategy exploration for a new goal', () => {
     ).toBe(true);
     expect(messages.at(-1)).toEqual({ who: 'person', text: 'Less gold please' });
     expect(calls.every((row) => row.path === path)).toBe(true);
+  });
+  // Rodrigo, Oct 8: the picker holds this conversation and a new one; the last preview is kept
+  // in this browser and shown again on return, still a preview with no way to fund it; "New
+  // conversation" clears both.
+  it('shows the last preview again on return, offers no funding, and keeps earlier conversations to reopen', async () => {
+    let host = await show();
+    await send(host, 'Consider gold');
+    expect(host.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
+    await unmountAll();
+    host = await show();
+    await settle();
+    expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain('Consider gold');
+    expect(host.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="goal-empty-preview"]')).toBeNull();
+    expect(host.querySelector('[data-ui="buy-card"]')).toBeNull();
+    expect(
+      find(host, '[data-ui="goal-strategy"]').querySelector('button[data-variant="primary"]'),
+    ).toBeNull();
+    expect(
+      [...find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').options].map((o) => o.value),
+    ).toEqual(['current', 'new']);
+    await mode(host, 'new');
+    await settle();
+    expect(find(host, '[data-ui="goal-transcript"]').textContent).toBe('');
+    expect(host.querySelector('[data-ui="goal-empty-preview"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="mix-joint"]')).toBeNull();
+    // The earlier conversation is kept, listed by its first words, and comes back with its preview.
+    await unmountAll();
+    host = await show();
+    await settle();
+    expect(host.querySelector('[data-ui="mix-joint"]')).toBeNull();
+    const saved = [...find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').options].find((o) =>
+      o.value.startsWith('conversation:'),
+    );
+    expect(saved?.textContent).toBe('Consider gold');
+    await mode(host, saved?.value ?? '');
+    await settle();
+    expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain('Consider gold');
+    expect(host.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
+    expect(calls).toHaveLength(1);
   });
   it('preserves exact plain words across unavailable API and reopen without fabricating reply', async () => {
     portStore.setApi(async (url) => baseApi(url));
@@ -627,7 +672,7 @@ describe('the proposed mix drawn as a joint', () => {
     expect(document.activeElement).toBe(find(host, '[data-ui="mix-joint"] [role="toolbar"]'));
   });
 
-  it('drops the kept draft when the next reply is only a question, and never called it a new draft', async () => {
+  it('keeps the last draft, usable again, when the next reply is only a question (Rodrigo, Oct 8), and never called it a new draft', async () => {
     const release = answer(
       [
         { proposal: mixOf(['SPY', 5000], ['GLD', 3000], ['USDC', 2000]) },
@@ -645,11 +690,17 @@ describe('the proposed mix drawn as a joint', () => {
     expect(line).toBe(en.shared.vault.conversation.reworking);
     expect(line).not.toMatch(/new draft/i);
     await release();
-    expect(strategy.querySelector('[data-ui="mix-joint"]')).toBeNull();
-    expect(strategy.querySelector('[data-action="use-mix"]')).toBeNull();
-    expect(find(strategy, '[data-ui="goal-empty-preview"]').textContent).toContain(
-      en.goal.explore.empty,
+    // an answer with no plan keeps the last plan in view, no longer pending
+    expect(pieces(host).map((p) => p.dataset.asset)).toEqual([
+      'solana:spy',
+      'solana:gld',
+      'solana:usdc',
+    ]);
+    expect(find(strategy, '[data-ui="preview-pending"]').textContent).toBe('');
+    expect(find(strategy, '[data-action="use-mix"]').getAttribute('aria-disabled')).not.toBe(
+      'true',
     );
+    expect(strategy.querySelector('[data-ui="goal-empty-preview"]')).toBeNull();
     expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain(
       'I need one thing first.\n\nFor how long?',
     );
@@ -742,7 +793,7 @@ describe('the proposed mix drawn as a joint', () => {
     expect(strategy.querySelector('tr[data-row="solana:gld"]')).toBeNull();
   });
 
-  it('drops the draft before it when the next reply does not come', async () => {
+  it('keeps the draft before it when the next reply does not come (Rodrigo, Oct 8), and says so', async () => {
     let fail = false;
     portStore.setApi(async (url, init) => {
       if (init?.method !== 'POST') return baseApi(url);
@@ -754,11 +805,9 @@ describe('the proposed mix drawn as a joint', () => {
     expect(host.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
     fail = true;
     await send(host, 'Something else');
-    expect(host.querySelector('[data-ui="mix-joint"]')).toBeNull();
+    expect(host.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
     expect(find(host, '[role="alert"]').textContent).toBe(en.goal.explore.failed);
-    expect(find(host, '[data-ui="goal-empty-preview"]').textContent).toContain(
-      en.goal.explore.empty,
-    );
+    expect(host.querySelector('[data-ui="goal-empty-preview"]')).toBeNull();
   });
 
   it('moves nothing for a person who asked for reduced motion: each mix is simply there', async () => {
@@ -814,6 +863,7 @@ describe('existing entry handoffs', () => {
     sessionStorage.setItem(GOAL_HANDOFF, words);
     portStore.setApi(async (url) => baseApi(url));
     const host = await show();
+    expect(find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').value).toBe('current');
     expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe(words);
     expect(find<HTMLTextAreaElement>(host, 'textarea').disabled).toBe(true);
     expect(calls).toHaveLength(0);
@@ -850,6 +900,7 @@ describe('existing entry handoffs', () => {
     const words = 'Consider gold with a small budget';
     window.history.replaceState(null, '', `/goal#goal=${encodeURIComponent(words)}`);
     const host = await show();
+    expect(find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').value).toBe('current');
     expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe(words);
     expect(sessionStorage.getItem(GOAL_HANDOFF)).toBe(words);
     expect(calls).toHaveLength(0);
@@ -881,4 +932,92 @@ describe('sourced metrics in a strategy preview', () => {
       expect(sourceValue(lang, 12.5, 'USD')).toContain(lang === 'en' ? '12.50' : '12,50');
     },
   );
+});
+
+describe('the relaxed intake’s plan on /goal (RELAXED-INTAKE)', () => {
+  const sheet = { goal: 'grow', amountUsd: 2000, chains: ['solana'] };
+  const projection = {
+    currency: 'USD',
+    rate: 0.04,
+    step: 1,
+    months: [
+      { month: '2026-11-01', balance: 2006, earned: 6, withdrawn: 0 },
+      { month: '2026-12-01', balance: 2013, earned: 13, withdrawn: 0 },
+    ],
+    basis: 'Past-rate arithmetic from the sourced yield readings, never a promise.',
+    sourceIds: [],
+  };
+  const answerWith = (extra: Record<string, unknown>, personalize?: () => Response) =>
+    portStore.setApi(async (url, init) => {
+      if (init?.method !== 'POST') return baseApi(url);
+      const body = JSON.parse(String(init.body));
+      calls.push({ path: url, body });
+      if (url === '/v1/baskets/personalize') return personalize?.() ?? json({}, 500);
+      return json({ ...response(body.messageId), proposal: { ...preview, ...extra } });
+    });
+
+  it('offers "Invest in this plan" only with the engine’s sheet, hands the sheet over and says why no plan came', async () => {
+    answerWith({ investSheet: sheet }, () =>
+      json({ error: 'no plan', code: 'GOAL_NOT_ACHIEVABLE' }, 422),
+    );
+    const host = await show();
+    await send(host, 'Grow $2,000');
+    const invest = find(host, '[data-action="invest-plan"]');
+    expect(invest.textContent).toBe(en.shared.vault.conversation.invest.press);
+    expect(invest.getAttribute('data-variant')).toBe('primary');
+    await click(invest);
+    await settle();
+    expect(calls.filter((call) => call.path === '/v1/baskets/personalize')).toEqual([
+      { path: '/v1/baskets/personalize', body: { sheet } },
+    ]);
+    expect(find(host, '[data-ui="preview-invest"] [role="alert"]').textContent).toBe(
+      en.goal.explore.investFailed.noPlan,
+    );
+    expect(router.push).not.toHaveBeenCalled();
+    // a plan read back from this browser is shown without its sheet: nothing is invested from it
+    await unmountAll();
+    const again = await show();
+    await settle();
+    expect(again.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
+    expect(again.querySelector('[data-action="invest-plan"]')).toBeNull();
+  });
+
+  it('offers no "Invest in this plan" without the sheet', async () => {
+    answerWith({});
+    const host = await show();
+    await send(host, 'Grow $2,000');
+    expect(host.querySelector('[data-action="invest-plan"]')).toBeNull();
+  });
+
+  it('draws the projected months in honey on a chalk baseline, once asked for', async () => {
+    answerWith({ projection });
+    const host = await show();
+    await send(host, 'Grow $2,000 and add monthly');
+    const views = find(host, '[data-ui="preview-view"]');
+    expect(host.querySelector('[data-ui="projection-chart"]')).toBeNull();
+    const monthly = [...views.querySelectorAll('button')].find(
+      (button) => button.textContent === en.shared.vault.conversation.view.monthly,
+    );
+    if (!monthly) throw new Error('no monthly view');
+    await click(monthly);
+    const chart = find(host, '[data-ui="projection-chart"]');
+    expect(monthly.getAttribute('aria-pressed')).toBe('true');
+    expect(chart.querySelectorAll('.bg-primary').length).toBeGreaterThanOrEqual(2);
+    expect(chart.querySelector('fieldset')?.className).toContain('border-info');
+    expect(chart.textContent).toContain(projection.basis);
+  });
+
+  it('lists this conversation, a new one and the saved ones in the picker, and opens a new one empty', async () => {
+    const host = await show();
+    await send(host, 'Consider gold');
+    await mode(host, 'new');
+    await settle();
+    const options = [...find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').options];
+    expect(options.map((o) => o.textContent)).toEqual([
+      en.goal.explore.picker.current,
+      en.goal.explore.picker.fresh,
+      'Consider gold',
+    ]);
+    expect(find(host, '[data-ui="goal-transcript"]').textContent).toBe('');
+  });
 });

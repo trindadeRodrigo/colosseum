@@ -6,5 +6,6 @@ export const PAGE_TITLE =
   'max-w-(--tf-measure-display) font-display text-h1 font-semibold tracking-[-0.02em]';
 
 // Invest's conversation/strategy workbench uses the founder-approved Analytics title scale.
-// Only its workspace h1s use this register; other pages keep PAGE_TITLE.
+// Only its workspace h1s use this register, and the owner's vault page laid
+// out as the same workbench (Rodrigo, Oct 8); other pages keep PAGE_TITLE.
 export const WORKSPACE_TITLE = 'text-body-lg font-semibold';
