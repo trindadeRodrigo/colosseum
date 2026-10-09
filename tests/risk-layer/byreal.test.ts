@@ -696,6 +696,14 @@ describe('the pools a capture takes', () => {
     const notOurs = await byrealForCapture(table([s]), { only: null }, deps(foreign));
     expect(notOurs.pools).toEqual([]);
     expect(notOurs.meta.leftOut[0]?.reason).toBe('not_owned_by_the_program');
+    // and a table that names that other program as its own does not make it Byreal's
+    const claims = await byrealForCapture(
+      { ...table([s]), program: 'CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK' },
+      { only: null },
+      deps(foreign),
+    );
+    expect(claims.pools).toEqual([]);
+    expect(claims.meta.leftOut[0]?.reason).toBe('not_owned_by_the_program');
   });
 });
 

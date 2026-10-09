@@ -1,4 +1,5 @@
 import {
+  BYREAL_CLMM_PROGRAM,
   type ByrealTickArray,
   byrealArraysCheck,
   byrealClState,
@@ -348,9 +349,10 @@ export async function byrealForCapture(
       out('not_returned_as_a_pool');
       continue;
     }
-    // the table is a file: a pool it names has to be Byreal's own account, when the reader says who owns it
+    // the table is a file: a pool it names has to be Byreal's own account, when the reader says who owns it;
+    // the program is the package's, never the file's own `program`
     const owner = heads.accounts.get(r.pool)?.owner;
-    if (owner !== undefined && owner !== table.program) {
+    if (owner !== undefined && owner !== BYREAL_CLMM_PROGRAM) {
       out('not_owned_by_the_program');
       continue;
     }
