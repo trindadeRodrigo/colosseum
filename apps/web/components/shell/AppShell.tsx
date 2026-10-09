@@ -21,7 +21,7 @@ export function AppShell({ lang, children }: AppShellProps) {
   return (
     <div
       data-ui="app-shell"
-      className="group/shell mx-auto flex min-h-dvh w-full max-w-page flex-col px-[clamp(16px,4vw,56px)] has-[[data-ui=bearing]]:max-w-none"
+      className="group/shell mx-auto flex min-h-dvh w-full max-w-page flex-col px-[clamp(16px,4vw,56px)] has-[[data-ui=bearing]]:max-w-none has-[[data-ui=portfolio]]:max-w-[1600px] has-[[data-ui=portfolio]]:px-[clamp(12px,2vw,28px)]"
     >
       <AppNav />
       <RouterLinks />

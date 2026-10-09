@@ -30,6 +30,7 @@ import {
   labelled,
   portfolioBody,
   portfolioOf,
+  RH_VAULT,
   robinhoodChain,
   SECOND_VAULT,
   VAULT,
@@ -1587,4 +1588,42 @@ describe('the way from a vault to its own page (flow audit, 34)', () => {
       expect(link.getAttribute('title')).toBe(VAULT);
     },
   );
+});
+
+describe('the way from a vault to the same vault over time (PORT-3)', () => {
+  it.each(['en', 'pt'] as const)(
+    'links each vault’s panel to its page in the portfolio section, as a text link (%s)',
+    async (lang) => {
+      api({ person: onSolana });
+      signIn();
+      const host = await screen(lang);
+      const words = dictionary(lang).portfolio.vault;
+      const link = find<HTMLAnchorElement>(panel(host), '[data-ui="vault-over-time"]');
+      expect(link.textContent).toBe(words.overTime);
+      expect(link.getAttribute('href')).toBe(`/portfolio/plan/solana/${VAULT}`);
+      // every panel's link reads the same, so its name says which vault, and holds what is written
+      const name = link.getAttribute('aria-label') ?? '';
+      expect(name).toBe(words.overTimeOf(`${VAULT.slice(0, 4)}…${VAULT.slice(-4)}`));
+      expect(name.startsWith(words.overTime)).toBe(true);
+      // a link, not a button: the page still has no primary action and still signs nothing
+      expect(link.tagName).toBe('A');
+      expect(link.getAttribute('data-variant')).toBeNull();
+      expect(primary(host)).toBeNull();
+      // it is not behind "Details": it is what a person opens the panel for next
+      expect(link.closest('[data-ui="vault-details"]')).toBeNull();
+    },
+  );
+
+  it('names each vault’s own chain and address, on two chains', async () => {
+    api({
+      person: onSolana,
+      portfolio: () => json(portfolioOf(chainOf(), robinhoodChain())),
+    });
+    signIn(EMBEDDED);
+    const host = await screen();
+    expect(
+      [...host.querySelectorAll('[data-ui="vault-over-time"]')].map((a) => a.getAttribute('href')),
+    ).toEqual([`/portfolio/plan/solana/${VAULT}`, `/portfolio/plan/robinhood/${RH_VAULT}`]);
+    expect(primary(host)).toBeNull();
+  });
 });

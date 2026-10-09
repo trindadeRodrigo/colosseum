@@ -5,7 +5,8 @@ import { read, sourceFiles } from './test/css';
 // One register per level across the product: a page's title is set by `PAGE_TITLE` (Inter Tight 600
 // at −2%, IDENTITY-2; no serif), in its gated states as in its loaded one. Three titles are their own,
 // by their specs: the landing's hero, Bearing's analytics (Rodrigo's productive scale) and the
-// monitor's sans heading over goal cards, whose sentences are the display face there (goal-card.md).
+// sans heading over goal cards, whose sentences are the display face there (goal-card.md): the
+// monitor's, and the portfolio section's overview, which switches the same way on its `vaults.length`.
 
 const OWN = new Set([
   'features/landing/Landing.tsx',

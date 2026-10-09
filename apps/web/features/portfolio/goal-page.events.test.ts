@@ -213,6 +213,13 @@ describe('home', () => {
       en.portfolio.summary.see,
       '/monitor',
     ]);
+    // beside it, a text link to the same plans over time (PORT-3)
+    const overTime = find(card, '[data-ui="plans-over-time"]');
+    expect([overTime.textContent, overTime.getAttribute('href')]).toEqual([
+      en.portfolio.summary.overTime,
+      '/portfolio',
+    ]);
+    expect(card.querySelectorAll('[data-ui="button"]')).toHaveLength(0);
     // a test network: the hatch and one quiet line with the words, never MOCK
     expect(card.textContent).not.toContain('MOCK');
     expect(find(card, '[data-ui="sample-note"]').textContent).toBe(en.shell.testNetworkLine);
@@ -294,6 +301,7 @@ describe('home', () => {
     expect(find(owned(host)[0], 'a').textContent).toBe(pt.shared.vaults.open);
     expect(host.textContent?.replace(/\s/g, ' ')).toContain('US$ 1.040,00');
     expect(host.textContent).toContain(pt.portfolio.summary.see);
+    expect(find(host, 'a[href="/portfolio"]').textContent).toBe(pt.portfolio.summary.overTime);
   });
   it('prefers a plain-text vault name, then its saved goal, then its short address, without history requests', async () => {
     const plan = planOn();

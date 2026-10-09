@@ -1,6 +1,6 @@
 # packages/basket
 
-The chain-free logic of a plan held in a vault: the author limits on a shared portfolio, flattening a plan to assets, valuing a vault, planning a rebalance, the risk roll-up and the meta hash. It imports only `@colosseum/schemas`, and every function is pure: the time, the prices and the asset list come in as arguments.
+The chain-free logic of a plan held in a vault: the author limits on a shared portfolio, flattening a plan to assets, valuing a vault, planning a rebalance, the risk roll-up, the status of a plan and the meta hash. It imports only `@colosseum/schemas`, and every function is pure: the time, the prices and the asset list come in as arguments.
 
 The author limits and the meta hash are specified, with test vectors, in `fixtures/creator-limits/README.md`.
 
@@ -23,6 +23,13 @@ The author limits and the meta hash are specified, with test vectors, in `fixtur
 - A quote older than three hours is flagged `exit_quote_stale`; one for less than half or more than double the line's size is flagged `exit_quote_far_from_size`. Both are still shown.
 - Each exit number is null until a line that would have to be sold has one. Null means not measured; show it as that, never as zero.
 - A number from a source that is not live carries a flag naming which number: `quoted_provenance:mock`, `measured_provenance:fixture`.
+
+**The status of a plan**
+
+- **`statusOf` is the rule `ON-TRACK-V1`** (`docs/GATES.md`): "On track", "Watch" or "Off track" from the newest snapshot of a plan's vault, with the line of the rule that gave it. The gate's row has the lines in order. It answers the shared `TrackStatus`: the status (null where the rule gives none yet), the rule's name, the line, the figures the line names and one English sentence.
+- **The clock comes in as an argument**: `now` and `chainAnsweredAt` are ISO instants with their zone. A time with none is refused (`BadTime`): it would be read in the machine's own zone.
+- **It reads a snapshot as it was kept**: drift in whole basis points, as `view` rounds it. `rebalancePlan` tests the band on exact values, so a position past the band by under one basis point can read here as inside while the keeper trades it. What this rule calls outside the planner calls outside too.
+- **A verdict handed in wins** (`TrackVerdict`, the seam for the engine's verdict), and the answer names its rule. Hand in none for a figure that was worked out when the plan was built: it is not a verdict on the vault today.
 
 **Flattening**
 

@@ -11,6 +11,7 @@ import { tokenName } from '../order/amounts';
 import { type OrderRecord, recallOrders } from '../order/order-record';
 import { AssetMark } from '../order/PlanView';
 import { goalLine } from '../order/plain';
+import { SECTION } from '../portfolio-section/pages';
 import { HoldingsBar } from '../shared/HoldingsBar';
 import { shortAddress } from '../shared/use-person';
 import { useWalletPort } from '../wallet/WalletProvider';
@@ -166,6 +167,14 @@ export function PortfolioSummary() {
           className={`${buttonClass({ variant: 'link' })} shrink-0 text-body-sm`}
         >
           {t.portfolio.summary.see}
+        </Link>
+        {/* The same plans over time: the portfolio section (PORT-3). A text link beside the first. */}
+        <Link
+          data-ui="plans-over-time"
+          href={SECTION}
+          className={`${buttonClass({ variant: 'link' })} shrink-0 text-body-sm`}
+        >
+          {t.portfolio.summary.overTime}
         </Link>
       </div>
     </section>

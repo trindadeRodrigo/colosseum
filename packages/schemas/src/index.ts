@@ -25,6 +25,7 @@ export * from './plan';
 export * from './plan-candidates';
 export * from './plan-thread';
 export * from './policy';
+export * from './portfolio-api';
 export * from './recipe';
 export * from './shared-api';
 export * from './trust';
