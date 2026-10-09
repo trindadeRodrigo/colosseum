@@ -2,24 +2,23 @@ import { describe, expect, it } from 'vitest';
 import { chainInSearch, onChain, pickChain, readKey, withChain } from './chain';
 import { R } from './data';
 
-// Which chain Bearing reads: the address first, then the app's bar, then this browser, then Solana.
+// Which chain Bearing reads: the address first, then the one chosen on its pages last, then Solana.
 
 describe('the chain Bearing reads', () => {
-  it('is the one the address names, whatever the bar or the browser say', () => {
-    expect(pickChain('?chain=robinhood', 'solana', 'solana')).toBe('robinhood');
-    expect(pickChain('?asset=TSLAx&chain=solana', 'robinhood', 'robinhood')).toBe('solana');
+  it('is the one the address names, whatever was chosen here last', () => {
+    expect(pickChain('?chain=robinhood', 'solana')).toBe('robinhood');
+    expect(pickChain('?asset=TSLAx&chain=solana', 'robinhood')).toBe('solana');
   });
 
-  it('follows the bar where the address names none, then this browser, then Solana', () => {
-    expect(pickChain('', 'robinhood', 'solana')).toBe('robinhood');
-    expect(pickChain('', null, 'robinhood')).toBe('robinhood');
-    expect(pickChain('', undefined, null)).toBe('solana');
+  it('is the one chosen here last where the address names none, then Solana', () => {
+    expect(pickChain('', 'robinhood')).toBe('robinhood');
+    expect(pickChain('', null)).toBe('solana');
   });
 
-  it('ignores a chain Bearing does not measure, from any of them', () => {
+  it('ignores a chain Bearing does not measure, from either', () => {
     expect(chainInSearch('?chain=base')).toBeNull();
-    expect(pickChain('?chain=base', 'base', 'base')).toBe('solana');
-    expect(pickChain('?chain=ROBINHOOD', null, 'nonsense')).toBe('solana');
+    expect(pickChain('?chain=base', 'base')).toBe('solana');
+    expect(pickChain('?chain=ROBINHOOD', 'nonsense')).toBe('solana');
   });
 });
 
