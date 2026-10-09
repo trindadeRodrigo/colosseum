@@ -10,7 +10,6 @@ import { useWalletPort } from '../../features/wallet/WalletProvider';
 import { useT } from '../../i18n/I18nProvider';
 import { buttonClass } from '../ui/button-class';
 import { CompactNav } from '../ui/CompactNav';
-import { cn } from '../ui/cn';
 import { Mark } from './Mark';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -79,12 +78,22 @@ export function AppNav() {
         current: (exact ? pathname === route.href : isCurrent(pathname, route)) && 'page',
       }))}
       action={
-        <div className="flex min-w-0 items-center gap-2 max-[419px]:gap-0">
-          <ThemeToggle className="shrink-0" />
+        <div className="flex items-center gap-2">
+          {/* On a phone the bar has no room for it beside the account: it sits in the menu's sheet. */}
+          <span className="hidden sm:contents">
+            <ThemeToggle />
+          </span>
           {account.action}
         </div>
       }
-      sheetHead={account.sheetHead}
+      sheetHead={
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">{account.sheetHead}</div>
+          <span className="contents sm:hidden">
+            <ThemeToggle />
+          </span>
+        </div>
+      }
       labels={{ skip: t.shell.skip, main: t.shell.nav, menu: t.shell.menu }}
     />
   );
@@ -147,10 +156,7 @@ function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
   const visitor = signedOut || waitedOut;
   const signedIn = !visitor && !unknown;
   const action = (
-    <div
-      data-ui="account-control"
-      className="relative ml-2 flex min-w-0 items-center gap-2 max-[419px]:ml-0 max-[419px]:gap-1"
-    >
+    <div data-ui="account-control" className="relative ml-2 flex items-center gap-2">
       <span role="status" data-ui="account-said" className="sr-only">
         {said}
       </span>
@@ -186,14 +192,7 @@ function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
             </Link>
           ) : (
             // The bar's one call to action, as the landing's bar draws it (compact-nav.md: CTA = primary).
-            <Link
-              ref={signIn}
-              href="/sign-in"
-              className={cn(
-                buttonClass({ variant: 'primary' }),
-                'shrink-0 whitespace-nowrap max-[419px]:px-2.5',
-              )}
-            >
+            <Link ref={signIn} href="/sign-in" className={buttonClass({ variant: 'primary' })}>
               {t.shell.signIn}
             </Link>
           )}

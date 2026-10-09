@@ -33,6 +33,9 @@ test.describe('a plan’s page on the stub', () => {
   test('the goal first, then the plan over time, every figure with its pin, axe clean', async ({
     page,
   }) => {
+    // The fixture's readings end Oct 7 11:56 UTC; the chart's hourly steps are counted back from now,
+    // so the clock is held just after them and the arrow keys land on the same readings every run.
+    await page.clock.setFixedTime(Date.parse('2026-10-08T00:00:00Z'));
     await openSignedIn(page, '/portfolio');
     await toPlan(page, INCOME);
     // the goal is the page's heading and its one serif line
@@ -56,9 +59,16 @@ test.describe('a plan’s page on the stub', () => {
     await expect(chart.locator('[data-ui="chart-readout"] [data-ui="figure"]')).toHaveCount(1);
     await expect(page.locator('main [data-ui="history-deposits"] li')).toHaveCount(2);
     const plot = chart.getByRole('img');
-    await plot.focus();
-    await page.keyboard.press('ArrowLeft');
-    await expect(chart.locator('[data-ui="chart-readout"]')).toContainText('Oct 6, 2026');
+    // The readings can still be arriving when the plot takes focus: from the newest one (Escape),
+    // one step left lands on Oct 6 once they are drawn.
+    await expect(async () => {
+      await plot.focus();
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('ArrowLeft');
+      await expect(chart.locator('[data-ui="chart-readout"]')).toContainText('Oct 6, 2026', {
+        timeout: 2_000,
+      });
+    }).toPass({ timeout: 30_000 });
     await page.keyboard.press('Escape');
     await expect(chart.locator('[data-ui="chart-readout"]')).toContainText(w.plan.history.newest);
     // another window is asked for and drawn

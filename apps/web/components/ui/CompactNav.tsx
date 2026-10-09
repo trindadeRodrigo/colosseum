@@ -223,11 +223,9 @@ export function CompactNav({
         data-ui="compact-nav-bar"
         className={cn(
           'fixed top-[calc(env(safe-area-inset-top,0px)+12px)] left-1/2 z-30 flex -translate-x-1/2 items-center justify-between gap-6 rounded-md border py-2',
-          // a phone has no room for the desk's gaps beside the theme switch, the chain and "Sign in"
-          'max-[419px]:gap-1',
           'transition-[max-width,padding] duration-[480ms] ease-seat motion-reduce:transition-none',
           compact
-            ? 'w-max max-w-[min(860px,calc(100%-32px))] border-border bg-card pr-2 pl-[18px] max-[419px]:pl-2'
+            ? 'w-max max-w-[min(860px,calc(100%-32px))] border-border bg-card pr-2 pl-[18px]'
             : 'w-[calc(100%-2*clamp(16px,4vw,56px))] max-w-page border-transparent bg-transparent px-0',
         )}
       >
@@ -241,6 +239,9 @@ export function CompactNav({
             className={cn(
               'font-display leading-none font-semibold tracking-[-0.02em] transition-[font-size] duration-[480ms] ease-seat motion-reduce:transition-none',
               compact ? 'text-[20px]' : 'text-[24px]',
+              // On a narrow phone the compact bar keeps the mark alone, so the account and its action
+              // fit beside the menu whatever the chain is called; the link keeps its name.
+              compact && 'max-[400px]:sr-only',
             )}
           >
             {wordmark}
@@ -249,7 +250,7 @@ export function CompactNav({
         <nav
           aria-label={text.main}
           className={cn(
-            'flex min-w-0 items-center gap-1 max-[419px]:gap-0',
+            'flex items-center gap-1',
             // hidden with `visibility`, so links that cannot be seen cannot be reached either
             compact
               ? 'visible opacity-100 transition-opacity delay-[160ms] duration-(--tf-dur-slide) ease-seat motion-reduce:delay-0 motion-reduce:duration-(--tf-dur-reduced)'
@@ -274,7 +275,7 @@ export function CompactNav({
             aria-expanded={open}
             aria-controls={sheet}
             onClick={() => setOpen((was) => !was)}
-            className={cn(buttonClass({ variant: 'icon' }), 'shrink-0 min-[820px]:hidden')}
+            className={cn(buttonClass({ variant: 'icon' }), 'min-[820px]:hidden')}
           >
             <Icon name={open ? 'X' : 'Menu'} />
           </button>

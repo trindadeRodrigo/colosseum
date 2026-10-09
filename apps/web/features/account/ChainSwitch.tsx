@@ -187,7 +187,7 @@ export function ChainSwitch() {
   const nameOf = (id: ChainId) => port.network(id)?.name ?? t.chain.names[id];
 
   return (
-    <div ref={root} data-ui="chain-switch" className="relative min-w-0">
+    <div ref={root} data-ui="chain-switch" className="relative">
       <span role="status" className="sr-only">
         {said}
       </span>
@@ -199,11 +199,10 @@ export function ChainSwitch() {
         aria-label={t.chain.switch.current(nameOf(chain))}
         data-chain={chain}
         onClick={() => setOpen((now) => !now)}
-        className="inline-flex h-10 max-w-full min-w-0 items-center gap-1.5 rounded-md px-2 max-[419px]:gap-1 max-[419px]:px-0.5 text-[0.875rem]/5 font-medium whitespace-nowrap text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className="inline-flex h-10 items-center gap-1.5 rounded-md px-2 text-[0.875rem]/5 font-medium whitespace-nowrap text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
-        {/* a long name gives way before the bar's "Sign in" leaves a phone's screen */}
-        <span className="truncate">{nameOf(chain)}</span>
-        <Icon name="ChevronDown" size={16} className="shrink-0" />
+        <span>{nameOf(chain)}</span>
+        <Icon name="ChevronDown" size={16} />
       </button>
       {open && (
         <ChainOptions
