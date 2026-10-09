@@ -1,0 +1,446 @@
+import type { BasketAsset, VaultAgentReply, VaultAgentSource } from '@colosseum/schemas';
+import { describe, expect, it } from 'vitest';
+import { goalFit } from './mix';
+import { createRelaxedGoalAgent, splitShares } from './relaxed-goal-agent';
+import type { GoalAgentContext } from './vault-agent';
+
+// The code-held rules of the relaxed intake (gate RELAXED-INTAKE), run through the real agent's
+// post-processing with the model stubbed: nothing leaves the machine. The model's reply is the JSON the
+// API holds it to; everything checked here is what code does after it.
+
+const asset = (
+  id: string,
+  symbol: string,
+  cls: BasketAsset['cls'],
+  maxWeightBps = 5000,
+): BasketAsset =>
+  ({
+    id: `solana:${id}`,
+    symbol,
+    cls,
+    chain: 'solana',
+    underlying: symbol.replace(/x$/, ''),
+    tier: 1,
+    issuer: 'issuer',
+    maxWeightBps,
+    provenance: 'sandbox',
+  }) as unknown as BasketAsset;
+
+const ASSETS = [
+  asset('tslax', 'TSLAx', 'stock'),
+  asset('nvdax', 'NVDAx', 'stock'),
+  asset('usdy', 'USDY', 'dollar_yield'),
+  asset('syrup', 'syrupUSDC', 'dollar_yield'),
+  asset('paxg', 'PAXG', 'gold'),
+  asset('sol', 'SOL', 'crypto', 2000),
+  asset('usdc', 'USDC', 'cash', 10_000),
+];
+
+const source = (id: string, extra: Partial<VaultAgentSource> = {}): VaultAgentSource => ({
+  id,
+  source: 'server registry',
+  method: 'listed asset catalog',
+  fetchedAt: '2026-10-08T00:00:00.000Z',
+  provenance: 'sandbox',
+  ...extra,
+});
+
+function context(over: Partial<GoalAgentContext> = {}): GoalAgentContext {
+  return {
+    person: 'person-1',
+    kind: 'new_goal',
+    chain: 'solana',
+    state: null,
+    assets: ASSETS,
+    evidence: [
+      ...ASSETS.map((a) => source(`catalog:${a.id}`, { assetId: a.id })),
+      source('yield:solana:usdy:1:quoted', {
+        assetId: 'solana:usdy',
+        value: 0.04,
+        source: 'issuer page',
+        method: 'quoted rate',
+      }),
+    ],
+    currentGoals: [],
+    stockAttributes: null,
+    liquidity: [],
+    unknowns: [],
+    caps: {},
+    ...over,
+  } as GoalAgentContext;
+}
+
+type ModelLine = { id: string; why: string; share: number | null };
+type ModelReply = {
+  say?: string;
+  shape: 'pick' | 'grow' | 'income' | 'protect' | 'split';
+  lines?: ModelLine[];
+  buckets?: {
+    name: string;
+    shape: 'pick' | 'grow' | 'income' | 'protect' | null;
+    share: number | null;
+    lines: ModelLine[];
+  }[];
+  sources?: unknown;
+};
+
+const STATED = {
+  amount: 1000,
+  currency: 'USD',
+  when: null,
+  need_by: null,
+  monthly: null,
+  withdraw_months: null,
+  withdraw_start: null,
+  weights: null,
+  risk: null,
+};
+
+async function run(model: ModelReply, words: string | string[], ctx = context()) {
+  const calls: unknown[] = [];
+  const agent = createRelaxedGoalAgent({
+    apiKey: 'placeholder',
+    log: () => {},
+    create: async (params) => {
+      calls.push(params);
+      return {
+        stop_reason: 'end_turn',
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              say: 'Here is a draft.',
+              lines: [],
+              buckets: null,
+              stated: STATED,
+              not_available: [],
+              open: [],
+              ...model,
+            }),
+            citations: null,
+          },
+        ],
+      };
+    },
+  });
+  const texts = Array.isArray(words) ? words : [words];
+  const result = await agent.reply(
+    {
+      version: 1,
+      language: 'en',
+      messageId: 'm1',
+      messages: texts.flatMap((text, i) => [
+        ...(i ? [{ who: 'app' as const, text: 'Noted.' }] : []),
+        { who: 'person' as const, text },
+      ]),
+    },
+    ctx,
+  );
+  expect(calls).toHaveLength(1);
+  if (result.kind !== 'reply') throw new Error(`no reply: ${JSON.stringify(result)}`);
+  return result.reply;
+}
+
+const weights = (reply: VaultAgentReply) =>
+  Object.fromEntries((reply.proposal?.allocations ?? []).map((a) => [a.symbol, a.weightBps]));
+const notes = (reply: VaultAgentReply) => reply.proposal?.tradeoffs.join('\n') ?? '';
+const line = (id: string, share: number | null = null): ModelLine => ({
+  id,
+  why: `why ${id}`,
+  share,
+});
+
+describe('relaxed intake: catalog ids', () => {
+  it('keeps ids on the catalog, matches case and symbol, and drops and names an unknown id', async () => {
+    const reply = await run(
+      {
+        shape: 'pick',
+        lines: [line('solana:USDY'), line('syrupUSDC'), line('solana:spacex')],
+      },
+      'I want USDY and syrupUSDC and SpaceX',
+    );
+    expect(weights(reply)).toEqual({ USDY: 5000, syrupUSDC: 5000 });
+    expect(notes(reply)).toContain("Dropped, not on this chain's catalog: solana:spacex.");
+  });
+
+  it('never takes a source from the model: every source and evidence id is the server’s', async () => {
+    const ctx = context();
+    const reply = await run(
+      {
+        shape: 'pick',
+        lines: [line('solana:usdy'), line('solana:paxg')],
+        sources: [source('yield:solana:paxg:1:quoted', { value: 0.5, source: 'the model' })],
+      },
+      'I want USDY and PAXG',
+      ctx,
+    );
+    const known = new Map(ctx.evidence.map((s) => [s.id, s]));
+    for (const s of reply.proposal?.sources ?? []) expect(known.get(s.id)).toEqual(s);
+    for (const a of reply.proposal?.allocations ?? [])
+      for (const id of a.evidenceIds) expect(known.has(id)).toBe(true);
+    expect(reply.proposal?.sources.some((s) => s.source === 'the model')).toBe(false);
+  });
+});
+
+describe('relaxed intake: what a plan for its goal may hold', () => {
+  it('a bucket with no shape takes the plan’s: no stock token in a plan to pay income (B1)', async () => {
+    const reply = await run(
+      {
+        shape: 'income',
+        lines: [],
+        buckets: [
+          { name: 'all', shape: null, share: null, lines: [line('solana:tslax'), line('USDY')] },
+        ],
+      },
+      'I need income',
+    );
+    expect(weights(reply)).toEqual({ USDY: 10_000 });
+    expect(notes(reply)).toContain(
+      'TSLAx left out: a plan to pay income holds no stock tokens unless you ask for one yourself.',
+    );
+  });
+
+  it('a stock-only bucket of an income plan leaves no stock behind', async () => {
+    const reply = await run(
+      {
+        shape: 'income',
+        lines: [],
+        buckets: [{ name: 'all', shape: null, share: null, lines: [line('solana:tslax')] }],
+      },
+      'income please',
+    );
+    expect(reply.proposal).toBeNull();
+  });
+
+  it('the pot’s own shape counts too: a protect pot of a split plan holds no stock', async () => {
+    const reply = await run(
+      {
+        shape: 'split',
+        buckets: [
+          { name: 'reserve', shape: 'protect', share: 0.5, lines: [line('solana:tslax')] },
+          { name: 'growth', shape: 'grow', share: 0.5, lines: [line('solana:nvdax')] },
+        ],
+      },
+      'half a reserve, half growth',
+    );
+    expect(weights(reply).TSLAx).toBeUndefined();
+    expect(weights(reply).NVDAx).toBe(5000);
+  });
+
+  it('the goal the server read wins over the model’s shape (protect read, grow said)', async () => {
+    const reply = await run(
+      { shape: 'grow', lines: [line('solana:sol'), line('solana:tslax'), line('solana:usdy')] },
+      'I want to protect my money',
+    );
+    expect(weights(reply)).toEqual({ USDY: 10_000 });
+    expect(notes(reply)).toContain(
+      "SOL left out: a plan to protect cannot hold crypto, by the asset registry's rule.",
+    );
+    expect(notes(reply)).toContain('TSLAx left out: a plan to protect holds no stock tokens');
+  });
+
+  it('says the real reason for gold in an income plan: the registry, not stocks', async () => {
+    const reply = await run(
+      { shape: 'income', lines: [line('solana:paxg'), line('solana:usdy')] },
+      'income',
+    );
+    expect(weights(reply)).toEqual({ USDY: 10_000 });
+    expect(notes(reply)).toContain(
+      "PAXG left out: a plan to pay income cannot hold gold, by the asset registry's rule.",
+    );
+    expect(notes(reply)).not.toContain('PAXG left out: no stock tokens');
+  });
+
+  it('keeps a stock the person asked for in their own words, with a warning (ANY-COMPOSITION)', async () => {
+    const reply = await run(
+      { shape: 'income', lines: [line('solana:tslax'), line('solana:usdy')] },
+      ['I want income', 'add TSLAx'],
+    );
+    expect(weights(reply)).toEqual({ TSLAx: 5000, USDY: 5000 });
+    expect(reply.warnings).toEqual([
+      {
+        code: 'outside_goal_requested',
+        assetId: 'solana:tslax',
+        evidenceId: 'catalog:solana:tslax',
+      },
+    ]);
+    expect(notes(reply)).toContain('it is here only because you asked for it yourself');
+  });
+
+  it('never keeps a stock the model added on its own', async () => {
+    const reply = await run(
+      { shape: 'income', lines: [line('solana:tslax'), line('solana:usdy')] },
+      ['I want income', 'what about something safe?'],
+    );
+    expect(weights(reply)).toEqual({ USDY: 10_000 });
+    expect(reply.warnings).toEqual([]);
+  });
+
+  it('holds every line to the rule goal/accept applies (`goalFit`)', async () => {
+    for (const goal of ['income', 'protect'] as const) {
+      const reply = await run(
+        { shape: goal, lines: ASSETS.map((a) => line(a.id)) },
+        goal === 'income' ? 'I want income' : 'I want to protect my money',
+      );
+      for (const a of reply.proposal?.allocations ?? []) {
+        const held = ASSETS.find((x) => x.id === a.assetId) as BasketAsset;
+        expect(goalFit(held, goal)).toBe('fits');
+      }
+    }
+  });
+});
+
+describe('relaxed intake: the split', () => {
+  it('splits equally when no share is given, and says so', async () => {
+    const reply = await run(
+      { shape: 'pick', lines: [line('solana:usdy'), line('solana:syrup'), line('solana:paxg')] },
+      'USDY, syrupUSDC and PAXG',
+    );
+    expect(weights(reply)).toEqual({ USDY: 3334, syrupUSDC: 3333, PAXG: 3333 });
+    expect(notes(reply)).toContain('Equal split until you say otherwise.');
+  });
+
+  it('applies stated shares exactly', async () => {
+    const reply = await run(
+      { shape: 'pick', lines: [line('solana:usdy', 0.7), line('solana:paxg', 0.3)] },
+      'I want 70% USDY and 30% PAXG',
+    );
+    expect(weights(reply)).toEqual({ USDY: 7000, PAXG: 3000 });
+    expect(notes(reply)).toContain('The shares you gave are applied exactly.');
+  });
+
+  it('shares below the whole: applied exactly, the rest in cash, said plainly (B2)', async () => {
+    const reply = await run(
+      { shape: 'pick', lines: [line('solana:tslax', 0.3), line('solana:nvdax', 0.3)] },
+      '30% TSLA and 30% NVDA',
+    );
+    expect(weights(reply)).toEqual({ TSLAx: 3000, NVDAx: 3000, USDC: 4000 });
+    expect(notes(reply)).toContain(
+      'The shares you gave came to 60%; they are applied exactly, and the other 40% of the money is held in USDC, the cash line, until you say where it goes.',
+    );
+    expect(notes(reply)).not.toContain('Equal split');
+  });
+
+  it('shares above the whole are scaled to it, and said', async () => {
+    const reply = await run(
+      { shape: 'pick', lines: [line('solana:usdy', 0.8), line('solana:paxg', 0.4)] },
+      '80% USDY and 40% PAXG',
+    );
+    expect(weights(reply)).toEqual({ USDY: 6667, PAXG: 3333 });
+    expect(notes(reply)).toContain('The shares you gave came to 120%; scaled to the whole.');
+  });
+
+  it('a stated share and an unstated one: the rest goes to the unstated one', async () => {
+    const reply = await run(
+      { shape: 'pick', lines: [line('solana:usdy', 0.25), line('solana:paxg')] },
+      '25% USDY and PAXG',
+    );
+    expect(weights(reply)).toEqual({ USDY: 2500, PAXG: 7500 });
+  });
+
+  it('pot shares below the whole leave the rest in cash; a pot with no holding left is said', async () => {
+    const reply = await run(
+      {
+        shape: 'split',
+        buckets: [
+          { name: 'income', shape: 'income', share: 0.4, lines: [line('solana:usdy')] },
+          { name: 'growth', shape: 'grow', share: 0.4, lines: [line('solana:nvdax')] },
+          { name: 'trash', shape: 'pick', share: 0.2, lines: [line('solana:nothing')] },
+        ],
+      },
+      'split it',
+    );
+    expect(weights(reply)).toEqual({ USDY: 4000, NVDAx: 4000, USDC: 2000 });
+    expect(notes(reply)).toContain(
+      'The trash pot has no holding left, so it is not in this draft.',
+    );
+    expect(notes(reply)).toContain('the other 20% of the money is held in USDC');
+  });
+
+  it('the preview note is true: the deposit step buys it exactly, no solver', async () => {
+    const reply = await run({ shape: 'grow', lines: [line('solana:usdy')] }, 'grow');
+    expect(notes(reply)).toContain(
+      'The deposit step buys exactly these holdings and shares, after the server checks every line again.',
+    );
+    expect(notes(reply)).not.toContain('solver');
+  });
+});
+
+describe('relaxed intake: caps', () => {
+  it('keeps a line above its cap as asked and names it in a warning', async () => {
+    const reply = await run(
+      { shape: 'pick', lines: [line('solana:sol', 0.6), line('solana:usdy', 0.4)] },
+      'I want 60% SOL and 40% USDY',
+      context({ caps: { 'solana:sol': 1500 } }),
+    );
+    expect(weights(reply)).toEqual({ SOL: 6000, USDY: 4000 });
+    const first = reply.proposal?.tradeoffs[0] ?? '';
+    expect(first).toContain("Above the vault's cap today: SOL at 60% (cap 15%)");
+    expect(reply.proposal?.summary).toMatch(/^⚠ Above the vault's cap today/);
+  });
+});
+
+describe('splitShares', () => {
+  it('cases', () => {
+    expect(splitShares([null, null, null], 10_000, true)).toMatchObject({
+      bps: [3334, 3333, 3333],
+      kind: 'equal',
+      gap: 0,
+    });
+    expect(splitShares([0.3, 0.3], 10_000, true)).toMatchObject({
+      bps: [3000, 3000],
+      kind: 'gap',
+      gap: 4000,
+    });
+    expect(splitShares([0.3, 0.3], 10_000, false)).toMatchObject({
+      bps: [5000, 5000],
+      kind: 'scaled',
+      gap: 0,
+    });
+    expect(splitShares([0.333, 0.333, 0.333], 10_000, true)).toMatchObject({
+      bps: [3334, 3333, 3333],
+      kind: 'stated',
+      gap: 0,
+    });
+    expect(splitShares([1, null], 6000, true)).toMatchObject({
+      bps: [6000, 0],
+      kind: 'mixed',
+      starved: [1],
+    });
+    expect(splitShares([0, 0], 10_000, true)).toMatchObject({
+      bps: [5000, 5000],
+      kind: 'unusable',
+    });
+  });
+
+  it('always adds up to the whole with the gap', () => {
+    const cases: (number | null)[][] = [
+      [0.1, 0.2, null],
+      [0.7, 0.7, null],
+      [0.123, 0.456],
+      [0.5, null, null, null],
+      [0.9999, 0.0001],
+    ];
+    for (const given of cases)
+      for (const whole of [10_000, 3333, 7])
+        for (const gapAllowed of [true, false]) {
+          const s = splitShares(given, whole, gapAllowed);
+          expect(s.bps.reduce((a, b) => a + b, 0) + s.gap).toBe(whole);
+          expect(s.bps.every((b) => b >= 0)).toBe(true);
+        }
+  });
+});
+
+describe('goalFit, the rule goal/accept and the preview share', () => {
+  it('lets a stock outside the goal through with a warning, refuses any other class, passes cash', () => {
+    const of = (symbol: string) => ASSETS.find((a) => a.symbol === symbol) as BasketAsset;
+    expect(goalFit(of('TSLAx'), 'income')).toBe('stock_outside');
+    expect(goalFit(of('TSLAx'), 'protect')).toBe('stock_outside');
+    expect(goalFit(of('PAXG'), 'income')).toBe('barred');
+    expect(goalFit(of('PAXG'), 'protect')).toBe('fits');
+    expect(goalFit(of('SOL'), 'protect')).toBe('barred');
+    expect(goalFit(of('USDC'), 'income')).toBe('fits');
+    expect(goalFit(of('TSLAx'), 'grow')).toBe('fits');
+    expect(goalFit(of('SOL'), null)).toBe('fits');
+  });
+});

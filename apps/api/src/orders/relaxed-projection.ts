@@ -93,6 +93,20 @@ const date = (d: Date) =>
     timeZone: 'UTC',
   });
 
+/**
+ * What a reading that is not live is called beside it, so a sample is never shown as live: a test
+ * network's (`sandbox`) and a stand-in's (`mock`, said as a sample reading, never the word MOCK on a
+ * screen: MOCK-QUIET). Nothing for a live reading.
+ */
+function notLive(provenance: string, where: 'text' | 'chart'): string {
+  if (provenance === 'sandbox')
+    return where === 'text'
+      ? ', a mainnet reading applied on the test network'
+      : ' (mainnet reading on a test network)';
+  if (provenance === 'live') return '';
+  return where === 'text' ? ', a sample reading, not live' : ' (sample reading, not live)';
+}
+
 /** The plan's yearly rate: each line's reading by its weight, a line with none at zero. */
 function blended(input: ProjectionInput) {
   let r = 0;
@@ -184,7 +198,7 @@ export function project(input: ProjectionInput): Projection {
     ? `Rate: ${rate(r)} a year across the plan, from ${unique
         .map(
           (u) =>
-            `${u.symbol} at ${rate(u.rate)}${u.haircut != null && u.quoted != null ? ` (quoted ${rate(u.quoted)}, after the haircut)` : ''}, read ${date(new Date(u.fetchedAt))}${u.provenance === 'sandbox' ? ', a mainnet reading applied on the test network' : u.provenance === 'mock' ? ', MOCK' : ''}`,
+            `${u.symbol} at ${rate(u.rate)}${u.haircut != null && u.quoted != null ? ` (quoted ${rate(u.quoted)}, after the haircut)` : ''}, read ${date(new Date(u.fetchedAt))}${notLive(u.provenance, 'text')}`,
         )
         .join('; ')}.`
     : 'No line of this plan has a sourced yield reading, so it is counted as earning nothing.';
@@ -222,7 +236,7 @@ export function series(input: ProjectionInput): ProjectionSeries | null {
   const basis = `Projected from past rates, not a promise: ${rate(r)} a year across the plan, from ${unique
     .map(
       (u) =>
-        `${u.symbol} at ${rate(u.rate)}, read ${date(new Date(u.fetchedAt))}${u.provenance === 'sandbox' ? ' (mainnet reading on a test network)' : ''}`,
+        `${u.symbol} at ${rate(u.rate)}, read ${date(new Date(u.fetchedAt))}${notLive(u.provenance, 'chart')}`,
     )
     .join('; ')}.${none.length ? ` Earning nothing: ${none.join(', ')}.` : ''}`;
   const base = { currency, rate: r, basis, sourceIds: unique.flatMap((u) => u.ids) };

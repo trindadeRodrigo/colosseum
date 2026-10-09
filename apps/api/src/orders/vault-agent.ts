@@ -908,7 +908,7 @@ function assetNames(asset: BasketAsset, companies: string[]): RegExp[] {
  * ("can you add", "pode colocar"). The latest mention of a stock wins, so "no AAPL" withdraws an
  * earlier "I want AAPL". The model's reply never counts.
  */
-function requestedStocks(
+export function requestedStocks(
   messages: VaultAgentRequest['messages'],
   language: 'en' | 'pt',
   assets: BasketAsset[],

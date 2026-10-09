@@ -1,5 +1,4 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { eligibleForGoal } from '@colosseum/engine/personal';
 import type { BasketAsset } from '@colosseum/schemas';
 import {
   type VaultAgentSource as AgentSource,
@@ -8,17 +7,20 @@ import {
   type VaultAgentResult,
 } from '@colosseum/schemas';
 import { z } from 'zod';
+import { goalFit } from './mix';
 import { catalogCap, holdingConstraints } from './relaxed-limits';
 import { project, type Reading, readingsOf, series } from './relaxed-projection';
-import type { GoalAgentContext } from './vault-agent';
+import { type GoalAgentContext, requestedStocks, statedPurposeIn } from './vault-agent';
 
 // The relaxed intake (gate RELAXED-INTAKE, from scripts/relaxed/intake.ts and RELAXED-1): the goal
 // agent behind /goal whenever a model key is set (`relaxedGoalAgentFromEnv`). The model is free where
 // it talks and constrained where it touches money: it reads intent against this chain's live catalog,
 // says what it understood in its own words (the person's own numbers included) and names holdings by
-// id. Code then keeps only ids on the catalog, drops stock tokens from a plan to protect or pay income,
-// splits equally or by the shares the person gave, names any line above its cap in a warning on the
-// plan, and cites the server's own sources. Never a weight from the model, never a source from it.
+// id. Code then keeps only ids on the catalog, holds every line to the rule `goal/accept` applies
+// (`goalFit`: a stock in a plan to protect or pay income only when the person asked for it, as the
+// server reads their words, and warned), splits equally or by the shares the person gave (applied
+// exactly, the rest in cash and said), names any line above its cap in a warning on the plan, and
+// cites the server's own sources. Never a weight from the model, never a source from it.
 
 /** The `GOAL_AGENT` values: unset or `relaxed` is the relaxed intake; `model-led` opts out of it. */
 export const GOAL_AGENT_RELAXED = 'relaxed';
@@ -179,9 +181,9 @@ Four rules, which the code after you also enforces:
 3. You never compute or estimate a return, a projection, a price or how long money lasts, and you never promise a return. A yield may be named only as the table shows it, with its read date. The code computes every projection from the table's readings and prints it under your message as soon as the amount and the date or the monthly withdrawals are in the sheet; refer to it ("the projection below") instead of doing sums. A holding with no yield on the table earns nothing in that projection.
 4. Nothing is built until the person confirms. Before that, you need: the amount for any plan; when they will need the money for a plan to grow or to protect; the monthly income they want for an income plan; the shares for a split, if not stated. Ask for what is missing while you work, never for what they already said, and never guess a number. Propose lines as soon as you know enough of the intent; the person sees the plan build beside the chat.
 
-Shapes: "pick" for named things, equal split; "grow", "income" or "protect" when the words call for it; "split" when they want part of the money doing one thing and part another (for example a liquid reserve and a growth pot), one pot per bucket with its own shape. A plan or pot to protect or to pay income holds no stock tokens; use cash, yield rows, Treasury funds and gold there.
+Shapes: "pick" for named things, equal split; "grow", "income" or "protect" when the words call for it; "split" when they want part of the money doing one thing and part another (for example a liquid reserve and a growth pot), one pot per bucket with its own shape (a bucket with no shape takes the plan's). A plan or pot to protect holds cash, dollar-yield rows and gold: no stock tokens, no crypto. A plan or pot to pay income holds cash and dollar-yield rows: no stock tokens, no crypto, no gold. The code holds to the asset registry on this and leaves out what does not fit. A stock token goes into a plan to protect or pay income only when the person plainly asked for that stock, or for stocks, in their own words; the code reads their words itself and warns them. Never add one on your own.
 
-Direct instructions: when the person tells you what to hold or how to split ("make all the income part syrupUSDC", "put 80% in the highest yield"), do it in this turn. Do not ask permission and do not argue. A cap does not stop it: do exactly what they asked and add one short sentence that the vault caps that holding today, so this split would need the cap lifted to be bought. Only the rule on stock tokens in a plan to protect or pay income still applies: if that stops part of the instruction, do the closest version and say why in one sentence. Do not offer alternatives unless they ask. Ask at most one question per turn, and only for something rule 4 still needs, at the end of your message.
+Direct instructions: when the person tells you what to hold or how to split ("make all the income part syrupUSDC", "put 80% in the highest yield"), do it in this turn. Do not ask permission and do not argue. A cap does not stop it: do exactly what they asked and add one short sentence that the vault caps that holding today, so this split would need the cap lifted to be bought. Only the rule on what a plan to protect or pay income may hold still applies: if that stops part of the instruction, do the closest version and say why in one sentence. Do not offer alternatives unless they ask. Ask at most one question per turn, and only for something rule 4 still needs, at the end of your message.
 
 Every turn you answer with the JSON object the API holds you to:
 - "say": the message the person reads. Your words, your reasoning, your questions. One short paragraph, or two when there is a lot to say. Mention holdings by name, not by id. Do not list weights; the code shows the lines beside your message.
@@ -229,7 +231,7 @@ function tableOf(
 
 const yieldText = (r: Reading | undefined) =>
   r
-    ? `yield ${(r.rate * 100).toFixed(2)}% a year${r.haircut != null && r.quoted != null ? ` after haircut (quoted ${(r.quoted * 100).toFixed(2)}%)` : ''}, read ${r.fetchedAt.slice(0, 10)}${r.provenance === 'sandbox' ? ', mainnet reading on a test token' : ''}`
+    ? `yield ${(r.rate * 100).toFixed(2)}% a year${r.haircut != null && r.quoted != null ? ` after haircut (quoted ${(r.quoted * 100).toFixed(2)}%)` : ''}, read ${r.fetchedAt.slice(0, 10)}${r.provenance === 'sandbox' ? ', mainnet reading on a test token' : r.provenance === 'live' ? '' : ', a sample reading, not live'}`
     : 'no yield reading';
 
 /** person/app turns as alternating user/assistant messages, consecutive turns of one side joined. */
@@ -245,12 +247,120 @@ function turnsOf(messages: VaultAgentRequest['messages']) {
   return turns;
 }
 
-/** Basis points summing to 10,000 to the unit; the remainder goes to the first. */
-const equalSplit = (n: number) => {
-  const base = Math.floor(10_000 / n);
-  return Array.from({ length: n }, (_, i) => base + (i < 10_000 - base * n ? 1 : 0));
+/** `whole` basis points over `n` equally, to the unit; the remainder goes to the first. */
+const equalSplit = (whole: number, n: number) => {
+  const base = Math.floor(whole / n);
+  return Array.from({ length: n }, (_, i) => base + (i < whole - base * n ? 1 : 0));
 };
 const pct = (bps: number) => `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 1)}%`;
+const pctOf = (fraction: number) => pct(Math.round(fraction * 10_000));
+
+type Goal = 'grow' | 'income' | 'protect';
+const goalOfShape = (shape: Shape | null | undefined): Goal | null =>
+  shape === 'income' || shape === 'protect' ? shape : null;
+const GOAL_WORDS: Record<Goal, string> = { grow: 'grow', income: 'pay income', protect: 'protect' };
+const CLASS_WORDS: Record<BasketAsset['cls'], string> = {
+  stock: 'stock tokens',
+  etf: 'stock funds',
+  crypto: 'crypto',
+  gold: 'gold',
+  commodity: 'commodities',
+  dollar_yield: 'dollar yield',
+  cash: 'cash',
+};
+
+/**
+ * How `whole` basis points are shared (RELAXED-INTAKE, "applied exactly"; ANY-COMPOSITION, "never
+ * silent"). `given` is each entry's stated share of the whole (0 to 1), null where none was stated.
+ * - none stated: an equal split (`equal`);
+ * - every entry stated and the shares come to the whole: each as given (`stated`);
+ * - some stated: each stated share as given, the rest equally over the others (`mixed`); stated shares
+ *   that take it all leave the others at nothing (`starved`, by index);
+ * - shares above the whole: scaled to it (`scaled`);
+ * - every entry stated and the shares come to less: each as given, and the rest is a `gap` the caller
+ *   holds as cash and says (`gap`); with `gapAllowed` false (no cash token), scaled to the whole;
+ * - every share zero: an equal split (`unusable`).
+ * Within 10 basis points of the whole counts as the whole ("a third each"). Rounding goes to the first
+ * entry, so the parts always add up to `whole` exactly with the gap.
+ */
+export function splitShares(
+  given: readonly (number | null)[],
+  whole: number,
+  gapAllowed: boolean,
+): {
+  bps: number[];
+  sum: number;
+  kind: 'equal' | 'stated' | 'mixed' | 'scaled' | 'gap' | 'unusable';
+  gap: number;
+  starved: number[];
+} {
+  const n = given.length;
+  const open = given.flatMap((g, i) => (g == null ? [i] : []));
+  const sum = given.reduce<number>((a, g) => a + (g ?? 0), 0);
+  if (n === 0) return { bps: [], sum, kind: 'equal', gap: 0, starved: [] };
+  if (open.length === n || (open.length === 0 && sum <= 0))
+    return {
+      bps: equalSplit(whole, n),
+      sum,
+      kind: open.length === n ? 'equal' : 'unusable',
+      gap: 0,
+      starved: [],
+    };
+  const isWhole = Math.abs(sum - 1) <= 0.001;
+  const over = sum > 1 && !isWhole;
+  const short = open.length === 0 && sum < 1 && !isWhole;
+  const scale = over || (short && !gapAllowed) || (isWhole && open.length === 0) ? 1 / sum : 1;
+  const bps = given.map((g) => (g == null ? 0 : Math.round(g * scale * whole)));
+  const placed = () => bps.reduce((a, b) => a + b, 0);
+  let gap = 0;
+  let starved: number[] = [];
+  if (open.length) {
+    const rest = Math.max(0, whole - placed());
+    if (rest === 0) starved = open;
+    else {
+      const shares = equalSplit(rest, open.length);
+      open.forEach((i, k) => {
+        bps[i] = shares[k] ?? 0;
+      });
+    }
+  } else if (short && gapAllowed) gap = whole - placed();
+  const off = whole - placed() - gap;
+  if (off !== 0) {
+    const first = bps.findIndex((b) => b > 0);
+    bps[first >= 0 ? first : 0] = (bps[first >= 0 ? first : 0] ?? 0) + off;
+  }
+  const kind =
+    over || (short && !gapAllowed) ? 'scaled' : short ? 'gap' : open.length ? 'mixed' : 'stated';
+  return { bps, sum, kind, gap, starved };
+}
+
+/** What a split did, in the person's words: every case but an equal split of one entry is said. */
+function sayShares(
+  split: ReturnType<typeof splitShares>,
+  o: { where: string; of: string; open: string; cashName: string; starved?: string[] },
+): string[] {
+  const out: string[] = [];
+  const came = `The shares you gave${o.where} came to ${pctOf(split.sum)}`;
+  if (split.kind === 'equal' && split.bps.length > 1)
+    out.push(`Equal split${o.where} until you say otherwise.`);
+  if (split.kind === 'stated') out.push(`The shares you gave${o.where} are applied exactly.`);
+  if (split.kind === 'mixed')
+    out.push(
+      `The shares you gave${o.where} are applied exactly; the rest is split equally over ${o.open}.`,
+    );
+  if (split.kind === 'scaled') out.push(`${came}; scaled to the whole.`);
+  if (split.kind === 'gap')
+    out.push(
+      `${came}; they are applied exactly, and the other ${pctOf(1 - split.sum)} of ${o.of} is held in ${o.cashName} until you say where it goes.`,
+    );
+  if (split.kind === 'unusable') out.push(`${came}; split equally until you say otherwise.`);
+  const starved = (o.starved ?? []).filter(Boolean);
+  if (starved.length)
+    out.push(
+      `The shares you gave${o.where} take all of it, so ${starved.join(', ')} ${starved.length === 1 ? 'holds' : 'hold'} nothing in this draft.`,
+    );
+  return out;
+}
 const clip = (text: string, max: number) =>
   text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 
@@ -264,6 +374,10 @@ export function createRelaxedGoalAgent(options: {
   model?: string;
   timeoutMs?: number;
   log?: (msg: string, detail?: unknown) => void;
+  /** The model call; tests pass a stub so no request leaves the machine. Default: the Anthropic API. */
+  create?: (
+    params: Anthropic.MessageCreateParamsNonStreaming,
+  ) => Promise<Pick<Anthropic.Message, 'stop_reason' | 'content'>>;
 }): RelaxedGoalAgent {
   const model = options.model ?? 'claude-sonnet-5-5';
   const log =
@@ -273,6 +387,9 @@ export function createRelaxedGoalAgent(options: {
     timeout: options.timeoutMs ?? 60_000,
     maxRetries: 0,
   });
+  const create =
+    options.create ??
+    ((params: Anthropic.MessageCreateParamsNonStreaming) => client.messages.create(params));
   return {
     id: model,
     async reply(request, context) {
@@ -293,7 +410,7 @@ export function createRelaxedGoalAgent(options: {
       // ---- the model: talks freely, names ids ----
       let raw: unknown;
       try {
-        const response = await client.messages.create({
+        const response = await create({
           model,
           max_tokens: 4000,
           system: systemPrompt(
@@ -330,10 +447,23 @@ export function createRelaxedGoalAgent(options: {
       // ---- code: ids, eligibility, split, caps ----
       const notes: string[] = [];
       const dropped: string[] = [];
+      // The goal the server read in the person's own words (DEPOSIT-STEP): `goal/accept` checks the
+      // whole plan against it, so the preview does too, with the same rule (`goalFit`). The model's
+      // shape counts as well where it is to protect or pay income, for the plan and for each pot. A
+      // stock outside the goal stays only when the person asked for it themselves, as the server reads
+      // their words (ANY-COMPOSITION), and is then warned; any other class outside it is left out.
+      const serverGoal = statedPurposeIn(messages, context).goal;
+      const companies = new Map<string, string[]>();
+      for (const row of context.stockAttributes?.stocks ?? [])
+        for (const asset of assets)
+          if (asset.symbol === row.symbol) companies.set(asset.id, [row.company]);
+      const requested = requestedStocks(messages, language, assets, companies);
+      const planGoal = goalOfShape(r.shape);
+      const askedOutside = new Map<string, Goal>();
       const pots: {
         name: string;
         shape: Shape;
-        shareBps: number;
+        given: number | null;
         lines: { asset: BasketAsset; why: string; share: number | null }[];
       }[] = [];
       // An id as the model wrote it, matched to the catalog: exactly, then ignoring case, then by the
@@ -352,6 +482,11 @@ export function createRelaxedGoalAgent(options: {
           (a) => plain(a.symbol) === plain(id) || a.underlying.toLowerCase() === plain(id),
         );
       const keep = (lines: { id: string; why: string; share?: number | null }[], shape: Shape) => {
+        const goals = [
+          ...new Set(
+            [serverGoal, planGoal, goalOfShape(shape)].filter((g): g is Goal => g != null),
+          ),
+        ];
         const out: { asset: BasketAsset; why: string; share: number | null }[] = [];
         for (const line of lines) {
           const asset = resolve(line.id);
@@ -360,48 +495,37 @@ export function createRelaxedGoalAgent(options: {
             continue;
           }
           if (out.some((o) => o.asset.id === asset.id)) continue;
-          if ((shape === 'income' || shape === 'protect') && !eligibleForGoal(asset, shape)) {
+          const fits = goals.map((goal) => ({ goal, fit: goalFit(asset, goal) }));
+          const barred = fits.find((f) => f.fit === 'barred');
+          if (barred) {
             notes.push(
-              `${asset.symbol} left out: no stock tokens in a plan to ${shape === 'protect' ? 'protect' : 'pay income'}.`,
+              `${asset.symbol} left out: a plan to ${GOAL_WORDS[barred.goal]} cannot hold ${CLASS_WORDS[asset.cls]}, by the asset registry's rule.`,
             );
             continue;
+          }
+          const outside = fits.find((f) => f.fit === 'stock_outside');
+          if (outside) {
+            if (!requested.has(asset.id)) {
+              notes.push(
+                `${asset.symbol} left out: a plan to ${GOAL_WORDS[outside.goal]} holds no stock tokens unless you ask for one yourself.`,
+              );
+              continue;
+            }
+            askedOutside.set(asset.id, outside.goal);
           }
           out.push({ asset, why: line.why, share: line.share ?? null });
         }
         return out;
       };
-      if (r.buckets?.length && (r.shape === 'split' || !r.lines.length)) {
-        const given = r.buckets.map((b) => b.share);
-        let shares = equalSplit(r.buckets.length);
-        if (given.every((g) => g != null)) {
-          const sum = (given as number[]).reduce((a, b) => a + b, 0);
-          if (sum > 0) {
-            shares = (given as number[]).map((g) => Math.round((g / sum) * 10_000));
-            shares[0] = (shares[0] ?? 0) + 10_000 - shares.reduce((a, b) => a + b, 0);
-            if (Math.abs(sum - 1) > 0.001)
-              notes.push(
-                `The pot shares you gave summed to ${Math.round(sum * 100)}%; scaled to the whole.`,
-              );
-          }
-        } else notes.push('Equal shares between the pots until you give them.');
-        r.buckets.forEach((b, i) => {
-          const shape = b.shape ?? 'pick';
-          pots.push({ name: b.name, shape, shareBps: shares[i] ?? 0, lines: keep(b.lines, shape) });
-        });
-      } else {
-        pots.push({
-          name: r.shape,
-          shape: r.shape,
-          shareBps: 10_000,
-          lines: keep(r.lines, r.shape),
-        });
-        if (r.shape === 'pick' && r.lines.length > 1)
-          notes.push('Equal split until you say otherwise.');
-      }
-      if (r.shape !== 'pick')
-        notes.push(
-          'A preview split equally inside each pot; the solver sizes the lines on the parameter table once you confirm.',
-        );
+      const split = r.buckets?.length && (r.shape === 'split' || !r.lines.length);
+      if (split && r.buckets) {
+        for (const b of r.buckets) {
+          // A pot with no shape of its own takes the plan's: a pot of a plan to pay income pays income.
+          const shape: Shape = b.shape ?? (r.shape === 'split' ? 'pick' : r.shape);
+          pots.push({ name: b.name, shape, given: b.share ?? null, lines: keep(b.lines, shape) });
+        }
+      } else
+        pots.push({ name: r.shape, shape: r.shape, given: null, lines: keep(r.lines, r.shape) });
       if (dropped.length) log('ids not on the catalog', dropped);
       if (dropped.length)
         notes.push(`Dropped, not on this chain's catalog: ${dropped.join(', ')}.`);
@@ -410,18 +534,32 @@ export function createRelaxedGoalAgent(options: {
           `${n.name} is not on this chain's catalog${n.why ? `: ${n.why.replace(/[.\s]+$/, '')}` : ''}.`,
         );
 
-      // A pot whose lines were all dropped hands its share to the pots that kept lines. Inside a pot
-      // the lines split equally; a line over its cap (EXIT-SOURCE) is clipped and the excess goes to
-      // the pot's other lines with room, so each pot keeps the share the person gave it. What no line
-      // of the pot can take is held as cash, and said.
-      const live = pots.filter((p) => p.lines.length > 0);
-      const liveShare = live.reduce((a, p) => a + p.shareBps, 0);
-      const potShares = live.map((p) =>
-        liveShare > 0 ? Math.round((p.shareBps / liveShare) * 10_000) : 0,
-      );
-      if (potShares.length)
-        potShares[0] = (potShares[0] ?? 0) + 10_000 - potShares.reduce((a, b) => a + b, 0);
+      // The split (RELAXED-INTAKE, ANY-COMPOSITION): the shares the person gave, for pots and for the
+      // holdings in a pot, applied exactly; the rest equally over what has none. Shares that come to
+      // less than the whole leave the rest in cash, said; shares above it are scaled to it, said.
+      // Nothing is reassigned to a holding in silence, and nothing is clipped to a cap: a line above
+      // its cap is kept and named in the warning on the plan (overCap below).
       const cashAsset = assets.find((a) => a.cls === 'cash');
+      const cashName = cashAsset ? `${cashAsset.symbol}, the cash line,` : '';
+      const live = pots.filter((p) => p.lines.length > 0);
+      if (pots.length > 1)
+        for (const p of pots)
+          if (!p.lines.length)
+            notes.push(`The ${p.name} pot has no holding left, so it is not in this draft.`);
+      const potSplit = splitShares(
+        live.map((p) => (pots.length > 1 ? p.given : null)),
+        10_000,
+        Boolean(cashAsset),
+      );
+      if (live.length > 1 || potSplit.kind === 'gap')
+        notes.push(
+          ...sayShares(potSplit, {
+            where: ' for the pots',
+            of: 'the money',
+            open: 'the pots',
+            cashName,
+          }),
+        );
       const weights = new Map<string, { asset: BasketAsset; bps: number; why: string[] }>();
       const add = (asset: BasketAsset, bps: number, why: string) => {
         if (bps <= 0) return;
@@ -431,40 +569,47 @@ export function createRelaxedGoalAgent(options: {
           if (!held.why.includes(why)) held.why.push(why);
         } else weights.set(asset.id, { asset, bps, why: [why] });
       };
+      const gaps: number[] = [potSplit.gap];
       live.forEach((pot, p) => {
-        const potBps = potShares[p] ?? 0;
+        const potBps = potSplit.bps[p] ?? 0;
         const label = (why: string) => (live.length > 1 ? `${pot.name}: ${why}` : why);
-        // Rodrigo, Oct 8 (RELAXED-1): the person's split is applied exactly. Shares they gave
-        // for holdings in this pot, the rest of the pot equally over the holdings with none (all of
-        // it equally when they gave none). Nothing is clipped to a cap here: a line above its cap is
-        // kept and named in the warning on the plan (overCap below).
-        const stated = pot.lines.filter((l) => l.share != null);
-        const given = stated.reduce((a, l) => a + (l.share as number), 0);
-        const scale = given > 1 ? 1 / given : 1;
-        const rest = pot.lines.filter((l) => l.share == null);
-        const statedBps = stated.length ? Math.round(given * scale * potBps) : 0;
-        const restBps = rest.length ? Math.max(0, potBps - statedBps) : 0;
-        const restSplit = rest.length ? equalSplit(rest.length) : [];
-        const target = new Map<string, number>();
-        for (const l of stated)
-          target.set(l.asset.id, Math.round((l.share as number) * scale * potBps));
-        rest.forEach((l, i) => {
-          target.set(l.asset.id, Math.floor(((restSplit[i] ?? 0) * restBps) / 10_000));
+        const lineSplit = splitShares(
+          pot.lines.map((l) => l.share),
+          potBps,
+          Boolean(cashAsset),
+        );
+        const where = live.length > 1 ? ` in ${pot.name}` : '';
+        notes.push(
+          ...sayShares(lineSplit, {
+            where,
+            of: live.length > 1 ? 'that pot' : 'the money',
+            open: 'the holdings you gave none',
+            cashName,
+            starved: lineSplit.starved.map((i) => pot.lines[i]?.asset.symbol ?? ''),
+          }),
+        );
+        pot.lines.forEach((l, i) => {
+          add(l.asset, lineSplit.bps[i] ?? 0, label(l.why));
         });
-        // Rounding, and shares that sum below the pot with no other holding to take the rest: the
-        // difference goes to the first holding, so the pot keeps the share it was given.
-        const placed = [...target.values()].reduce((a, b) => a + b, 0);
-        const firstLine = pot.lines[0];
-        if (firstLine && placed !== potBps)
-          target.set(firstLine.asset.id, (target.get(firstLine.asset.id) ?? 0) + potBps - placed);
-        for (const l of pot.lines) add(l.asset, target.get(l.asset.id) ?? 0, label(l.why));
+        gaps.push(lineSplit.gap);
       });
+      const gap = gaps.reduce((a, b) => a + b, 0);
+      if (cashAsset && gap > 0)
+        add(
+          cashAsset,
+          gap,
+          'The part your shares left unplaced, held as cash until you say where.',
+        );
+      if (live.length)
+        notes.push(
+          'The deposit step buys exactly these holdings and shares, after the server checks every line again.',
+        );
       if (
         live.length &&
         !cashAsset &&
         [...weights.values()].reduce((a, w) => a + w.bps, 0) !== 10_000
       ) {
-        log('caps left weight with nowhere to go');
+        log('the split left weight with nowhere to go');
         return { kind: 'failure', reason: 'invalid' };
       }
       const lines = [...weights.values()].filter((w) => w.bps > 0);
@@ -480,6 +625,12 @@ export function createRelaxedGoalAgent(options: {
             )}. The vault would refuse this split as it stands; it can be bought only once the cap is lifted.`
         : null;
       if (capWarning) notes.unshift(capWarning);
+      // A stock outside the goal that the person asked for: kept, and warned (ANY-COMPOSITION).
+      const requestedLines = lines.filter((l) => askedOutside.has(l.asset.id));
+      for (const l of requestedLines)
+        notes.unshift(
+          `${l.asset.symbol} is a stock token in a plan to ${GOAL_WORDS[askedOutside.get(l.asset.id) as Goal]}: it is here only because you asked for it yourself.`,
+        );
 
       // Thom's guard on limits the person wrote ("at most 20% in Tesla"): kept as is.
       for (const constraint of holdingConstraints(messages, assets)) {
@@ -568,9 +719,15 @@ export function createRelaxedGoalAgent(options: {
         messageId,
         message,
         question: null,
-        // The relaxed intake says its notes in the plan's tradeoffs; it sets none of the model-led
-        // conversation's codes (ANY-COMPOSITION), which the reply's shape requires all the same.
-        warnings: [],
+        // The relaxed intake says its notes in the plan's tradeoffs; of the model-led conversation's
+        // codes (ANY-COMPOSITION) it sets only `outside_goal_requested`, on the asset's catalog listing.
+        warnings: requestedLines
+          .filter((l) => used.has(`catalog:${l.asset.id}`))
+          .map((l) => ({
+            code: 'outside_goal_requested' as const,
+            assetId: l.asset.id,
+            evidenceId: `catalog:${l.asset.id}`,
+          })),
         weightNotes: [],
         proposal: allocations.length
           ? {
