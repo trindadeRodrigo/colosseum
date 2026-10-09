@@ -1534,4 +1534,143 @@ describe('the relaxed intake’s plan on /goal (RELAXED-INTAKE)', () => {
     ]);
     expect(find(host, '[data-ui="goal-transcript"]').textContent).toBe('');
   });
+
+  // Thom, Oct 9: a conversation is named by its person's first request, shortened (title.ts), read
+  // from its own turns in this browser.
+  const options = (host: HTMLElement) => [
+    ...find<HTMLSelectElement>(host, '[data-ui="goal-picker"]').options,
+  ];
+  const named = (host: HTMLElement) => options(host).map((o) => o.textContent);
+  const keep = (id: string, words: string[]) =>
+    localStorage.setItem(
+      `${goalConversationKey(userId, 'solana', 'sandbox')}:c:${id}`,
+      JSON.stringify({
+        revision: 0,
+        transcript: words.map((text, i) => ({
+          id: `${id}-${i}`,
+          who: i % 2 ? 'app' : 'person',
+          text,
+        })),
+      }),
+    );
+  const list = (items: { id: string; title: string; updatedAt: string }[], current = 'now') =>
+    localStorage.setItem(
+      `${goalConversationKey(userId, 'solana', 'sandbox')}:index`,
+      JSON.stringify({ current, items }),
+    );
+
+  it('names the conversation on screen by the first request once it is sent, and again after a reload', async () => {
+    const words =
+      "I want to explore technology stocks\nwith low risk for my daughter's college fund";
+    const title = 'I want to explore technology stocks with low…';
+    let host = await show();
+    await settle();
+    // before any message: the neutral name, and the control is still named by its label
+    expect(named(host)).toEqual([en.goal.explore.picker.current, en.goal.explore.picker.fresh]);
+    expect(en.goal.explore.picker.current).toBe('New conversation');
+    const picker = find<HTMLSelectElement>(host, '[data-ui="goal-picker"]');
+    expect(host.querySelector(`label[for="${picker.id}"]`)?.textContent).toBe(
+      en.goal.explore.picker.label,
+    );
+    await send(host, words);
+    expect(named(host)).toEqual([title, en.goal.explore.picker.fresh]);
+    expect(find<HTMLSelectElement>(host, '[data-ui="goal-picker"]').value).toBe('current');
+    // a later message does not rename it
+    await send(host, 'Less gold please');
+    expect(named(host)[0]).toBe(title);
+    // nothing new was sent for it: the reply route only, with the fields it had
+    expect(calls.map((row) => row.path)).toEqual([path, path]);
+    expect(calls.every((row) => !('title' in row.body) && !('name' in row.body))).toBe(true);
+    await unmountAll();
+    host = await show();
+    await settle();
+    expect(named(host)).toEqual([title, en.goal.explore.picker.fresh]);
+    // a new one is neutral again, and the first is saved under its name, with its chain as text
+    await mode(host, 'new');
+    await settle();
+    expect(named(host)).toEqual([
+      en.goal.explore.picker.current,
+      en.goal.explore.picker.fresh,
+      `${title} · Solana`,
+    ]);
+  });
+
+  it('names a conversation saved before by its first request, and one without messages neutrally', async () => {
+    // saved by an earlier build: no index at all, then one whose index title was cut mid-word
+    keep('old1', [
+      'Build an income strategy from bonds and dividend funds for my retirement',
+      'Ok.',
+    ]);
+    keep('old2', ['Protect my savings']);
+    list([
+      {
+        id: 'old1',
+        title: 'Build an income strategy from bonds and dividend funds for my r…',
+        updatedAt: '2026-10-08T12:00:00.000Z',
+      },
+      { id: 'old2', title: '', updatedAt: '' },
+      // listed, with a title on the index, but no message kept: neutral, never the index's words
+      { id: 'empty', title: 'Words that are not kept', updatedAt: '2026-10-08T13:00:00.000Z' },
+    ]);
+    const host = await show();
+    await settle();
+    expect(named(host)).toEqual([
+      en.goal.explore.picker.current,
+      en.goal.explore.picker.fresh,
+      'Build an income strategy from bonds and dividend… · Solana',
+      'Protect my savings · Solana',
+      `${en.goal.explore.picker.untitled} · Solana`,
+    ]);
+    // opened, it is the one on screen under the same name, without its chain
+    await mode(host, 'conversation:solana:old1');
+    await settle();
+    expect(named(host)[0]).toBe('Build an income strategy from bonds and dividend…');
+    expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain('for my retirement');
+  });
+
+  it('tells two saved conversations with the same first words apart by when they were written', async () => {
+    keep('a1', ['Consider gold']);
+    keep('a2', ['Consider gold']);
+    keep('a3', ['Consider silver']);
+    list([
+      { id: 'a1', title: 'Consider gold', updatedAt: '2026-10-08T12:00:00.000Z' },
+      { id: 'a2', title: 'Consider gold', updatedAt: '2026-10-06T09:30:00.000Z' },
+      { id: 'a3', title: 'Consider silver', updatedAt: '2026-10-07T09:30:00.000Z' },
+    ]);
+    const host = await show();
+    await settle();
+    const [, , first, second, third] = named(host);
+    expect(first).toMatch(/^Consider gold · Solana · Oct \d+, \d+:\d\d/);
+    expect(second).toMatch(/^Consider gold · Solana · Oct \d+, \d+:\d\d/);
+    expect(first).not.toBe(second);
+    // one that reads like no other stays as short as before
+    expect(third).toBe('Consider silver · Solana');
+  });
+
+  it('shows the name as the text it is, and is neutral again once the conversation is started over', async () => {
+    const words = '<img src=x onerror=alert(1)> gold';
+    const host = await show();
+    await send(host, words);
+    const [current] = options(host);
+    expect(current?.textContent).toBe(words);
+    expect(current?.children).toHaveLength(0);
+    expect(host.querySelector('img[src="x"]')).toBeNull();
+    const again = [...host.querySelectorAll('button')].find(
+      (button) => button.textContent === en.talk.startOver,
+    );
+    if (!again) throw new Error('no start over');
+    await click(again);
+    await settle();
+    expect(find(host, '[data-ui="goal-transcript"]').textContent).toBe('');
+    expect(named(host)).toEqual([en.goal.explore.picker.current, en.goal.explore.picker.fresh]);
+    // left for a new one, it is not kept as a saved conversation with nothing in it, now or later
+    await mode(host, 'new');
+    await settle();
+    expect(named(host)).toEqual([en.goal.explore.picker.current, en.goal.explore.picker.fresh]);
+    await unmountAll();
+    expect(named(await show())).toEqual([
+      en.goal.explore.picker.current,
+      en.goal.explore.picker.fresh,
+    ]);
+  });
 });

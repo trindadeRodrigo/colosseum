@@ -239,11 +239,12 @@ describe('the chain of a new plan, chosen on /goal', () => {
     expect(host.querySelector('[data-ui="holding-legs"]')).toBeNull();
     expect(checked(host)).toBe('robinhood');
     expect(document.activeElement).toBe(find(host, 'label[data-chain="robinhood"] input'));
-    // both earlier conversations are kept, each with its chain as text
+    // both earlier conversations are kept, each under its first request with its chain as text: the
+    // one from before the index too, which has no title on it
     const saved = [...picker(host).options].filter((o) => o.value.startsWith('conversation:'));
     expect(saved.map((o) => o.textContent).sort()).toEqual([
+      'An older Robinhood idea · Robinhood Chain',
       'Consider gold · Solana',
-      `${en.goal.explore.picker.untitled} · Robinhood Chain`,
     ]);
     // nothing of the draft went with the chain
     await send(host, 'Something else');
