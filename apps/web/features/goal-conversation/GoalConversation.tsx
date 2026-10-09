@@ -6,11 +6,13 @@ import { Button } from '../../components/ui/Button';
 import { Composer } from '../../components/ui/Composer';
 import { WORKSPACE_TITLE } from '../../components/ui/heading';
 import { LatticeGlyph } from '../../components/ui/Lattice';
+import { LatticeLoader } from '../../components/ui/Skeleton';
+import { useWaitPhase } from '../../components/ui/wait';
 import { dictionary } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { UseGoalMix } from '../mix/UseGoalMix';
 import { share } from '../portfolio/figures';
-import { VaultAgentError, type VaultAgentReply } from '../vault-conversation/agent';
+import { replyText, VaultAgentError, type VaultAgentReply } from '../vault-conversation/agent';
 import { StrategyPreview, WeightNotes } from '../vault-conversation/StrategyPreview';
 import {
   conversationNetwork,
@@ -121,7 +123,11 @@ export function GoalConversation({
     setBusy(true);
     setError(undefined);
     setText('');
-    setReply(null);
+    // The draft on the card stays while its successor is worked on, so the new one can show what
+    // changed; it is marked as the one before, and it can no longer be used.
+    setReply((now) => (now?.proposal ? now : null));
+    setUsing(null);
+    let answered = false;
     held.current = next;
     setTurns(next);
     if (persist(next) && prefill.current && userId) {
@@ -138,7 +144,7 @@ export function GoalConversation({
         {
           id: crypto.randomUUID(),
           who: 'app' as const,
-          text: [result.message, result.question].filter(Boolean).join('\n\n'),
+          text: replyText(result.message, result.question),
         },
       ];
       if (result.proposal) {
@@ -165,6 +171,7 @@ export function GoalConversation({
       held.current = completed;
       setTurns(completed);
       setReply(result);
+      answered = true;
       persist(completed);
     } catch (cause) {
       if (active()) {
@@ -184,6 +191,8 @@ export function GoalConversation({
       }
     } finally {
       if (active()) {
+        // no reply, no draft: the one before it does not stand in for an answer that did not come
+        if (!answered) setReply(null);
         sending.current = false;
         setBusy(false);
       }
@@ -191,6 +200,8 @@ export function GoalConversation({
   }
   // The person's last words with no reply after them: a failed reply, or one a reload cut short.
   const unanswered = !busy && ready && loaded ? turns.at(-1) : undefined;
+  // a wait under 400ms shows nothing; after that the lattice assembles beside the words (STYLE.md)
+  const waiting = useWaitPhase(busy) !== 'quiet';
   return (
     <section
       data-ui="goal-conversation"
@@ -316,6 +327,7 @@ export function GoalConversation({
             <StrategyPreview
               proposal={reply.proposal}
               previewOnly={copy.draftNote}
+              {...(busy ? { pending: t.shared.vault.conversation.reworking } : {})}
               {...(chain && userId && using !== reply
                 ? { use: { label: t.mix.preview.use, onUse: () => setUsing(reply) } }
                 : {})}
@@ -334,9 +346,17 @@ export function GoalConversation({
             data-ui="goal-empty-preview"
             className="flex min-w-0 flex-col items-start justify-center gap-3 rounded-md border border-border bg-card p-4 sm:min-h-60"
           >
-            <LatticeGlyph size={32} />
+            {busy && waiting ? <LatticeLoader size={32} /> : <LatticeGlyph size={32} />}
             <h2 className="text-body-lg font-medium">{t.talk.workbench.strategy}</h2>
-            <p className="max-w-[48ch] text-body-sm text-muted-foreground">{copy.empty}</p>
+            {/* one region for both lines, there before its words change, so a screen reader hears
+                that a draft is being worked on */}
+            <p
+              role="status"
+              data-ui={busy ? 'goal-working' : undefined}
+              className="max-w-[48ch] text-body-sm text-muted-foreground"
+            >
+              {busy ? copy.working : copy.empty}
+            </p>
             <p className="text-caption text-muted-foreground">{copy.previewOnly}</p>
             {reply?.notes && <WeightNotes notes={reply.notes} />}
           </div>

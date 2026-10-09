@@ -111,6 +111,22 @@ describe('a continuous conversation for one vault', () => {
     expect(rows[1]?.textContent).toContain('70% → 0%');
     expect(rows[1]?.textContent).toContain('−70 pp');
     expect(rows[1]?.textContent).toContain(en.shared.vault.conversation.removed);
+    // the joint beside a vault's targets: one piece for what is proposed, named with the proposed
+    // share alone, and a removed target has a row, an empty swatch and no piece
+    const pieces = [
+      ...host.querySelectorAll<HTMLElement>('[data-ui="mix-joint"] [data-part="piece"]'),
+    ];
+    expect(
+      pieces.map((p) => [p.dataset.asset, p.getAttribute('aria-label'), p.style.width]),
+    ).toEqual([['solana:gldx', 'tGLDx, 100%', '100%']]);
+    expect(find(rows[0] as Element, '[data-part="swatch"]').className).toContain('bg-leg-1');
+    expect(find(rows[1] as Element, '[data-part="swatch"]').className).not.toMatch(/bg-leg-/);
+    expect(rows[1]?.hasAttribute('data-lit')).toBe(false);
+    await act(async () => pieces[0]?.focus());
+    expect(rows[0]?.getAttribute('data-lit')).toBe('true');
+    // a vault's draft is never kept while the next is asked for: no pending line on it
+    expect(find(host, '[data-ui="preview-pending"]').textContent).toBe('');
+    expect(host.querySelector('[data-receded]')).toBeNull();
     // Source pins may open; the standalone preview offers no execution or discussion command.
     expect(host.querySelector('form')).toBeNull();
     expect(host.querySelector('a[href^="/buy"]')).toBeNull();
