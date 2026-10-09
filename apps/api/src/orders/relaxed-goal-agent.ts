@@ -9,6 +9,7 @@ import {
 import { z } from 'zod';
 import type { ModelQuota } from '../model-quota';
 import { goalFit } from './mix';
+import { ORDER_POLICY } from './prepare';
 import { catalogCap, holdingConstraints } from './relaxed-limits';
 import { project, type Reading, readingsOf, series } from './relaxed-projection';
 import { type GoalAgentContext, requestedStocks, statedPurposeIn } from './vault-agent';
@@ -620,6 +621,22 @@ export function createRelaxedGoalAgent(options: {
         return { kind: 'failure', reason: 'invalid' };
       }
       const lines = [...weights.values()].filter((w) => w.bps > 0);
+      // A vault holds at most sixteen lines besides cash and `goal/accept` refuses more
+      // (`TOO_MANY_LINES`), so no preview shows a mix the deposit step would turn down.
+      const invested = lines.filter((l) => l.asset.id !== cashAsset?.id).length;
+      if (invested > ORDER_POLICY.maxLines) {
+        const tooMany = VaultAgentReply.safeParse({
+          version: 1,
+          messageId,
+          message: `That names ${invested} holdings, and a vault holds at most ${ORDER_POLICY.maxLines} besides cash. Tell me which to keep, or ask for a shorter list.`,
+          question: null,
+          warnings: [],
+          weightNotes: [],
+          proposal: null,
+        });
+        if (!tooMany.success) return { kind: 'failure', reason: 'invalid' };
+        return { kind: 'reply', reply: tooMany.data };
+      }
       // Lines above the cap the vault holds them to today: kept as asked, and said plainly.
       const overCap = lines.filter((l) => l.bps > (caps.get(l.asset.id) ?? 0));
       const capWarning = overCap.length

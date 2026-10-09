@@ -367,6 +367,48 @@ describe('relaxed intake: the split', () => {
   });
 });
 
+describe('relaxed intake: the most a vault holds', () => {
+  const many = (n: number) =>
+    Array.from({ length: n }, (_, i) => asset(`s${i + 1}`, `S${i + 1}x`, 'stock'));
+  const cash = asset('usdc', 'USDC', 'cash', 10_000);
+  const ctx = (stocks: BasketAsset[]) =>
+    context({
+      assets: [...stocks, cash],
+      evidence: [...stocks, cash].map((a) => source(`catalog:${a.id}`, { assetId: a.id })),
+    });
+  it('previews sixteen holdings besides cash', async () => {
+    const stocks = many(16);
+    const reply = await run(
+      { shape: 'pick', lines: stocks.map((a) => line(a.id)) },
+      'all the tech you have',
+      ctx(stocks),
+    );
+    expect(reply.proposal?.allocations).toHaveLength(16);
+  });
+  it('sixteen and the cash line the shares left: cash is not counted', async () => {
+    const stocks = many(16);
+    const reply = await run(
+      { shape: 'pick', lines: stocks.map((a) => line(a.id, 0.05)) },
+      'all the tech you have',
+      ctx(stocks),
+    );
+    expect(reply.proposal?.allocations).toHaveLength(17);
+    expect(weights(reply).USDC).toBe(2000);
+  });
+  it('previews nothing for more than sixteen, and says why', async () => {
+    const stocks = many(18);
+    const reply = await run(
+      { shape: 'pick', lines: stocks.map((a) => line(a.id)) },
+      'all the tech you have',
+      ctx(stocks),
+    );
+    expect(reply.proposal).toBeNull();
+    expect(reply.message).toBe(
+      'That names 18 holdings, and a vault holds at most 16 besides cash. Tell me which to keep, or ask for a shorter list.',
+    );
+  });
+});
+
 describe('relaxed intake: the shared call budget', () => {
   const ask = async (quota: { reserve(person: string): ReturnType<ModelQuota['reserve']> }) => {
     const order: string[] = [];
