@@ -134,7 +134,14 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
       // the database once the chains that answered are in the cache, and over every chain of the
       // person's: a chain that did not answer this time changes no number.
       const numbers = anyVault
-        ? await vaultNumbersOf(deps.db, personScope(deps.chains, principal), principal, req.log)
+        ? await vaultNumbersOf(
+            deps.db,
+            personScope(deps.chains, principal),
+            principal,
+            req.log,
+            // The chains read above have just had their missed joins tried (`chainPortfolio`).
+            chains.map((c) => c.chain),
+          )
         : null;
       const named = await Promise.all(
         chains.map(async (c) => {

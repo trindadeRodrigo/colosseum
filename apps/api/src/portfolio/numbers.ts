@@ -125,7 +125,9 @@ function say(log: JoinLog, err: unknown, message: string): void {
  * Every route that answers a number may be the one that gives it, so the order must not depend on
  * which route a person reaches first. The order is the opening order's time, which the goal join
  * holds; a vault whose join was missed is joined here first (`joinMissed`, as the portfolio's read
- * does), and only then are the vaults put in order.
+ * does), and only then are the vaults put in order. `joinedOn` names the chains whose missed joins
+ * the caller has just tried itself (the portfolio's read, for the chains that answered): they are not
+ * tried a second time in one request.
  *
  * It never fails the read it is part of. Where the numbers cannot be read, none is answered; where a
  * new one cannot be given, the ones already held are answered and only that vault has none. The log
@@ -136,6 +138,7 @@ export async function vaultNumbersOf(
   scope: PersonScope,
   principal: Principal,
   log: JoinLog,
+  joinedOn: readonly ChainId[] = [],
 ): Promise<VaultNumbers> {
   const privyId = principal.userId;
   if (principal.kind !== 'user' || !privyId || scope.chains.length === 0) return NONE;
@@ -175,7 +178,9 @@ export async function vaultNumbersOf(
     try {
       // A vault with no plan joined to it has no opening time to be put in order by: join the ones
       // the confirm missed before the order is decided. `joinMissed` never throws.
-      const unjoined = unnumbered().filter((v) => v.openedAt === null);
+      const unjoined = unnumbered().filter(
+        (v) => v.openedAt === null && !joinedOn.includes(v.chain),
+      );
       if (unjoined.length) {
         for (const { entry } of scope.chains)
           await joinMissed(
