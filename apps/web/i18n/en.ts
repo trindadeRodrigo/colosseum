@@ -241,20 +241,20 @@ export const en = {
     reading: 'Reading where your plan lives…',
     /** The chain of a new plan, chosen on the page where it starts (gate CHAIN-AT-THE-PLAN). */
     choice: {
-      legend: 'Chain for this plan',
-      hint: 'A plan lives on one chain. Choose it before your first message.',
+      legend: 'Chain for this vault',
+      hint: 'A vault lives on one chain. Choose it before your first message.',
       /** A wallet's whole address, for a screen reader. */
       wallet: (address: string) => `wallet ${address}`,
       /** One chain to start on, because the person's wallet signs on no other. */
       onlyWallet: (chain: string) =>
-        `This plan will live on ${chain}: the wallet you signed in with signs only there.`,
+        `This vault will live on ${chain}: the wallet you signed in with signs only there.`,
       /** One chain to start on, because the other is switched off on our server. */
       onlyOn: (chain: string) =>
-        `This plan will live on ${chain}: it is the only chain our server runs for now.`,
+        `This vault will live on ${chain}: it is the only chain our server runs for now.`,
       /** Before the chain's badge, once the conversation has words. */
-      on: 'This plan is on',
+      on: 'This vault is on',
       change: 'Change',
-      changeLabel: 'Change the chain of this plan',
+      changeLabel: 'Change the chain of this vault',
       confirm: (chain: string) =>
         `Each chain has its own assets, so this draft can’t move to ${chain}. It stays in your saved conversations.`,
       start: (chain: string) => `Start a new conversation on ${chain}`,
@@ -263,9 +263,9 @@ export const en = {
       fixed: 'The chain stays as it is while a reply or a deposit is in progress.',
       /** A saved conversation of another chain was opened: where new plans start moved with it. */
       opened: (chain: string) =>
-        `This conversation is on ${chain}, so new plans start on ${chain} now.`,
+        `This conversation is on ${chain}, so new vaults start on ${chain} now.`,
       /** Said to a screen reader once the chain is stored. */
-      done: (chain: string) => `New plans start on ${chain} now.`,
+      done: (chain: string) => `New vaults start on ${chain} now.`,
     },
   },
 
