@@ -1,6 +1,6 @@
 'use client';
 import { usePathname } from 'next/navigation';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useWaitPhase } from '../../components/ui/wait';
 import { useT } from '../../i18n/I18nProvider';
 import { useWalletPort } from '../wallet/WalletProvider';
@@ -20,7 +20,10 @@ import { SlowSignIn } from './SlowSignIn';
 //   who is here   from the account (`who`), which a page that needs a sign-in reads too, so the bar
 //                 and the page never say different things
 //   slowness      is not a label. The control keeps its loading look; after half a minute (SLOW_MS)
-//                 the help is under it: what is slow, "Try again", "Sign out"
+//                 the help is under it: what is slow, "Try again", "Sign out". The help is kept
+//                 inside the window at every width (on a phone the control sits near the left)
+//   the way out   someone the sign-in service names, whose account is still being read, has it at
+//                 once: the loading look is then a button that opens "Sign out" (AccountMenu)
 //   focus         stays in the control when the state changes under it: after "Sign out" it is on
 //                 "Sign in", after a slow sign-in resolves it is on what took the help's place
 //   said          "Loading your account…" once a wait is over 400ms, "Still loading your account"
@@ -47,6 +50,25 @@ export function useAccountControl({ quiet = false }: { quiet?: boolean } = {}): 
   const help = view === 'loading' && slow !== null;
   // A wait under 400ms says nothing (STYLE.md, the loader).
   const waited = useWaitPhase(view === 'loading') !== 'quiet';
+
+  // The help hangs from the control's right edge. Where that would put its left edge outside the
+  // window (a phone, where the bar is narrow and centred), it is moved right by what is missing.
+  const panel = useRef<HTMLDivElement>(null);
+  const [nudge, setNudge] = useState(0);
+  useLayoutEffect(() => {
+    if (!help) return setNudge(0);
+    const GUTTER = 16;
+    const place = () => {
+      const frame = root.current?.getBoundingClientRect();
+      const width = panel.current?.getBoundingClientRect().width ?? 0;
+      // nothing is laid out (a test with no layout): it stays where the stylesheet puts it
+      if (!frame || width === 0) return setNudge(0);
+      setNudge(Math.max(0, Math.ceil(GUTTER - (frame.right - width))));
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [help]);
 
   // Focus that was in the control stays in it when what held it is gone.
   const inside = useRef(false);
@@ -105,6 +127,7 @@ export function useAccountControl({ quiet = false }: { quiet?: boolean } = {}): 
       {/* Focus is followed here, where it bubbles: a press on a child that then goes away. */}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: it only notes where focus is */}
       <div
+        data-live=""
         className="contents"
         onFocus={() => {
           inside.current = true;
@@ -117,12 +140,21 @@ export function useAccountControl({ quiet = false }: { quiet?: boolean } = {}): 
       >
         {view === 'loading' ? (
           <>
-            <AccountPlaceholder expected={expected || who === 'signed-in'} />
+            {/* A session the service names can be left at once; with only the hint there is none. */}
+            {who === 'signed-in' ? (
+              <AccountMenu out={out} waiting />
+            ) : (
+              <AccountPlaceholder expected={expected} />
+            )}
             {help && (
-              <SlowSignIn
-                out={out}
-                className="absolute top-full right-0 z-50 mt-2 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 rounded-md border border-border bg-popover p-3 text-popover-foreground"
-              />
+              <div
+                ref={panel}
+                data-ui="account-help"
+                style={{ right: -nudge }}
+                className="absolute top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-md border border-border bg-popover p-3 text-popover-foreground"
+              >
+                <SlowSignIn out={out} className="flex flex-col gap-2" />
+              </div>
             )}
           </>
         ) : view === 'signed-out' ? (

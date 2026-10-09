@@ -73,15 +73,24 @@ export function AccountPlaceholder({ expected }: { expected: boolean }) {
       </span>
     );
   return (
+    <span aria-hidden="true" className={CHIP_BOX}>
+      <AccountBars />
+      <span className="size-4" />
+    </span>
+  );
+}
+
+/** The chip's still boxes: where the chain and the address will be. */
+export function AccountBars() {
+  return (
     <span
       aria-hidden="true"
       data-ui="account-placeholder"
       data-shape="account"
-      className={CHIP_BOX}
+      className="inline-flex items-center gap-2"
     >
       <Skeleton className="h-3.5 w-12" />
       <Skeleton className="h-3.5 w-20 max-[819px]:hidden" />
-      <span className="size-4" />
     </span>
   );
 }

@@ -9,7 +9,7 @@ import { useT } from '../../i18n/I18nProvider';
 import { explorerAddressUrlFor, onMock } from '../order/readiness';
 import { useWalletPort } from '../wallet/WalletProvider';
 import { useAccount } from './AccountProvider';
-import { CHIP_BOX } from './account-control-parts';
+import { AccountBars, CHIP_BOX } from './account-control-parts';
 import { ChainOptions, usePopover } from './ChainSwitch';
 
 // The bar's account control for someone signed in (Thom, Oct 6): one compact button with the current
@@ -120,7 +120,18 @@ export function AccountBlock({
   );
 }
 
-export function AccountMenu({ out }: { out: SignOutState }) {
+export function AccountMenu({
+  out,
+  waiting = false,
+}: {
+  out: SignOutState;
+  /**
+   * Signed in, and the account is still being read: the button keeps the loading look (still boxes
+   * where the chain and the address will be), is named "Your wallet" all the same, and its menu
+   * holds the way out.
+   */
+  waiting?: boolean;
+}) {
   const t = useT();
   const port = useWalletPort();
   const { account } = useAccount();
@@ -154,6 +165,7 @@ export function AccountMenu({ out }: { out: SignOutState }) {
         aria-controls={panelId}
         aria-labelledby={wallet ? `${labelId} ${addressId}` : labelId}
         aria-describedby={chain ? chainId : undefined}
+        aria-busy={waiting || undefined}
         data-ui="account-menu-button"
         data-account-focus=""
         data-chain={chain ?? undefined}
@@ -163,9 +175,10 @@ export function AccountMenu({ out }: { out: SignOutState }) {
         {/* Its name is "Your wallet" and the whole address. A person whose chain is not known (a
             wallet could not be made, or our server did not say) has the name alone, and the menu
             with the way out in it. */}
-        <span id={labelId} className={chain && name ? 'sr-only' : undefined}>
+        <span id={labelId} className={(chain && name) || waiting ? 'sr-only' : undefined}>
           {t.shell.account}
         </span>
+        {waiting && !chain && <AccountBars />}
         {chain && name && (
           <>
             {/* The chain, a part of its own: it describes the control and is not its name. */}

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { act, createElement } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
 import { inLanguage, inShell } from '../account/test/screen';
@@ -30,9 +30,19 @@ const landing = async (hinted: boolean) => {
   const host = await mount(
     inLanguage('en', createElement(LandingBar, { lang: 'en', signedIn: hinted })),
   );
-  for (let i = 0; i < 3; i += 1) await settle(10);
+  // The wallet's code arrives by a dynamic import: the test goes on once the live control has taken
+  // the static one's place, however long that took (never after a fixed sleep).
+  if (hinted) await live(host);
   return host;
 };
+const live = (host: HTMLElement) =>
+  vi.waitFor(
+    async () => {
+      await settle(5);
+      expect(host.querySelector('[data-ui="account-control"] > [data-live]')).not.toBeNull();
+    },
+    { timeout: 5_000, interval: 5 },
+  );
 const app = async () => {
   location.pathname = '/goal';
   const host = await mount(inShell('en', 'auto', createElement('p', null, 'page')));
@@ -57,6 +67,10 @@ function drawn(host: HTMLElement): string {
   return copy.outerHTML;
 }
 
+// loaded once here, so each landing below waits for a mount and not for a module
+beforeAll(async () => {
+  await import('./landing-account-live');
+});
 beforeEach(() => {
   router.push.mockClear();
   portStore.setApi(async (path) =>
@@ -126,7 +140,12 @@ describe('the landing’s account control, with the wallet loaded', () => {
     const way = find<HTMLAnchorElement>(control(host), 'a');
     expect(way.textContent).toBe(en.shell.signIn);
     await click(way);
-    for (let i = 0; i < 3; i += 1) await settle(10);
+    // the press loads the wallet: the live control, and the panel in the dialog's frame
+    await live(host);
+    await vi.waitFor(async () => {
+      await settle(5);
+      expect(document.querySelector('[role="dialog"] [data-ui="sign-in"]')).not.toBeNull();
+    });
     const dialog = document.querySelector<HTMLElement>('[role="dialog"]') as HTMLElement;
     const passkey = [...dialog.querySelectorAll('button')].find((b) =>
       b.textContent?.includes(en.signIn.passkey.continue),

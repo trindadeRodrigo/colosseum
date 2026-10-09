@@ -5,7 +5,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Composer } from '../../components/ui/Composer';
 import { WORKSPACE_TITLE } from '../../components/ui/heading';
-import { LatticeGlyph, LatticeStatus } from '../../components/ui/Lattice';
+import { LatticeGlyph } from '../../components/ui/Lattice';
 import { LatticeLoader } from '../../components/ui/Skeleton';
 import { useWaitPhase } from '../../components/ui/wait';
 import { dictionary, LOCALE } from '../../i18n';
@@ -383,10 +383,17 @@ export function GoalConversation({
           ))}
         </ol>
         {/* The page agrees with the bar: it waits while the bar's control waits, and asks for a
-            sign-in only once the bar offers one, through the same link. */}
+            sign-in only once the bar offers one, through the same link. The wait is said once, by
+            the bar's control: this line is read in place, and is no second announcement. */}
         {!ready &&
           (account === 'loading' ? (
-            <LatticeStatus label={copy.loadingAccount} className="self-start" />
+            <p
+              data-ui="goal-account-loading"
+              className="inline-flex items-center gap-3 self-start text-body-sm text-muted-foreground"
+            >
+              <LatticeGlyph />
+              <span>{copy.loadingAccount}</span>
+            </p>
           ) : (
             <p data-ui="goal-account" className="text-body-sm text-muted-foreground">
               {account === 'signed-in' ? copy.readingAccount : copy.signIn}

@@ -127,6 +127,19 @@ for (const [name, path] of [
     await page.clock.fastForward(30_000);
     const help = control(page).locator('[data-ui="sign-in-slow"]');
     await expect(help).toContainText(en.shell.slow.title);
+    // the whole help is inside the window, with a gutter, at the phone's width and at a desk's: on a
+    // phone the control sits left of where a panel hung from its right edge would fit
+    const panel = control(page).locator('[data-ui="account-help"]');
+    for (const width of [375, 320, 1440]) {
+      await page.setViewportSize({ width, height: 812 });
+      await expect
+        .poll(async () => {
+          const at = await panel.boundingBox();
+          return at !== null && at.x >= 8 && at.x + at.width <= width - 8;
+        }, `the help within a ${width}px window`)
+        .toBe(true);
+    }
+    await page.setViewportSize({ width: 375, height: 812 });
     await expect(help.getByRole('button', { name: en.shell.slow.again })).toBeVisible();
     await expect(help.getByRole('button', { name: en.shell.signOut })).toBeVisible();
     expect(await box.boundingBox()).toEqual(before);

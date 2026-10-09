@@ -93,8 +93,10 @@ describe.each(['en', 'pt'] as const)('a sign-in that is slow, in %s', (lang) => 
     server();
     portStore.set(walletsLoading());
     const host = await page(lang);
-    // a still box in the chip's shape, with nothing to press
+    // the chip's still boxes, in a button that says nothing of slowness: it opens the way out
     expect(frame(host).getAttribute('data-state')).toBe('loading');
+    expect(control(host).getAttribute('aria-busy')).toBe('true');
+    expect(control(host).textContent).toBe(t.shell.account);
     expect(find(host, '[data-ui="account-placeholder"]').getAttribute('data-shape')).toBe(
       'account',
     );
@@ -106,13 +108,15 @@ describe.each(['en', 'pt'] as const)('a sign-in that is slow, in %s', (lang) => 
     await later(SLOW_MS - 401);
     expect(said(host)).toBe(t.shell.accountLoading);
     expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
-    expect(frame(host).querySelectorAll('button, a')).toHaveLength(0);
+    // "Sign out" is there from the start, in the button's menu, with nothing else
+    await click(control(host));
+    expect(find(host, '[data-ui="account-menu"]').textContent).toBe(t.shell.signOut);
+    await click(control(host));
 
     await later(1);
     // the box is still the box; the help says which side, with "Try again" and "Sign out"
     expect(frame(host).getAttribute('data-state')).toBe('loading');
     expect(host.querySelector('[data-ui="account-placeholder"]')).not.toBeNull();
-    expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
     const help = find(host, SAID);
     expect(help.getAttribute('data-side')).toBe('wallets');
     expect(help.textContent).toContain(t.shell.slow.wallets);
@@ -120,7 +124,7 @@ describe.each(['en', 'pt'] as const)('a sign-in that is slow, in %s', (lang) => 
     expect(find(help, '[data-act="sign-out"]').textContent).toContain(t.shell.signOut);
     expect(said(host)).toBe(t.shell.slow.title);
     // slowness is no control's label, and the old words are nowhere
-    expect(labels(host)).toEqual([]);
+    expect(labels(host)).toEqual([t.shell.account]);
     expect(host.textContent).not.toMatch(/Sign-in is slow|O login está lento/);
     // nothing was asked again by itself
     expect(restarts.count).toBe(0);

@@ -341,37 +341,47 @@ describe('who is signed in, in the bar', () => {
     expect(find(control, '[data-ui="account-said"]').textContent).toBe('');
   });
 
-  it('always offers the way out to someone signed in whose wallets could not be made', async () => {
-    const signOut = vi.fn(async () => {
-      portStore.set(fakePort());
-    });
-    portStore.set(
-      fakePort({ status: 'loading', userId: 'did:privy:test', walletsOwed: 'failed', signOut }),
-    );
-    const host = await shell();
-    await settle();
-    // no address: there is no chain, and no wallet to show for one
-    expect(menuButton(host).textContent).toBe(en.account);
-    const menu = await openMenu(host);
-    expect(menu.textContent).toBe(en.signOut);
-    await click(find(menu, '[data-ui="sign-out"]'));
-    await settle();
-    expect(signOut).toHaveBeenCalledTimes(1);
-    expect(find(host, 'header a[href^="/sign-in"]').textContent).toBe(en.signIn);
-  });
+  it.each(['making', 'failed'] as const)(
+    'always offers the way out to someone signed in whose wallets are %s',
+    async (walletsOwed) => {
+      const signOut = vi.fn(async () => {
+        portStore.set(fakePort());
+      });
+      portStore.set(
+        fakePort({ status: 'loading', userId: 'did:privy:test', walletsOwed, signOut }),
+      );
+      const host = await shell();
+      await settle();
+      // no address: there is no chain, and no wallet to show for one; the name is "Your wallet"
+      const button = menuButton(host);
+      expect(button.textContent).toBe(en.account);
+      const menu = await openMenu(host);
+      expect(menu.textContent).toBe(en.signOut);
+      await click(find(menu, '[data-ui="sign-out"]'));
+      await settle();
+      expect(signOut).toHaveBeenCalledTimes(1);
+      expect(find(host, 'header a[href^="/sign-in"]').textContent).toBe(en.signIn);
+    },
+  );
 
-  it('keeps the loading look while the wallets of someone signed in are being made', async () => {
-    // a passing state, a few seconds: no "Your wallet" button that the chip then replaces. The way
-    // out while it lasts too long is in the help (features/account/slow-sign-in.events.test.ts)
+  it('keeps the loading look while the wallets of someone signed in are being made, with the way out in it', async () => {
+    // a passing state: no "Your wallet" label that the chip then replaces. The button shows the
+    // chip's still boxes, is named "Your wallet" for a screen reader, and opens "Sign out" at once
     portStore.set(fakePort({ status: 'loading', userId: 'did:privy:test', walletsOwed: 'making' }));
     const host = await shell();
     await settle();
     const control = find(host, '[data-ui="account-control"]');
     expect(control.getAttribute('data-state')).toBe('loading');
-    expect(find(control, '[data-ui="account-placeholder"]').getAttribute('data-shape')).toBe(
+    const button = menuButton(host);
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    expect(find(button, '[data-ui="account-placeholder"]').getAttribute('data-shape')).toBe(
       'account',
     );
-    expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
+    const label = document.getElementById(button.getAttribute('aria-labelledby') ?? '');
+    expect([label?.textContent, label?.className]).toEqual([en.account, 'sr-only']);
+    // the way out without waiting for the help
+    expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
+    expect((await openMenu(host)).textContent).toBe(en.signOut);
   });
 
   it('puts focus on "Sign in" after a sign-out, and tells a screen reader the person is out', async () => {
