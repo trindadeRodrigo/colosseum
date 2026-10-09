@@ -15,7 +15,7 @@ import {
 import { location, router } from '../../features/wallet/test/mock-next';
 import { portStore } from '../../features/wallet/test/mock-provider';
 import { dictionary, type Lang, type ThemeChoice } from '../../i18n';
-import { click, find, mount, press, settle, unmountAll } from '../ui/test/dom';
+import { click, find, hintOf, mount, press, settle, unmountAll } from '../ui/test/dom';
 import { hatchProblems } from '../ui/test/hatch';
 import { parse } from '../ui/test/html';
 import { remember } from './remember';
@@ -471,7 +471,9 @@ describe('the account control of someone signed in (Thom, Oct 6)', () => {
     // its copy is an icon on the same line, not a row of its own
     const copy = find(address.parentElement as HTMLElement, '[data-ui="copy-button"]');
     expect(copy.getAttribute('aria-label')).toBe(en.copyAddress);
-    expect(copy.getAttribute('title')).toContain(SOLANA);
+    // what it copies is said in the tooltip, on hover, focus or tap, and not in a native title
+    expect(await hintOf(copy, menuButton(host))).toContain(SOLANA);
+    expect(copy.getAttribute('title')).toBeNull();
     expect(copy.textContent).toBe('');
     const items = [...menu.querySelectorAll('button, a')].map(
       (el) => el.textContent || el.getAttribute('aria-label'),
@@ -513,7 +515,9 @@ describe('the account control of someone signed in (Thom, Oct 6)', () => {
       await settle();
       const menu = await openMenu(host);
       const copy = find(menu, '[data-ui="copy-button"]');
-      const said = () => (copy.nextElementSibling as HTMLElement).textContent;
+      // the button sits in its tooltip's wrapper; what was copied is announced after it
+      const status = () => find(menu, '[data-ui="hint"]:has([data-ui="copy-button"]) + *');
+      const said = () => status().textContent;
       const drawn = () =>
         [...copy.querySelectorAll('svg path')].map((path) => path.getAttribute('d')).join(' ');
       expect(copy.getAttribute('aria-label')).toBe(en.copyAddress);
@@ -523,7 +527,7 @@ describe('the account control of someone signed in (Thom, Oct 6)', () => {
       await settle();
       // the whole address, never the short one on screen
       expect(writeText).toHaveBeenCalledWith(SOLANA);
-      expect(copy.nextElementSibling?.getAttribute('role')).toBe('status');
+      expect(status().getAttribute('role')).toBe('status');
       expect(said()).toBe(en.copied);
       // the copy icon turns into the tick
       expect(drawn()).not.toBe(before);

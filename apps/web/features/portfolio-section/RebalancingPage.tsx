@@ -5,6 +5,7 @@ import { buttonClass } from '../../components/ui/button-class';
 import { Card } from '../../components/ui/Card';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { shorten } from '../../components/ui/format';
+import { Hint } from '../../components/ui/Hint';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { type PlansAnswer, planIn, type RebalancesAnswer } from './api';
 import { REBALANCES_ASKED, usePortfolioSection } from './PortfolioProvider';
@@ -145,12 +146,10 @@ function VaultSteps({ group, plans }: { group: StepGroup; plans: PlansAnswer | n
           ))}
           {/* A vault the plans do not name is told from another by its address. */}
           {vault !== null && !found && (
-            <p
-              data-ui="vault-address"
-              title={vault}
-              className="font-mono text-source text-muted-foreground"
-            >
-              {shorten(vault)}
+            <p data-ui="vault-address" className="font-mono text-source text-muted-foreground">
+              <Hint tip={<span className="font-mono text-source break-all">{vault}</span>}>
+                {shorten(vault)}
+              </Hint>
             </p>
           )}
           {vault === null && (

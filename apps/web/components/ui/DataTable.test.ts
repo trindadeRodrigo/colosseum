@@ -163,7 +163,9 @@ describe('ExecutionList and ExplorerLink (data-table.md)', () => {
   it('says a failure in words with its shape, says it was not retried, and offers no retry', () => {
     expect(text(failed as never)).toContain('failed: slippage exceeded (not retried)');
     expect(all(failed as never, ui('status-mark'))[0]?.attrs['data-status']).toBe('off-track');
-    const buttons = all(root, tag('button'));
+    // the only buttons copy a signature, or open the tooltip that shows one whole
+    const buttons = all(root, tag('button')).filter((b) => b.attrs['data-ui'] !== 'hint-trigger');
+    expect(buttons.length).toBeGreaterThan(0);
     for (const b of buttons) expect(b.attrs['aria-label']).toMatch(/^Copy /);
   });
 

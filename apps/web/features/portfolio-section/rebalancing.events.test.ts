@@ -2,7 +2,15 @@
 import { PortfolioRebalancesResponse, type Provenance } from '@colosseum/schemas';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
+import {
+  click,
+  find,
+  hintOf,
+  mount,
+  pinLine,
+  settle,
+  unmountAll,
+} from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary, type Lang } from '../../i18n';
@@ -185,7 +193,9 @@ describe('the rebalancing page, for a person with steps on two chains', () => {
     const at = '2026-10-05T09:29:41.000Z';
     // the person's own time, saying which zone, and what kind of time it is
     expect(part(s, 'step-when')).toBe(`${when(at)} · ${words.when.built}`);
-    expect(find(s, '[data-ui="step-when"] time').getAttribute('title')).toBe(utc('en', at));
+    // the same instant in UTC is one hover, focus or tap away, and no native title says it
+    expect(await hintOf(find(s, '[data-ui="step-when"] time'))).toBe(utc('en', at));
+    expect(s.querySelector('[title]')).toBeNull();
     // whose it is and how it ended: a word and a shape each, neither by colour alone
     const by = find(s, '[data-ui="step-by"]');
     expect(text(by)).toBe('Your step');
@@ -237,8 +247,7 @@ describe('the rebalancing page, for a person with steps on two chains', () => {
     const [usdy] = trades(s) as [Element];
     for (const id of ['put', 'quoted']) {
       const figure = find(row(usdy, id), '[data-ui="figure"]');
-      await click(find(figure, 'button[data-ui="pin"]'));
-      expect(text(find(figure, '[data-ui="pin-source"]'))).toContain(
+      expect(await pinLine(figure)).toContain(
         `${entry?.source} · 2026-10-05T09:29:40Z · ${entry?.method}`,
       );
     }
@@ -344,8 +353,7 @@ describe('the rebalancing page, for a person with steps on two chains', () => {
     expect(trade.querySelector('[data-ui="trade-no-units"]')).toBeNull();
     expect(pins(trade)).toHaveLength(2);
     const figure = find(row(trade, 'held-after'), '[data-ui="figure"]');
-    await click(find(figure, 'button[data-ui="pin"]'));
-    const source = text(find(figure, '[data-ui="pin-source"]'));
+    const source = await pinLine(figure);
     expect(source).toContain(
       `${KEEPER_SPYX.source} · 2026-10-06T15:30:00Z · worked out from two snapshots`,
     );
@@ -427,11 +435,12 @@ describe('the rebalancing page, for a person with steps on two chains', () => {
     const link = find(note, 'a');
     expect(link.getAttribute('href')).toBe('/portfolio/methodology');
     expect(link.textContent).toBe(words.note.more);
-    // nothing on the page signs: the only buttons are the pins and "Read again"
+    // nothing on the page signs: the only buttons are the pins, the words that open a tooltip (a
+    // time's UTC, a whole address) and "Read again"
     expect(host.querySelector('[data-variant="primary"]')).toBeNull();
     expect(
       host.querySelectorAll(
-        'button:not([aria-label^="Source for"]):not([data-action="read-again"])',
+        'button:not([aria-label^="Source for"]):not([data-ui="hint-trigger"]):not([data-action="read-again"])',
       ),
     ).toHaveLength(0);
   });
@@ -531,7 +540,7 @@ describe('the figures of the rebalancing page', () => {
     const g = group(host, SOL_GROW);
     expect(text(find(g, 'h2'))).toBe('Your vault on Solana');
     expect(part(g, 'vault-address')).toBe('EPjF…kGDw');
-    expect(find(g, '[data-ui="vault-address"]').getAttribute('title')).toBe(SOL_GROW);
+    expect(await hintOf(find(g, '[data-ui="vault-address"]'))).toBe(SOL_GROW);
     expect(text(find(group(host, RH_SILENT), 'h2'))).toBe('Your vault on Robinhood Chain');
     expect(find(g, 'header a').getAttribute('href')).toBe(`/portfolio/plan/solana/${SOL_GROW}`);
     // still not live: the steps' own labels say so

@@ -36,13 +36,7 @@ export function ChainsSide() {
   const res = useAnswer(() => reader.get<ChainsBody>(R.chains(TAU)), [reader]);
   const cell = (row: Row, f: ChainFigure, fmt: (v: number) => string) =>
     f.value == null ? (
-      <span
-        data-ui="bearing-reason"
-        title={f.nullReason}
-        className="font-sans text-caption text-muted-foreground"
-      >
-        {t.reasons.not_collected}
-      </span>
+      <Reason code="not_collected" whyCode={f.nullReason} />
     ) : (
       <Fig f={fact(f)} fmt={fmt} chain={row.chain} />
     );

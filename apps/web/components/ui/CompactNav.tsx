@@ -12,6 +12,7 @@ import {
 import { Button } from './Button';
 import { buttonClass } from './button-class';
 import { cn } from './cn';
+import { Hint } from './Hint';
 import { Icon } from './Icon';
 import { COMPACT_NAV_LABELS, type CompactNavLabels } from './labels';
 
@@ -267,18 +268,19 @@ export function CompactNav({
               {link.label}
             </A>
           ))}
-          <button
-            ref={menu}
-            type="button"
-            aria-label={text.menu}
-            title={text.menu}
-            aria-expanded={open}
-            aria-controls={sheet}
-            onClick={() => setOpen((was) => !was)}
-            className={cn(buttonClass({ variant: 'icon' }), 'min-[820px]:hidden')}
-          >
-            <Icon name={open ? 'X' : 'Menu'} />
-          </button>
+          <Hint tip={text.menu} className="min-[820px]:hidden">
+            <button
+              ref={menu}
+              type="button"
+              aria-label={text.menu}
+              aria-expanded={open}
+              aria-controls={sheet}
+              onClick={() => setOpen((was) => !was)}
+              className={cn(buttonClass({ variant: 'icon' }), 'min-[820px]:hidden')}
+            >
+              <Icon name={open ? 'X' : 'Menu'} />
+            </button>
+          </Hint>
           {action ??
             (cta && (
               <Button variant="primary" href={cta.href} className="ml-2 whitespace-nowrap">

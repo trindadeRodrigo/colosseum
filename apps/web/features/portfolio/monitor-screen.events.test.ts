@@ -3,7 +3,7 @@ import { DISCLAIMER, DISCLAIMER_SHORT } from '@colosseum/schemas';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CHAIN_NAMES } from '../../components/ui/ChainBadge';
-import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
+import { click, find, hintOf, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary, type Lang } from '../../i18n';
@@ -268,7 +268,7 @@ describe('the monitor, for a person with a vault on their chain', () => {
     ]);
     // and the address in the head leads to the vault's own page
     const page = `/vaults/solana/${VAULT}`;
-    expect(find(card, `a[title="${VAULT}"]`).getAttribute('href')).toBe(page);
+    expect(find(card, '[data-ui="vault-page-link"]').getAttribute('href')).toBe(page);
     expect(find(details, 'a').getAttribute('href')).toBe(page);
   });
 
@@ -670,8 +670,10 @@ it('shows a person only the answer read for them, when another signs in while a 
   );
   await settle();
   expect(vaults(host)).toHaveLength(1);
-  expect(host.querySelector(`[title="${SECOND_VAULT}"]`)).not.toBeNull();
-  expect(host.querySelector(`[title="${VAULT}"]`)).toBeNull();
+  const pages = [...host.querySelectorAll('[data-ui="vault-page-link"]')].map((link) =>
+    link.getAttribute('href'),
+  );
+  expect(pages).toEqual([`/vaults/solana/${SECOND_VAULT}`]);
 });
 
 describe('the throwaway wallet of development', () => {
@@ -1305,8 +1307,11 @@ it('names the vault by its address, cut, with the whole of it kept for whoever a
   api({ person: onSolana });
   signIn();
   const host = await screen();
-  const meta = find(host, `[title="${VAULT}"]`);
+  const meta = find(host, '[data-ui="vault-page-link"]');
   expect(meta.textContent).toContain('EPjF…kGDw');
+  // the whole of it is one hover, focus or tap away, in the tooltip and not in a native title
+  expect(await hintOf(meta)).toBe(VAULT);
+  expect(meta.getAttribute('title')).toBeNull();
 });
 
 describe('the chain of each vault', () => {
@@ -1585,7 +1590,7 @@ describe('the way from a vault to its own page (flow audit, 34)', () => {
       expect(link.getAttribute('aria-label')).toBe(
         dictionary(lang).portfolio.vault.page(link.textContent ?? ''),
       );
-      expect(link.getAttribute('title')).toBe(VAULT);
+      expect(await hintOf(link)).toBe(VAULT);
     },
   );
 });

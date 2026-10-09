@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { type ReactNode, useState } from 'react';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { cn } from '../../components/ui/cn';
+import { Hint } from '../../components/ui/Hint';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import type { PinSource } from '../../components/ui/provenance';
@@ -281,13 +282,12 @@ function Modes({
     <div role="group" aria-label={label} data-ui="chart-modes" className="flex items-center gap-2">
       {options.map((o) => {
         const on = o.id === value;
-        return (
+        const button = (
           <button
             key={o.id}
             type="button"
             aria-pressed={on}
             aria-label={o.label}
-            title={o.label}
             onClick={() => onChange(o.id)}
             className={cn(
               'inline-flex h-9 cursor-pointer items-center justify-center rounded-full text-body-sm font-medium transition-colors',
@@ -300,6 +300,14 @@ function Modes({
             {o.icon}
             {on && <span aria-hidden="true">{o.label}</span>}
           </button>
+        );
+        // The chosen mode shows its word; the others are an icon, whose word is one hover or focus away.
+        return on ? (
+          button
+        ) : (
+          <Hint key={o.id} tip={o.label}>
+            {button}
+          </Hint>
         );
       })}
     </div>
@@ -545,9 +553,13 @@ function Figures({
               </Figure>
               {best && bestName && (
                 <Figure ui="board-best" label={words.best}>
-                  <span className="block truncate text-body-sm font-normal" title={bestName}>
+                  <Hint
+                    tip={bestName}
+                    className="flex min-w-0"
+                    triggerClassName="truncate text-body-sm font-normal"
+                  >
                     {bestName}
-                  </span>
+                  </Hint>
                   <ProvenancePin
                     value={signed(lang, best.pnlUsd)}
                     obs={total ? { ...total.obs, method: words.periodMethod } : null}
