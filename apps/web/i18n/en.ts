@@ -85,7 +85,7 @@ export const en = {
   },
 
   signIn: {
-    title: 'Sign in with a wallet that is yours.',
+    title: 'Sign in with a wallet that is yours',
     /** One sentence, then the choices (Thom, Oct 9). */
     lead: 'Use a passkey, or a wallet you already have.',
     loading: 'Loading sign-in…',
@@ -205,7 +205,7 @@ export const en = {
         'That didn’t work, and I can’t tell why. Try again. If it keeps happening, tell us what you were doing.',
     },
     done: {
-      title: 'You’re signed in.',
+      title: 'You’re signed in',
       noWallet: 'No wallet of yours is connected in this browser.',
       next: 'Go to your goal',
       retryWallet: 'Make my wallet',
