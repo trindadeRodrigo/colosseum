@@ -170,7 +170,7 @@ What agents can't do, and what therefore sets the pace: funding and testing real
 - Shared portfolios are in, with serious assets only at launch.
 - Solana and Robinhood Chain first; Base follows if there is time (Oct 2).
 - A plan lives on one chain: the chain of the wallet the person created or connected when signing in. The product proposes only what exists on that chain, and the deposit, the vault and every trade of the plan are there. A plan is never split across chains. A shared portfolio may be published on more than one chain, and a person gets the recipe of their own (Oct 3).
-- Someone who creates a wallet in the app picks its chain at that moment (Oct 3). Since Oct 6 the chain is the person's current chain and can be switched from the header; each plan stays on the chain it was made on (gate `CHAIN-SWITCH`).
+- Someone who creates a wallet in the app picks its chain at that moment (Oct 3). Since Oct 6 the chain is the person's current chain; since Oct 9 it is chosen on the page where a plan starts, lists show both chains, and nothing else follows it (gate `CHAIN-AT-THE-PLAN`). Each plan stays on the chain it was made on (gate `CHAIN-SWITCH`).
 - What an asset may weigh comes from Bearing's measured exit numbers: the cap per asset on chain, the ceiling per line in a plan and the exit cost shown. The tiers on the asset list rest on price impact alone; they are a fallback where nothing is measured, and are labelled as such (Oct 3).
 - A plan whose goal is to protect holds no stock tokens: dollar yield, gold and cash only. Income plans hold none either, and growth plans are unchanged. The asset registry's eligibility enforces it (Oct 3).
 - Wallet connect or a passkey wallet (Privy).
