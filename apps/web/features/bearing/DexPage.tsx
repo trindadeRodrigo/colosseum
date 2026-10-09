@@ -5,12 +5,12 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { type Column, DataTable } from '../../components/ui/DataTable';
 import { DistChart } from '../../components/ui/DistChart';
 import { Sparkline, sparkable } from '../../components/ui/Sparkline';
-import { type ChartRange, Segmented, TimeChart } from '../../components/ui/TimeChart';
+import { ChartHead, type ChartRange, Segmented, TimeChart } from '../../components/ui/TimeChart';
 import type { BearingDictionary } from '../../i18n/bearing';
 import { type Base, useAnswer, useBearing } from './BearingProvider';
 import { ChainsSide } from './ChainsSide';
 import { type BearingChain, onChain } from './chain';
-import { R } from './data';
+import { gate, inPool, notKept, R, type Reader, type Res } from './data';
 import {
   assetVol,
   COMMODITIES,
@@ -26,7 +26,6 @@ import {
   poolsOf,
   tvlSeries,
 } from './dex';
-import type { Fact } from './fact';
 import { type Fmt, iso } from './format';
 import { HeatTile } from './HeatTile';
 import {
@@ -446,6 +445,65 @@ function CapacityChart({
   );
 }
 
+/**
+ * How many pool histories the page asks for at once. Each makes the API read and decode every
+ * recording of its pool before it answers anything else: a few at a time, never a whole selection.
+ */
+export const HISTORIES_AT_ONCE = 4;
+
+/**
+ * One gate for each reader's histories. A selection that was left lets the reads it has out finish,
+ * and the selection that took its place reads through the same gate: the two together never have
+ * more than the bound out.
+ */
+const gates = new WeakMap<Reader, ReturnType<typeof gate>>();
+function gateOf(reader: Reader) {
+  let g = gates.get(reader);
+  if (!g) {
+    g = gate(HISTORIES_AT_ONCE);
+    gates.set(reader, g);
+  }
+  return g;
+}
+
+/** The histories of a selection's pools, each in its pool's place: nothing where one has not come. */
+type Histories = ReadonlyArray<Res<LiqHistBody> | undefined>;
+
+/**
+ * The value history of each of these pools, in their order, a few at a time. `came` is told what has
+ * come after each one, so the page draws before the last. Once `stop` says the selection was left,
+ * no further history is asked for and `came` hears no more; the reads already out are let finish
+ * (the reader shares a read in flight with whoever asks for the same route, so none is cut short).
+ *
+ * A history that did not come (no answer, or the server's own error) is asked for once more before
+ * it stands as a read that failed: the reader keeps no such answer, so the second read asks the API.
+ */
+async function histories(
+  reader: Reader,
+  pools: readonly Pool[],
+  stop?: () => boolean,
+  came?: (hs: Histories) => void,
+) {
+  const hs: Array<Res<LiqHistBody> | undefined> = pools.map(() => undefined);
+  const turn = gateOf(reader);
+  await inPool(
+    [...pools.keys()],
+    HISTORIES_AT_ONCE,
+    (i) =>
+      turn(async () => {
+        // its turn at the gate may come after the selection was left
+        if (stop?.()) return;
+        const path = R.liqHist((pools[i] as Pool).address);
+        let h = await reader.get<LiqHistBody>(path);
+        if (notKept(h) && !stop?.()) h = await reader.get<LiqHistBody>(path);
+        hs[i] = h;
+        if (!stop?.()) came?.([...hs]);
+      }),
+    stop,
+  );
+  return hs;
+}
+
 function TvlChart({
   pools,
   b,
@@ -469,12 +527,16 @@ function TvlChart({
   const say = useReason();
   const t = all.dex.tvl;
   const rec = pools.filter((p) => b.recorded.has(p.address));
-  const key = rec.map((p) => p.address).join(',');
-  const hs = useAnswer(
-    () =>
-      rec.length
-        ? Promise.all(rec.map((p) => reader.get<LiqHistBody>(R.liqHist(p.address))))
-        : null,
+  // A pool whose quote token has no measured way to dollars has no dollar value in any recording,
+  // and its registry row says so: its history is not asked for.
+  const read = rec.filter((p) => p.exitPath !== 'other');
+  const key = read.map((p) => p.address).join(',');
+  // What has come of the histories asked for, and for which selection: the chart draws with it
+  // while the rest are read.
+  const [part, setPart] = useState<{ key: string; reader: Reader; hs: Histories } | null>(null);
+  const whole = useAnswer(
+    (left) =>
+      read.length ? histories(reader, read, left, (hs) => setPart({ key, reader, hs })) : null,
     [key, reader],
   );
   if (!rec.length)
@@ -483,11 +545,43 @@ function TvlChart({
         {say('not_collected')}: {t.none}
       </EmptyChart>
     );
-  if (!hs) return <Loading>{t.reading(rec.length)}</Loading>;
-  const n = rec.length;
-  const s = tvlSeries(hs, n, t.partial, fm.usd1);
-  const recTvl = rec.reduce((a, p) => a + (p.tvlUsd || 0), 0);
-  const share = tvl ? recTvl / tvl : null;
+  const hs: Histories = whole ?? (part?.key === key && part.reader === reader ? part.hs : []);
+  // each history that has come, with its pool, in the pools' order; `out` are still being read
+  const have = read.flatMap((p, i) => {
+    const h = hs[i];
+    return h ? [{ p, h }] : [];
+  });
+  const out = read.length - have.length;
+  // The sum of what has come. With histories still out it is theirs alone: a lower bound that says
+  // how many pools it holds, as any sum a pool short does.
+  const s = tvlSeries(
+    have.map((x) => x.h),
+    rec.length,
+    t.partial,
+    fm.usd1,
+    rec.length - read.length,
+  );
+  // Nothing to draw yet. The selector keeps its place, and why a sum has no figure is not said
+  // before the last history has come.
+  if (out && s.fact.value == null)
+    return (
+      <>
+        <ChartHead title={t.recorded} tools={tools} />
+        <Loading>{t.reading(out)}</Loading>
+      </>
+    );
+  // the note counts what the figure holds: its pools, and their part of the selection's TVL
+  const summed = have.filter((_, i) => s.inSum[i]).map((x) => x.p);
+  const share = tvl && summed.length ? summed.reduce((a, p) => a + (p.tvlUsd || 0), 0) / tvl : null;
+  const note = t.note(
+    summed.length,
+    pools.length,
+    share != null ? fm.pct(share) : null,
+    s.noUsd,
+    s.failed,
+    s.failedWhy ? say(s.failedWhy) : '',
+    s.behind,
+  );
   return (
     <TimeChart
       {...chartPin(s.fact)}
@@ -496,7 +590,20 @@ function TvlChart({
       locale={fm.locale}
       tools={tools}
       value={<Fig f={s.fact} fmt={fm.usd1} />}
-      note={t.note(n, pools.length, share != null ? fm.pct(share) : null)}
+      note={
+        out ? (
+          <>
+            {/* how many histories are still being read, above what the sum holds so far */}
+            <p data-ui="bearing-reading" className="text-foreground">
+              {t.reading(out)}
+            </p>
+            {note}
+          </>
+        ) : (
+          note
+        )
+      }
+      busy={out > 0}
       ranges={RANGES}
       range={range}
       onRange={setRange}
@@ -517,7 +624,7 @@ function TvlChart({
       ]}
       aria={t.aria}
       src={<SrcLine f={s.fact} what={t.src} />}
-      empty={<Reason code="not_collected" />}
+      empty={<Reason code={s.fact.reason ?? 'not_collected'} />}
     />
   );
 }
@@ -558,6 +665,8 @@ function LiquidityChart({
         {say('not_applicable')}: {t.none}
       </EmptyChart>
     );
+  // the dollars the pool holds, or the reason the answer has none (never a measured $0)
+  const total = res?.ok ? liquidityTotal(res.body) : null;
   let body: ReactNode;
   if (!res) body = <Loading>{t.reading}</Loading>;
   else if (!res.ok)
@@ -572,9 +681,16 @@ function LiquidityChart({
         <Reason code={res.body.reason ?? 'not_collected'} />
       </EmptyChart>
     );
+  else if (total?.value == null)
+    // no dollar figure (the quote token has no price in dollars): the bands are drawn in dollars, so
+    // the page says the reason in their place, as it does for any fact it does not have
+    body = (
+      <EmptyChart title={t.both}>
+        <Fig f={total} fmt={fm.usd1} />
+      </EmptyChart>
+    );
   else {
     const d = res.body;
-    const total: Fact = liquidityTotal(d);
     const when =
       d.basis === 'recorded'
         ? t.recordedAt(fm.minute(d.fetchedAt))

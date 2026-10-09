@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { multipleAccounts, RISK_HOME } from './lib-lending';
 import { rpcStats } from './lib-pools';
 import { readSplitCapture, SOL, saveCapture, selectSplitPools } from './lib-split';
+import { selectRawArrayPools } from './raw-arrays/lib';
 import solanaList from './universe/solana.json';
 
 // PLAN-UNIVERSE RU.11 — `pnpm risk:split-capture <out.json.gz> [--two-hop] [--only SYMBOL,…]`: freezes what one split
@@ -15,16 +16,24 @@ import solanaList from './universe/solana.json';
 // that stock's dollar and SOL pools: a small file for a fixture. The file records the stocks named (`only`): the
 // partners it pulls in come with part of their stock-to-stock pools, so two hops are measured for the named stocks
 // only.
+// `--raw-arrays` (PLAN-UNIVERSE RU.12) freezes what the raw-arrays job reads instead: every concentrated-liquidity
+// pool of the tracked stocks that the pool collector does not record itself, whatever its exit path, with `--only`
+// keeping the pools filed under the stocks named. It is the same file kind, its pools in `direct`; it cannot be
+// combined with two hops.
 const USAGE =
-  'usage: split-capture.ts <out.json.gz> [--two-hop] [--only SYMBOL,…] (RISK_SPLIT_TWO_HOP=1 in place of --two-hop)';
+  'usage: split-capture.ts <out.json.gz> [--two-hop | --raw-arrays] [--only SYMBOL,…] (RISK_SPLIT_TWO_HOP=1 in place of --two-hop)';
 const args = process.argv.slice(2);
 // an option it does not know, or --only given twice, is a mistake in the command, not something to pass over
 if (
-  args.some((a) => a.startsWith('--') && a !== '--two-hop' && a !== '--only') ||
+  args.some(
+    (a) => a.startsWith('--') && a !== '--two-hop' && a !== '--only' && a !== '--raw-arrays',
+  ) ||
   args.filter((a) => a === '--only').length > 1
 )
   throw new Error(USAGE);
 const twoHop = args.includes('--two-hop') || process.env.RISK_SPLIT_TWO_HOP === '1';
+const rawArrays = args.includes('--raw-arrays');
+if (rawArrays && twoHop) throw new Error(USAGE);
 const onlyAt = args.indexOf('--only');
 const onlyValue = onlyAt >= 0 ? (args[onlyAt + 1] ?? '') : null;
 const only =
@@ -46,7 +55,16 @@ const cache = JSON.parse(readFileSync(join(RISK_HOME, 'cache.json'), 'utf8')) as
 };
 const tracked = twoHop ? solanaList.assets.map((a) => a.address) : [];
 let sel = selectSplitPools(reg.pools, { twoHop, tracked: new Set(tracked) });
-if (only) {
+if (rawArrays) {
+  const raw = selectRawArrayPools(reg.pools, {
+    tracked: new Set(solanaList.assets.map((a) => a.address)),
+  });
+  sel = {
+    direct: raw.read.filter((p) => !only || only.has(p.assetSymbol)),
+    twoHop: [],
+    listed: null,
+  };
+} else if (only) {
   const pairs = sel.twoHop.filter((p) => only.has(p.assetSymbol) || only.has(p.quoteSymbol ?? ''));
   const partners = new Set(pairs.flatMap((p) => [p.assetMint, p.quoteMint]));
   sel = {
@@ -83,6 +101,7 @@ console.log(
     file: out,
     fetchedAt: capture.fetchedAt,
     twoHop,
+    rawArrays,
     only: capture.only ?? null,
     directPools: capture.direct.length,
     twoHopPools: capture.twoHopPools.length,

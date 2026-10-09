@@ -1,5 +1,5 @@
 import type { Res } from './data';
-import { type Fact, has, maxT, mk, none, sumFact } from './fact';
+import { type Fact, has, maxT, mk, none, provenanceOf, sumFact } from './fact';
 import { num, pct, type Regime, RW, short, usd1, venueW } from './format';
 import type {
   AssetRow,
@@ -247,89 +247,163 @@ export function capacitySeries(
 }
 
 /**
- * The value held by the recorded pools, hour by hour. A pool not recorded in an hour keeps its last
- * value for up to 6 h, so the sum does not jump with the set recorded that hour; an hour still short
- * of a pool is a lower bound.
- */
-export function tvlSeries(
-  hs: ReadonlyArray<Res<LiqHistBody>>,
-  n: number,
-  partial: PartialW = (k, of) => `(${k} of ${of} pools)`,
-  money: (v: number) => string = usd1,
-) {
-  const CARRY = 6 * HOUR;
-  let src: LiqHistBody | null = null;
-  let last: string | null | undefined = null;
-  let t0 = Number.POSITIVE_INFINITY;
-  let t1 = Number.NEGATIVE_INFINITY;
-  const series: Array<Array<{ t: number; v: number; a: number }>> = [];
-  for (const h of hs) {
-    if (!h.ok) continue;
-    src ??= h.body;
-    const ps = (h.body.points ?? [])
-      .filter((q) => q.valueUsd != null)
-      .map((q) => ({ t: hourOf(q.t), v: q.valueUsd as number, a: q.assetUsd ?? 0 }));
-    for (const q of ps) {
-      t0 = Math.min(t0, q.t);
-      t1 = Math.max(t1, q.t);
-    }
-    if (ps.length) last = maxT(last, h.body.to);
-    series.push(ps);
-  }
-  const pts: Array<{ t: number; v: number; a: number; k: number }> = [];
-  for (let t = t0; t <= t1; t += HOUR) {
-    const o = { t, v: 0, a: 0, k: 0 };
-    for (const ps of series) {
-      let q: { t: number; v: number; a: number } | null = null;
-      for (let i = ps.length - 1; i >= 0; i--)
-        if ((ps[i] as { t: number }).t <= t) {
-          q = ps[i] as { t: number; v: number; a: number };
-          break;
-        }
-      if (q && t - q.t <= CARRY) {
-        o.v += q.v;
-        o.a += q.a;
-        o.k++;
-      }
-    }
-    pts.push(o);
-  }
-  const lp = pts.filter((q) => q.k).pop();
-  const fact: Fact =
-    lp && src
-      ? mk(lp.v, {
-          quality: lp.k < n ? 'lower_bound' : 'measured',
-          source: src.source,
-          fetchedAt: last,
-          method: `summed over ${lp.k} of ${n} recorded pools in the selection, each at its newest recording within 6 h; ${src.method}`,
-          methodVersion: src.methodVersion,
-        })
-      : none('not_collected');
-  const value: TPoint[] = pts.map((q) => ({
-    t: q.t,
-    v: q.k ? q.v : null,
-    show: q.k ? `${money(q.v)}${q.k < n ? ` ${partial(q.k, n)}` : ''}` : null,
-  }));
-  const held: TPoint[] = pts.map((q) => ({ t: q.t, v: q.k ? q.a : null }));
-  return { fact, value, held };
-}
-
-/**
  * The dollars in a pool's liquidity chart: both sides, or no figure. A side with no dollar figure
- * (the quote token has no dollar price) is never a zero, and half a pool is not shown as the pool.
+ * (the quote token has no price in dollars) is never a zero, and half a pool is not shown as the
+ * pool. The reason is the API's own where it names one (`no_quote_price`); an answer that names
+ * none is `no_reference_price`.
  */
 export function liquidityTotal(d: LiquidityBody): Fact {
-  const a = d.totalAssetUsd;
-  const q = d.totalQuoteUsd;
-  if (a == null || q == null)
-    return none('no_reference_price', "the pool's quote token has no dollar price");
-  return mk(a + q, {
+  if (d.totalAssetUsd == null || d.totalQuoteUsd == null)
+    return d.usdNullReason
+      ? none(d.usdNullReason)
+      : none('no_reference_price', "the pool's quote token has no dollar price");
+  return mk(d.totalAssetUsd + d.totalQuoteUsd, {
     source: d.source,
     fetchedAt: d.fetchedAt,
     method: d.method,
     methodVersion: d.methodVersion,
     provenance: d.provenance,
   });
+}
+
+/** Each distinct text once, in the order met. */
+const each = (texts: ReadonlyArray<string | null | undefined>) => [
+  ...new Set(texts.filter((s): s is string => !!s)),
+];
+
+/** The sources of a sum: each distinct one, and one that another already names is not named twice. */
+export function sourcesOf(texts: ReadonlyArray<string | null | undefined>): string {
+  const all = each(texts);
+  return all.filter((s) => !all.some((o) => o !== s && o.includes(s))).join('; ');
+}
+
+/** The API's reason for a recording with no dollar value: its quote token has no price in dollars. */
+const NO_QUOTE_PRICE = 'no_quote_price';
+
+/**
+ * The value held by the recorded pools, hour by hour. A pool not recorded in an hour keeps its last
+ * value for up to 6 h, so the sum does not jump with the set recorded that hour; an hour still short
+ * of a pool is a lower bound. A recording with no dollar value (its quote token has no price) adds
+ * nothing and counts as a pool short, never as $0. The sum's source and method are those of every
+ * history that adds to it in any hour, each distinct one named: the pools need not have been
+ * recorded by the same job. Its provenance is theirs too: live only when every one of them is.
+ *
+ * `n` is every recorded pool of the selection. `unpriced` of them have no history here: the registry
+ * says their quote token has no way to dollars, so no recording of theirs can add a dollar and none
+ * was read. While the others are still being read `hs` holds those that have come: the sum is then
+ * theirs alone, a lower bound like any sum a pool short.
+ *
+ * `inSum` says, history by history, which are counted in the hour the figure is taken from, the
+ * newest with a value: a history whose newest recording is more than 6 h behind that hour is drawn
+ * where it has recordings and is not in the figure. `noUsd` counts the recorded pools with no price
+ * in dollars, those left unread and those whose every recording read says so. `failed` counts the
+ * histories that did not load, and `failedWhy` is the first one's reason. `behind` counts the histories
+ * read that are neither in the figure nor without a price: no recording of theirs counts in the figure's
+ * hour (the newest is more than 6 h before it, or the window holds none). With `inSum`, `noUsd` and
+ * `failed`, every recorded pool of the selection is in exactly one count.
+ */
+export function tvlSeries(
+  hs: ReadonlyArray<Res<LiqHistBody>>,
+  n: number,
+  partial: PartialW = (k, of) => `(${k} of ${of} pools)`,
+  money: (v: number) => string = usd1,
+  unpriced = 0,
+) {
+  const CARRY = 6 * HOUR;
+  type P = { t: number; v: number; a: number | null };
+  const summed: LiqHistBody[] = [];
+  // why a history read adds nothing: its newest recording's reason, null where it gives none
+  const whys: Array<string | null> = [];
+  let failed = 0;
+  let failedWhy: string | null = null;
+  let last: string | null | undefined = null;
+  let t0 = Number.POSITIVE_INFINITY;
+  let t1 = Number.NEGATIVE_INFINITY;
+  // one series for each history, in their order: a read that failed is an empty one
+  const series: P[][] = [];
+  for (const h of hs) {
+    if (!h.ok) {
+      failed++;
+      failedWhy ??= h.reason;
+      series.push([]);
+      continue;
+    }
+    const all = h.body.points ?? [];
+    const ps: P[] = all
+      .filter((q) => q.valueUsd != null)
+      .map((q) => ({ t: hourOf(q.t), v: q.valueUsd as number, a: q.assetUsd ?? null }));
+    for (const q of ps) {
+      t0 = Math.min(t0, q.t);
+      t1 = Math.max(t1, q.t);
+    }
+    if (ps.length) {
+      last = maxT(last, h.body.to);
+      summed.push(h.body);
+    } else whys.push(all[all.length - 1]?.usdNullReason ?? null);
+    series.push(ps);
+  }
+  // With nothing in the sum, why. A read that failed is its own reason: what that pool holds is not
+  // known, so no other pool's reason speaks for the selection. The recordings' reason stands only
+  // when every history read gives the same one, and the pools left unread have that one too.
+  const reasons = new Set(whys);
+  if (unpriced) reasons.add(NO_QUOTE_PRICE);
+  const why = failedWhy ?? (reasons.size === 1 ? [...reasons][0] : null) ?? 'not_collected';
+  const pts: Array<{ t: number; v: number; a: number; k: number; ka: number }> = [];
+  // Each series is walked once, forward, as the hours go by (a history's points come oldest first):
+  // `at` is its newest point at or before the hour, `counted` the last hour it was counted in.
+  const at = series.map(() => -1);
+  const counted = series.map(() => Number.NaN);
+  for (let t = t0; t <= t1; t += HOUR) {
+    const o = { t, v: 0, a: 0, k: 0, ka: 0 };
+    for (let s = 0; s < series.length; s++) {
+      const ps = series[s] as P[];
+      let i = at[s] as number;
+      while ((ps[i + 1]?.t ?? Number.POSITIVE_INFINITY) <= t) i++;
+      at[s] = i;
+      const q = ps[i];
+      if (q && t - q.t <= CARRY) {
+        o.v += q.v;
+        o.k++;
+        if (q.a != null) {
+          o.a += q.a;
+          o.ka++;
+        }
+        counted[s] = t;
+      }
+    }
+    pts.push(o);
+  }
+  const lp = pts.filter((q) => q.k).pop();
+  const methods = each(summed.map((s) => s.method));
+  const fact: Fact =
+    lp && summed.length
+      ? mk(lp.v, {
+          quality: lp.k < n ? 'lower_bound' : 'measured',
+          source: sourcesOf(summed.map((s) => s.source)),
+          fetchedAt: last,
+          method: `summed over ${lp.k} of ${n} recorded pools in the selection, each at its newest recording within 6 h; ${
+            methods.length > 1
+              ? `each pool by its own history’s method: ${methods.join(' | ')}`
+              : (methods[0] ?? '')
+          }`,
+          methodVersion: each(summed.map((s) => s.methodVersion)).join(', '),
+          provenance: provenanceOf(summed),
+        })
+      : none(why);
+  const value: TPoint[] = pts.map((q) => ({
+    t: q.t,
+    v: q.k ? q.v : null,
+    show: q.k ? `${money(q.v)}${q.k < n ? ` ${partial(q.k, n)}` : ''}` : null,
+  }));
+  // the asset's part of an hour is known only when every pool counted in it gives one
+  const held: TPoint[] = pts.map((q) => ({ t: q.t, v: q.k && q.ka === q.k ? q.a : null }));
+  // in the figure: counted in the hour it is taken from
+  const inSum = counted.map((t) => t === lp?.t);
+  const noUsd = unpriced + whys.filter((w) => w === NO_QUOTE_PRICE).length;
+  // read, and neither in the figure nor without a price: no recording of it counts in the hour the
+  // figure is taken from (its newest is more than 6 h before, or the window holds none)
+  const behind = hs.length - failed - inSum.filter(Boolean).length - (noUsd - unpriced);
+  return { fact, value, held, inSum, noUsd, failed, failedWhy, behind };
 }
 
 export const countW = (n: number, one: string) => `${num(n)} ${one}${n === 1 ? '' : 's'}`;
