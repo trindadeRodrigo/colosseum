@@ -525,16 +525,17 @@ describe('the account control of someone signed in (Thom, Oct 6 and Oct 9)', () 
     expect(evm?.getAttribute('title')).toBe(EVM);
     // its copy is an icon on the same line, not a row of its own
     const copy = find(rows[0] as HTMLElement, '[data-ui="copy-button"]');
-    expect(copy.getAttribute('aria-label')).toBe(en.copyAddress);
+    // two wallets: each copy is named for its chain, so a screen reader can tell them apart
+    expect(copy.getAttribute('aria-label')).toBe(`${en.copyAddress} (Solana)`);
     expect(copy.getAttribute('title')).toContain(SOLANA);
     expect(copy.textContent).toBe('');
     const items = [...menu.querySelectorAll('button, a')].map(
       (el) => el.textContent || el.getAttribute('aria-label'),
     );
     expect(items).toEqual([
-      en.copyAddress,
+      `${en.copyAddress} (Solana)`,
       en.viewOn('Solscan'),
-      en.copyAddress,
+      `${en.copyAddress} (Robinhood Chain)`,
       en.viewOn('Robinhood explorer'),
       en.signOut,
     ]);
@@ -544,6 +545,12 @@ describe('the account control of someone signed in (Thom, Oct 6 and Oct 9)', () 
     );
     expect(explorer.getAttribute('href')).toContain(`/account/${SOLANA}`);
     expect(explorer.getAttribute('target')).toBe('_blank');
+    // and the EVM wallet's page on its own chain's explorer
+    expect(
+      find<HTMLAnchorElement>(rows[1] as HTMLElement, '[data-ui="account-explorer"]').getAttribute(
+        'href',
+      ),
+    ).toContain(`/address/${EVM}`);
     // from an item inside it: focus goes back to the control
     find(menu, '[data-ui="sign-out"]').focus();
     await press(find(menu, '[data-ui="sign-out"]'), 'Escape');
@@ -579,6 +586,37 @@ describe('the account control of someone signed in (Thom, Oct 6 and Oct 9)', () 
     const rows = [...menu.querySelectorAll('[data-ui="account-wallet"]')];
     expect(rows.map((r) => r.getAttribute('data-chain'))).toEqual(['solana']);
     expect(menu.textContent).not.toContain('Robinhood');
+    // one wallet, one copy: it needs no chain in its name
+    expect(find(menu, '[data-ui="copy-button"]').getAttribute('aria-label')).toBe(en.copyAddress);
+  });
+
+  it('says the sample mark’s words once, on the first row that carries one, and links no explorer for a chain on the mock', async () => {
+    onSolana();
+    // Solana live, Robinhood Chain on the mock: the mark is on the second row alone
+    const port = signedInPort(EMBEDDED);
+    portStore.set({
+      ...port,
+      network: (chain) =>
+        ({ ...port.network(chain), provenance: chain === 'solana' ? 'live' : 'mock' }) as never,
+    });
+    const host = await shell();
+    await settle();
+    const menu = await openMenu(host);
+    const [solana, robinhood] = [
+      ...menu.querySelectorAll<HTMLElement>('[data-ui="account-wallet"]'),
+    ] as [HTMLElement, HTMLElement];
+    expect(solana.querySelector('[data-ui="sample-glyph"], .tf-hatch')).toBeNull();
+    // a screen reader is told that row is a sample: the mark there is named, not hidden
+    const heard = [...robinhood.querySelectorAll('*')]
+      .filter((el) => !el.closest('[aria-hidden="true"]'))
+      .map(
+        (el) =>
+          `${el.getAttribute('aria-label') ?? ''} ${el.children.length ? '' : el.textContent}`,
+      )
+      .join(' ');
+    expect(heard).toContain(en.sampleFigure);
+    expect(solana.querySelector('[data-ui="account-explorer"]')).not.toBeNull();
+    expect(robinhood.querySelector('[data-ui="account-explorer"]')).toBeNull();
   });
 
   it('holds nothing that switches a chain: where new plans start is not written from the bar', async () => {
@@ -608,7 +646,7 @@ describe('the account control of someone signed in (Thom, Oct 6 and Oct 9)', () 
       const said = () => (copy.nextElementSibling as HTMLElement).textContent;
       const drawn = () =>
         [...copy.querySelectorAll('svg path')].map((path) => path.getAttribute('d')).join(' ');
-      expect(copy.getAttribute('aria-label')).toBe(en.copyAddress);
+      expect(copy.getAttribute('aria-label')).toBe(`${en.copyAddress} (Solana)`);
       expect(said()).toBe('');
       const before = drawn();
       await click(copy);

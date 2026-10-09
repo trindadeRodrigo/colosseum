@@ -215,7 +215,6 @@ export const en = {
     short: { solana: 'Solana', robinhood: 'Robinhood', base: 'Base' },
     /** The explorer each chain's transaction links open, named beside the link. */
     explorers: { solana: 'Solscan', robinhood: 'Robinhood explorer', base: 'Basescan' },
-    /** The bar's chain switcher (gate CHAIN-SWITCH). */
     /** What is left of the bar's switch, which is gone (CHAIN-AT-THE-PLAN): words pages still say. */
     switch: {
       noWallet: (chain: string) => `The wallet you signed in with doesn’t sign on ${chain}.`,
@@ -270,6 +269,15 @@ export const en = {
       /** One chain to start on, because the other is switched off on our server. */
       onlyOn: (chain: string) =>
         `This plan will live on ${chain}: it is the only chain our server runs for now.`,
+      /**
+       * The chain new plans start on cannot take one: our server has it switched off. Said with the
+       * way to the chain that runs, where there is one.
+       */
+      off: (chain: string) =>
+        `${chain} is switched off on our server for now, so a plan can’t start there.`,
+      /** No wallet of the person's signs on the chain new plans start on. */
+      notYours: (chain: string) =>
+        `The wallet you signed in with doesn’t sign on ${chain}, so a plan can’t start there.`,
       /** Before the chain's badge, once the conversation has words. */
       on: 'This plan is on',
       change: 'Change',
@@ -479,7 +487,9 @@ export const en = {
       choose: 'Choose the chain',
     },
     blocked: {
-      chainNotChosen: 'Choose the chain for your plan first, where you start one on Invest.',
+      /** The account could not be read, or has no wallet: there is no chain to choose anywhere yet. */
+      chainNotChosen:
+        'I couldn’t read your account, so I can’t tell which chain to use. Try again in a moment, or sign out and in again.',
       chainUnknown:
         'I can’t tell yet which chain your plan lives on, so I can’t build for it. Ask again, above.',
       refused: 'Our server didn’t accept these limits. Check each field, then try again.',

@@ -12,8 +12,8 @@ import { useAccount } from './AccountProvider';
 import { AccountBars, CHIP_BOX, LABEL_BOX } from './account-control-parts';
 import { ChainLogo } from './ChainLogo';
 import { ChainMark } from './ChainName';
-import { usePopover } from './ChainSwitch';
 import { useKeepInWindow } from './keep-in-window';
+import { usePopover } from './use-popover';
 
 // The bar's account control for someone signed in. It shows the person, not a chain (Thom, Oct 9,
 // gates CHAIN-AT-THE-PLAN and ONE-ACCOUNT-CONTROL): a wallet glyph and "Account", of one width so the
@@ -49,6 +49,9 @@ export function AccountBlock({ out, className }: { out: SignOutState; className?
     return wallet ? [{ chain, address: wallet.address }] : [];
   });
   const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.sampleFigure };
+  const provenanceOf = (chain: ChainId) => port.network(chain)?.provenance ?? 'mock';
+  // The words of the sample mark are said once for the list: on the first row that carries one.
+  const firstMarked = wallets.findIndex(({ chain }) => provenanceOf(chain) !== 'live');
 
   return (
     <div data-ui="account-block" className={className}>
@@ -77,9 +80,9 @@ export function AccountBlock({ out, className }: { out: SignOutState; className?
                     <MockPlate labels={{ figure: t.shell.sampleFigure }} />
                   ) : (
                     <ChainMark
-                      provenance={port.network(chain)?.provenance ?? 'mock'}
+                      provenance={provenanceOf(chain)}
                       labels={marks}
-                      announce={index === 0}
+                      announce={index === firstMarked}
                     />
                   )}
                 </p>
@@ -92,6 +95,8 @@ export function AccountBlock({ out, className }: { out: SignOutState; className?
                   </span>
                   <CopyButton
                     value={address}
+                    // two wallets, two buttons: each is named for its chain
+                    what={wallets.length > 1 ? `(${name})` : undefined}
                     title={`${t.shell.copyAddress}: ${address}`}
                     labels={{ copy: t.shell.copyAddress, copied: t.shell.copied }}
                   />

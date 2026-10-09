@@ -268,8 +268,9 @@ describe('the words of the product, in each language', () => {
         /from the bar|bar at the top|pela barra|na barra no topo/i,
       );
     for (const d of [en, pt]) expect(d.chain.is.picked('Solana')).not.toMatch(/\bbar\b|barra/i);
-    expect(en.goal.blocked.chainNotChosen).toMatch(/Invest/);
-    expect(pt.goal.blocked.chainNotChosen).toMatch(/Investir/);
+    // said when the account could not be read: it points at no place that has no choice either
+    expect(en.goal.blocked.chainNotChosen).not.toMatch(/Invest|bar/);
+    expect(pt.goal.blocked.chainNotChosen).not.toMatch(/Investir|barra/);
     // nothing says the chain can't be changed any more
     for (const d of [en, pt])
       expect(JSON.stringify(d.chain)).not.toMatch(/can’t be changed|não pode ser mudad|once\b/);

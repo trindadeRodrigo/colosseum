@@ -7,7 +7,7 @@ import { dictionary } from '../../i18n';
 import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
 import { type AccountValue, useAccount } from './AccountProvider';
-import { switchFailure } from './ChainSwitch';
+import { switchFailure } from './chain-failure';
 import type { Person } from './person';
 import { withAccount } from './test/screen';
 

@@ -207,6 +207,10 @@ export const pt: Dictionary = {
         `Este plano vai ficar na ${chain}: a carteira com que você entrou só assina lá.`,
       onlyOn: (chain: string) =>
         `Este plano vai ficar na ${chain}: é a única rede que nosso servidor roda por enquanto.`,
+      off: (chain: string) =>
+        `${chain} está indisponível no nosso servidor por enquanto, então um plano não pode começar lá.`,
+      notYours: (chain: string) =>
+        `A carteira com que você entrou não assina na ${chain}, então um plano não pode começar lá.`,
       on: 'Este plano fica na',
       change: 'Trocar',
       changeLabel: 'Trocar a rede deste plano',
@@ -399,7 +403,8 @@ export const pt: Dictionary = {
       choose: 'Escolher a rede',
     },
     blocked: {
-      chainNotChosen: 'Escolha primeiro a rede do seu plano, onde você começa um, em Investir.',
+      chainNotChosen:
+        'Não consegui ler sua conta, então não sei qual rede usar. Tente de novo em instantes, ou saia e entre de novo.',
       chainUnknown:
         'Ainda não sei em qual rede seu plano fica, então não consigo montar para ela. Pergunte de novo, acima.',
       refused: 'Nosso servidor não aceitou esses limites. Confira cada campo e tente de novo.',
