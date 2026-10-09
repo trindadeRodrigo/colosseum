@@ -538,9 +538,6 @@ export const en = {
     chainOut: (chain: string) => `${chain} is unavailable right now.`,
     /** A chain of the person's that this server has switched off: asking again will not help. */
     chainOff: (chain: string) => `${chain} is switched off on our server for now.`,
-    /** The person's current chain, which no wallet of this sign-in signs on. */
-    notHeld: (chain: string) =>
-      `No wallet of this sign-in is on ${chain}, so nothing is read there.`,
     title: (vaults: number): string =>
       vaults > 1 ? 'What your vaults hold.' : 'What your vault holds.',
     planDetails: 'Goal and strategy details',
@@ -559,8 +556,8 @@ export const en = {
     /** The plan's chain did not answer, or is switched off here. */
     down: {
       word: 'Unavailable',
-      body: (chain: string) =>
-        `${chain} didn’t answer, so I can’t read your vault right now. Not being able to read it moves nothing. Try again in a moment.`,
+      body: (chains: string) =>
+        `${chains} didn’t answer, so I can’t read your vaults right now. Not being able to read them moves nothing. Try again in a moment.`,
     },
     unreachable: 'I couldn’t reach our server to read your vault. Try again.',
     unreadable:
@@ -571,8 +568,7 @@ export const en = {
       'I can’t read your vault yet: the sign-in service didn’t give me the part of your sign-in that lists your wallets. Wait a minute, then try again.',
     again: 'Read again',
     againBusy: 'Reading…',
-    empty: (chain: string) =>
-      `You have no vault on ${chain} yet. A vault is made when you buy your first plan.`,
+    empty: 'You have no vault yet. A vault is made with your first deposit.',
     startGoal: 'Start with your goal',
     /** Vaults on more than one chain: a heading per chain, with what that chain's vaults are worth. */
     group: {

@@ -472,8 +472,6 @@ export const pt: Dictionary = {
     },
     chainOut: (chain: string) => `${chain} está indisponível agora.`,
     chainOff: (chain: string) => `${chain} está indisponível no nosso servidor por enquanto.`,
-    notHeld: (chain: string) =>
-      `Nenhuma carteira desta conta está na ${chain}, então nada é lido lá.`,
     title: (vaults: number) =>
       vaults > 1 ? 'O que seus cofres guardam.' : 'O que seu cofre guarda.',
     planDetails: 'Detalhes do objetivo e da estratégia',
@@ -490,8 +488,8 @@ export const pt: Dictionary = {
       'Este servidor ainda não lê cofres, então não há nada para mostrar aqui. Não vou mostrar posições inventadas no lugar.',
     down: {
       word: 'Indisponível',
-      body: (chain: string) =>
-        `A ${chain} não respondeu, então não consigo ler seu cofre agora. Não conseguir lê-lo não move nada. Tente de novo daqui a pouco.`,
+      body: (chains: string) =>
+        `${chains} não respondeu, então não consigo ler seus cofres agora. Não conseguir lê-los não move nada. Tente de novo daqui a pouco.`,
     },
     unreachable: 'Não consegui falar com nosso servidor para ler seu cofre. Tente de novo.',
     unreadable:
@@ -502,8 +500,7 @@ export const pt: Dictionary = {
       'Ainda não consigo ler seu cofre: o serviço de login não me deu a parte do seu login que lista suas carteiras. Espere um minuto e tente de novo.',
     again: 'Ler de novo',
     againBusy: 'Lendo…',
-    empty: (chain: string) =>
-      `Você ainda não tem cofre na ${chain}. Um cofre é criado quando você compra seu primeiro plano.`,
+    empty: 'Você ainda não tem cofre. Um cofre é criado no seu primeiro depósito.',
     startGoal: 'Comece pelo seu objetivo',
     group: {
       worth: (vaults: number, chain: string) =>

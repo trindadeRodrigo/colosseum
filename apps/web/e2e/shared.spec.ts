@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
+import { SharedFamily } from '@colosseum/schemas';
 import { expect, type Page, test } from '@playwright/test';
-import { FAMILY_ID, familyOf, recipeOf, SLUG } from '../features/shared/test/fixtures';
 import { dictionary } from '../i18n';
 import { readyToInvest } from './invest';
 import { inTheme } from './theme';
@@ -227,17 +227,58 @@ test('a portfolio with a recipe on both chains: both named on its card, and its 
 }) => {
   // The stub runs one chain, so our server's two answers about this portfolio are written here, in
   // the shared shapes: a recipe on Solana and one on Robinhood Chain.
-  const both = familyOf(FAMILY_ID, {
+  const recipe = (
+    chain: 'solana' | 'robinhood',
+    name: string,
+    onchainId: string,
+    creator: string,
+  ) => ({
+    chain,
+    name,
+    onchainId,
+    creator,
+    active: {
+      version: 2,
+      effectiveAt: 1_791_000_000,
+      components: [
+        { asset: `${chain}:spy`, weightBps: 6000 },
+        { asset: `${chain}:nvda`, weightBps: 4000 },
+      ],
+      metaHash: 'ab'.repeat(32),
+      status: 'active',
+    },
+    pending: null,
+    autoFollow: { offered: true },
+    textMatches: 'active',
+    source: 'chain',
+    observedAt: '2026-10-05T12:00:00.000Z',
+    provenance: 'mock',
+  });
+  const SLUG = 'on-both-chains';
+  const both = SharedFamily.parse({
+    // familyIdOf(SLUG) is not worked out here: the page says the id is not its slug's and offers no
+    // buy, which this spec does not make
+    familyId: 'cd'.repeat(32),
+    slug: SLUG,
+    name: 'On both chains',
+    copy: 'Two test tokens, published on each chain.',
+    kind: 'index',
+    platform: false,
+    creatorKind: 'community',
     chains: ['solana', 'robinhood'],
     recipes: [
-      recipeOf({ provenance: 'mock' }),
-      recipeOf({
-        chain: 'robinhood',
-        name: 'Robinhood Chain',
-        onchainId: '0x5fbdb2315678afecb367f032d93f642f64180aa3',
-        creator: '0x1111111111111111111111111111111111111111',
-        provenance: 'mock',
-      }),
+      recipe(
+        'solana',
+        'Solana',
+        'cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN',
+        'US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx',
+      ),
+      recipe(
+        'robinhood',
+        'Robinhood Chain',
+        '0x5fbdb2315678afecb367f032d93f642f64180aa3',
+        '0x1111111111111111111111111111111111111111',
+      ),
     ],
   });
   await signIn(page);
