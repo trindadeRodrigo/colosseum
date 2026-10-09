@@ -10,6 +10,7 @@ import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
 import { PAGE_TITLE, WORKSPACE_TITLE } from '../../components/ui/heading';
 import { Icon } from '../../components/ui/Icon';
+import { MarketNote } from '../../components/ui/MarketNote';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { pinSourceOfPrice } from '../../components/ui/price-source';
 import { SkeletonSummary } from '../../components/ui/Skeleton';
@@ -269,11 +270,14 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                 cell: (r) => {
                   const price = priceOf(r.asset);
                   return price ? (
-                    <ProvenancePin
-                      value={dollars(lang, price.usdPerToken)}
-                      obs={pinSourceOfPrice(price)}
-                      labels={t.pin}
-                    />
+                    <>
+                      <ProvenancePin
+                        value={dollars(lang, price.usdPerToken)}
+                        obs={pinSourceOfPrice(price)}
+                        labels={t.pin}
+                      />
+                      <MarketNote market={price.market} label={t.shell.marketClosed} />
+                    </>
                   ) : (
                     '—'
                   );
