@@ -242,8 +242,14 @@ export const pt: Dictionary = {
       empty:
         'A alocação proposta e suas fontes aparecerão aqui após uma resposta. Nenhum cofre foi criado.',
       previewOnly: 'Apenas uma prévia. Este rascunho ainda não pode ser investido aqui.',
+      building: 'Preparando seu primeiro rascunho',
       working:
-        'Preparando um rascunho a partir do que você disse. Ele aparece aqui com suas fontes.',
+        'Ele aparece aqui com suas fontes. Se eu precisar perguntar algo antes, a pergunta vem na conversa.',
+      pendingLines: [
+        'Lendo o que você disse…',
+        'Olhando o catálogo da sua rede e conferindo a resposta…',
+        'Ainda trabalhando. Isso pode levar um pouco.',
+      ],
       draftNote:
         'Um rascunho desta conversa. Deposite para escolher o valor. Nada é comprado antes de você revisar e assinar.',
       retry: 'Tentar de novo',
@@ -1315,14 +1321,21 @@ export const pt: Dictionary = {
       title: 'Um cofre, como a rede o tem',
       conversation: {
         proposedShare: 'Fatia proposta',
-        jointLabel:
-          'A estratégia proposta desenhada como um encaixe: uma peça para cada ativo, com a largura da sua fatia.',
-        jointHint: 'Uma peça por ativo, com a largura da sua fatia.',
-        jointLabelWidened:
-          'A estratégia proposta desenhada como um encaixe: uma peça para cada ativo. Fatias pequenas são desenhadas mais largas do que são, para ficarem visíveis; cada peça diz sua fatia exata.',
-        jointHintWidened:
-          'Uma peça por ativo. Fatias pequenas são desenhadas mais largas para ficarem visíveis; os números da lista são exatos.',
-        reworking: 'Lendo o que você disse. Este é o último rascunho.',
+        others: (count: number) => `${count} outros`,
+        reworking: 'Lendo sua mensagem. Abaixo está o rascunho de antes.',
+        waitingAction: 'Aguardando a resposta…',
+        hint: 'Enter para enviar · Shift+Enter para nova linha',
+        busyHint:
+          'Aguardando esta resposta. Você pode continuar digitando e enviar quando ela chegar.',
+        draftArrived: 'Há um rascunho no cartão de prévia.',
+        pendingLines: [
+          'Lendo o que você disse…',
+          'Olhando seu cofre e o catálogo da rede dele, e conferindo a resposta…',
+          'Ainda trabalhando. Isso pode levar um pouco.',
+        ],
+        building: 'Preparando uma resposta',
+        buildingLine:
+          'Se a resposta propuser uma mudança, o rascunho aparece aqui com suas fontes. Seu cofre não muda.',
         view: { label: 'Mostrar', mix: 'Composição', monthly: 'Evolução mensal' },
         projection: {
           title: 'Evolução mensal',
@@ -1378,7 +1391,7 @@ export const pt: Dictionary = {
         agent: 'Tenonfi',
         placeholder: 'Pergunte sobre este cofre ou descreva uma mudança…',
         submitMessage: 'Enviar mensagem',
-        reading: 'Buscando uma resposta…',
+        reading: 'Buscando uma resposta',
         current: 'O que tem agora',
         noHoldings: 'Este cofre não tem tokens agora.',
         targets: 'Metas da estratégia atual',
@@ -1902,7 +1915,7 @@ export const pt: Dictionary = {
       risks: { low: 'Baixo', medium: 'Médio', high: 'Alto' },
       choose: 'Escolha um',
       confirm: 'Confirmar e ir para a compra',
-      confirming: 'Confirmando…',
+      confirming: 'Conferindo e salvando…',
     },
     deposit: {
       title: 'Depositar nesta mistura',
@@ -1946,7 +1959,7 @@ export const pt: Dictionary = {
       checked: 'Conferido com os preços de hoje. Nada foi comprado ainda.',
       review: 'Revisar o depósito',
       reviewOf: (amount: string) => `Revisar o depósito de ${amount}`,
-      reviewing: 'Conferindo…',
+      reviewing: 'Conferindo os preços de hoje…',
       changeMix: 'Mudar a mistura',
       next: 'Nada é comprado nem assinado nesta página. Em seguida você confere a revisão e assina cada passo na tela de compra.',
       brokenMix:

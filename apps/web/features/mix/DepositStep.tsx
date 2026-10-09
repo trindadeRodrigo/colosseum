@@ -301,7 +301,8 @@ export function DepositStep({
           review={review}
           ticked={ticked}
           onTick={tick}
-          confirmLabel={busy ? t.mix.goal.confirming : t.mix.goal.confirm}
+          confirmLabel={t.mix.goal.confirm}
+          busyLabel={t.mix.goal.confirming}
           onConfirm={confirm}
           onBack={() => setReview(null)}
           backLabel={d.backToDeposit}
@@ -460,6 +461,7 @@ export function DepositStep({
                 data-action="deposit-review"
                 busy={busy}
                 busyLabel={d.reviewing}
+                busyMark
                 disabled={blocked !== null}
                 aria-describedby={blocked !== null && tried ? reasonId : undefined}
                 onDisabledClick={() => setTried(true)}

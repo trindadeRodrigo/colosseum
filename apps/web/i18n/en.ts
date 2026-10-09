@@ -290,8 +290,20 @@ export const en = {
       empty:
         'Your proposed allocation and its sources will appear here after a reply. No vault has been created.',
       previewOnly: 'Preview only. This draft cannot be invested here yet.',
-      /** In the empty preview while the first reply is on its way. */
-      working: 'Working on a draft from what you said. It will appear here with its sources.',
+      /** The preview card while the first reply is on its way: its heading, and the line under it. */
+      building: 'Working on your first draft',
+      working:
+        'It will appear here with its sources. If I need to ask you something first, the question comes in the chat.',
+      /**
+       * Under a sent message while its reply is on its way: at once, after 4s, after 15s. Each says
+       * only what the server does on every reply (it reads the conversation, with this chain's catalog
+       * before it, and checks what it serves), and none says a step is over.
+       */
+      pendingLines: [
+        'Reading what you said…',
+        'Looking through the catalog on your chain and checking the reply…',
+        'Still working. This can take a little while.',
+      ],
       /** On a proposal, over "Deposit": the way from the draft to a deposit. */
       draftNote:
         'A draft from this conversation. Deposit to choose an amount. Nothing is deposited until you review and sign.',
@@ -1449,17 +1461,30 @@ export const en = {
       title: 'A vault, as its chain holds it',
       conversation: {
         proposedShare: 'Proposed share',
-        /** The drawing of a proposed mix, for a reader who cannot see it; each piece then says its own. */
-        jointLabel:
-          'The proposed strategy drawn as one joint: a piece for each asset, as wide as its share.',
-        jointHint: 'One piece per asset, as wide as its share.',
-        /** The same two when a small share is drawn wider than it is, so that it can be seen. */
-        jointLabelWidened:
-          'The proposed strategy drawn as one joint: a piece for each asset. Small shares are drawn wider than they are so they can be seen; each piece says its exact share.',
-        jointHintWidened:
-          'One piece per asset. Small shares are drawn wider so they can be seen; the figures in the list are exact.',
-        /** On the last draft while a reply is on its way. */
-        reworking: 'Reading what you said. This is the last draft.',
+        /** The bar's last leg when a draft holds more than four: the smaller holdings together. */
+        others: (count: number) => `${count} others`,
+        /**
+         * On the last draft while a reply is on its way. It promises no new draft: the reply may be a
+         * question, and then this one stays.
+         */
+        reworking: 'Reading your message. Below is the draft from before.',
+        /** In the Deposit button's place meanwhile. */
+        waitingAction: 'Waiting for the reply…',
+        /** Under the box: how to send, and while a reply is on its way, that sending waits. */
+        hint: 'Enter to send · Shift+Enter for a new line',
+        busyHint: 'Waiting for this reply. You can keep typing, and send when it arrives.',
+        /** Read out after a reply that carries a draft. */
+        draftArrived: 'A draft is on the preview card.',
+        /** Under a sent message in a vault's own conversation: at once, after 4s, after 15s. */
+        pendingLines: [
+          'Reading what you said…',
+          'Looking at your vault and the catalog on its chain, and checking the reply…',
+          'Still working. This can take a little while.',
+        ],
+        /** The plan side while a reply is on its way and no draft is shown. */
+        building: 'Working on a reply',
+        buildingLine:
+          'If the reply proposes a change, the draft appears here with its sources. Your vault does not change.',
         /** The preview's two views when the server projected the plan month by month. */
         view: { label: 'Show', mix: 'Holdings', monthly: 'Monthly evolution' },
         /** The projection's chart (ProjectionChart): past-rate arithmetic, never a promise. */
@@ -1514,7 +1539,8 @@ export const en = {
         agent: 'Tenonfi',
         placeholder: 'Ask about this vault or describe a change…',
         submitMessage: 'Send message',
-        reading: 'Getting a reply…',
+        /** Read out once when a message is sent; nothing on the screen carries it. */
+        reading: 'Getting a reply',
         current: 'What it holds now',
         noHoldings: 'This vault holds no tokens now.',
         targets: 'Current strategy targets',
@@ -2056,7 +2082,8 @@ export const en = {
       risks: { low: 'Low', medium: 'Medium', high: 'High' },
       choose: 'Choose one',
       confirm: 'Confirm deposit',
-      confirming: 'Confirming…',
+      /** The confirm checks the draft against the review once more, then stores the plan. */
+      confirming: 'Checking and saving…',
     },
     deposit: {
       title: 'Deposit into your vault',
@@ -2098,7 +2125,7 @@ export const en = {
       checked: 'Checked at today’s prices. Nothing is deposited yet.',
       review: 'Review deposit',
       reviewOf: (amount: string) => `Review deposit of ${amount}`,
-      reviewing: 'Checking…',
+      reviewing: 'Checking at today’s prices…',
       changeMix: 'Change the holdings',
       next: 'Nothing is deposited or signed yet. Next you check the review, then sign each step here.',
       brokenMix:
