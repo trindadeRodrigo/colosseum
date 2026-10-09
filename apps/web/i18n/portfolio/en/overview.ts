@@ -104,6 +104,9 @@ export const overview = {
       byVault: 'By vault',
       byAsset: 'By asset',
       period: 'Period',
+      /** Beside the figures the chart reads out under the pointer. */
+      value: 'Value',
+      pnl: 'PnL',
       periods: { '1d': '1D', '7d': '7D', '30d': '30D', '1y': '1Y', ytd: 'This year', all: 'All' },
       /** The plot's name for a screen reader. */
       plot: (from: string, to: string) => `Value of your vaults from ${from} to ${to}`,

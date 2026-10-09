@@ -8,6 +8,7 @@ import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/Card';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
+import { Hint } from '../../components/ui/Hint';
 import { PAGE_TITLE, WORKSPACE_TITLE } from '../../components/ui/heading';
 import { Icon } from '../../components/ui/Icon';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
@@ -17,7 +18,7 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import type { CallFailure } from '../order/order-api';
 import { displayName } from '../order/plain';
-import { explorerAddressUrlFor } from '../order/readiness';
+import { explorerAddressTemplateFor, explorerAddressUrlFor } from '../order/readiness';
 import { dollars, drift, share, shareTenths, tokens } from '../portfolio/figures';
 import { type HoldingRow, holdingsOf, unpriced, vaultValueSource } from '../portfolio/portfolio';
 import { OwnVaultActions } from '../portfolio/VaultActions';
@@ -114,6 +115,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
   const now = nowTenths.map((t) => share(lang, t * 10));
   const planned = plannedTenths.map((t) => share(lang, t * 10));
   const explorer = explorerAddressUrlFor(read.chain, vault.address, read.provenance === 'mock');
+  const addressPage = explorerAddressTemplateFor(read.chain, read.provenance === 'mock');
   const wallet = port.active(chainFamily(read.chain));
   const mine =
     port.status === 'ready' &&
@@ -215,6 +217,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                   vault,
                   t.portfolio.vault.valueMethod,
                 )}
+                what={v.value}
                 labels={t.pin}
               />
             </Stat>
@@ -269,11 +272,16 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                   return price ? (
                     <ProvenancePin
                       value={dollars(lang, price.usdPerToken)}
-                      obs={pinSourceOfPrice(price)}
+                      // each address in the price's details links to this network's explorer
+                      obs={{ ...pinSourceOfPrice(price), explorer: addressPage }}
+                      what={v.columns.price}
                       labels={t.pin}
                     />
                   ) : (
-                    '—'
+                    // a missing price says why, one hover, focus or tap away
+                    <Hint tip={t.portfolio.vault.noPriceWhy} label={t.portfolio.vault.noPrice}>
+                      —
+                    </Hint>
                   );
                 },
               },
@@ -363,6 +371,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                           vault,
                           t.portfolio.vault.valueMethod,
                         )}
+                        what={v.value}
                         labels={t.pin}
                       />
                     </Stat>

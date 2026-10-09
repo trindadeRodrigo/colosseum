@@ -1,5 +1,13 @@
 import type { Provenance } from '@colosseum/schemas';
 import { type Age, type AgeWords, formatAge, isoUtc, sayAge } from './format';
+import {
+  AGO_WORDS,
+  type AgoWords,
+  agoWords,
+  exactTime,
+  limitWords,
+  sourceWords,
+} from './source-words';
 
 // What the provenance pin is handed, and what state that puts a figure in (provenance-pin.md). This is
 // a plain module, apart from ProvenancePin.tsx, so that a server component can ask the state of a
@@ -20,6 +28,17 @@ export type PinSource = {
    * not stale. The pin never works this out from `fetchedAt`: staleness is stated, not inferred.
    */
   staleAgeSec?: number | null;
+  /**
+   * The oldest the source's own rule accepts, in seconds, where the API states one (a price's
+   * `maxAgeSeconds`). The popover names it beside a stale reading. Never worked out here.
+   */
+  staleLimitSec?: number | null;
+  /**
+   * The page of an address on the explorer of the network the figure was read on, with `{address}`
+   * where the address goes. From the app's own chain table, never the API's word. Left out, an
+   * address in the details gets no link.
+   */
+  explorer?: string | null;
 };
 
 export type PinState = 'live' | 'stale' | 'mock' | 'missing';
@@ -56,14 +75,38 @@ export type PinLabels = {
   age?: AgeWords;
   /** In place of a figure that has no source. */
   missing: string;
-  /** The name of the popover when it holds a link. */
+  /** The name of the popover. */
   provenance: string;
+  /** Copies the API's own line: `source · fetched_at · method`. */
   copy: string;
   copied: string;
   /** How each provenance other than `live` is named in the popover. */
   kinds: Record<Exclude<Provenance, 'live'>, string>;
   /** For a provenance this build does not know. It is never shown as live. */
   unknownKind: string;
+  /** The popover's first words. `{what}` is the kind of number, `{source}` the source in plain words. */
+  whatFrom: string;
+  from: string;
+  /** In place of a name, for a source the table of names does not know: the details hold it. */
+  unnamed: string;
+  /** `{ago}` is "2 minutes ago". */
+  updated: string;
+  /** Before the browser's clock is read: `{time}` is the exact time. */
+  updatedAt: string;
+  /** A stale reading, said first. `{ago}` from the age the API states, `{limit}` "2 minute". */
+  staleOverLimit: string;
+  staleNoLimit: string;
+  staleNoAge: string;
+  live: string;
+  ago: AgoWords;
+  /** The button that opens the API's own words. */
+  details: string;
+  sourceLabel: string;
+  timeLabel: string;
+  methodLabel: string;
+  /** `{address}` is the shortened address. */
+  copyAddress: string;
+  explorer: string;
 };
 
 export const PIN_LABELS: PinLabels = {
@@ -73,16 +116,32 @@ export const PIN_LABELS: PinLabels = {
   stale: 'stale',
   ageUnknown: 'age unknown',
   missing: 'no source yet',
-  provenance: 'Provenance',
-  copy: 'Copy source',
+  provenance: 'Source details',
+  copy: 'Copy all',
   copied: 'Copied',
   kinds: {
-    mock: 'sample data, not live',
-    sandbox: 'test network',
-    fixture: 'fixture',
-    prior_dataset: 'prior dataset',
+    mock: 'Sample figure, not live',
+    sandbox: 'Test network, not live',
+    fixture: 'Sample figure, not live',
+    prior_dataset: 'From an earlier dataset, not live',
   },
-  unknownKind: 'not live',
+  unknownKind: 'Not live',
+  whatFrom: '{what} from {source}',
+  from: 'From {source}',
+  unnamed: 'Source details below',
+  updated: 'Updated {ago}',
+  updatedAt: 'Updated {time}',
+  staleOverLimit: 'Last updated {ago}, older than this feed’s {limit} limit',
+  staleNoLimit: 'Last updated {ago}, which is stale',
+  staleNoAge: 'Stale, and its age is not known',
+  live: 'Live',
+  ago: AGO_WORDS,
+  details: 'Details',
+  sourceLabel: 'Source',
+  timeLabel: 'Read at',
+  methodLabel: 'How it is worked out',
+  copyAddress: 'Copy address {address}',
+  explorer: 'View {address} on the explorer',
 };
 
 const ageSaid = (age: Age | null, labels: PinLabels) =>
@@ -121,4 +180,60 @@ export function kindWords(provenance: unknown, labels: PinLabels = PIN_LABELS): 
 /** The first line of the popover: `source · fetched_at · method`, the time in UTC. */
 export function sourceLine(obs: PinSource): string {
   return `${obs.source} · ${isoUtc(obs.fetchedAt)} · ${obs.method}`;
+}
+
+export type PinLine = { key: 'what' | 'fresh' | 'stale' | 'state'; text: string };
+
+/**
+ * What the popover says before the details, in order: what the number is and where it comes from,
+ * how fresh it is, whether it is live. A stale reading says so first. What the number is, is the
+ * screen's word (`what`): a source does not say it. The source's name comes from the table in
+ * source-words.ts; one it does not know is not guessed at ("Source details below").
+ * Staleness is the API's word and the age it states; only a fresh reading's age is read off the
+ * clock (`now`, the browser's, in milliseconds), and before that clock is known the exact time stands.
+ */
+export function pinWords(
+  obs: PinSource,
+  labels: PinLabels = PIN_LABELS,
+  { what, now }: { what?: string; now?: number | null } = {},
+): { lines: PinLine[]; named: boolean } {
+  const state = pinState(obs);
+  const named = sourceWords(obs.source, obs.provenance);
+  const lead: PinLine = {
+    key: 'what',
+    text:
+      named.from === null
+        ? labels.unnamed
+        : what
+          ? labels.whatFrom.replace('{what}', what).replace('{source}', named.from)
+          : labels.from.replace('{source}', named.from),
+  };
+  const status: PinLine = {
+    key: 'state',
+    text: state === 'mock' ? kindWords(obs.provenance, labels) : labels.live,
+  };
+  // A sample or test-network reading can be old too: its glyph stays hatched (it is never drawn as
+  // live, stale or not), and the popover still says how old it is before anything else.
+  if (obs.staleAgeSec != null) {
+    const ago = agoWords(obs.staleAgeSec as number, labels.ago);
+    const limit = obs.staleLimitSec == null ? null : limitWords(obs.staleLimitSec, labels.ago);
+    const text =
+      ago === null || (obs.staleAgeSec as number) < 0
+        ? labels.staleNoAge
+        : limit
+          ? labels.staleOverLimit.replace('{ago}', ago).replace('{limit}', limit)
+          : labels.staleNoLimit.replace('{ago}', ago);
+    // "Live" under a stale reading would say two things at once: the stale line stands for it.
+    const rest = state === 'mock' ? [lead, status] : [lead];
+    return { lines: [{ key: 'stale', text }, ...rest], named: named.from !== null };
+  }
+  const iso = isoUtc(obs.fetchedAt) ?? obs.fetchedAt;
+  const ago = now == null ? null : agoWords((now - Date.parse(iso)) / 1000, labels.ago);
+  const fresh: PinLine = {
+    key: 'fresh',
+    text: ago
+      ? labels.updated.replace('{ago}', ago)
+      : labels.updatedAt.replace('{time}', exactTime(iso)),
+  };
+  return { lines: [lead, fresh, status], named: named.from !== null };
 }

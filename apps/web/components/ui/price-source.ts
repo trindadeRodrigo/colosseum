@@ -23,5 +23,6 @@ export function pinSourceOfPrice(
     method: price.method,
     provenance: price.provenance,
     staleAgeSec: isStalePrice(price) ? price.ageSeconds : null,
+    staleLimitSec: price.maxAgeSeconds,
   };
 }

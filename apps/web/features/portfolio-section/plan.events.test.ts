@@ -11,7 +11,15 @@ import {
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WEB } from '../../components/ui/test/css';
-import { click, find, mount, press, settle, unmountAll } from '../../components/ui/test/dom';
+import {
+  click,
+  find,
+  mount,
+  pinLine,
+  press,
+  settle,
+  unmountAll,
+} from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary, type Lang } from '../../i18n';
@@ -109,11 +117,8 @@ async function open(chain: string, address: string, lang: Lang = 'en') {
   return host;
 }
 
-/** The pin of a figure, opened: its source line. */
-async function sourceOf(figure: Element): Promise<string> {
-  await click(find(figure, 'button[data-ui="pin"]'));
-  return text(find(figure, '[data-ui="pin-source"]'));
-}
+/** The pin of a figure, opened to its details: the line the API wrote. */
+const sourceOf = (figure: Element): Promise<string> => pinLine(figure);
 
 /** The rows of the parts' table, as text, cell by cell. */
 const rows = (host: ParentNode) =>

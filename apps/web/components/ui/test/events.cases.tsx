@@ -4,6 +4,7 @@ import { CompactNav } from '../CompactNav';
 import { Composer } from '../Composer';
 import { ConstraintSheet } from '../ConstraintSheet';
 import { SHEET_CAPITAL, sheetGroups } from '../fixtures/mock';
+import { Hint, type HintProps } from '../Hint';
 import { ProvenancePin, type ProvenancePinProps } from '../ProvenancePin';
 import type { PinSource } from '../provenance';
 
@@ -160,5 +161,33 @@ export const navOnPage = (
         elsewhere
       </button>
     </main>
+  </div>
+);
+
+// The one tooltip (Hint.tsx), on plain text and on a control of the page's own.
+
+export const hintOnPage = (props: Partial<HintProps> = {}) => (
+  <div>
+    <p>
+      <Hint tip="The whole address of the vault" {...props}>
+        k7Fa…fYn
+      </Hint>
+    </p>
+    <button type="button" id="elsewhere">
+      elsewhere
+    </button>
+  </div>
+);
+
+export const hintOnLink = (
+  <div>
+    <Hint tip="Opens the vault’s page">
+      <a href="#vault" id="link">
+        k7Fa…fYn
+      </a>
+    </Hint>
+    <button type="button" id="elsewhere">
+      elsewhere
+    </button>
   </div>
 );

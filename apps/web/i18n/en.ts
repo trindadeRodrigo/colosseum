@@ -485,16 +485,41 @@ export const en = {
       day: ['day', 'days'],
     },
     missing: 'no source yet',
-    provenance: 'Provenance',
-    copy: 'Copy source',
+    provenance: 'Source details',
+    copy: 'Copy all',
     copied: 'Copied',
     kinds: {
-      mock: 'sample data, not live',
-      sandbox: 'test network, not live',
-      fixture: 'a fixture, not live',
-      prior_dataset: 'an earlier dataset, not live',
+      mock: 'Sample figure, not live',
+      sandbox: 'Test network, not live',
+      fixture: 'Sample figure, not live',
+      prior_dataset: 'From an earlier dataset, not live',
     },
-    unknownKind: 'not live',
+    unknownKind: 'Not live',
+    // What the popover says before its details (gate TOOLTIP-WORDS): what the number is and where it
+    // comes from, how fresh it is, whether it is live. The source's name is from
+    // components/ui/source-words.ts.
+    whatFrom: '{what} from {source}',
+    from: 'From {source}',
+    unnamed: 'Source details below',
+    updated: 'Updated {ago}',
+    updatedAt: 'Updated {time}',
+    staleOverLimit: 'Last updated {ago}, older than this feed’s {limit} limit',
+    staleNoLimit: 'Last updated {ago}, which is stale',
+    staleNoAge: 'Stale, and its age is not known',
+    live: 'Live',
+    ago: {
+      now: 'less than a minute ago',
+      ago: '{n} {unit} ago',
+      minute: ['minute', 'minutes'],
+      hour: ['hour', 'hours'],
+      day: ['day', 'days'],
+    },
+    details: 'Details',
+    sourceLabel: 'Source',
+    timeLabel: 'Read at',
+    methodLabel: 'How it is worked out',
+    copyAddress: 'Copy address {address}',
+    explorer: 'View {address} on the explorer',
   },
 
   /** The monitor (/monitor), and the line about it on the home page. */
@@ -604,6 +629,9 @@ export const en = {
         drift: 'Difference',
       },
       noPrice: 'no price',
+      /** The tooltip on the dash where a holding has no price (gate TOOLTIP-WORDS). */
+      noPriceWhy:
+        'No price: this read of the network gave none for this asset, so it has no value or share here.',
       unpriced: (n: number) =>
         n === 1
           ? '1 holding has no price, so the value leaves it out.'

@@ -28,6 +28,8 @@ describe('what the pin is handed for a price', () => {
       fetchedAt: '2026-10-01T14:02:11Z',
       provenance: 'live',
       staleAgeSec: null,
+      // the chain's own limit, which the popover names beside a stale reading
+      staleLimitSec: 120,
     });
     expect(pinState(pinSourceOfPrice(price()))).toBe('live');
     // at the limit is not past it
