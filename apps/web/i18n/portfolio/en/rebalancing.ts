@@ -63,10 +63,10 @@ export const rebalancing = {
   noTx: 'No transaction is on record for this step.',
   trade: {
     /** One side of a trade is the chain's cash token, named in the brackets. */
-    bought: (asset: string, cash: string) => `Bought ${asset} with cash (${cash}).`,
+    bought: (asset: string, cash: string) => `Swapped cash (${cash}) into ${asset}.`,
     sold: (asset: string, cash: string) => `Sold ${asset} for cash (${cash}).`,
     /** The same trades in a step that failed. */
-    triedBuy: (asset: string, cash: string) => `Tried to buy ${asset} with cash (${cash}).`,
+    triedBuy: (asset: string, cash: string) => `Tried to swap cash (${cash}) into ${asset}.`,
     triedSell: (asset: string, cash: string) => `Tried to sell ${asset} for cash (${cash}).`,
     /** A trade that names no cash side. */
     swapped: (sold: string, bought: string) => `Sold ${sold} for ${bought}.`,

@@ -1276,6 +1276,14 @@ function Step({
     ? t.order.phase[phase as keyof Dictionary['order']['phase']]
     : t.order.status[now.status];
   const failed = now.status === 'failed';
+  // What a swap step receives, where every trade of it spends the chain's cash: its heading.
+  const swapsInto =
+    leg.kind === 'swap' &&
+    units &&
+    leg.trades.length > 0 &&
+    leg.trades.every((trade) => trade.sell === units.cash)
+      ? [...new Set(leg.trades.map((trade) => symbol(trade.buy)))]
+      : null;
   return (
     <li data-ui="order-step" data-status={now.status} className="flex flex-col gap-1 py-3">
       <p className="flex flex-wrap items-baseline gap-x-2 text-body">
@@ -1285,7 +1293,10 @@ function Step({
             ? t.order.kind.create_vault_buy
             : leg.trades.length > 0 && leg.kind === 'deposit'
               ? t.order.kind.deposit_buy
-              : t.order.kind[leg.kind]}
+              : swapsInto
+                ? // a step that spends cash on assets is headed by what it receives; its lines say the rest
+                  new Intl.ListFormat(locale, { type: 'conjunction' }).format(swapsInto)
+                : t.order.kind[leg.kind]}
         </span>
         {leg.cashRaw && <span className="tabular-nums">{spend(leg.cashRaw)}</span>}
         <span aria-hidden="true">·</span>
