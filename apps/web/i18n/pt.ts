@@ -196,6 +196,40 @@ export const pt: Dictionary = {
   },
 
   goal: {
+    explore: {
+      invitation: 'O que você quer que sua estratégia faça?',
+      lead: 'Conte suas ideias, necessidades e limites. Eu posso discutir uma alocação com fontes e riscos.',
+      placeholder: 'Descreva o que quer explorar…',
+      starters: [
+        'Explorar ações de tecnologia',
+        'Criar uma estratégia de renda',
+        'Proteger minhas economias',
+      ],
+      local: 'Este navegador · conversa privada de rascunho',
+      signIn: 'Entre para explorar uma estratégia privada.',
+      readingAccount: 'Sua conta e rede precisam estar prontas antes de eu buscar uma resposta.',
+      empty:
+        'A alocação proposta e suas fontes aparecerão aqui após uma resposta. Nenhum cofre foi criado.',
+      previewOnly: 'Apenas uma prévia. Este rascunho ainda não pode ser investido aqui.',
+      working:
+        'Preparando um rascunho a partir do que você disse. Ele aparece aqui com suas fontes.',
+      draftNote:
+        'Um rascunho desta conversa. Deposite para escolher o valor. Nada é comprado antes de você revisar e assinar.',
+      retry: 'Tentar de novo',
+      elsewhere: 'Ver portfólios compartilhados',
+      unavailable:
+        'O serviço de conversa de estratégia está indisponível. Suas palavras foram mantidas; nenhum rascunho foi produzido.',
+      timeout:
+        'A resposta demorou demais. Suas palavras foram mantidas; tente novamente em instantes.',
+      budget:
+        'A conversa atingiu o limite diário de uso. Suas palavras foram mantidas; tente novamente mais tarde.',
+      invalid:
+        'Não consegui produzir uma resposta verificada para este pedido. Suas palavras foram mantidas; nenhum rascunho foi produzido.',
+      failed:
+        'Não consegui uma resposta válida. Suas palavras foram mantidas; nenhum rascunho foi produzido.',
+      notSaved: 'Este navegador não conseguiu salvar estas mensagens. Mantenha esta página aberta.',
+      capacity: 'Esta conversa chegou ao limite. Suas mensagens anteriores foram mantidas.',
+    },
     title: 'O que o seu dinheiro precisa fazer?',
     lead: 'Diga em uma frase: com quanto você começa, por quanto tempo e quanto risco aceita. Eu transformo isso em limites que você pode conferir e mudar. Nada é montado antes de você pedir.',
     composer: {
@@ -218,14 +252,6 @@ export const pt: Dictionary = {
         'Proteger US$ 50.000 por 18 meses, risco baixo',
         'US$ 80.000 para ter US$ 300 por mês de renda, 5 anos, risco baixo',
       ],
-    },
-    readFailure: {
-      unreachable:
-        'Não consegui falar com nosso servidor para ler isso. Seu texto continua aqui. Tente de novo daqui a pouco.',
-      tooShort: 'Isso é curto demais para eu ler. Tente um valor e um prazo.',
-      tooLong: 'Isso é longo demais para eu ler. Use até 2.000 caracteres.',
-      unreadable:
-        'Recebi uma resposta que não consegui ler. Seu texto continua aqui. Tente de novo.',
     },
     readerMissed: (fields: string) =>
       `Não encontrei isto no seu objetivo: ${fields}. Preencha abaixo.`,
@@ -310,19 +336,12 @@ export const pt: Dictionary = {
       unset: 'Não definida',
       unsetNote: 'Um plano é montado na rede em que você está.',
       choose: 'Escolher a rede',
-      unknown: 'Ainda não sei',
     },
     blocked: {
       chainNotChosen: 'Escolha primeiro uma rede na barra no topo.',
       chainUnknown:
         'Ainda não sei em qual rede seu plano fica, então não consigo montar para ela. Pergunte de novo, acima.',
       refused: 'Nosso servidor não aceitou esses limites. Confira cada campo e tente de novo.',
-      currency:
-        'Os planos são em dólares por enquanto: o valor e cada saque. Informe-os em dólares e monte de novo.',
-      signInAgain:
-        'Nosso servidor não reconhece mais o seu login, então o plano não foi montado. Saia e entre de novo.',
-      noIdentity:
-        'O plano não foi montado: o serviço de login não me entregou a parte do seu login que lista suas carteiras, então nosso servidor não consegue conferi-las. Seus limites continuam guardados. Espere um minuto e tente de novo.',
       chainOff: (chain: string) =>
         `${chain} está indisponível no nosso servidor por enquanto, então não consigo montar um plano nela. Seus limites continuam guardados.`,
     },
@@ -411,13 +430,26 @@ export const pt: Dictionary = {
   },
 
   portfolio: {
+    overview: {
+      title: 'Visão geral do portfólio',
+      value: 'Valor total · dólares',
+      partialValue: 'Valor dos cofres lidos · dólares',
+      vaults: 'Cofres lidos',
+      holdings: 'Posições nos cofres',
+      partial:
+        'Esta visão inclui apenas as redes que responderam. Redes indisponíveis não entram na conta.',
+      open: 'Abrir cofre',
+      details: 'Detalhes dos ativos e plano',
+      actions: 'Ações do cofre',
+    },
     chainOut: (chain: string) => `${chain} está indisponível agora.`,
     chainOff: (chain: string) => `${chain} está indisponível no nosso servidor por enquanto.`,
     notHeld: (chain: string) =>
       `Nenhuma carteira desta conta está na ${chain}, então nada é lido lá.`,
     title: (vaults: number) =>
       vaults > 1 ? 'O que seus cofres guardam.' : 'O que seu cofre guarda.',
-    lead: 'Lido de cada rede onde seus planos ficam, cada vez que você abre esta página. Nada aqui assina ou move coisa alguma.',
+    planDetails: 'Detalhes do objetivo e da estratégia',
+    lead: 'Seus cofres, seus ativos e as estratégias que seguem. Abra um cofre para continuar a conversa ou adicionar dinheiro.',
     chain: 'Rede',
     reading: 'Lendo seu cofre…',
     signedOut:
@@ -546,13 +578,11 @@ export const pt: Dictionary = {
       },
     },
     add: {
+      strategy: 'Destino deste aporte',
       title: 'Adicione dinheiro ao seu cofre',
       lead: (chain: string) =>
-        `O valor inteiro vai para este cofre na ${chain} e depois compra cada parte nas metas do cofre. Nada é assinado aqui.`,
+        `Adicione a este cofre na ${chain} seguindo sua estratégia atual. Revise o aporte e seus passos antes de assinar na carteira.`,
       amountHint: 'De US$ 10 a US$ 1.000.000.',
-      review: (amount: string) => `Revisar os passos para adicionar ${amount}`,
-      reviewLead: (amount: string, chain: string) =>
-        `Você está adicionando ${amount} ao seu cofre na ${chain}. A seguir você revisa cada passo e assina cada um na sua carteira.`,
       missing:
         'Não encontro este cofre entre os seus. Abra seu portfólio e escolha o cofre por lá.',
       back: 'Voltar ao seu portfólio',
@@ -577,16 +607,26 @@ export const pt: Dictionary = {
         differs: (chain: string) =>
           `A resposta do nosso servidor difere das metas que a ${chain} guarda para este cofre, então não ofereço adicionar dinheiro agora. Leia seu portfólio de novo em instantes.`,
         unlisted:
-          'Este cofre tem uma meta em um token que este app não lista, então não consigo conferir um aporte e não ofereço um.',
+          'Este cofre tem um peso-alvo em um token que este app não lista, então não consigo conferir um aporte e não ofereço um.',
       },
     },
     summary: {
-      title: 'Seu portfólio',
+      title: 'Seus cofres',
       worth: (chain: string) => `Seu cofre na ${chain} vale`,
       many: (vaults: number, chain: string) => `Você tem ${vaults} cofres na ${chain}.`,
       manyChains: (vaults: number, chains: string) => `Você tem ${vaults} cofres, na ${chains}.`,
       see: 'Ver seu portfólio',
     },
+  },
+
+  talk: {
+    workbench: {
+      title: 'Investir',
+      strategy: 'Prévia da estratégia',
+    },
+    startOver: 'Começar de novo',
+    you: 'Você',
+    me: 'tenonfi',
   },
 
   plan: {
@@ -596,14 +636,14 @@ export const pt: Dictionary = {
       'Este plano veio de um link: nosso motor o montou com os limites que o link trazia, que outra pessoa pode ter definido. Confira o objetivo, o valor e os limites acima antes de comprar.',
     missing: {
       title: 'Não encontro este plano para você.',
-      body: 'Não é um plano feito com este login, ou não está mais guardado. Monte um a partir do seu objetivo: seus limites continuam guardados.',
-      again: 'Montar de novo',
+      body: 'Não é um plano feito com este login, ou não está mais guardado. Nada dele é aproveitado: descreva seu objetivo na conversa e eu proponho uma nova mistura.',
+      again: 'Descrever seu objetivo',
     },
     backToGoal: 'Voltar ao seu objetivo',
     unsignable: (plan: string) =>
-      `Este plano está na ${plan}, e a carteira com que você entrou não assina nela. Entre com uma carteira que assine, ou monte um plano a partir do seu objetivo.`,
+      `Este plano está na ${plan}, e a carteira com que você entrou não assina nela. Entre com uma carteira que assine, ou descreva seu objetivo na conversa para uma nova mistura.`,
     split:
-      'Este plano está dividido entre duas redes, e um plano fica em uma só. Monte de novo a partir do seu objetivo.',
+      'Este plano está dividido entre duas redes, e um plano fica em uma só. Ele não pode ser comprado como está: descreva seu objetivo na conversa para uma nova mistura.',
     lead: (chain: string) =>
       `Montado para ${chain}, a partir dos seus limites. Nada é comprado antes de você revisar cada passo e assinar.`,
     holds: 'O que ele tem',
@@ -655,6 +695,26 @@ export const pt: Dictionary = {
       withdrawalsShort: 'Nem todo saque é pago em dia com o que está separado.',
       notLive:
         'Alguns números vêm de uma rede de teste ou de dados de exemplo, não de mercados ao vivo.',
+      origin: (who: string) =>
+        who === 'model'
+          ? 'Esta divisão foi proposta na sua conversa, e você a confirmou.'
+          : 'Você mesmo escolheu esta divisão.',
+      confirmed: (warning: string, asset: string) => {
+        switch (warning) {
+          case 'EXIT_OVER_CAPACITY':
+            return `Você confirmou ter mais ${asset} do que a saída medida comporta no plano.`;
+          case 'EXIT_OVER_TIER_CEILING':
+            return `Você confirmou ter mais ${asset} do que o limite da faixa dele, enquanto o custo de venda não está medido.`;
+          case 'OVER_LISTED_CAP':
+            return `Você confirmou mais ${asset} do que o teto dele na lista de ativos.`;
+          case 'NOT_FOR_GOAL':
+            return `Você confirmou ${asset}, que um plano com este objetivo normalmente não tem.`;
+          case 'STOPS_FOLLOWING':
+            return 'Você confirmou que as suas metas substituem a carteira compartilhada que este cofre seguia.';
+          default:
+            return 'Você confirmou um aviso sobre esta divisão.';
+        }
+      },
       other: 'O plano traz mais uma observação que ainda não sabemos descrever.',
       simple: {
         exit_not_measured: 'Nenhuma parte deste plano tem custo de venda medido ainda.',
@@ -699,6 +759,8 @@ export const pt: Dictionary = {
         `O que o rendimento em dólar projeta em ${months} meses: de ${low} a ${high} ao ano.`,
       after: (months: number) => `Depois de ${months} meses`,
       paid: (months: number) => `Pago ao longo de ${months} meses, ao todo`,
+      paidLabel: (months: number, low: string, high: string) =>
+        `O que o rendimento em dólar paga em ${months} meses, somado: de ${low} a ${high} ao ano, projetado.`,
       projected: 'projetado',
       low: 'ponta baixa',
       high: 'ponta alta',
@@ -710,7 +772,23 @@ export const pt: Dictionary = {
     },
     exitPlan: 'Plano de saída',
     costPrefix: 'custo',
-    columns: { asset: 'Ativo', share: 'Parte', amount: 'Valor', why: 'Por quê' },
+    whyShare: 'Por que essa parcela',
+    exitScale: 'A barra cheia é 1%, o custo em que a venda é medida.',
+    income: {
+      asked: (amount: string) => `pedido: ${amount} por mês`,
+    },
+    fall: {
+      putOpen: (amount: string) => `A barra inteira são os ${amount} que você coloca.`,
+      put: (amount: string, months: string) =>
+        `A barra inteira são os ${amount} que você coloca, por ${months}.`,
+    },
+    columns: {
+      asset: 'Ativo',
+      share: 'Parte',
+      amount: 'Valor',
+      yield: 'Rendimento após desconto',
+      why: 'Por quê',
+    },
     noReason: 'Nenhum motivo informado.',
     projected: 'Faixa projetada por ano, não é uma promessa',
     projectedValue: (low: string, high: string) => `${low} a ${high}`,
@@ -747,6 +825,18 @@ export const pt: Dictionary = {
       after: 'se a faixa projetada se mantiver. Uma estimativa, não uma promessa.',
     },
     buy: 'Comprar este plano',
+    invest: (amount: string) => `Investir ${amount}`,
+    investing: 'Abrindo os passos…',
+    answer: {
+      inFall: (share: string, what: string, loss: string) =>
+        `${share} em ${what} · numa queda forte, cerca de −${loss}`,
+      inNoFall: (share: string, what: string) =>
+        `${share} em ${what} · nenhuma perda contada numa queda forte`,
+      yieldAfter: 'ao ano do rendimento em dólar, projetado. Não é promessa.',
+      range: (low: string, high: string) => `${low} a ${high} ao ano`,
+      rangeAfter: 'projetado. Uma faixa, não uma promessa.',
+      none: 'Ainda sem projeção: não há leitura de rendimento para este plano.',
+    },
     chainNotReady: (chain: string) =>
       `${chain} ainda não está pronta para compras: os cofres dela não estão implantados nesta rede. Seu plano fica guardado e pode ser comprado quando estiverem.`,
     chainOff: (chain: string) =>
@@ -800,17 +890,9 @@ export const pt: Dictionary = {
       hint: (planned: string) =>
         `Seu plano foi montado para ${planned}. De US$ 10 a US$ 1.000.000.`,
       other: (planned: string) =>
-        `Seu plano foi montado para ${planned}, e os limites dele foram calculados para esse valor. Para comprar outro valor, monte o plano de novo para ele.`,
+        `Seu plano foi montado para ${planned}, e os limites dele foram calculados para esse valor. Para comprar outro valor, descreva seu objetivo na conversa e use a nova mistura nesse valor.`,
     },
     steps: {
-      label: 'Passos para comprar',
-      names: { amount: 'Valor', funds: 'Fundos', trust: 'Confiança', review: 'Revisar' },
-      done: 'feito',
-      next: 'Continuar',
-      funds: { ready: 'Pronto', short: 'Falta algo', reading: 'Lendo…' },
-      trust: { accepted: 'Aceito', open: 'Ainda não aceito' },
-      reviewLead: (amount: string, chain: string) =>
-        `Você está comprando ${amount} em ${chain}. Em seguida você revisa cada passo e assina cada um na sua carteira.`,
       note: {
         testNetwork: (chain: string) => `Rede de teste · ${chain} · valores não reais`,
       },
@@ -863,8 +945,6 @@ export const pt: Dictionary = {
         refused: 'Nosso servidor não aceitou este valor. Confira e tente de novo.',
       },
     },
-    review: (amount: string) => `Revisar os passos para comprar ${amount}`,
-    reviewing: 'Criando sua ordem…',
     blocked: {
       amount: 'Digite um valor de US$ 10 a US$ 1.000.000 para continuar.',
       funding: 'Sua carteira precisa do que falta antes de você continuar.',
@@ -879,6 +959,8 @@ export const pt: Dictionary = {
       VERSION_CHANGED:
         'Um portfólio compartilhado deste plano mudou depois que o plano foi feito. Monte o plano de novo a partir do seu objetivo.',
       ORDER_EXPIRED: 'Essa ordem perdeu o prazo. Tente de novo.',
+      AMOUNT_OVER_REVIEW:
+        'Esta mistura foi revisada com um valor menor e não é comprada acima dele. Diminua o valor ou revise a mistura de novo com o novo valor.',
       US_PERSON:
         'Este produto não é para pessoas nos Estados Unidos, então a ordem não foi criada.',
       RATE_LIMITED:
@@ -910,7 +992,7 @@ export const pt: Dictionary = {
     shelf: {
       title: 'Portfólios que as pessoas compartilharam.',
       lead: (chain: string) =>
-        `Cada um é uma lista de ativos e pesos que quem o criou publicou numa rede. Estes são os da ${chain}, onde ficam seus planos.`,
+        `Explore estratégias publicadas na ${chain}. Abra uma para revisar os ativos, as fontes e as opções de investir ou seguir.`,
       leadAll:
         'Cada um é uma lista de ativos e pesos que quem o criou publicou numa rede. Entre para ver os da sua rede.',
       loading: 'Lendo os portfólios compartilhados…',
@@ -946,6 +1028,31 @@ export const pt: Dictionary = {
       notChecked:
         'O nome e a descrição não foram conferidos com o que quem criou publicou na rede.',
     },
+    product: {
+      yield: 'Rendimento ao ano, após o desconto',
+      noYieldReading: 'nenhum ativo tem leitura de rendimento',
+      answer: (kinds: string, chain: string) => `${kinds}, na ${chain}.`,
+      sub: (version: string, since: string) => `${version} · em vigor ${since}`,
+      why: {
+        stock: 'Segue o preço da ação que lhe dá nome. Não paga rendimento.',
+        etf: 'Segue o preço do fundo que lhe dá nome. Não paga rendimento.',
+        gold: 'Segue o preço do ouro. Não paga rendimento.',
+        commodity: 'Segue o preço da commodity que lhe dá nome. Não paga rendimento.',
+        dollar_yield: 'Um token de dólar que rende.',
+        crypto: 'Segue o preço da moeda que lhe dá nome. Não paga rendimento.',
+        cash: 'O dólar da rede, guardado como caixa.',
+        unknown: 'Um token que este app não lista.',
+        unread: 'Nosso servidor não tem registro de que tipo de token é este.',
+      },
+      exit: {
+        about: (amount: string, days: number) => `cerca de ${amount} em até ${days} dias`,
+        atLeast: (amount: string, days: number) => `pelo menos ${amount} em até ${days} dias`,
+        cost: (cost: string) => `≤ ${cost}`,
+        notMeasured: (names: string) =>
+          `A venda de ${names} ainda não foi medida, então nenhum custo é mostrado para ela.`,
+      },
+      publisher: 'Publicado por',
+    },
     refusal: {
       versionChanged:
         'Este portfólio tem uma versão nova desde que você abriu esta página. Abra de novo para ver o que ele guarda agora.',
@@ -957,6 +1064,7 @@ export const pt: Dictionary = {
         'Um ativo deste portfólio não pode ser comprado nesta rede agora, então o portfólio não pode ser comprado como está.',
     },
     family: {
+      nextStep: 'Revise a estratégia e escolha quanto investir.',
       loading: 'Lendo este portfólio…',
       missing: 'Não encontro um portfólio compartilhado com esse nome.',
       backToShelf: 'Voltar aos portfólios compartilhados',
@@ -982,7 +1090,7 @@ export const pt: Dictionary = {
         superseded: 'Substituída',
         cancelled: 'Retirada',
       },
-      buy: 'Comprar e seguir este portfólio',
+      buy: 'Investir neste portfólio',
       signIn: 'Entre para seguir',
       chainNotReady: (chain: string) =>
         `A ${chain} ainda não está pronta para seguir portfólios: os cofres dela não estão implantados nesta rede.`,
@@ -1047,6 +1155,15 @@ export const pt: Dictionary = {
       notFollowing: 'Segue outro portfólio',
       ownPlan: 'Guarda o seu próprio plano',
       followWith: 'Seguir com este cofre',
+      noFollowers: 'Nenhum dos seus cofres nesta rede segue este portfólio ainda.',
+      noHoldings: 'Ainda não há ativos neste cofre.',
+      useExisting: 'Usar um cofre existente',
+      closeChooser: 'Fechar seleção de cofres',
+      choose: 'Escolher este cofre',
+      selected: 'Cofre selecionado',
+      reviewFollow: 'Revisar atualização do cofre',
+      reviewTarget: (vault: string, portfolio: string, version: number) =>
+        `“${vault}” seguirá ${portfolio}, versão ${version}. Revise a mudança antes de assinar.`,
       followNote:
         'Seu cofre assume os pesos deste portfólio. Nada é negociado nesse passo: você rebalanceia depois, ou o operador faz isso com o seguir automático ativado.',
       autoOn: 'Ativar o seguir automático',
@@ -1069,10 +1186,36 @@ export const pt: Dictionary = {
       accept: (n: number) => `Aceitar a versão ${n}`,
     },
     publish: {
-      title: 'Publicar um portfólio.',
+      title: 'Compartilhe a estratégia do seu cofre.',
       lead: (chain: string) =>
-        `Sua lista de ativos e pesos, com um nome, na ${chain}. Qualquer pessoa pode vê-la e segui-la. Você assina com a sua carteira: confiro a transação com este formulário antes de pedir à carteira.`,
+        `Compartilhe a estratégia registrada no seu cofre na ${chain}. Revise os ativos e pesos-alvo exatos, dê um nome e uma descrição públicos e assine a publicação.`,
       signIn: 'Entre para publicar um portfólio.',
+      shareStrategy: 'Compartilhar estratégia',
+      sourceVault: 'Seu cofre de origem',
+      sourceHint: 'Escolha um cofre seu na rede ativa.',
+      chooseVault: 'Escolha seu cofre',
+      noVaults: 'Escolha um cofre seu nesta rede antes de compartilhar uma estratégia.',
+      readingVaults: 'Lendo seus cofres…',
+      readingStrategy: 'Lendo a estratégia do cofre…',
+      sourceUnavailable:
+        'Não consegui ler seus cofres. Abra o cofre e tente compartilhar novamente.',
+      editStrategy: 'Voltar à conversa do cofre',
+      privacy:
+        'Só esta estratégia revisada, o nome e a descrição ficam públicos. A conversa do cofre permanece privada.',
+      holdings: 'Tokens mantidos agora · separados dos pesos-alvo',
+      strategySource: (source: string) => `Estratégia lida de ${source}.`,
+      strategyChanged:
+        'A estratégia do cofre mudou. As metas atuais estão na tela. Revise antes de compartilhar novamente.',
+      sourceProblems: {
+        unsupported:
+          'A estratégia completa deste cofre não pode ser compartilhada nas regras atuais do registro. Metas ausentes, aninhadas, desconhecidas ou de caixa não são substituídas. Volte à conversa do cofre para ajustar a estratégia.',
+        unverified:
+          'Não consegui verificar a estratégia e o proprietário nesta rede. A publicação está pausada. Volte ao cofre e tente novamente.',
+        missing: 'Não encontrei este cofre na rede. Escolha um cofre atual seu.',
+        owner:
+          'Este cofre não corresponde à carteira conectada, rede, endereço e número do plano. Escolha um cofre seu.',
+        unreachable: 'Não consegui ler o cofre. Volte ao cofre e tente novamente.',
+      },
       about: 'Nome e descrição',
       name: 'Nome',
       nameHint: 'Letras, números e pontuação simples, até 280 caracteres.',
@@ -1082,7 +1225,8 @@ export const pt: Dictionary = {
       copyHint: 'Até 280 caracteres, sem link.',
       familyId: 'O identificador dele, calculado a partir do endereço',
       assets: 'Ativos e pesos',
-      assetsHint: 'De 3 a 12 ativos, cada um de 2% a 50%, em passos de 0,5%, somando 100%.',
+      assetsHint:
+        'Estes são os pesos-alvo do cofre. Compartilhar exige de 3 a 12 ativos listados, de 2% a 50% em passos de 0,5%, sem peso-alvo de caixa. Ajuste a estratégia no cofre antes de compartilhar se ela não couber.',
       asset: 'Ativo',
       weight: 'Peso, em %',
       assetOf: (n: number) => `Ativo ${n}`,
@@ -1118,6 +1262,72 @@ export const pt: Dictionary = {
     },
     vault: {
       title: 'Um cofre, como a rede o tem',
+      conversation: {
+        proposedShare: 'Fatia proposta',
+        jointLabel:
+          'A estratégia proposta desenhada como um encaixe: uma peça para cada ativo, com a largura da sua fatia.',
+        jointHint: 'Uma peça por ativo, com a largura da sua fatia.',
+        jointLabelWidened:
+          'A estratégia proposta desenhada como um encaixe: uma peça para cada ativo. Fatias pequenas são desenhadas mais largas do que são, para ficarem visíveis; cada peça diz sua fatia exata.',
+        jointHintWidened:
+          'Uma peça por ativo. Fatias pequenas são desenhadas mais largas para ficarem visíveis; os números da lista são exatos.',
+        reworking: 'Lendo o que você disse. Este é o último rascunho.',
+        resume: 'Retomar conversa',
+        holdings: 'Ativos',
+        explain: 'Explique meus ativos',
+        explainPrompt:
+          'Explique o que meu cofre tem e como isso se relaciona com sua estratégia atual.',
+        considerChange: 'Considerar uma mudança',
+        changePrompt: 'Quero considerar uma mudança na estratégia do meu cofre.',
+        discuss: 'Conversar sobre esta proposta',
+        discussPrompt:
+          'Ajude a revisar a estratégia proposta, suas consequências e o que ainda não sabemos.',
+        change: 'Mudança',
+        points: 'p.p.',
+        removed: 'Removido da estratégia proposta',
+        details: 'Detalhes do cofre e fontes dos preços',
+        draftIntro: 'Proposta preliminar, não aplicada:',
+        comparison: 'Meta atual → fatia proposta',
+        reasons: 'Escolhas e fontes',
+        tradeoffs: 'Escolhas e consequências',
+        unknowns: 'O que não sabemos',
+        sources: 'Fontes',
+        title: 'Conversa sobre seu cofre',
+        loading: 'Abrindo a conversa…',
+        saved: 'Salva na sua conta',
+        local: 'Neste navegador · o armazenamento na conta está indisponível',
+        conflict:
+          'Existe outra versão salva. Suas palavras permanecem neste navegador. A conversa está pausada até reconciliar as versões.',
+        notSaved:
+          'Este navegador não conseguiu salvar estas mensagens. Mantenha esta página aberta.',
+        capacity: 'Esta conversa chegou ao limite. Suas mensagens anteriores foram mantidas.',
+        unavailable:
+          'Sua mensagem está salva. O serviço de conversa do cofre ainda não está disponível; nenhuma resposta ou mudança de estratégia foi produzida.',
+        failed:
+          'Não consegui uma resposta. Suas palavras foram mantidas; nenhuma mudança de estratégia foi produzida.',
+        reread:
+          'O cofre foi lido de novo enquanto eu respondia, então deixei essa resposta de lado. Suas palavras foram mantidas; pergunte de novo para ter uma resposta sobre o que ele tem agora.',
+        pending:
+          'Uma conversa sobre este cofre, com o que ele tem agora como contexto. O serviço de conversa está sendo conectado.',
+        empty:
+          'Pergunte sobre o que este cofre tem, sua estratégia ou uma mudança que deseja considerar.',
+        history: 'Conversa salva',
+        you: 'Você',
+        agent: 'Tenonfi',
+        placeholder: 'Pergunte sobre este cofre ou descreva uma mudança…',
+        submitMessage: 'Enviar mensagem',
+        reading: 'Buscando uma resposta…',
+        current: 'O que tem agora',
+        noHoldings: 'Este cofre não tem tokens agora.',
+        targets: 'Metas da estratégia atual',
+        targetsNote: 'Metas registradas na rede, separadas das fatias mantidas agora.',
+        proposed: 'Estratégia proposta',
+        previewOnly:
+          'Somente uma prévia. Seu cofre não mudou. Aplicar uma atualização de estratégia ainda não está disponível aqui.',
+      },
+      address: 'Endereço do cofre',
+      workspaceLead: (chain: string) =>
+        `Seus ativos e estratégia na ${chain}. Continue a conversa aqui conforme seus planos mudam.`,
       lead: (chain: string) =>
         `Lido da ${chain} para esta página. Qualquer pessoa pode ver um cofre: o que ele tem é público na rede.`,
       loading: 'Lendo o cofre…',
@@ -1212,6 +1422,68 @@ export const pt: Dictionary = {
         vault:
           'Não consegui confirmar que este cofre é da sua carteira, então não ofereço o saque. Nada foi assinado.',
       },
+    },
+  },
+
+  invest: {
+    label: 'Investir',
+    buying: 'O que você está comprando',
+    columns: { holding: 'Ativo', share: 'Parte', amount: 'Valor' },
+    cash: 'Fica em dinheiro',
+    press: (amount: string) => `Investir ${amount}`,
+    checkingFunds: 'Conferindo sua carteira…',
+    preparing: 'Lendo os preços da sua ordem…',
+    again: 'Ler os preços de novo',
+    short: {
+      cap: (most: string, times: number) =>
+        `Os fundos de teste enviam até ${most} por vez, ${times} vezes por dia, então um envio não cobre este valor.`,
+      sendAnyway: (most: string) => `Enviar ${most} mesmo assim`,
+      instead: (amount: string) => `Investir ${amount} em vez disso`,
+      covers: (amount: string) => `Sua carteira cobre ${amount} agora.`,
+      typeLess: 'Ou digite um valor menor.',
+      inGoal: 'Para investir outro valor, toque no valor do seu objetivo e mude.',
+    },
+    old: 'Estes preços estão velhos: a ordem venceu antes de ser confirmada. Leia de novo para investir.',
+    updated: 'Preços atualizados. Leia os passos de novo antes de confirmar.',
+    updatedHold: 'Os preços acabaram de mudar: leia primeiro.',
+    fee: {
+      none: 'Não cobramos taxa nesta ordem. A taxa da rede sai da sua carteira.',
+      some: (list: string) => `Taxas desta ordem: ${list}. A taxa da rede sai da sua carteira.`,
+    },
+    signs: {
+      passkey: (n: number) =>
+        n === 1
+          ? 'Um toque assina o único passo com sua carteira de chave de acesso. Nenhuma outra janela abre.'
+          : `Um toque assina os ${n} passos com sua carteira de chave de acesso, um depois do outro. Nenhuma outra janela abre, e você pode parar entre os passos.`,
+      wallet: (n: number) =>
+        n === 1
+          ? 'Sua carteira pede que você confirme o único passo na janela dela.'
+          : `Sua carteira pede que você confirme cada um dos ${n} passos na janela dela.`,
+    },
+    stop: 'Parar depois deste passo',
+    stopping: 'Parando quando este passo terminar. O que já foi assinado ainda é enviado.',
+    progress: {
+      depositing: 'Depositando',
+      deposited: 'Depósito confirmado',
+      depositingAndBuying: (names: string) => `Depositando e comprando ${names}`,
+      depositedAndBought: (names: string) => `Depósito confirmado, ${names} comprado`,
+      approving: 'Autorizando o depósito',
+      approved: 'Depósito autorizado',
+      buying: (names: string) => `Comprando ${names}`,
+      bought: (names: string) => `${names} comprado`,
+      confirmed: (what: string) => `${what}, confirmado`,
+      line: (did: string | null, doing: string, n: number, of: number) =>
+        `${did ? `${did} · ` : ''}${doing} · ${n} de ${of}`,
+    },
+    things: {
+      deposit: 'o depósito',
+      approval: 'a autorização do depósito',
+      step: 'um passo',
+    },
+    stopped: {
+      nothing: 'Nada chegou à rede ainda: nenhum passo está confirmado.',
+      all: (landed: string) => `O que chegou: ${landed}.`,
+      some: (landed: string, not: string) => `O que chegou: ${landed}. O que não chegou: ${not}.`,
     },
   },
 
@@ -1670,6 +1942,215 @@ export const pt: Dictionary = {
       value: 'Valor',
       parts: 'As partes',
       see: 'Ver na tenonfi',
+    },
+  },
+  /** Misturas da conversa ou da própria pessoa (gate ANY-COMPOSITION, #191). */
+  mix: {
+    activity: (when: string) => `Novos pesos-alvo do seu cofre · ${when}`,
+    preview: {
+      deposit: 'Depositar',
+      apply: 'Aplicar ao meu cofre',
+      notes: 'Como os pesos foram definidos',
+      notesAlone: 'Sobre as proporções que você deu',
+      warnings: 'Antes de usar',
+      note: {
+        equalAll: 'As escolhas dividem o cofre em partes iguais: você não deu proporções.',
+        equalRest: (names: string) => `${names} dividem o restante em partes iguais.`,
+        stated: (names: string, quote: string) => `${names} seguem o que você disse: “${quote}”.`,
+        scaled: 'As proporções que você deu não somavam o todo, então ajustei para o todo.',
+        dropped: (name: string) =>
+          `${name} ficou de fora: suas proporções não deixam nada para ele.`,
+        unmet: (quote: string) => `Estas escolhas não conseguem cumprir “${quote}”.`,
+        unread: (quote: string) =>
+          `Não apliquei “${quote}”. Diga como proporção, por exemplo “40% em ouro”, e eu aplico.`,
+        withdrawn: (quote: string) => `Não sigo mais “${quote}” nos pesos: você retirou.`,
+      },
+      warning: {
+        overExit: (name: string) =>
+          `${name} pesa mais do que a saída medida consegue vender no tamanho do seu cofre. Vender pode levar mais tempo.`,
+        outsideGoal: (name: string) =>
+          `${name} está fora do que seu objetivo normalmente guarda. Está aqui porque você pediu.`,
+      },
+    },
+    review: {
+      title: 'Confira esta mistura',
+      lead: 'Conferi cada linha de novo com os preços de hoje. Nada foi comprado nem alterado ainda.',
+      asset: 'Ativo',
+      weight: 'Peso',
+      amount: 'Valor',
+      price: 'Preço',
+      exit: 'O máximo que guarda e ainda sai como planejado',
+      total: 'Total revisado',
+      cash: 'Caixa',
+      cashPrice: 'contado a um dólar',
+      measured: 'medido',
+      tier: 'pela faixa, não medido',
+      warnings: 'Confirme cada um destes',
+      left: (n: number) => (n === 1 ? 'Falta confirmar um.' : `Faltam confirmar ${n}.`),
+      allTicked: 'Todos os avisos estão confirmados.',
+      changed: 'Os números mudaram desde que você olhou. Confira de novo.',
+      back: 'Mudar a mistura',
+    },
+    goal: {
+      goals: { grow: 'Fazer crescer', income: 'Renda mensal', protect: 'Manter seguro' },
+      risks: { low: 'Baixo', medium: 'Médio', high: 'Alto' },
+      choose: 'Escolha um',
+      confirm: 'Confirmar e ir para a compra',
+      confirming: 'Confirmando…',
+    },
+    deposit: {
+      title: 'Depositar nesta mistura',
+      purpose: (
+        goal: 'grow' | 'income' | 'protect' | null,
+        risk: 'low' | 'medium' | 'high' | null,
+      ) => {
+        const goals = {
+          grow: 'Para crescer',
+          income: 'Para renda mensal',
+          protect: 'Para manter seguro',
+        };
+        const risks = {
+          low: 'com risco mais baixo',
+          medium: 'com risco médio',
+          high: 'com risco mais alto',
+        };
+        if (goal && risk) return `${goals[goal]}, ${risks[risk]}.`;
+        if (goal) return `${goals[goal]}.`;
+        return risk ? `C${risks[risk].slice(1)}.` : '';
+      },
+      /** The dollar sign before the amount, as this language writes it. */
+      currency: 'US$',
+      changePurpose: 'Mudar',
+      changePurposeLabel: 'Mudar o objetivo ou o risco na conversa',
+      askGoal: 'Para que é este dinheiro?',
+      askRisk: 'Quanto risco ele pode correr?',
+      askWhy:
+        'Você não disse isso na conversa, e eu não adivinho: o objetivo decide quais ativos o plano pode ter. Toque em um, ou diga na conversa.',
+      limits: 'De US$ 10 a US$ 1.000.000.',
+      quick: 'Valores rápidos',
+      quickOne: (amount: string) => `Depositar ${amount}`,
+      mix: 'O que ele compra',
+      edited: 'Editada à mão',
+      share: 'Parte',
+      unchecked: 'ainda não conferido',
+      needAmount: 'Digite um valor para ver quanto vai para cada ativo.',
+      needPurpose: 'Escolha o objetivo e o risco para ver quanto vai para cada ativo.',
+      checking: 'Conferindo com os preços de hoje…',
+      checked: 'Conferido com os preços de hoje. Nada foi comprado ainda.',
+      review: 'Revisar o depósito',
+      reviewOf: (amount: string) => `Revisar o depósito de ${amount}`,
+      reviewing: 'Conferindo…',
+      changeMix: 'Mudar a mistura',
+      next: 'Nada é comprado nem assinado nesta página. Em seguida você confere a revisão e assina cada passo na tela de compra.',
+      brokenMix:
+        'Os pesos no editor ainda não fecham, então não há mistura para mostrar. Corrija abaixo, ou volte aos pesos propostos.',
+      balance: 'O saldo da sua carteira é conferido na tela de compra.',
+      editByHand: 'Editar os pesos à mão',
+      editorLead:
+        'Digite um peso para cada ativo, em porcentagem. O que você deixar sem atribuir fica em caixa. Os pesos daqui são os que eu confiro.',
+      reset: 'Voltar aos pesos propostos',
+      backToProposal: 'Voltar à proposta',
+      backToDeposit: 'Voltar ao depósito',
+      invalidNext: 'Peça uma mudança na conversa, ou edite os pesos à mão.',
+      blocked: {
+        reply: 'Espere a resposta na conversa primeiro.',
+        weights: 'Corrija os pesos no editor primeiro.',
+        amount: 'Digite um valor primeiro.',
+        purpose: 'Escolha o objetivo e o risco primeiro.',
+      },
+      errors: {
+        notAmount: 'Digite um valor em dólares, como 250 ou 250,50.',
+        belowMin: 'O mínimo para depositar é US$ 10.',
+        aboveMax: 'O máximo em um depósito é US$ 1.000.000. Digite menos.',
+      },
+    },
+    vault: {
+      review: 'Revisar estes pesos-alvo',
+      reviewing: 'Revisando…',
+      confirm: 'Confirmar e criar a ordem',
+      confirming: 'Criando a ordem…',
+      after:
+        'Em seguida, a tela da ordem mostra cada passo a assinar: primeiro os pesos-alvo, depois as vendas e as compras.',
+    },
+    editor: {
+      title: 'Os pesos do seu cofre',
+      lead: 'Escolha o que seu cofre guarda e quanto. O que ficar sem peso fica em caixa.',
+      edit: 'Editar pesos',
+      weights: 'Pesos',
+      fromChat:
+        'Estes são os pesos da conversa. Mude qualquer um aqui; os que estiverem nestes campos são os que eu confiro.',
+      close: 'Voltar à conversa',
+      unit: 'Digitar pesos em',
+      percent: 'Porcentagem',
+      bps: 'Pontos-base',
+      add: 'Adicionar um ativo',
+      addButton: 'Adicionar',
+      addNone: 'Todos os ativos listados já estão na mistura.',
+      remove: (name: string) => `Remover ${name}`,
+      weight: (name: string) => `Peso de ${name}`,
+      cash: (share: string) => `Caixa: ${share}`,
+      lines: (n: number) => `${n} de 16 ativos`,
+      issues: {
+        'too-many': 'Um cofre guarda 16 ativos além do caixa. Remova um.',
+        duplicate: 'Cada ativo uma vez. Remova a repetição.',
+        'cash-line': 'O caixa é o que os outros deixam. Remova-o como linha.',
+        'not-whole': 'Use porcentagens com até duas casas decimais, ou pontos-base inteiros.',
+        'over-whole': (over: string) => `Os pesos somam mais que o todo. Tire ${over}.`,
+        'all-cash': 'Dê peso a pelo menos um ativo: um cofre guarda um ativo próprio.',
+      },
+      loading: 'Lendo seu cofre…',
+      notYours: 'Este cofre não é seu, ou não está lá.',
+      failed: 'Não consegui ler este cofre agora. Tente de novo.',
+      back: 'Voltar ao seu cofre',
+    },
+    failure: {
+      invalid: 'Esta mistura não pode seguir assim:',
+      signedOut: 'Seu acesso expirou. Entre de novo e tente mais uma vez.',
+      noWallet: 'Seu acesso não tem carteira nesta rede. Adicione uma e tente de novo.',
+      notYours: 'Este cofre não é seu.',
+      readOnly: 'Esta rede só lê por enquanto. Nada pode ser comprado ou alterado nela.',
+      busy: 'Muitos pedidos agora. Espere um pouco e tente de novo.',
+      unreadable: 'A resposta não bateu com o pedido. Nada foi guardado. Tente de novo.',
+      unchecked:
+        'O servidor recebeu sua confirmação, mas a resposta não bateu com o que você revisou, então parei aqui. Pode já estar guardado: veja seu portfólio antes de tentar de novo.',
+      unreachable: 'Não consegui falar com o servidor. Nada foi guardado. Tente de novo.',
+      said: (error: string) => `O servidor disse: ${error}`,
+      noStore:
+        'Este navegador não guardou a ordem, então ela não pode ser assinada aqui. Permita o armazenamento do site e tente de novo.',
+    },
+    issue: (code: string, asset: string) => {
+      switch (code) {
+        case 'WEIGHT_NOT_WHOLE':
+          return 'Um peso não é um número inteiro de pontos-base.';
+        case 'NOT_LISTED':
+          return `${asset} não está na lista desta rede agora.`;
+        case 'DUPLICATE':
+          return `${asset} aparece duas vezes.`;
+        case 'FOREIGN_CASH':
+          return `${asset} é um token de caixa que esta rede não usa. Deixe o caixa como o restante.`;
+        case 'SUM_NOT_10000':
+          return 'Os pesos não somam o todo.';
+        case 'TOO_MANY_LINES':
+          return 'Um cofre guarda 16 ativos além do caixa.';
+        case 'NO_PRICE':
+          return `${asset} não tem um preço usável agora.`;
+        case 'NOT_FOR_GOAL':
+          return `${asset} não entra em um plano de renda mensal nem de manter o dinheiro seguro: pode perder valor. Tire-o ou escolha outro objetivo.`;
+        case 'ALL_CASH':
+          return 'Um cofre aberto guarda pelo menos um ativo próprio.';
+        case 'OVER_ORDER_LIMIT':
+          return 'Este cofre vale mais do que uma ordem pode mover.';
+        default:
+          return 'Uma linha não pode ser usada.';
+      }
+    },
+    order: {
+      title: 'Novos pesos-alvo do seu cofre',
+      signTargets: 'Assinar e aplicar os pesos-alvo',
+      cash: (share: string) => `O restante fica em caixa: ${share}.`,
+      fromConversation: 'Proposto na sua conversa e confirmado por você.',
+      fromPerson: 'Escolhido por você.',
+      note: 'O primeiro passo define estes pesos-alvo na rede; os passos seguintes vendem e compram para chegar a eles, cada um com seu mínimo.',
     },
   },
 };

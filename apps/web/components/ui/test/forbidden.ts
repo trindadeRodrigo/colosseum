@@ -249,14 +249,17 @@ export function scanCss(root: Root, vars: Map<string, string>): Finding[] {
     // radius
     if (RADIUS.test(prop)) {
       const classes = classesOf(selectors);
-      const composer = classes.map((c) => COMPOSER_RADIUS[c]).find(Boolean);
+      const allowed =
+        context(decl).at(-1) === '.rounded-asset'
+          ? '9999px'
+          : classes.map((c) => COMPOSER_RADIUS[c]).find(Boolean);
       const resolved = resolve(value, vars);
       const corners = resolved.split(/[\s/]+/).filter(Boolean);
       // inside the embed a corner is the partner's (`--embed-radius`, and their buttons'
       // `--tf-embed-button-radius`, unset outside the embed): our 2px recedes there
       const ok =
         /^var\(--(embed-radius|tf-embed-button-radius)\b/.test(value) ||
-        corners.every((c) => SQUARE.has(c) || KEYWORDS.has(c) || c === composer);
+        corners.every((c) => SQUARE.has(c) || KEYWORDS.has(c) || c === allowed);
       if (!ok)
         add(decl, 'radius', `${prop}: ${value}${resolved === value ? '' : ` (${resolved})`}`);
     }

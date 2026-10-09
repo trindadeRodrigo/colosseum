@@ -5,6 +5,7 @@ import { click, find, mount, settle, unmountAll } from '../../components/ui/test
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary, type Lang } from '../../i18n';
+import { GOAL_HANDOFF } from '../goal/draft';
 import { toWalletError } from '../wallet/errors';
 import {
   EMBEDDED,
@@ -536,9 +537,7 @@ describe('one person after another in the same browser', () => {
   });
 });
 
-describe('the goal a person typed, kept in the tab', () => {
-  const DRAFT = JSON.stringify({ text: 'Grow $40,000 for an apartment', sheet: null });
-  beforeEach(() => window.sessionStorage.setItem('tf-goal', DRAFT));
+describe('what this browser kept for a person', () => {
   afterEach(() => window.sessionStorage.clear());
 
   it('is forgotten when they sign out, on whatever page they do it', async () => {
@@ -546,8 +545,7 @@ describe('the goal a person typed, kept in the tab', () => {
     portStore.set(signedInPort(PHANTOM));
     await screen();
     await settle();
-    expect(window.sessionStorage.getItem('tf-goal')).toBe(DRAFT);
-    // and with it the plans this browser kept for them: the server has them for the next sign-in
+    // the plans this browser kept for them: the server has them for the next sign-in
     window.localStorage.setItem('tf-plan:some-plan', '{}');
     window.localStorage.setItem('tf-plans', '["some-plan"]');
     // their order records go too; another person's stay, and so does the trust acceptance
@@ -568,25 +566,33 @@ describe('the goal a person typed, kept in the tab', () => {
       order('someone-else').replace('"o"', '"theirs"'),
     );
     window.localStorage.setItem(`tf-trust:${me}`, '{"textVersion":"x"}');
+    // and their private vault conversations; another person's stay
+    const talk = (userId: string) =>
+      `tf-vault-conversation:2:${encodeURIComponent(userId)}:solana:testnet:vault-1:sandbox`;
+    window.localStorage.setItem(talk(me), '{"revision":0,"transcript":[]}');
+    window.localStorage.setItem(talk('someone-else'), '{"revision":0,"transcript":[]}');
     await act(async () => portStore.set(fakePort({ found: FOUND })));
     await settle();
-    expect(window.sessionStorage.getItem('tf-goal')).toBeNull();
     expect(window.localStorage.getItem('tf-plan:some-plan')).toBeNull();
     expect(window.localStorage.getItem('tf-plans')).toBeNull();
     expect(window.localStorage.getItem('tf-order:mine')).toBeNull();
     expect(window.localStorage.getItem('tf-order:theirs')).not.toBeNull();
     expect(window.localStorage.getItem(`tf-trust:${me}`)).not.toBeNull();
+    expect(window.localStorage.getItem(talk(me))).toBeNull();
+    expect(window.localStorage.getItem(talk('someone-else'))).not.toBeNull();
     window.localStorage.clear();
   });
 
-  it('is kept when someone who typed it signed out goes on to sign in', async () => {
+  it('keeps the words handed from the landing when someone signed out goes on to sign in', async () => {
+    const words = 'Grow $40,000 for an apartment';
+    window.sessionStorage.setItem(GOAL_HANDOFF, words);
     api(connected());
     portStore.set(fakePort({ found: FOUND, signIn: signsInAs(PHANTOM) }));
     const host = await screen('en', '/goal');
     await connectWith(host, 'Phantom');
     await settle();
     expect(state(host)).toBe('ready');
-    expect(window.sessionStorage.getItem('tf-goal')).toBe(DRAFT);
+    expect(window.sessionStorage.getItem(GOAL_HANDOFF)).toBe(words);
   });
 });
 

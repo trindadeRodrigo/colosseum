@@ -14,8 +14,11 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { ChainBadgeMarked, ChainMark } from '../account/ChainName';
 import { ActivityPanel } from '../order/ActivityPanel';
+import { AssetMark } from '../order/PlanView';
+import { displayName } from '../order/plain';
+import { HoldingsBar } from '../shared/HoldingsBar';
 import { useWalletPort } from '../wallet/WalletProvider';
-import { dollars } from './figures';
+import { dollars, sharesOf } from './figures';
 import {
   addDecimals,
   chainTotal,
@@ -23,6 +26,7 @@ import {
   type PortfolioChain,
   sumSource,
   type Vault,
+  vaultValueSource,
 } from './portfolio';
 import { usePortfolio } from './use-portfolio';
 import { useVaultHistory } from './use-vault-history';
@@ -116,35 +120,138 @@ export function MonitorScreen() {
     );
   };
 
-  /** One vault: his guide's "Goal card and plan" side by side, then what the vault holds. */
-  const vaultBlock = (entry: PortfolioChain, vault: Vault) => (
-    <div key={vault.address} data-ui="vault" className="flex flex-col gap-6">
-      <VaultActions
-        chain={entry}
-        vault={vault}
-        joined={goalOfVault(vault, history.records)}
-        onRenamed={again}
-        level={grouped ? 3 : 2}
-      />
-      {unfinishedOf(vault)}
-      <div className="grid items-start gap-6 min-[980px]:grid-cols-2">
-        <VaultGoalCard
-          chain={entry}
-          vault={vault}
-          joined={goalOfVault(vault, history.records)}
-          putIn={putInto(vault, history.records, history.deposited)}
-          followed={familyOfVault(vault, history.records)}
-          tookOut={takenOut(vault, history.withdrawals, words.vault.takenOutMethod) !== null}
-        />
-        <PlanParts vault={vault} />
-      </div>
-      <VaultPanel
-        chain={entry}
-        vault={vault}
-        taken={takenOut(vault, history.withdrawals, words.vault.takenOutMethod)}
-      />
-    </div>
-  );
+  /** A current-holdings card; the existing full read and goal remain available under its fold. */
+  const vaultBlock = (entry: PortfolioChain, vault: Vault) => {
+    const rows = holdingsOf(vault).filter((row) => !/^0+$/.test(row.raw));
+    const priced = rows.filter((row) => row.valueUsd !== null && row.weightBps > 0);
+    const shares = sharesOf(
+      lang,
+      rows.map((row) => (row.valueUsd === null ? 0 : row.weightBps)),
+    );
+    const missing = rows.filter((row) => row.valueUsd === null).length;
+    const valueSource = vaultValueSource(entry, vault, words.vault.valueMethod);
+    const page = `/vaults/${encodeURIComponent(entry.chain)}/${encodeURIComponent(vault.address)}`;
+    return (
+      <section key={vault.address} data-ui="vault" className="flex min-w-0">
+        <Card
+          as="article"
+          density="dense"
+          className="h-full w-full min-w-0"
+          mock={valueSource.provenance !== 'live'}
+          mockLabels={{
+            announce:
+              valueSource.provenance === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
+          }}
+        >
+          <CardBody density="dense" className="flex min-w-0 flex-col gap-4">
+            <div data-ui="vault-summary" className="flex min-w-0 flex-col gap-4">
+              <VaultActions
+                chain={entry}
+                vault={vault}
+                joined={goalOfVault(vault, history.records, history.deposited)}
+                onRenamed={again}
+                level={grouped ? 3 : 2}
+              />
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                <ChainBadgeMarked
+                  chain={entry.chain}
+                  provenance={entry.provenance}
+                  labels={marks}
+                />
+                <dl data-ui="vault-summary-value" className="text-end">
+                  <dt className="text-caption text-muted-foreground">{words.vault.value}</dt>
+                  <dd className="text-h3 tabular-nums">
+                    <ProvenancePin
+                      value={dollars(lang, vault.valueUsd)}
+                      obs={valueSource}
+                      labels={t.pin}
+                    />
+                  </dd>
+                </dl>
+              </div>
+              {priced.length > 0 && (
+                <HoldingsBar
+                  shares={priced.map((row) => ({ key: row.asset, shareBps: row.weightBps }))}
+                />
+              )}
+              {rows.length === 0 ? (
+                <p className="text-body-sm text-muted-foreground">
+                  {t.shared.vault.conversation.noHoldings}
+                </p>
+              ) : (
+                <ul
+                  data-ui="vault-summary-holdings"
+                  className="grid gap-x-5 gap-y-2 sm:grid-cols-2"
+                >
+                  {rows.map((row, index) => (
+                    <li key={row.asset} className="flex min-w-0 items-center gap-2 text-body-sm">
+                      <AssetMark asset={row.asset} />
+                      <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                        {displayName(row.asset, t.plan)}
+                      </span>{' '}
+                      <span className="shrink-0 tabular-nums">
+                        {row.valueUsd === null ? '—' : shares[index]}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {missing > 0 && (
+                <p data-ui="vault-summary-unpriced" className="text-caption text-muted-foreground">
+                  {words.vault.unpriced(missing)}
+                </p>
+              )}
+              <nav
+                aria-label={words.overview.actions}
+                className="flex flex-wrap items-center gap-x-5 gap-y-2"
+              >
+                <Link href={page} className={buttonClass({ variant: 'link' })}>
+                  {words.overview.open}
+                </Link>
+                <Link
+                  href={`${page}#vault-conversation`}
+                  className={buttonClass({ variant: 'link' })}
+                >
+                  {t.shared.vault.conversation.resume}
+                </Link>
+              </nav>
+            </div>
+            {unfinishedOf(vault)}
+            <details data-ui="vault-read-details" className="border-t border-border pt-3">
+              <summary className="cursor-pointer text-body-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+                {words.overview.details}
+              </summary>
+              <div className="flex min-w-0 flex-col gap-4 pt-4">
+                <VaultPanel
+                  chain={entry}
+                  vault={vault}
+                  taken={takenOut(vault, history.withdrawals, words.vault.takenOutMethod)}
+                />
+                <details>
+                  <summary className="cursor-pointer text-body-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+                    {words.planDetails}
+                  </summary>
+                  <div className="flex min-w-0 flex-col gap-4 pt-4">
+                    <VaultGoalCard
+                      chain={entry}
+                      vault={vault}
+                      joined={goalOfVault(vault, history.records, history.deposited)}
+                      putIn={putInto(vault, history.records, history.deposited)}
+                      followed={familyOfVault(vault, history.records)}
+                      tookOut={
+                        takenOut(vault, history.withdrawals, words.vault.takenOutMethod) !== null
+                      }
+                    />
+                    <PlanParts vault={vault} />
+                  </div>
+                </details>
+              </div>
+            </details>
+          </CardBody>
+        </Card>
+      </section>
+    );
+  };
 
   /** What a chain's vaults are worth together: one chain's own sum, never one across chains. */
   const chainWorth = (entry: PortfolioChain) => {
@@ -178,7 +285,9 @@ export function MonitorScreen() {
           </h2>
           {chainWorth(entry)}
         </header>
-        {entry.vaults.map((vault) => vaultBlock(entry, vault))}
+        <div data-ui="vault-grid" className="grid items-start gap-5 lg:grid-cols-2">
+          {entry.vaults.map((vault) => vaultBlock(entry, vault))}
+        </div>
       </section>
     );
   };
@@ -283,15 +392,17 @@ export function MonitorScreen() {
                     </Link>
                   </p>
                 )}
-                {held.length > 1 && <AcrossChains totals={held.map(totalOf)} />}
                 {held.map(chainGroup)}
               </>
             ) : (
-              held.flatMap((entry) => [
-                // Several vaults on the one chain: what they are worth together, on that chain.
-                ...(entry.vaults.length > 1 ? [chainWorth(entry)] : []),
-                ...entry.vaults.map((vault) => vaultBlock(entry, vault)),
-              ])
+              held.map((entry) => (
+                <div key={entry.chain} className="flex min-w-0 flex-col gap-4">
+                  {entry.vaults.length > 1 && chainWorth(entry)}
+                  <div data-ui="vault-grid" className="grid items-start gap-5 lg:grid-cols-2">
+                    {entry.vaults.map((vault) => vaultBlock(entry, vault))}
+                  </div>
+                </div>
+              ))
             )}
           </>
         );
@@ -352,6 +463,25 @@ export function MonitorScreen() {
           {words.title(vaults.length)}
         </h1>
         <p className="max-w-(--tf-measure-body) text-body-lg text-foreground">{words.lead}</p>
+        {held.length > 0 && outcome && (
+          <PortfolioSummary
+            totals={held.map(totalOf)}
+            vaultCount={vaults.length}
+            holdingCount={vaults.reduce(
+              (count, vault) =>
+                count + holdingsOf(vault).filter((row) => !/^0+$/.test(row.raw)).length,
+              0,
+            )}
+            unpricedCount={vaults.reduce(
+              (count, vault) =>
+                count +
+                holdingsOf(vault).filter((row) => !/^0+$/.test(row.raw) && row.valueUsd === null)
+                  .length,
+              0,
+            )}
+            partial={outcome.unavailable.length > 0 || outcome.current !== 'read'}
+          />
+        )}
         {/* Another plan is always on offer: each plan bought opens a vault of its own. */}
         {vaults.length > 0 && (
           <Link
@@ -380,6 +510,7 @@ export function MonitorScreen() {
         <ActivityPanel
           groups={history.activity}
           empty={t.activity.noneVault}
+          foldActivity
           // one chain, named in the page's head: the lines do not repeat it. The list holds every
           // chain's orders, though: with a line on another chain, every line says its own.
           chainTags={
@@ -395,25 +526,83 @@ export function MonitorScreen() {
   );
 }
 
-/**
- * The one figure that adds chains up, and says so: each chain's total, added, labelled as across
- * them. Each chain's own total stands under its heading.
- */
-function AcrossChains({ totals }: { totals: ReturnType<typeof chainTotal>[] }) {
+/** A sum of the vaults actually read, with the same source policy as each chain's own total. */
+function PortfolioSummary({
+  totals,
+  vaultCount,
+  holdingCount,
+  unpricedCount,
+  partial,
+}: {
+  totals: ReturnType<typeof chainTotal>[];
+  vaultCount: number;
+  holdingCount: number;
+  unpricedCount: number;
+  partial: boolean;
+}) {
   const t = useT();
   const lang = useLang();
-  const words = t.portfolio.group;
+  const words = t.portfolio.overview;
+  // This component is mounted only for held, non-empty chains; no unavailable read becomes zero.
+  const only = totals[0];
+  if (!only) return null;
   return (
-    <p data-ui="across-chains" className="text-body">
-      {words.across(totals.length)}:{' '}
-      <ProvenancePin
-        value={dollars(lang, addDecimals(totals.map((total) => total.valueUsd)))}
-        obs={sumSource(
-          totals.map((total) => total.obs),
-          words.acrossMethod(totals.length),
-        )}
-        labels={t.pin}
-      />
-    </p>
+    <section
+      data-ui="portfolio-summary"
+      aria-label={words.title}
+      className="flex w-full min-w-0 flex-col gap-3 border-y border-border py-5"
+    >
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+        <div
+          data-ui={totals.length > 1 ? 'across-chains' : undefined}
+          className="col-span-2 min-w-0 sm:col-span-1"
+        >
+          <dt className="text-caption text-muted-foreground">
+            {partial ? words.partialValue : words.value}
+          </dt>
+          <dd data-ui="portfolio-total" className="text-h2 tabular-nums">
+            <ProvenancePin
+              value={dollars(lang, addDecimals(totals.map((total) => total.valueUsd)))}
+              obs={
+                totals.length === 1
+                  ? only.obs
+                  : sumSource(
+                      totals.map((total) => total.obs),
+                      t.portfolio.group.acrossMethod(totals.length),
+                    )
+              }
+              labels={t.pin}
+            />
+            {totals.length > 1 && (
+              <span className="block text-caption text-muted-foreground">
+                {t.portfolio.group.across(totals.length)}
+              </span>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-caption text-muted-foreground">{words.vaults}</dt>
+          <dd data-ui="portfolio-vault-count" className="text-h2 tabular-nums">
+            {vaultCount}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-caption text-muted-foreground">{words.holdings}</dt>
+          <dd data-ui="portfolio-holding-count" className="text-h2 tabular-nums">
+            {holdingCount}
+          </dd>
+        </div>
+      </dl>
+      {partial && (
+        <p data-ui="portfolio-partial" className="text-caption text-muted-foreground">
+          {words.partial}
+        </p>
+      )}
+      {unpricedCount > 0 && (
+        <p data-ui="portfolio-unpriced" className="text-caption text-muted-foreground">
+          {t.portfolio.vault.unpriced(unpricedCount)}
+        </p>
+      )}
+    </section>
   );
 }

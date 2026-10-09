@@ -1,9 +1,9 @@
 import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
-import { throughBuySteps } from './buy-steps';
+import { openPlan, readyToInvest } from './invest';
 
 // A person's buy on Robinhood Chain, end to end in a browser, on the mock chain: they switch the bar to
-// Robinhood Chain before they sign in, see its shelf, and the plan they build is on it (CHAIN-SWITCH).
+// Robinhood Chain before they sign in, see its shelf, and the plan they open is on it (CHAIN-SWITCH).
 // The stub runs its mock as Robinhood Chain (E2E_CHAIN=robinhood sets STUB_CHAIN), so the order is what apps/api plans
 // on an EVM chain: an approval of the deposit, then a create that deposits and trades. The executor
 // builds each step from the stub, holds it to the review with the real guard, has the throwaway wallet
@@ -49,22 +49,16 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
     'robinhood',
   );
 
-  const goal = page.getByRole('textbox', { name: en.goal.composer.label, exact: true });
-  await goal.fill('Grow $40 for three years, medium risk');
-  await goal.press('Enter');
-  await page.getByLabel(en.goal.fields.amount, { exact: true }).fill('40');
-  await page.getByRole('button', { name: en.goal.sheet.build }).click();
-  await page.getByRole('link', { name: en.goal.built.done.see }).click();
+  await openPlan(page);
   await expect(page).toHaveURL(/\/plan\/[^/]+$/);
   await named(page);
-  await page.getByRole('link', { name: en.plan.buy }).click();
+  await page.getByRole('link', { name: en.plan.invest('$40') }).click();
 
   await expect(page).toHaveURL(/\/plan\/[^/]+\/buy$/);
-  await throughBuySteps(page);
+  const press = await readyToInvest(page);
   await named(page);
-  await page.getByRole('button', { name: en.buy.review('$40') }).click();
-
-  await expect(page).toHaveURL(/\/orders\/[^/]+$/);
+  // the review is on the buy's own card
+  await expect(page).toHaveURL(/\/plan\/[^/]+\/buy$/);
   const steps = page.locator('[data-ui="order-step"]');
   await expect(steps).toHaveCount(2);
   await expect(steps.nth(0)).toContainText(en.order.kind.approve);
@@ -73,7 +67,7 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   await expect(steps.nth(1)).not.toContainText('smallest');
   await named(page);
 
-  await page.getByRole('button', { name: en.order.signAndBuy('$40') }).click();
+  await press.click();
   await expect(page.locator('[data-ui="order-status"]')).toHaveText(en.order.outcome.done(NAME), {
     timeout: 90_000,
   });

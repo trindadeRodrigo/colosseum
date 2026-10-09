@@ -108,6 +108,7 @@ const CODES: readonly OrderErrorCode[] = [
   'US_PERSON',
   'RATE_LIMITED',
   'CHAIN_UNAVAILABLE',
+  'AMOUNT_OVER_REVIEW',
 ];
 
 /**
@@ -330,6 +331,14 @@ export async function fundMock(
     return false;
   }
 }
+
+/**
+ * What one send of test funds gives, as our server has it (`TEST_FUNDS` in
+ * apps/api/src/faucet/test-funds.ts): the most test dollars at once, the sends a person has a day,
+ * and the margin it adds over what is missing. Said on the card before the ask; the server is what
+ * holds to them.
+ */
+export const TEST_SEND = { maxUsd: 5_000, perDay: 3, marginBps: 100 } as const;
 
 export type TestFundsOutcome =
   | { kind: 'sent'; sent: TestFundsResponse }

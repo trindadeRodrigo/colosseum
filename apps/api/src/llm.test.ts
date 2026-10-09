@@ -25,6 +25,18 @@ const VOCABULARY: IntakeVocabulary = {
 };
 
 describe('what the model is asked for', () => {
+  it('asks for bounded non-executable latest-person interest metadata, never advice or an inferred company', () => {
+    const [interest, none] = INTAKE_REPLY_SCHEMA.properties.clarification.anyOf;
+    expect(none).toEqual({ type: 'null' });
+    expect(interest.additionalProperties).toBe(false);
+    expect(interest.required).toEqual(['kind', 'quote', 'keywords']);
+    expect(interest.properties.quote).toEqual({ type: 'string' });
+    expect(interest.properties.keywords).toEqual({ type: 'array', items: { type: 'string' } });
+    expect(INTAKE_SYSTEM).toContain('latest message');
+    expect(INTAKE_SYSTEM).toContain('Do not infer Tesla');
+    expect(INTAKE_SYSTEM).toContain("someone else's preference");
+    expect(INTAKE_SYSTEM).toContain('A complete financial instruction must proceed normally');
+  });
   it('names a market only by an id of the engine list, and a filter only as one attribute and one value', () => {
     const { properties, required } = INTAKE_REPLY_SCHEMA;
     expect(properties.markets.items.enum).toEqual([...MARKET_IDS]);
@@ -121,6 +133,35 @@ describe('what the model is sent', () => {
 });
 
 describe('the cache around a call', () => {
+  it('sends exact latest-turn context and distinguishes pending-question boundaries in the same call cache', async () => {
+    const calls: unknown[] = [];
+    const model = budgetedModel(
+      async (_text, _month, _language, _vocabulary, dialogue) => {
+        calls.push(dialogue);
+        return { reply: { read: calls.length } };
+      },
+      { provenance: 'mock' },
+    );
+    const context = {
+      turns: ['i like elon', 'elon musk!'],
+      latestTurn: 1,
+      pendingInterest: { quote: 'i like elon', sourceTurn: 0 },
+      questionOrigin: 'interestClarification' as const,
+    };
+    const text = context.turns.join('\n\n');
+    const first = await model.read(text, '2026-10', 'en', 'person', undefined, context);
+    expect(await model.read(text, '2026-10', 'en', 'person', undefined, context)).toEqual(first);
+    expect(
+      await model.read(text, '2026-10', 'en', 'person', undefined, {
+        ...context,
+        questionOrigin: null,
+      }),
+    ).not.toEqual(first);
+    expect(calls).toHaveLength(2);
+    const message = intakeUserMessage(text, '2026-10', 'en', undefined, context);
+    expect(message).toContain(JSON.stringify(context));
+    expect(message).toContain('Latest person message:\nelon musk!');
+  });
   it('hands the vocabulary to the call, and reads the same goal with another vocabulary again', async () => {
     const seen: (IntakeVocabulary | undefined)[] = [];
     const call: ReadCall = async (_text, _month, _language, vocabulary) => {

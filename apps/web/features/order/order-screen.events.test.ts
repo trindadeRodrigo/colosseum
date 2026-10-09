@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { DISCLAIMER, type OrderDetail } from '@colosseum/schemas';
+import { DISCLAIMER, type OrderDetail, TRUST_STATUS } from '@colosseum/schemas';
 import {
   basketIdOfLinkedPlan,
   basketIdOfPlan,
@@ -25,7 +25,7 @@ import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { holds } from '../wallet/test/mock-signing';
 import { OrderScreen } from './OrderScreen';
-import { recallOrder } from './order-record';
+import { recallOrder, trustAccepted } from './order-record';
 import {
   doneOrder,
   LEG_CREATE,
@@ -148,8 +148,19 @@ const label = (el: HTMLElement) =>
 const status = (host: HTMLElement) =>
   host.querySelector('[data-ui="order-status"]')?.textContent ?? '';
 
+/**
+ * The person accepted the trust notice before, with the keeper's limits shown: an order opened here
+ * by someone who never did is held for it (see "the trust notice on the order's own page").
+ */
+const accepted = () =>
+  window.localStorage.setItem(
+    `tf-trust:${USER}`,
+    JSON.stringify({ textVersion: TRUST_STATUS.textVersion, keeperShown: true }),
+  );
+
 beforeEach(() => {
   window.localStorage.clear();
+  accepted();
   run.calls.length = 0;
   chain.now = { state: 'unknown' };
   chain.asked.length = 0;
@@ -187,6 +198,63 @@ describe('the disclaimer on the order page (STYLE.md rule 3)', () => {
       held();
     },
   );
+});
+
+describe('the trust notice on the order’s own page', () => {
+  // The invest card makes an order before the notice is accepted, to show its prices (gate
+  // INVEST-ONE-PRESS). Opened by its address, that order is still held for the notice.
+  const notice = (host: HTMLElement) =>
+    host.querySelector<HTMLInputElement>('[data-ui="trust-notice"] input[type="checkbox"]');
+
+  it('holds the first signature of a buy until the notice is accepted, and keeps the acceptance at the press', async () => {
+    window.localStorage.removeItem(`tf-trust:${USER}`);
+    api(orderOn());
+    seed();
+    const host = await screen();
+    const button = primary(host);
+    expect(label(button)).toBe(en.order.signAndBuy('$10'));
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(host.textContent).toContain(en.buy.blocked.trust);
+    await click(button);
+    await settle();
+    expect(run.calls).toEqual([]);
+    // ticked: the press is offered, and nothing is kept until it is made
+    await click(notice(host) as HTMLElement);
+    expect(primary(host).getAttribute('aria-disabled')).toBeNull();
+    expect(trustAccepted(USER, TRUST_STATUS.textVersion, false)).toBe(false);
+    await click(primary(host));
+    await settle();
+    expect(run.calls).toHaveLength(1);
+    // a plan's own vault: accepted without the keeper's limits among the short points
+    expect(trustAccepted(USER, TRUST_STATUS.textVersion, false)).toBe(true);
+    expect(trustAccepted(USER, TRUST_STATUS.textVersion)).toBe(false);
+  });
+
+  it('does not ask again, for a plan’s own vault, of someone who accepted on a plan’s buy', async () => {
+    // accepted where the keeper's limits were not shown
+    window.localStorage.setItem(
+      `tf-trust:${USER}`,
+      JSON.stringify({ textVersion: TRUST_STATUS.textVersion, keeperShown: false }),
+    );
+    api(orderOn());
+    seed();
+    const own = await screen();
+    // a plan's own vault: not asked again
+    expect(notice(own)).toBeNull();
+    expect(primary(own).getAttribute('aria-disabled')).toBeNull();
+  });
+
+  it('does not ask of an order that was approved, or of one that deposits nothing', async () => {
+    window.localStorage.removeItem(`tf-trust:${USER}`);
+    api(orderOn());
+    seed({
+      ...recordOf(),
+      approved: { order: orderOn(), consents: [], at: '2026-10-06T00:00:00Z' },
+    });
+    const host = await screen();
+    expect(notice(host)).toBeNull();
+    expect(primary(host).getAttribute('aria-disabled')).toBeNull();
+  });
 });
 
 describe('the review', () => {
@@ -280,6 +348,7 @@ describe('the review', () => {
     expect(deps.plan.basketId).toBe(basketIdOfLinkedPlan(PLAN_ID, USER));
     await unmountAll();
     window.localStorage.clear();
+    accepted();
     run.calls.length = 0;
     // a number that is neither the plan's nor this person's own is not signed for, and for a plan this
     // browser kept as one from a link, the plan's shared number is not either
@@ -297,6 +366,7 @@ describe('the review', () => {
       expect(host.textContent).toContain(en.order.outcome.notRunnable['plan-mismatch']);
       await unmountAll();
       window.localStorage.clear();
+      accepted();
     }
   });
 
@@ -794,6 +864,7 @@ describe('what the executor answers', () => {
         expect(router.push).not.toHaveBeenCalled();
         await unmountAll();
         window.localStorage.clear();
+        accepted();
       }
     });
 
@@ -853,6 +924,7 @@ describe('what the executor answers', () => {
         expect(run.calls).toHaveLength(0);
         await unmountAll();
         window.localStorage.clear();
+        accepted();
       }
     });
 
@@ -1586,6 +1658,7 @@ describe('a buy on Robinhood Chain', () => {
 describe('a chain that is not ready', () => {
   it('signs nothing on a chain whose deployment is not committed, and says so', async () => {
     window.localStorage.clear();
+    accepted();
     portStore.set(signedInPort(EMBEDDED, { userId: USER }));
     api(orderOn('base'), 'base');
     seed(recordOf('base'));

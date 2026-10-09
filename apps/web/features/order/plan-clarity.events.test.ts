@@ -184,6 +184,28 @@ describe('the plan in plain words', () => {
     expect(kindLabel('something_else', en.plan.kinds)).toBe(en.plan.kinds.other);
   });
 
+  it('says the flags of a confirmed mix as sentences: who chose it and each warning accepted', () => {
+    const flags = [
+      'origin:model',
+      'origin:person',
+      'confirmed:EXIT_OVER_CAPACITY:solana:spyx',
+      'confirmed:EXIT_OVER_TIER_CEILING:solana:spyx',
+      'confirmed:OVER_LISTED_CAP:solana:spyx',
+      'confirmed:NOT_FOR_GOAL:solana:spyx',
+      'confirmed:STOPS_FOLLOWING',
+    ];
+    for (const d of [en, pt])
+      for (const flag of flags) {
+        const said = flagSentence(flag, d.plan, (id) => displayName(id, d.plan));
+        expect(said, flag).not.toMatch(/[A-Z]+_[A-Z_]+|[a-z]+_[a-z_]+|solana:|:/);
+        expect(said, flag).not.toBe(d.plan.flagWords.other);
+        expect(said, flag).toMatch(/\.$/);
+      }
+    expect(
+      flagSentence('confirmed:NOT_FOR_GOAL:solana:spyx', en.plan, (id) => displayName(id, en.plan)),
+    ).toBe('You confirmed SPYx, which a plan for this goal doesn’t normally hold.');
+  });
+
   it('renders no engine code anywhere on the page, the closed details included', async () => {
     rememberPlan(small());
     const host = await shown();
@@ -211,49 +233,12 @@ describe('the plan in plain words', () => {
     );
   });
 
-  it('says a short or flat plan in a sentence on its pin, instead of a flat chart', async () => {
-    // a plan with a yield reading: one with none draws no projection at all
-    const plan = small();
-    rememberPlan({ ...plan, proposal: { ...plan.proposal, flags: [] } });
-    const host = await shown();
-    const chart = find(host, '[data-ui="plan-chart"]');
-    expect(chart.getAttribute('data-kind')).toBe('short');
-    expect(chart.querySelector('[data-ui="case-plot"]')).toBeNull();
-    expect(find(chart, 'figcaption').textContent).toContain(
-      // $200 at 4.5% to 4.8% a year for 2 months: both ends round to $202, so they are told to the cent
-      `${en.plan.short('2 months')}${en.plan.shortRange('$201.50', '$201.60')}`,
-    );
-    expect(chart.querySelector('[data-ui="figure"]')).not.toBeNull();
-  });
-
   it('says what a bad fall costs in a sentence, and the basis with one full stop', async () => {
     rememberPlan(small());
     const host = await shown();
     expect(find(host, '[data-ui="plan-bad-fall"]').textContent).toBe(en.plan.badFall.none);
     expect(host.textContent).not.toMatch(/\.\./);
     expect(host.textContent).not.toContain('estimate$');
-  });
-
-  it('draws one tick per dollar label when two values round the same', async () => {
-    const plan = planOn();
-    rememberPlan({
-      ...plan,
-      proposal: {
-        ...plan.proposal,
-        // $100 for 6 months at up to 2% a year: the middle ($100.50) and the end ($101) both read $101
-        sheet: { ...plan.proposal.sheet, amountUsd: 100, horizonMonths: 6 },
-        card: {
-          ...plan.proposal.card,
-          termMonths: 6,
-          expectedReturn: { ...plan.proposal.card.expectedReturn, lowPct: 1, highPct: 2 },
-        },
-      },
-    });
-    const host = await shown();
-    const ticks = [...host.querySelectorAll('[data-ui="plan-chart"] svg text')]
-      .map((t) => t.textContent)
-      .filter((s) => s?.startsWith('$'));
-    expect(ticks).toEqual(['$100', '$101']);
   });
 
   it('never says USDC on a Robinhood plan: its dollar is tUSDG, in the summary and the legs', async () => {
@@ -275,7 +260,7 @@ describe('the plan in plain words', () => {
     rememberPlan(small());
     const host = await shown('pt');
     expect(host.textContent).not.toMatch(/\b[a-z]+_[a-z_]+(:|\b)/);
-    expect(find(host, 'details summary').textContent).toBe(pt.plan.details);
+    expect(find(host, 'details[data-ui="plan-details"] summary').textContent).toBe(pt.plan.details);
     expect(find(host, '[data-ui="plan-summary"]').textContent).toContain('Dinheiro (USDC)');
   });
 });

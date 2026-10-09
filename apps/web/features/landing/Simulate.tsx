@@ -7,7 +7,7 @@ import { buttonClass } from '../../components/ui/button-class';
 import { Composer } from '../../components/ui/Composer';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { GOAL_HANDOFF } from '../goal/draft';
+import { GOAL_HANDOFF, GOAL_HANDOFF_OWNER } from '../goal/draft';
 import { GOAL_TEXT } from '../goal/read-goal';
 
 // "Tell us what your money needs to do." (hero-3d.html, `#simulate`): the goal composer of the app, as
@@ -30,6 +30,7 @@ export function Simulate({ signedIn = false }: { signedIn?: boolean }) {
     setBusy(true);
     try {
       window.sessionStorage.setItem(GOAL_HANDOFF, typed);
+      window.sessionStorage.removeItem(GOAL_HANDOFF_OWNER);
     } catch {
       // No storage in this browser: the goal screen opens empty, and the text is still in this box.
     }

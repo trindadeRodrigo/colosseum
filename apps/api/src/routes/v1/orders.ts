@@ -18,11 +18,13 @@ import {
   assertNoneInFlight,
   buildLeg,
   cancelLeg,
+  failureOf,
   type OrderDeps,
   refreshOrder,
   reportLeg,
 } from '../../orders/legs';
 import { homeChain } from '../../orders/person';
+import { joinConfirmed } from '../../orders/plan-join';
 import { prepareOrder } from '../../orders/prepare';
 import { recordPublished } from '../../orders/shared';
 import {
@@ -35,7 +37,9 @@ import {
   loadOrder,
   type StoredOrder,
 } from '../../orders/store';
+import { noteOrder } from '../../orders/thread';
 import { holds } from '../../plugins/auth';
+import { loggable } from '../../plugins/loggable';
 
 // The bodies and answers of these routes are named in packages/schemas (order-api.ts), so the SDK and
 // the web read the same shapes.
@@ -100,6 +104,51 @@ async function published(
   return stored;
 }
 
+/**
+ * A buy whose step that opens the vault has confirmed: the vault is written to the cache and joined to
+ * the plan it was opened for (orders/plan-join.ts). Done on every route that answers an order after a
+ * step may have settled: the read, the report, `continue`, which tracks the steps sent before it
+ * decides anything, and the build and the cancel, which make the join whether they then answer or
+ * refuse (`withJoin`). Once joined it is one look in the database. It never fails the answer: what goes
+ * wrong is logged, and the portfolio's read makes the join later.
+ */
+async function joined(
+  deps: OrderDeps,
+  req: FastifyRequest,
+  stored: StoredOrder,
+  readBefore = false,
+): Promise<StoredOrder> {
+  await joinConfirmed(deps, stored, signedIn(req), req.log, readBefore);
+  return stored;
+}
+
+/**
+ * A route's work on an order, with the join made after it whether the work answered or refused. For the
+ * build and the cancel: each may settle the step that opens the vault and then refuse, by tracking a
+ * step that was sent (and then a price has moved past a later step's minimum, or the step has no
+ * attempt left to cancel) or by finding the landing of a transaction nobody reported (`STEP_LANDED`).
+ * `read` is the order as it was read before the work, so the join asks the database what became of
+ * that step. What the caller gets is the work's own answer or refusal: the join never throws, and were
+ * it to, that is logged here and goes no further.
+ */
+async function withJoin<T>(
+  deps: OrderDeps,
+  req: FastifyRequest,
+  read: StoredOrder,
+  work: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await work();
+  } finally {
+    await joined(deps, req, read, true).catch((err: unknown) =>
+      req.log.error(
+        { err: loggable(err), orderId: read.order.id },
+        'the join after an order route failed',
+      ),
+    );
+  }
+}
+
 // The Order schema's own checks (every leg is the order's, on a chain its owner has an address for)
 // run here, since the response schema is the plain object.
 const detail = (stored: StoredOrder): OrderDetail => ({
@@ -109,6 +158,7 @@ const detail = (stored: StoredOrder): OrderDetail => ({
 
 export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
   const f = scope.withTypeProvider<ZodTypeProvider>();
+  const recordError = (e: unknown) => deps.onRecordError?.(failureOf(e));
   const tags = ['orders'];
 
   f.post(
@@ -161,10 +211,14 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
     },
     async (req) =>
       detail(
-        await published(
+        await joined(
           deps,
           req,
-          await refreshOrder(deps, await ownOrder(deps, req, req.params.id)),
+          await published(
+            deps,
+            req,
+            await refreshOrder(deps, await ownOrder(deps, req, req.params.id)),
+          ),
         ),
       ),
   );
@@ -182,13 +236,15 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
         response: { 200: BuildLegResponse, default: OrderError },
       },
     },
-    async (req) =>
-      buildLeg(
-        deps,
-        await ownOrder(deps, req, req.params.id),
-        req.params.legId,
-        signedIn(req).userId,
-      ),
+    async (req) => {
+      const read = await ownOrder(deps, req, req.params.id);
+      // The build tracks the steps sent before it, and settles its own step where the transaction
+      // built earlier has landed: the step that opens the vault may be confirmed by the time the
+      // build answers or refuses.
+      return withJoin(deps, req, read, () =>
+        buildLeg(deps, read, req.params.legId, signedIn(req).userId),
+      );
+    },
   );
 
   f.post(
@@ -207,14 +263,18 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
     },
     async (req) =>
       detail(
-        await published(
+        await joined(
           deps,
           req,
-          await reportLeg(
+          await published(
             deps,
-            await ownOrder(deps, req, req.params.id),
-            req.params.legId,
-            req.body,
+            req,
+            await reportLeg(
+              deps,
+              await ownOrder(deps, req, req.params.id),
+              req.params.legId,
+              req.body,
+            ),
           ),
         ),
       ),
@@ -254,8 +314,9 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
       };
       const [made] = await continuationsOf(deps.db, stored.order.id);
       if (made) return answerMade(made);
-      // What the chain says now of a step that was sent, before anything is decided on its status.
-      const fresh = await refreshOrder(deps, stored);
+      // What the chain says now of a step that was sent, before anything is decided on its status. The
+      // step that opens the vault may be one of them: found confirmed here, its vault is joined here.
+      const fresh = await joined(deps, req, await refreshOrder(deps, stored));
       const left = leftOf(fresh.order);
       const leftLegIds = left.map((leg) => leg.id);
       // The attempts looked at here; one recorded after this is seen under the lock below.
@@ -275,6 +336,9 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
         seen,
       });
       if (existing) return answerMade(existing);
+      // The first order stopped: said in the plan's thread now. That this one was made is said when
+      // its first step is built (thread.ts).
+      await noteOrder(deps.db, fresh, { stopped: true, onError: recordError });
       return detail({ order, request, attempts: [] });
     },
   );
@@ -292,7 +356,14 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
         response: { 200: OrderDetail, default: OrderError },
       },
     },
-    async (req) =>
-      detail(await cancelLeg(deps, await ownOrder(deps, req, req.params.id), req.params.legId)),
+    async (req) => {
+      const read = await ownOrder(deps, req, req.params.id);
+      // The cancel tracks the steps sent before it, and settles its own step where the transaction
+      // has landed: the step that opens the vault may be confirmed by the time the cancel answers or
+      // refuses.
+      return withJoin(deps, req, read, async () =>
+        detail(await cancelLeg(deps, read, req.params.legId)),
+      );
+    },
   );
 }

@@ -7,7 +7,7 @@ import type { ActivityGroup } from '../order/ActivityPanel';
 import { activityOf, activityOfWithdrawals } from '../order/activity';
 import { readOrder } from '../order/order-api';
 import { depositLanded, stoppedShort } from '../order/order-check';
-import { isBuy, type OrderRecord, recallOrders } from '../order/order-record';
+import { forgetUnapproved, isBuy, type OrderRecord, recallOrders } from '../order/order-record';
 import { onMock } from '../order/readiness';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { utc } from './figures';
@@ -83,6 +83,22 @@ export function useVaultHistory(): VaultHistory {
     }
     Promise.all(records.map((r) => readOrder(apiFetch, r.orderId))).then((read) => {
       if (!live) return;
+      // An order this browser kept that nobody approved and whose time ran out (the invest card
+      // makes one to show its prices, and a closed tab can leave it behind) is no buy: its record is
+      // dropped here, so it is not asked about again. Never one that finishes another order: what
+      // that one is held to is in its record.
+      for (const [i, answer] of read.entries()) {
+        const record = records[i];
+        if (
+          answer.kind === 'read' &&
+          record &&
+          record.approved === null &&
+          !record.continues &&
+          answer.order.expiresAt * 1000 < Date.now() &&
+          answer.order.legs.every((leg) => leg.attempt === 0)
+        )
+          forgetUnapproved(record.orderId, userId);
+      }
       setDeposited(
         new Set(
           read.flatMap((answer) =>
@@ -131,7 +147,9 @@ export function useVaultHistory(): VaultHistory {
                           ? t.activity.follow(when)
                           : record.terms?.kind === 'publish'
                             ? t.activity.publish(when)
-                            : t.activity.order(when),
+                            : record.terms?.kind === 'retarget'
+                              ? t.mix.activity(when)
+                              : t.activity.order(when),
                     executions,
                   },
                 ];

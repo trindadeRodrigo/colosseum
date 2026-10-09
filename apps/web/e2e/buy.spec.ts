@@ -1,11 +1,11 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
-import { throughBuySteps } from './buy-steps';
+import { openPlan, readyToInvest } from './invest';
 import { inTheme } from './theme';
 
-// A person's buy, end to end in a browser, on the mock chain: sign in with the throwaway wallet, read a
-// goal, build the plan, look at it, buy it, review every step and sign. The order screen's executor
+// A person's buy, end to end in a browser, on the mock chain: sign in with the throwaway wallet, open
+// a plan, look at it, buy it, review every step and sign. The order screen's executor
 // builds each step from the stub API, holds it to the review with the real guard, has the throwaway
 // wallet sign it and reports it, until the stub's mock chain confirms every step. A second buy has the
 // stub lie about one step, and the guard refuses it. Every screen is checked with axe at 375 px, in
@@ -124,12 +124,28 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
     ).toEqual([]);
   }
   await page.keyboard.press('Home');
+  const automaticPosts: string[] = [];
+  page.on('request', (request) => {
+    if (
+      request.method() === 'POST' &&
+      /\/(goals|baskets|orders|conversations)\b/.test(request.url())
+    )
+      automaticPosts.push(request.url());
+  });
   const box = page.locator('#simulate textarea');
   await box.fill('Grow $2,000 for ten years, high risk');
   await box.press('Enter');
   await expect(page).toHaveURL(/\/goal$/);
-  // the goal screen reads what the landing handed it
-  await expect(page.getByText(en.goal.sheet.title).first()).toBeVisible();
+  // Plain landing words stay an unconfirmed model-led prefill. Only an explicit Send can ask for a reply.
+  await expect(page.locator('[data-ui="goal-chat"] textarea')).toHaveValue(
+    'Grow $2,000 for ten years, high risk',
+  );
+  await expect(page.locator('[data-ui="goal-transcript"] li')).toHaveCount(0);
+  await expect(page.locator('[data-ui="invest-screen"], [data-ui="invest-card"]')).toHaveCount(0);
+  expect(await page.evaluate(() => sessionStorage.getItem('tf-goal-handoff'))).toBe(
+    'Grow $2,000 for ten years, high risk',
+  );
+  expect(automaticPosts).toEqual([]);
 });
 
 test('the two sample cases fit their cards on a phone and a tablet, in English and Portuguese', async ({
@@ -236,20 +252,13 @@ async function toBuy(page: Page, o: { fund?: 'mock' | 'test' } = {}) {
   await expect(page).toHaveURL(/\/goal$/);
   await check(page, 'home');
 
-  const goal = page.getByRole('textbox', { name: en.goal.composer.label, exact: true });
-  await goal.fill('Grow $40 for three years, medium risk');
-  await goal.press('Enter');
-  await page.getByLabel(en.goal.fields.amount, { exact: true }).fill('40');
-  // the country is not asked for: it shapes no plan and sits folded away (gate COUNTRY-REMOVED)
-  await expect(page.getByLabel(en.goal.fields.country, { exact: true })).toBeHidden();
-  await page.getByRole('button', { name: en.goal.sheet.build }).click();
-  await page.getByRole('link', { name: en.goal.built.done.see }).click();
+  await openPlan(page);
 
   await expect(page).toHaveURL(/\/plan\/[^/]+$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Grow $40 over 36 months.');
   await expect(page.locator('main')).not.toContainText('MOCK');
   await check(page, 'plan');
-  await page.getByRole('link', { name: en.plan.buy }).click();
+  await page.getByRole('link', { name: en.plan.invest('$40') }).click();
 
   await expect(page).toHaveURL(/\/plan\/[^/]+\/buy$/);
 }
@@ -259,19 +268,17 @@ async function toReview(page: Page, o: { fund?: 'mock' | 'test' } = {}) {
   // the amount starts at the plan's
   await expect(page.getByLabel(en.buy.amount.label, { exact: true })).toHaveValue('40');
   await check(page, 'buy-amount');
-  await throughBuySteps(page, { fund: o.fund ?? 'mock' });
+  const press = await readyToInvest(page, { fund: o.fund ?? 'mock' });
   await expect(page.locator('main')).not.toContainText('MOCK');
   await check(page, 'buy');
-  await page.getByRole('button', { name: en.buy.review('$40') }).click();
-
-  await expect(page).toHaveURL(/\/orders\/[^/]+$/);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.order.review.title);
-  // the review names the chain once, over the page
+  // the review is on the buy's own card: no other page, and the chain named once over it
+  await expect(page).toHaveURL(/\/plan\/[^/]+\/buy$/);
   await expect(page.locator('main [data-ui="chain-badge"]')).toHaveText(['Solana']);
+  return press;
 }
 
 test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', async ({ page }) => {
-  await toReview(page);
+  const press = await toReview(page);
   const steps = page.locator('[data-ui="order-step"]');
   // a vault opened with the deposit, then one swap per asset: the mock trades separately
   await expect(steps).toHaveCount(4);
@@ -280,9 +287,12 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
     /on SPY · receive at least [\d.,]+ SPY \(at most \$[\d.,]+ each\)/,
   );
   await expect(page.locator('main')).not.toContainText('smallest units');
+  // who signs is said before the press: the wallet made here, with no other window
+  await expect(page.locator('[data-ui="invest-signing"]')).toHaveText(en.invest.signs.passkey(4));
   await check(page, 'review');
 
-  await page.getByRole('button', { name: en.order.signAndBuy('$40') }).click();
+  // one press, and every step is signed and sent in turn
+  await press.click();
   const status = page.locator('[data-ui="order-status"]');
   await expect(status).toHaveText(en.order.outcome.done('Solana'), { timeout: 90_000 });
   for (let i = 0; i < 4; i += 1)
@@ -302,6 +312,17 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   // at 375 px his bar keeps its links in the sheet under the menu button
   await go(page, en.shell.portfolio);
   await expect(page).toHaveURL(/\/monitor$/);
+  const summary = page.locator('[data-ui="vault-summary"]');
+  await expect(summary).toHaveCount(1);
+  await expect(summary.locator('[data-ui="vault-add-money"]')).toBeVisible();
+  await expect(summary.locator('[data-ui="holdings-bar"]')).toBeVisible();
+  await expect(summary.getByRole('link', { name: en.portfolio.overview.open })).toBeVisible();
+  const readDetails = page.locator('[data-ui="vault-read-details"]');
+  await expect(readDetails).not.toHaveAttribute('open', '');
+  await readDetails.locator(':scope > summary').click();
+  await expect(readDetails).toHaveAttribute('open', '');
+  await readDetails.getByText(en.portfolio.planDetails, { exact: true }).click();
+  await page.locator('[data-ui="activity-details"] > summary').click();
   const vault = page.locator('section[data-ui="card"]').filter({
     has: page.getByRole('heading', { name: en.portfolio.vault.title }),
   });
@@ -330,17 +351,17 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
 test('a buy on a test network: test funds sent for what is missing, then every step signed', async ({
   page,
 }) => {
-  await toReview(page, { fund: 'test' });
+  const press = await toReview(page, { fund: 'test' });
   const steps = page.locator('[data-ui="order-step"]');
   await expect(steps).toHaveCount(4);
-  await page.getByRole('button', { name: en.order.signAndBuy('$40') }).click();
+  await press.click();
   await expect(page.locator('[data-ui="order-status"]')).toHaveText(
     en.order.outcome.done('Solana'),
     { timeout: 90_000 },
   );
 });
 
-test('the buy’s steps by keyboard, in Portuguese, at 375 and 1440 px', async ({ page }) => {
+test('the invest card by keyboard, in Portuguese, at 375 and 1440 px', async ({ page }) => {
   await toBuy(page, { fund: 'test' });
   // Portuguese from the switch in the foot: the page is asked for again, and the sign-in stays
   await page
@@ -352,25 +373,30 @@ test('the buy’s steps by keyboard, in Portuguese, at 375 and 1440 px', async (
   await expect(page).toHaveTitle(new RegExp(`^${pt.buy.title}`));
   const amount = page.getByLabel(pt.buy.amount.label, { exact: true });
   await expect(amount).toHaveValue('40');
-  // Enter in the amount continues, and the focus moves to the step it opens
-  await amount.focus();
-  await page.keyboard.press('Enter');
-  const funds = page.getByRole('button', { name: new RegExp(`^${pt.buy.steps.names.funds}`) });
-  await expect(funds).toHaveAttribute('aria-expanded', 'true');
-  await expect(funds).toBeFocused();
-  await expect(page.getByRole('button', { name: pt.buy.funding.testFunds })).toBeVisible();
+  const card = page.locator('[data-ui="invest-card"]');
+  // the wallet is short: what is missing is on the card, with the way to fill it, in Portuguese
+  const ask = card.getByRole('button', { name: pt.buy.funding.testFunds });
+  await expect(ask).toBeVisible();
   await expect(page.locator('[data-ui="data-note"]')).toHaveText(
     pt.buy.steps.note.testNetwork('Solana'),
   );
   // no MOCK word anywhere on the buy screen: the card's one line says what the figures are
   await expect(page.locator('main')).not.toContainText('MOCK');
   await check(page, 'buy-pt');
-  // the full notice is one Tab and Enter away in the trust step
-  await page.getByRole('button', { name: new RegExp(`^${pt.buy.steps.names.trust}`) }).click();
+  // the full notice is one Enter away on the card
   const full = page.locator('details[data-ui="trust-full"] summary');
   await full.focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('details[data-ui="trust-full"]')).toHaveAttribute('open', '');
+  // by keyboard to the end: the funds, the notice, and the one press
+  await ask.focus();
+  await page.keyboard.press('Enter');
+  await expect(card.locator('[data-ui="order-step"]').first()).toBeVisible({ timeout: 30_000 });
+  const accept = page.getByLabel(pt.trust.accept);
+  await accept.focus();
+  await page.keyboard.press('Space');
+  const press = card.getByRole('button', { name: /^Investir / });
+  await expect(press).not.toHaveAttribute('aria-disabled', 'true');
   await page.setViewportSize({ width: 1440, height: 900 });
   const result = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
@@ -382,16 +408,23 @@ test('the buy’s steps by keyboard, in Portuguese, at 375 and 1440 px', async (
 test('a withdrawal: part of the cash, then everything, to the owner’s own wallet, and the vault says it is empty', async ({
   page,
 }) => {
-  await toReview(page);
-  await page.getByRole('button', { name: en.order.signAndBuy('$40') }).click();
+  await (await toReview(page)).click();
   await expect(page.locator('[data-ui="order-status"]')).toHaveText(
     en.order.outcome.done('Solana'),
     { timeout: 90_000 },
   );
   const w = en.withdraw;
+  const openDetails = async () => {
+    const details = page.locator('[data-ui="vault-read-details"]');
+    await expect(details).toHaveCount(1);
+    if ((await details.getAttribute('open')) === null)
+      await details.locator(':scope > summary').click();
+    await expect(details).toHaveAttribute('open', '');
+  };
   /** From the portfolio to the withdraw screen of the one vault. */
   const open = async () => {
     await expect(page).toHaveURL(/\/monitor$/);
+    await openDetails();
     await page.locator('a[data-ui="vault-withdraw"]').click();
     await expect(page).toHaveURL(/\/vaults\/solana\/[^/]+\/withdraw$/);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(w.title);
@@ -430,6 +463,7 @@ test('a withdrawal: part of the cash, then everything, to the owner’s own wall
   await expect(page.getByText(w.what.errors.over('2 USDC'))).toBeVisible();
   await page.getByLabel(w.what.amount('USDC'), { exact: true }).fill('1');
   await through(1);
+  await openDetails();
   await expect(page.locator('a[data-ui="vault-withdraw"]')).toBeVisible();
   await expect(page.locator('[data-ui="vault-empty"]')).toHaveCount(0);
 
@@ -441,6 +475,10 @@ test('a withdrawal: part of the cash, then everything, to the owner’s own wall
   await page.getByRole('button', { name: new RegExp(`^${w.steps.names.what}`) }).click();
   await through(4);
   await expect(page).toHaveURL(/\/monitor$/);
+  await expect(page.locator('[data-ui="vault-summary"]')).toContainText(
+    en.shared.vault.conversation.noHoldings,
+  );
+  await openDetails();
   await expect(page.locator('[data-ui="vault-empty"]')).toHaveText(w.empty);
   await expect(page.locator('a[data-ui="vault-withdraw"]')).toHaveCount(0);
   await check(page, 'monitor-emptied');
@@ -449,9 +487,9 @@ test('a withdrawal: part of the cash, then everything, to the owner’s own wall
 test('a step the server lies about is refused by the guard, and nothing is signed for it', async ({
   page,
 }) => {
-  await toReview(page);
+  const press = await toReview(page);
   await page.request.post(`${STUB}/__stub/tamper`);
-  await page.getByRole('button', { name: en.order.signAndBuy('$40') }).click();
+  await press.click();
   const status = page.locator('[data-ui="order-status"]');
   await expect(status).toContainText(en.order.outcome.refused(2), { timeout: 60_000 });
   await expect(status).toContainText(en.order.outcome.check('minimum'));
@@ -464,7 +502,9 @@ test('a step the server lies about is refused by the guard, and nothing is signe
   const steps = page.locator('[data-ui="order-step"]');
   await expect(steps.nth(0)).toHaveAttribute('data-status', 'confirmed');
   await expect(steps.nth(1)).not.toHaveAttribute('data-status', 'confirmed');
-  await expect(page.getByRole('link', { name: en.order.outcome.newOrder })).toBeVisible();
+  // what landed and what did not, in one sentence, and a new order offered in the same card
+  await expect(page.locator('[data-ui="invest-landed"]')).toContainText(en.invest.things.deposit);
+  await expect(page.getByRole('button', { name: en.order.outcome.newOrder })).toBeVisible();
   await check(page, 'refused');
 });
 

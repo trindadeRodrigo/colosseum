@@ -3,7 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PersonalInputError } from '@colosseum/engine/personal';
 import { ChainId } from '@colosseum/schemas';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
+import { launchShelf } from '../../../packages/engine/src/personal/testing';
+import {
+  buildGoalAgentContext,
+  replyToVaultConversation,
+  type VaultAgentPrompt,
+} from './orders/vault-agent';
 import { bearingPlanInputs } from './plan-inputs';
 import { loadStockAttributes } from './stock-attributes';
 import mockStocks from './testing/fixtures/mock-stocks.json';
@@ -65,4 +71,94 @@ describe('loadStockAttributes', () => {
       expect(figures.stocks ?? null, chain).toEqual(read);
     }
   });
+
+  it.each(['solana', 'robinhood'] as const)(
+    'passes Tesla’s dated primary-source affiliation through the %s conversation context',
+    async (chain) => {
+      const stocks = loadStockAttributes(chain);
+      const tesla = stocks?.stocks.find((row) => row.underlying === 'TSLA');
+      if (!stocks || !tesla) throw new Error(`Missing Tesla attributes on ${chain}`);
+      expect(tesla.note).toContain('bitcoin held as digital assets');
+      expect(tesla.note).toContain('Elon Musk as its co-founder and CEO');
+      expect(tesla.note).toContain('does not establish future investment benefit');
+      const primarySources = tesla.sources.filter((source) =>
+        ['https://www.tesla.com/elon-musk', 'https://ir.tesla.com/corporate'].includes(source.url),
+      );
+      expect(primarySources.map((source) => [source.url, source.readOn])).toEqual([
+        ['https://www.tesla.com/elon-musk', '2026-10-08'],
+        ['https://ir.tesla.com/corporate', '2026-10-08'],
+      ]);
+
+      // The catalog uses production asset IDs from the launch shelf, with fixture provenance here.
+      // No provider, adapter, database or financial confirmation is called by this fixture.
+      const shelf = launchShelf();
+      const asset = shelf.assets.find(
+        (candidate) => candidate.chain === chain && candidate.symbol === tesla.symbol,
+      );
+      if (!asset) throw new Error(`Missing catalog asset for ${tesla.symbol}`);
+      expect(asset.provenance).toBe('fixture');
+      const context = buildGoalAgentContext({
+        chain,
+        observedAt: '2026-10-08T00:00:00.000Z',
+        person: 'source-context-fixture',
+        prices: [],
+        prepared: { shelf, figures: { stocks } },
+        entry: { source: 'offline catalog fixture', provenance: 'mock' } as Parameters<
+          typeof buildGoalAgentContext
+        >[0]['entry'],
+      });
+      let sent: VaultAgentPrompt | undefined;
+      const model = {
+        read: vi.fn(async (_person: string, prompt: VaultAgentPrompt) => {
+          sent = prompt;
+          return {
+            reply: {
+              message: 'The supplied company affiliation does not establish future benefit.',
+              question: null,
+              proposal: null,
+            },
+          };
+        }),
+      };
+      const out = await replyToVaultConversation(
+        {
+          version: 1,
+          language: 'en',
+          messageId: 'source-context-turn',
+          messages: [{ who: 'person', text: 'I want to explore stocks related to Elon Musk.' }],
+        },
+        context,
+        model,
+      );
+      expect(out.kind).toBe('reply');
+      // The row without its source list: each source reaches the model as evidence it may cite.
+      const { sources: _sources, ...teslaRow } = tesla;
+      expect(sent?.stockAttributes?.stocks.find((row) => row.symbol === tesla.symbol)).toEqual(
+        teslaRow,
+      );
+      const listed = sent?.catalog.find((candidate) => candidate.id === asset.id);
+      expect(listed).toMatchObject({ symbol: tesla.symbol });
+      // The shared-portfolio ceiling is not sent for the person's own vault (ANY-COMPOSITION).
+      expect(listed).not.toHaveProperty('maxWeightBps');
+      for (const source of primarySources) {
+        const sourceIndex = tesla.sources.indexOf(source);
+        // The model reads the source's title; its address and read day stay with the server's evidence.
+        expect(sent?.evidence).toContainEqual({
+          id: `stock:${asset.id}:${sourceIndex}`,
+          assetId: asset.id,
+          label: source.title,
+          provenance: 'fixture',
+        });
+        expect(context.evidence).toContainEqual(
+          expect.objectContaining({
+            id: `stock:${asset.id}:${sourceIndex}`,
+            assetId: asset.id,
+            source: source.url,
+            fetchedAt: '2026-10-08T00:00:00.000Z',
+            provenance: 'fixture',
+          }),
+        );
+      }
+    },
+  );
 });

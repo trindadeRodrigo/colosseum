@@ -12,9 +12,9 @@ import {
 } from 'react';
 import { remember } from '../../components/shell/remember';
 import { SIGNED_IN_COOKIE } from '../../i18n';
-import { forgetGoalDraft } from '../goal/draft';
 import { forgetEveryOrder, forgetOrders } from '../order/order-record';
 import { forgetPlans } from '../order/plan-store';
+import { forgetConversations } from '../vault-conversation/forget';
 import {
   useApiFetch,
   useLeaveHere,
@@ -160,7 +160,10 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   // browser kept under their id since the press (another tab of theirs may have) goes with them.
   const ousted = useOustedPerson();
   useEffect(() => {
-    if (ousted) forgetOrders(ousted.userId);
+    if (ousted) {
+      forgetOrders(ousted.userId);
+      forgetConversations(ousted.userId);
+    }
   }, [ousted]);
   const [read, setRead] = useState<Read | null>(null);
   const [round, setRound] = useState(0);
@@ -191,9 +194,9 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const latest = useRef({ port, apiFetch, key });
   latest.current = { port, apiFetch, key };
 
-  // What a person typed is theirs: when they sign out, or another person signs in, the draft kept in
-  // the tab is forgotten. A person who was signed out and signs in keeps what they typed, and so does
-  // one whose wallet provider is loading again ("Try again"): nobody is known then, and nobody left.
+  // What this browser kept for a person is theirs: when they sign out, or another person signs in,
+  // it is forgotten. Nothing is forgotten for one whose wallet provider is loading again ("Try
+  // again"): nobody is known then, and nobody left.
   const who = port.userId;
   const out = port.status === 'signed-out';
   const before = useRef(who);
@@ -202,11 +205,12 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     // least of all ("Try again" pressed on an order's page).
     if (who === null && !out) return;
     if (before.current !== null && before.current !== who) {
-      forgetGoalDraft();
-      // and the plans and order records this browser kept for them: the server has them, for when
+      // the plans and order records this browser kept for them: the server has them, for when
       // they sign in again. The trust acceptance stays: it holds no figure (order-record.ts).
       forgetPlans();
       forgetOrders(before.current);
+      // and their private vault conversations, as private as the records
+      forgetConversations(before.current);
     }
     before.current = who;
   }, [who, out]);
@@ -328,10 +332,10 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const leave = useCallback(() => {
     remember(SIGNED_IN_COOKIE, null);
     leaveHere();
-    forgetGoalDraft();
     forgetPlans();
     // nobody is known, so every record goes, whoever it was kept for
     forgetEveryOrder();
+    forgetConversations(null);
     before.current = null;
     seen.current = false;
     setStalled(true);

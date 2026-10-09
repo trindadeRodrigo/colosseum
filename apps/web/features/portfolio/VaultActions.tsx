@@ -1,9 +1,10 @@
 'use client';
 import Link from 'next/link';
-import { useId, useState } from 'react';
+import { type ReactNode, useId, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Field, Input } from '../../components/ui/Field';
+import { PAGE_TITLE } from '../../components/ui/heading';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars as whole } from '../goal/sheet';
 import { addMoneyPath } from '../order/order-api';
@@ -28,6 +29,7 @@ export function VaultActions({
   joined,
   onRenamed,
   level = 3,
+  primaryAddMoney = false,
 }: {
   chain: PortfolioChain;
   vault: Vault;
@@ -36,7 +38,9 @@ export function VaultActions({
   /** The name changed on the server: read the portfolio again. */
   onRenamed?: () => void;
   /** The heading level of the name: under a chain's heading it is one lower than under the page's. */
-  level?: 2 | 3;
+  level?: 1 | 2 | 3;
+  /** The owned vault workspace has one primary deposit action; portfolio lists keep it secondary. */
+  primaryAddMoney?: boolean;
 }) {
   const t = useT();
   const lang = useLang();
@@ -59,7 +63,7 @@ export function VaultActions({
       )
     : words.unnamed(chainName);
   const typed = readName(text);
-  const Name = level === 2 ? 'h2' : 'h3';
+  const Name = level === 1 ? 'h1' : level === 2 ? 'h2' : 'h3';
 
   function open() {
     setText(name ?? '');
@@ -95,7 +99,7 @@ export function VaultActions({
     <section
       data-ui="vault-actions"
       aria-labelledby={heading}
-      className="flex flex-col items-start gap-3"
+      className="flex w-full min-w-0 flex-col items-start gap-3"
     >
       <div className="flex w-full flex-wrap items-center justify-between gap-x-6 gap-y-2">
         {/* The person's own words, as text: never markup, never a link. */}
@@ -103,7 +107,11 @@ export function VaultActions({
           id={heading}
           data-ui="vault-name"
           data-named={name !== null}
-          className="min-w-0 text-h4 font-semibold [overflow-wrap:anywhere]"
+          className={
+            level === 1
+              ? `${PAGE_TITLE} min-w-0 [overflow-wrap:anywhere]`
+              : 'min-w-0 text-h4 font-semibold [overflow-wrap:anywhere]'
+          }
         >
           {name ?? fallback}
         </Name>
@@ -111,7 +119,10 @@ export function VaultActions({
           <Link
             data-ui="vault-add-money"
             href={addMoneyPath(vault.chain, vault.address)}
-            className={buttonClass({ variant: 'secondary', size: 'dense' })}
+            className={buttonClass({
+              variant: primaryAddMoney && !editing ? 'primary' : 'secondary',
+              size: primaryAddMoney ? 'default' : 'dense',
+            })}
           >
             {words.addMoney}
           </Link>
@@ -180,15 +191,52 @@ export function VaultActions({
  * The same, on a vault's own page, which anybody can open: shown only to the person the vault is of,
  * as their own portfolio lists it, and to nobody else.
  */
-export function OwnVaultActions({ chain, address }: { chain: string; address: string }) {
+export function OwnVaultActions({
+  chain,
+  address,
+  headingLevel = 2,
+  primaryAddMoney = false,
+  fallback = null,
+}: {
+  chain: string;
+  address: string;
+  headingLevel?: 1 | 2;
+  primaryAddMoney?: boolean;
+  fallback?: ReactNode;
+}) {
   const { state, again } = usePortfolio();
-  if (state.kind !== 'answered' || state.outcome.kind !== 'read') return null;
+  if (state.kind !== 'answered' || state.outcome.kind !== 'read') return fallback;
   const own = ownVault(state.outcome.chains, chain, address);
-  return own ? <OwnActions chain={own.entry} vault={own.vault} onRenamed={again} /> : null;
+  return own ? (
+    <OwnActions
+      chain={own.entry}
+      vault={own.vault}
+      onRenamed={again}
+      headingLevel={headingLevel}
+      primaryAddMoney={primaryAddMoney}
+    />
+  ) : (
+    fallback
+  );
 }
 
 /** Only for the owner: their orders are read to name the vault by its goal. */
-function OwnActions(props: { chain: PortfolioChain; vault: Vault; onRenamed: () => void }) {
+function OwnActions({
+  headingLevel,
+  ...props
+}: {
+  chain: PortfolioChain;
+  vault: Vault;
+  onRenamed: () => void;
+  headingLevel: 1 | 2;
+  primaryAddMoney: boolean;
+}) {
   const history = useVaultHistory();
-  return <VaultActions {...props} joined={goalOfVault(props.vault, history.records)} level={2} />;
+  return (
+    <VaultActions
+      {...props}
+      joined={goalOfVault(props.vault, history.records)}
+      level={headingLevel}
+    />
+  );
 }

@@ -28,7 +28,7 @@ export const LIMITS = {
     standard: null,
     /** Planning an order and building a transaction: each one asks the chain for quotes. */
     build: 30,
-    /** The guided intake, which calls a model (`POST /v1/baskets/intake`). */
+    /** The guided intake and private plan turns share the existing parse budget. */
     parse: 10,
   },
 } as const;

@@ -3,12 +3,10 @@ import { type BasketLine, DISCLAIMER, DISCLAIMER_SHORT } from '@colosseum/schema
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buttonClass } from '../../components/ui/button-class';
-import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
+import { find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { inShell, withAccount } from '../account/test/screen';
-import { GOAL_DRAFT } from '../goal/draft';
-import { restoreGoal } from '../goal/sheet';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
 import { PlanScreen } from './PlanScreen';
@@ -229,7 +227,9 @@ describe('an income plan and its gap (the flow audit, findings 11 and 14)', () =
     const pt = dictionary('pt');
     expect(pt.plan.monthly.figure('US$ 147', 'US$ 163')).toBe('Cerca de US$ 147 a US$ 163 por mês');
     expect(pt.plan.monthly.after).toMatch(/estimativa, não uma promessa/);
-    expect(host.querySelector('[data-ui="plan-verdict"]')).toBeNull();
+    // no income was asked, so there is no verdict: the answer is the range, or that there is none
+    expect(host.querySelector('[data-ui="plan-ways"]')).toBeNull();
+    expect(find(host, '[data-ui="plan-answer"]').textContent).not.toContain('falls short');
   });
 
   it('shows no monthly figure for a plan that is not for income', async () => {
@@ -241,28 +241,18 @@ describe('an income plan and its gap (the flow audit, findings 11 and 14)', () =
     expect((await shown()).querySelector('[data-ui="plan-monthly"]')).toBeNull();
   });
 
-  it('says the gap to the cent, lists the ways the API gives to close it, and leads to the limits', async () => {
+  it('says the gap to the cent first, and each way the API gives as a sentence', async () => {
     rememberPlan(short());
     const host = await shown();
-    const verdict = find(host, '[data-ui="plan-verdict"]');
-    expect(verdict.textContent).toContain(en.plan.verdict.gap('$152.80'));
-    expect([...verdict.querySelectorAll('li')].map((li) => li.textContent)).toEqual(
+    // the answer is the first thing in the plan's block
+    const block = find(host, '[data-ui="plan-pane"] [data-ui="plan-verdict"]');
+    expect(find(block, '[data-ui="plan-answer"]').textContent).toBe(en.plan.verdict.gap('$152.80'));
+    const ways = find(block, '[data-ui="plan-ways"]');
+    // each is the engine's own sentence, with its own figures, and none is a button
+    expect([...ways.querySelectorAll('li')].map((li) => li.textContent)).toEqual(
       WAYS.map((w) => w.change),
     );
-    const change = find(verdict, 'a');
-    expect(change.textContent).toBe(en.plan.verdict.change);
-    expect(change.getAttribute('href')).toBe('/goal#limits');
-    // the click hands the goal screen the limits this plan was built from
-    window.sessionStorage.removeItem(GOAL_DRAFT);
-    await click(change);
-    const kept = restoreGoal(window.sessionStorage.getItem(GOAL_DRAFT));
-    expect(kept?.sheet?.fields).toMatchObject({
-      goal: 'income',
-      amount: '80000',
-      income: '300',
-      horizon: '12',
-      risk: 'low',
-    });
+    expect(ways.querySelector('button')).toBeNull();
   });
 
   it('offers no way and no button when the income is met', async () => {

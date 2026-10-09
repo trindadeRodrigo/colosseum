@@ -29,7 +29,8 @@ import {
   type TestFunds,
   type TestFundsSender,
 } from '../../faucet/test-funds';
-import { type IntakeModel, intakeModelFromEnv } from '../../llm';
+import { type IntakeModel, intakeModelFromEnv, intakeSettings } from '../../llm';
+import { createModelQuota } from '../../model-quota';
 import {
   type ChainRegistry,
   createChainRegistry,
@@ -39,20 +40,33 @@ import {
 import { Refusal, refusalFromChainError } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import type { PlanInputs } from '../../orders/personalize';
+import type { AgentAnalytics } from '../../orders/vault-agent';
 import { authFromEnv, enforceSignIn, identify, type TokenIssuer } from '../../plugins/auth';
 import { type Limits, registerLimits, requireDeclared } from '../../plugins/limits';
 import { loggable } from '../../plugins/loggable';
+import {
+  createAnthropicVaultAgentModel,
+  type VaultAgentModel,
+  vaultAgentEffort,
+  vaultAgentModelId,
+  vaultAgentTimeoutMs,
+} from '../../vault-agent-model';
 import { type LinkedPlanLimits, registerBasketRoutes } from './baskets';
 import { buildConfig, registerConfigRoute } from './config';
 import { registerFundingRoute } from './funding';
+import { registerGoalConversationReplyRoute } from './goal-conversation-reply';
 import { registerIntakeRoute } from './intake';
 import { registerMeRoutes } from './me';
+import { registerMixRoutes } from './mix';
 import { registerMockRoutes } from './mock';
 import { registerOrderRoutes } from './orders';
 import { registerPortfolioRoute } from './portfolio';
 import { registerSharedRoutes } from './shared';
 import { registerTestnetRoute } from './testnet';
+import { registerThreadRoutes } from './thread';
 import { registerVaultRoute } from './vault';
+import { registerVaultConversationRoutes } from './vault-conversation';
+import { registerVaultConversationReplyRoute } from './vault-conversation-reply';
 
 /**
  * What the /v1 routes run on. Left out, each comes from the environment the app hands in. A test hands
@@ -83,10 +97,19 @@ export type V1Deps = {
    */
   planInputs?: PlanInputs;
   /**
+   * Bearing's per-asset figures the conversations explain each asset with. Default: none, and the
+   * model reads only the plan inputs. The server hands in the reader of the fact sheets.
+   */
+  agentAnalytics?: AgentAnalytics;
+  /** Read each live chain's analytics from the start and keep them current. Default: off. */
+  warmAgentAnalytics?: boolean;
+  /**
    * The model the guided intake reads a goal with. Default: Anthropic's when `ANTHROPIC_API_KEY` is
    * set, else none, and the intake reads with the rules parser alone. A test hands in a replay.
    */
   intakeModel?: IntakeModel | null;
+  /** Private, non-executable vault dialogue. Uses the configured intake model and shared quota. */
+  vaultAgentModel?: VaultAgentModel | null;
   /** The rate limits. Default: `LIMITS`, the ones a server runs with. */
   limits?: Limits;
   /** The daily cap and the keeping time of plans made from a link. Default: `LINKED_PLANS`. */
@@ -136,7 +159,52 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
       solana,
       robinhood,
     });
-  const orderDeps: OrderDeps = { db, chains, now: deps.now ?? (() => new Date()) };
+  const orderDeps: OrderDeps = {
+    db,
+    chains,
+    now: deps.now ?? (() => new Date()),
+    // The kind of failure only: what was being written is a person's own words, and is not logged.
+    onRecordError: (what) => app.log.error(what, 'a plan’s thread could not be written'),
+  };
+  // The conversations' analytics, read from the start and kept current, so a turn finds them kept.
+  const analytics = deps.agentAnalytics;
+  if (deps.warmAgentAnalytics && analytics?.warm) {
+    const warm = analytics.warm;
+    const on = db;
+    app.addHook('onReady', async () => {
+      for (const entry of chains.active()) {
+        if (entry.mock) continue;
+        entry.adapter.listAssets().then(
+          (assets) => warm({ db: on, chain: entry.chain, assets, provenance: entry.provenance }),
+          () =>
+            app.log.warn(
+              { code: 'analytics_warm_no_catalog', chain: entry.chain },
+              'the conversation analytics were not warmed',
+            ),
+        );
+      }
+    });
+    app.addHook('onClose', async () => analytics.stop?.());
+  }
+  const modelSettings = intakeSettings(env);
+  const quota = createModelQuota({ ...modelSettings, now: deps.now });
+  const intakeModel =
+    deps.intakeModel === undefined ? intakeModelFromEnv(env, deps.now, quota) : deps.intakeModel;
+  const apiKey = env.ANTHROPIC_API_KEY?.trim();
+  const vaultAgentModel =
+    deps.vaultAgentModel === undefined
+      ? apiKey
+        ? createAnthropicVaultAgentModel({
+            apiKey,
+            model: vaultAgentModelId(env, modelSettings.model),
+            timeoutMs: vaultAgentTimeoutMs(env),
+            effort: vaultAgentEffort(env),
+            quota,
+            // Token counts only: how much of each prompt the cache wrote and read.
+            onUsage: (usage) => app.log.info(usage, 'the conversation model answered'),
+          })
+        : null
+      : deps.vaultAgentModel;
 
   // The test faucet. Its key-holding file is loaded only here, only when a faucet key is set for a
   // chain on a test network (DESIGN-VAULT section 2, rule 5): otherwise it is never in the process.
@@ -209,15 +277,27 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
       { agentSurface: flags.agentSurface },
       deps.linkedPlans,
     );
-    registerIntakeRoute(
+    registerIntakeRoute(scope, orderDeps, intakeModel, deps.planInputs);
+    registerThreadRoutes(scope, orderDeps);
+    registerPortfolioRoute(scope, orderDeps);
+    registerSharedRoutes(scope, orderDeps, deps.planInputs);
+    registerVaultRoute(scope, orderDeps);
+    registerVaultConversationRoutes(scope, orderDeps);
+    registerVaultConversationReplyRoute(
       scope,
       orderDeps,
-      deps.intakeModel === undefined ? intakeModelFromEnv(env, deps.now) : deps.intakeModel,
+      vaultAgentModel,
       deps.planInputs,
+      deps.agentAnalytics,
     );
-    registerPortfolioRoute(scope, orderDeps);
-    registerSharedRoutes(scope, orderDeps);
-    registerVaultRoute(scope, orderDeps);
+    registerGoalConversationReplyRoute(
+      scope,
+      orderDeps,
+      vaultAgentModel,
+      deps.planInputs,
+      deps.agentAnalytics,
+    );
+    registerMixRoutes(scope, orderDeps, deps.planInputs);
     // Out of the route table altogether unless a chain runs on the mock.
     if (chains.active().some((entry) => entry.mock)) registerMockRoutes(scope, orderDeps);
   });
