@@ -3,7 +3,15 @@
 import { VaultConversationTranscript } from '@colosseum/schemas';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
+import {
+  click,
+  find,
+  mount,
+  pinLine,
+  settle,
+  type,
+  unmountAll,
+} from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
 import { withAccount } from '../account/test/screen';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
@@ -137,10 +145,13 @@ describe('a figure the conversation states', () => {
     );
     await click(pin);
     const popover = find(figure, '[data-ui="pin-popover"]').textContent ?? '';
-    expect(popover).toContain('Bearing fact sheet');
-    expect(popover).toContain('exit-cost curve (facts-0.1)');
+    // in plain words first: what the figure is, and that it is not live
     expect(popover).toContain('Exit cost at the reference size, worst measured regime (weekend)');
-    expect(popover).toContain('test network');
+    expect(popover).toContain('Test network, not live');
+    // the API's own source and method, one step away under Details
+    const line = await pinLine(figure);
+    expect(line).toContain('Bearing fact sheet');
+    expect(line).toContain('exit-cost curve (facts-0.1)');
     // the sentence around it is whole, and no placeholder is ever shown
     expect(transcriptText(host)).toContain('Selling it all today would cost about 0.4%');
     expect(host.textContent).not.toMatch(/[{}]|fact:/u);
@@ -340,10 +351,8 @@ describe('a kept conversation', () => {
     expect(find(figure, '[data-ui="pin"]').getAttribute('aria-label')).toBe(
       'Source for 0.4%, a measured figure, 3 days old, sample figure',
     );
-    await click(find(figure, '[data-ui="pin"]'));
-    expect(find(figure, '[data-ui="pin-source"]').textContent).toContain(
-      then.replace(/\.\d{3}Z$/u, 'Z'),
-    );
+    // the time it was measured then, as the API wrote it, under Details
+    expect(await pinLine(figure)).toContain(then.replace(/\.\d{3}Z$/u, 'Z'));
     expect(host.textContent).not.toMatch(/[{}]/u);
   });
 
