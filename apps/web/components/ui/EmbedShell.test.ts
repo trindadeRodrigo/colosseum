@@ -36,7 +36,7 @@ describe('EmbedShell (embed-shell.md)', () => {
         '@max-[359px]:text-[length:var(--tf-e-lead)]',
       ]),
     );
-    expect(html(embed.ready)).not.toMatch(/font-display|Newsreader/);
+    expect(html(embed.ready)).not.toMatch(/font-display|Inter Tight/);
     for (const el of all(shell))
       expect(classes(el).join(' ')).not.toMatch(/text-(display|h1|h2|h3)\b/);
   });

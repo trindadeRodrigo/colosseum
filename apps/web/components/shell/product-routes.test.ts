@@ -114,6 +114,17 @@ describe('the routes of the app', () => {
       'app/(app)/plan/[id]/buy/page.tsx',
       'app/(app)/plan/[id]/loading.tsx',
       'app/(app)/plan/[id]/page.tsx',
+      'app/(app)/portfolio/exposure/loading.tsx',
+      'app/(app)/portfolio/exposure/page.tsx',
+      'app/(app)/portfolio/layout.tsx',
+      'app/(app)/portfolio/loading.tsx',
+      'app/(app)/portfolio/methodology/loading.tsx',
+      'app/(app)/portfolio/methodology/page.tsx',
+      'app/(app)/portfolio/page.tsx',
+      'app/(app)/portfolio/plan/[chain]/[address]/loading.tsx',
+      'app/(app)/portfolio/plan/[chain]/[address]/page.tsx',
+      'app/(app)/portfolio/rebalancing/loading.tsx',
+      'app/(app)/portfolio/rebalancing/page.tsx',
       'app/(app)/publish/page.tsx',
       'app/(app)/shelf/page.tsx',
       'app/(app)/sign-in/page.tsx',
@@ -407,14 +418,6 @@ describe('rule 3: no screen can reach a key', () => {
     'next/link',
     'next/navigation',
     'react',
-    // the landing's 3D joint (features/landing/joint-scene.ts): a renderer, with no network, storage or
-    // wallet of its own; loaded only by the landing page, after its first paint. Its drawing takes
-    // three's own line and geometry helpers, which are part of the same package.
-    'three',
-    'three/examples/jsm/lines/LineMaterial.js',
-    'three/examples/jsm/lines/LineSegments2.js',
-    'three/examples/jsm/lines/LineSegmentsGeometry.js',
-    'three/examples/jsm/utils/BufferGeometryUtils.js',
   ];
 
   /**

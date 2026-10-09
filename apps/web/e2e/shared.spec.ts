@@ -212,12 +212,11 @@ test('publish a portfolio, find it on the shelf, buy it and follow it, every ste
   await expect(addMoney).toBeVisible();
   await expect(addMoney).toHaveAttribute('href', `${new URL(page.url()).pathname}/add`);
   await expect(addMoney).toHaveClass(/(?:^|\s)bg-primary(?:\s|$)/);
-  const resume = workspace.getByRole('link', {
-    name: en.shared.vault.conversation.resume,
-    exact: true,
-  });
-  await expect(resume).toBeVisible();
-  await expect(resume).toHaveAttribute('href', '#vault-conversation');
+  // The owner's page is the workbench (GOAL-CHAT-PORT): the chat is on the page beside the plan,
+  // so no link leads down to it.
+  await expect(workspace.locator('[data-ui="vault-conversation"]')).toBeVisible();
+  await expect(workspace.locator('[data-ui="vault-chat"]')).toBeVisible();
+  await expect(workspace.locator('a[href="#vault-conversation"]')).toHaveCount(0);
   await expect(workspace).toContainText('SPY');
   await check(page, 'vault');
 });

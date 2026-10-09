@@ -12,7 +12,6 @@ import { inTheme } from './theme';
 // light and in dark, and for no sideways scroll.
 
 const en = dictionary('en');
-const pt = dictionary('pt');
 
 // These run on the stub's Solana; the Robinhood Chain run (E2E_CHAIN=robinhood) is buy-robinhood.spec.ts.
 test.skip(process.env.E2E_CHAIN === 'robinhood', 'the stub runs Robinhood Chain');
@@ -57,11 +56,11 @@ async function go(page: Page, name: string) {
 }
 
 /** From a signed-out page to the buy screen of a plan, with the wallet funded and the notice ticked. */
-test('his landing page: the hero, the two sample cases, the typing box that hands a goal on', async ({
+test('his landing page: the hero alone, its faces, its numbers, and "Start a plan" into the goal', async ({
   page,
 }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.landing.stage.title);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.landing.hero.title);
   // the three faces are the app's own files (app/fonts.ts): loaded, named as before with their
   // fallbacks, and what the heading is actually set in
   const faces = await page.evaluate(async () => {
@@ -76,54 +75,40 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
     return {
       heading: family(document.querySelector('h1')),
       body: family(document.body),
-      loaded: ['400 16px Newsreader', '500 16px "IBM Plex Sans"'].map((f) =>
-        document.fonts.check(f),
-      ),
+      loaded: ['600 16px "Inter Tight"', '400 16px Inter'].map((f) => document.fonts.check(f)),
       fromGoogle: performance
         .getEntriesByType('resource')
         .filter((r) => /fonts\.(googleapis|gstatic)\.com/.test(r.name)).length,
-      serif: width('400 100px Newsreader'),
-      fallback: width('400 100px "Times New Roman"'),
+      display: width('600 100px "Inter Tight"'),
+      fallback: width('600 100px Arial'),
     };
   });
-  expect(faces.heading).toMatch(/^"?newsreader"?, "?Newsreader"?, "?Newsreader Fallback"?/);
-  expect(faces.body).toMatch(/^"?plexSans"?, "?IBM Plex Sans"?, "?IBM Plex Sans Fallback"?/);
+  expect(faces.heading).toMatch(/^"?interTight"?, "?Inter Tight"?, "?Inter Tight Fallback"?/);
+  expect(faces.body).toMatch(/^"?inter"?, "?Inter"?, "?Inter Fallback"?/);
   expect(faces.loaded).toEqual([true, true]);
   expect(faces.fromGoogle).toBe(0);
-  // set in Newsreader itself, not its fallback: the two measure differently
-  expect(Math.abs(faces.serif - faces.fallback)).toBeGreaterThan(1);
-  await expect(page.locator('article[data-ui="showcase-case"]')).toHaveCount(2);
-  // a jump to the end of the page, over the stage, finds his bar compact, with its action
-  await page.keyboard.press('End');
-  await expect(page.locator('[data-ui="compact-nav"]')).toHaveAttribute('data-compact', 'true');
-  await expect(
-    page.locator('[data-ui="compact-nav"]').getByRole('link', { name: en.landing.nav.cta }),
-  ).toBeVisible();
-  await page.keyboard.press('Home');
+  // set in Inter Tight itself, not its fallback: the two measure differently
+  expect(Math.abs(faces.display - faces.fallback)).toBeGreaterThan(1);
+  // the hero is the whole page: the numbers under it, each pinned, and nothing after them
+  await expect(page.locator('[data-ui="landing-stats"] dt')).toHaveCount(3);
+  await expect(page.locator('[data-ui="landing-stats"] [data-ui="pin-glyph"]')).toHaveCount(3);
   await expect(page.locator('main')).not.toContainText('MOCK');
-  await check(page, 'landing');
-  // the closing: its heading over the joint's canvas, readable (CLOSING-INK, Oct 6)
-  const words = page.locator('#updates [data-ui="closing-words"]');
-  await words.scrollIntoViewIfNeeded();
-  await expect(page.locator('#updates canvas[data-ui="closing-canvas"]')).toHaveCount(1);
-  // CI's browser has no GPU: the plan drawn flat, its ten coins, and the line under it
-  await expect(page.locator('#updates [data-ui="coins-still"] [data-part="coin"]')).toHaveCount(10);
-  await expect(page.locator('#updates [data-ui="closing-plan-line"]')).toContainText(
-    en.landing.closing.coins.line,
-  );
-  await expect(words.getByRole('heading', { level: 2 })).toHaveText(en.landing.closing.title);
+  await expect(
+    page.locator('[data-ui="landing-bar"]').getByRole('link', { name: en.landing.nav.cta }),
+  ).toBeVisible();
+  // no page scroll sideways, on a phone or a desk, in either ground
   for (const theme of ['light', 'dark'] as const) {
     await inTheme(page, theme);
-    const read = await new AxeBuilder({ page })
-      .include('#updates [data-ui="closing-words"]')
-      .withRules(['color-contrast'])
-      .analyze();
-    expect(
-      read.violations.map((v) => v.id),
-      theme,
-    ).toEqual([]);
+    for (const width of [375, 1440]) {
+      await page.setViewportSize({ width, height: 844 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        width,
+      );
+    }
   }
-  await page.keyboard.press('Home');
+  // back to the phone, which is what check() measures against
+  await page.setViewportSize({ width: 375, height: 812 });
+  await check(page, 'landing');
   const automaticPosts: string[] = [];
   page.on('request', (request) => {
     if (
@@ -132,92 +117,15 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
     )
       automaticPosts.push(request.url());
   });
-  const box = page.locator('#simulate textarea');
-  await box.fill('Grow $2,000 for ten years, high risk');
-  await box.press('Enter');
+  await page
+    .locator('[data-ui="landing-hero"]')
+    .getByRole('link', { name: en.landing.hero.start })
+    .click();
   await expect(page).toHaveURL(/\/goal$/);
-  // Plain landing words stay an unconfirmed model-led prefill. Only an explicit Send can ask for a reply.
-  await expect(page.locator('[data-ui="goal-chat"] textarea')).toHaveValue(
-    'Grow $2,000 for ten years, high risk',
-  );
+  // The hero's link opens /goal with nothing sent: no reply is asked for until an explicit Send.
   await expect(page.locator('[data-ui="goal-transcript"] li')).toHaveCount(0);
   await expect(page.locator('[data-ui="invest-screen"], [data-ui="invest-card"]')).toHaveCount(0);
-  expect(await page.evaluate(() => sessionStorage.getItem('tf-goal-handoff'))).toBe(
-    'Grow $2,000 for ten years, high risk',
-  );
   expect(automaticPosts).toEqual([]);
-});
-
-test('the two sample cases fit their cards on a phone and a tablet, in English and Portuguese', async ({
-  page,
-  context,
-  baseURL,
-}) => {
-  for (const lang of ['en', 'pt'] as const) {
-    await context.addCookies([{ name: 'tf-lang', value: lang, url: baseURL ?? '' }]);
-    for (const width of [360, 390, 768]) {
-      await page.setViewportSize({ width, height: 844 });
-      await page.goto('/');
-      await expect(page.locator('article[data-ui="showcase-case"]')).toHaveCount(2);
-      // every box inside a case that is drawn at all stays within the case's own edges; a box inside
-      // a part that scrolls on its own (the chart on a phone) is held to that part instead
-      const out = await page.evaluate(() =>
-        [...document.querySelectorAll('article[data-ui="showcase-case"]')].flatMap((card) => {
-          const edge = card.getBoundingClientRect();
-          const scrolls = (el: Element) => {
-            for (let a = el.parentElement; a && a !== card; a = a.parentElement)
-              if (/auto|scroll|hidden|clip/.test(getComputedStyle(a).overflowX)) return true;
-            return false;
-          };
-          return [...card.querySelectorAll('*')].flatMap((el) => {
-            const r = el.getBoundingClientRect();
-            if (r.width === 0 || r.height === 0 || el.closest('.sr-only') || scrolls(el)) return [];
-            const over = r.right - edge.right > 0.5 || edge.left - r.left > 0.5;
-            return over ? [`${el.tagName} "${(el.textContent ?? '').slice(0, 30)}"`] : [];
-          });
-        }),
-      );
-      expect(out, `${lang} at ${width}px`).toEqual([]);
-    }
-  }
-});
-
-test('the plan drawn as a joint answers a mouse and a finger, and lights its part in the list', async ({
-  page,
-  browser,
-}) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/');
-  const growth = page.locator('article[data-ui="showcase-case"]').nth(1);
-  await growth.evaluate((el) => el.scrollIntoView({ block: 'center' }));
-  // a mouse resting in the middle of the stocks layer's face, not on any of its lines
-  const stocks = growth.locator('[data-part="layer"][data-chart="3"]');
-  const face = await stocks.locator('path[data-part="hit"]').boundingBox();
-  if (!face) throw new Error('the stocks layer has no face to rest on');
-  await page.mouse.move(face.x + face.width * 0.3, face.y + face.height / 2);
-  await expect(stocks).toHaveAttribute('data-lit', 'true');
-  await expect(growth.locator('[data-ui="case-leg"][data-chart="3"]')).toHaveAttribute(
-    'data-lit',
-    'true',
-  );
-  // and a row lights its layer
-  await growth.locator('[data-ui="case-leg"][data-chart="1"]').hover();
-  await expect(growth.locator('[data-part="layer"][data-chart="1"]')).toHaveAttribute(
-    'data-lit',
-    'true',
-  );
-  // a phone: a tap picks the part, a tap elsewhere lets it go
-  const phone = await browser.newContext({ viewport: { width: 375, height: 812 }, hasTouch: true });
-  const tap = await phone.newPage();
-  await tap.goto(page.url());
-  const card = tap.locator('article[data-ui="showcase-case"]').nth(1);
-  await card.evaluate((el) => el.scrollIntoView({ block: 'center' }));
-  const gold = card.locator('[data-part="layer"][data-chart="4"]');
-  await gold.tap();
-  await expect(gold).toHaveAttribute('data-lit', 'true');
-  await card.locator('blockquote').tap();
-  await expect(gold).toHaveAttribute('data-lit', 'false');
-  await phone.close();
 });
 
 test('signed in, the logo leads to the landing, and its bar leads back into the app', async ({
@@ -230,10 +138,8 @@ test('signed in, the logo leads to the landing, and its bar leads back into the 
   await page.getByRole('link', { name: en.shell.home }).click();
   // the landing, not a redirect back to the goal
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.landing.stage.title);
-  await page.keyboard.press('End');
-  const bar = page.locator('[data-ui="compact-nav"]');
-  await expect(bar).toHaveAttribute('data-compact', 'true');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.landing.hero.title);
+  const bar = page.locator('[data-ui="landing-bar"]');
   await expect(bar.getByRole('link', { name: en.landing.nav.cta })).toHaveCount(0);
   await bar.getByRole('link', { name: en.landing.nav.openApp }).click();
   await expect(page).toHaveURL(/\/goal$/);
@@ -309,8 +215,12 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   ).toBeVisible();
 
   // The monitor reads the vault the buy opened, with a pin on its value, its card saying it is sample.
-  // at 375 px his bar keeps its links in the sheet under the menu button
-  await go(page, en.shell.portfolio);
+  // The bar's Portfolio is the portfolio section's board (/portfolio, PORT-1); the monitor is where
+  // the order's own next step leads.
+  await page
+    .locator('[data-ui="order-next"]')
+    .getByRole('link', { name: en.order.outcome.seePortfolio })
+    .click();
   await expect(page).toHaveURL(/\/monitor$/);
   const summary = page.locator('[data-ui="vault-summary"]');
   await expect(summary).toHaveCount(1);
@@ -361,28 +271,20 @@ test('a buy on a test network: test funds sent for what is missing, then every s
   );
 });
 
-test('the invest card by keyboard, in Portuguese, at 375 and 1440 px', async ({ page }) => {
+test('the invest card by keyboard, at 375 and 1440 px', async ({ page }) => {
   await toBuy(page, { fund: 'test' });
-  // Portuguese from the switch in the foot: the page is asked for again, and the sign-in stays
-  await page
-    .locator('[data-ui="language-switch"]')
-    .getByRole('button', { name: 'Português' })
-    .click();
-  // The page has arrived in Portuguese, all of it: its language, and its title, which comes last.
-  await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR');
-  await expect(page).toHaveTitle(new RegExp(`^${pt.buy.title}`));
-  const amount = page.getByLabel(pt.buy.amount.label, { exact: true });
+  const amount = page.getByLabel(en.buy.amount.label, { exact: true });
   await expect(amount).toHaveValue('40');
   const card = page.locator('[data-ui="invest-card"]');
-  // the wallet is short: what is missing is on the card, with the way to fill it, in Portuguese
-  const ask = card.getByRole('button', { name: pt.buy.funding.testFunds });
+  // the wallet is short: what is missing is on the card, with the way to fill it
+  const ask = card.getByRole('button', { name: en.buy.funding.testFunds });
   await expect(ask).toBeVisible();
   await expect(page.locator('[data-ui="data-note"]')).toHaveText(
-    pt.buy.steps.note.testNetwork('Solana'),
+    en.buy.steps.note.testNetwork('Solana'),
   );
   // no MOCK word anywhere on the buy screen: the card's one line says what the figures are
   await expect(page.locator('main')).not.toContainText('MOCK');
-  await check(page, 'buy-pt');
+  await check(page, 'buy-keyboard');
   // the full notice is one Enter away on the card
   const full = page.locator('details[data-ui="trust-full"] summary');
   await full.focus();
@@ -392,10 +294,10 @@ test('the invest card by keyboard, in Portuguese, at 375 and 1440 px', async ({ 
   await ask.focus();
   await page.keyboard.press('Enter');
   await expect(card.locator('[data-ui="order-step"]').first()).toBeVisible({ timeout: 30_000 });
-  const accept = page.getByLabel(pt.trust.accept);
+  const accept = page.getByLabel(en.trust.accept);
   await accept.focus();
   await page.keyboard.press('Space');
-  const press = card.getByRole('button', { name: /^Investir / });
+  const press = card.getByRole('button', { name: /^Invest / });
   await expect(press).not.toHaveAttribute('aria-disabled', 'true');
   await page.setViewportSize({ width: 1440, height: 900 });
   const result = await new AxeBuilder({ page })
@@ -454,7 +356,12 @@ test('a withdrawal: part of the cash, then everything, to the owner’s own wall
   };
 
   // 1. Part of the cash: the plan keeps 5% of $40 in cash, and $1 of it leaves.
-  await go(page, en.shell.portfolio);
+  // The bar's Portfolio is the portfolio section's board (/portfolio, PORT-1); the monitor is where
+  // the order's own next step leads.
+  await page
+    .locator('[data-ui="order-next"]')
+    .getByRole('link', { name: en.order.outcome.seePortfolio })
+    .click();
   await open();
   await check(page, 'withdraw');
   await page.getByLabel(w.what.some).check();

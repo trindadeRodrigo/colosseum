@@ -178,7 +178,7 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
     </div>
   );
   const frame = cn(
-    'flex flex-col gap-6 rounded-md border border-border bg-card p-6 text-card-foreground',
+    'flex flex-col gap-6 rounded-lg border border-border bg-card p-6 text-card-foreground',
     className,
   );
 
@@ -339,7 +339,7 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
                   {field.label}: {field.error}{' '}
                   <a
                     href={`#${field.id}`}
-                    className="text-primary underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    className="text-honey-text underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                   >
                     {text.goToField}
                   </a>
@@ -424,7 +424,7 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
       {state === 'no-plan' && (
         <div
           data-ui="sheet-no-plan"
-          className="flex flex-col items-start gap-2 rounded-md border border-border bg-card p-6"
+          className="flex flex-col items-start gap-2 rounded-lg border border-border bg-card p-6"
         >
           <p className="text-body font-medium">{text.noPlan}</p>
           {binding && <p className="text-body-sm text-muted-foreground">{binding}</p>}

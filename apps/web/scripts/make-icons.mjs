@@ -1,16 +1,18 @@
 #!/usr/bin/env node
-// Writes the app's icons from the mark (logo-directions.md, "Cuts by size" and "Icon"; the same
-// geometry as components/shell/Mark.tsx). Run it again when the mark changes:
+// Writes the app's icons from the mark, "the face" (LOGO-2; logo-directions.md, "Cuts by size" and
+// "Colour variants"; the same geometry as components/shell/Mark.tsx). Run it again when the mark
+// changes:
 //
 //   pnpm --filter @colosseum/web exec node scripts/make-icons.mjs
 //
 // It writes, and the files are committed:
-//   app/icon.svg          the small cut (16 grid, for 12–21 px: a tab), ink on a light tab and
-//                         hinoki on a dark one, the pin a hole in both
-//   app/favicon.ico       16, 32 and 48 px for what reads no SVG: hinoki on `black`, the small cut
-//                         at 16 and the master at 32 and 48 (each cut drawn at its own size, never
-//                         scaled across one)
-//   app/apple-icon.png    180 px: the master at 62% of the tile, on `black`
+//   app/icon.svg          the small cut (16 grid, for 12–19 px: a tab): the honey tile, the tenon end
+//                         cut in ink, the honey pin. The same in a light tab and a dark one, since the
+//                         cut is ink on honey either way
+//   app/favicon.ico       16, 32 and 48 px for what reads no SVG: the small cut at 16 and the master at
+//                         32 and 48 (each cut drawn on its own grid, never one scaled into another's)
+//   app/apple-icon.png    180 px: the app tile, honey to the edge (the platform's mask is the only
+//                         rounding), the master's cut and pin on it
 //   public/icon-192.png, public/icon-512.png   the same tile, for the web app manifest
 // The rasters are drawn by Chromium (Playwright, already here for the e2e), so no image library is
 // added; the .ico is written by hand (PNG entries, which every browser since 2010 reads).
@@ -23,48 +25,49 @@ import { chromium } from '@playwright/test';
 const WEB = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // color-system.md
-export const INK = '#1C1712';
-export const BLACK = '#0D0B09';
-export const HINOKI = '#E6D3B7';
+export const HONEY = '#F5A83A';
+export const INK = '#15161C';
 
-/** The small cut, on its 16 grid: post, then the tenon end with the pin knocked out. */
+const rect = ([x, y, w, h, r], fill) =>
+  `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${fill}"/>`;
+
+/** The small cut, on its 16 grid: the tile, the tenon end cut into it, the pin. */
 export const SMALL = {
   grid: 16,
-  box: [1, 1, 15, 15],
-  shapes:
-    '<rect x="1" y="1" width="4" height="14"/><path fill-rule="evenodd" d="M6 4h9v8H6z M11 6a2 2 0 1 0 0.001 0z"/>',
+  tile: [0, 0, 16, 16, 4],
+  cut: [3, 5, 10, 6, 1],
+  pin: [9, 6.5, 3, 3, 0.6],
 };
-/** The master, on its 32 grid: rail, post, tenon end, pin; every gap one unit. */
+/** The master, on its 32 grid. */
 export const MASTER = {
   grid: 32,
-  box: [1, 2, 30, 30],
-  shapes:
-    '<rect x="1" y="10" width="5" height="12"/><rect x="7" y="2" width="10" height="28"/><path fill-rule="evenodd" d="M18 12h12v8H18z M25 14a2 2 0 1 0 0.001 0z"/>',
+  tile: [0, 0, 32, 32, 7],
+  cut: [7, 10, 18, 12, 2],
+  pin: [18, 13.5, 5, 5, 1],
 };
 
-/** The tab icon: the small cut in the tab's ink, by the browser's colour scheme. */
+/** A cut's drawing on its own grid: the tile (or none, for the app tile), the cut in ink, the pin. */
+export function shapes(cut, { tile = true } = {}) {
+  return `${tile ? rect(cut.tile, HONEY) : ''}${rect(cut.cut, INK)}${rect(cut.pin, HONEY)}`;
+}
+
+/** The tab icon: the small cut, the same in both colour schemes. */
 export function tabSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
   <title>tenonfi</title>
-  <style>path, rect { fill: ${INK}; } @media (prefers-color-scheme: dark) { path, rect { fill: ${HINOKI}; } }</style>
-  ${SMALL.shapes}
+  ${shapes(SMALL)}
 </svg>
 `;
 }
 
-/**
- * A square tile of `size` px: the cut in hinoki on black. `fill` is the share of the tile the mark's
- * width takes, centred on its bounding box; 1 leaves the cut on its own grid, edge to edge.
- */
-export function tileSvg(cut, size, fill) {
-  const [x0, y0, x1, y1] = cut.box;
-  const scale = fill === 1 ? size / cut.grid : (size * fill) / (x1 - x0);
-  const dx = fill === 1 ? 0 : (size - (x1 - x0) * scale) / 2 - x0 * scale;
-  const dy = fill === 1 ? 0 : (size - (y1 - y0) * scale) / 2 - y0 * scale;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
-  <rect width="${size}" height="${size}" fill="${BLACK}"/>
-  <g fill="${HINOKI}" transform="translate(${dx} ${dy}) scale(${scale})">${cut.shapes}</g>
-</svg>`;
+/** The mark at `size` px on a clear ground: the cut drawn on its own grid, edge to edge. */
+export function markSvg(cut, size) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${cut.grid} ${cut.grid}" width="${size}" height="${size}">${shapes(cut)}</svg>`;
+}
+
+/** The app tile at `size` px: honey to the edge, the master's cut and pin on it (app-tile-1024.svg). */
+export function tileSvg(size) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${MASTER.grid} ${MASTER.grid}" width="${size}" height="${size}"><rect width="${MASTER.grid}" height="${MASTER.grid}" fill="${HONEY}"/>${shapes(MASTER, { tile: false })}</svg>`;
 }
 
 /**
@@ -160,25 +163,29 @@ async function main() {
   const page = await browser.newPage({ deviceScaleFactor: 1 });
   const png = async (svg, size) => {
     await page.setViewportSize({ width: size, height: size });
-    await page.setContent(`<html><body style="margin:0">${svg}</body></html>`);
-    return rgba(await page.screenshot({ clip: { x: 0, y: 0, width: size, height: size } }));
+    await page.setContent(
+      `<html><body style="margin:0;background:transparent">${svg}</body></html>`,
+    );
+    return rgba(
+      await page.screenshot({
+        clip: { x: 0, y: 0, width: size, height: size },
+        omitBackground: true,
+      }),
+    );
   };
   try {
     writeFileSync(join(WEB, 'app/icon.svg'), tabSvg());
     writeFileSync(
       join(WEB, 'app/favicon.ico'),
       ico([
-        { size: 16, png: await png(tileSvg(SMALL, 16, 1), 16) },
-        { size: 32, png: await png(tileSvg(MASTER, 32, 1), 32) },
-        { size: 48, png: await png(tileSvg(MASTER, 48, 1), 48) },
+        { size: 16, png: await png(markSvg(SMALL, 16), 16) },
+        { size: 32, png: await png(markSvg(MASTER, 32), 32) },
+        { size: 48, png: await png(markSvg(MASTER, 48), 48) },
       ]),
     );
-    writeFileSync(join(WEB, 'app/apple-icon.png'), await png(tileSvg(MASTER, 180, 0.62), 180));
+    writeFileSync(join(WEB, 'app/apple-icon.png'), await png(tileSvg(180), 180));
     for (const size of [192, 512])
-      writeFileSync(
-        join(WEB, `public/icon-${size}.png`),
-        await png(tileSvg(MASTER, size, 0.62), size),
-      );
+      writeFileSync(join(WEB, `public/icon-${size}.png`), await png(tileSvg(size), size));
   } finally {
     await browser.close();
   }

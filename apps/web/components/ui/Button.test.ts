@@ -36,13 +36,27 @@ describe('Button (button.md)', () => {
     }
   });
 
-  it('is 40px by default and 32px dense, with 2px corners and never a pill', () => {
+  it('is 40px by default and 32px dense, with 8px corners; a button is never a pill, a chip always is', () => {
     expect(classes(el(button.primary).button)).toEqual(
-      expect.arrayContaining(['h-10', 'rounded-md']),
+      expect.arrayContaining(['h-10', 'rounded-md', 'font-semibold']),
     );
     expect(classes(el(button.dense).button)).toEqual(expect.arrayContaining(['h-8', 'rounded-md']));
-    for (const variant of ['primary', 'secondary', 'chip', 'icon', 'destructive'] as const)
-      expect(buttonClass({ variant })).not.toMatch(/rounded-(full|round|composer|\[)/);
+    for (const variant of ['primary', 'secondary', 'icon', 'destructive'] as const)
+      expect(buttonClass({ variant })).not.toMatch(/rounded-(full|composer|\[)/);
+    expect(buttonClass({ variant: 'chip' }).split(' ')).toContain('rounded-full');
+  });
+
+  it('is honey with ink on it, never white; a selected chip is the honey tint with honey as text', () => {
+    const primary = buttonClass({ variant: 'primary' }).split(' ');
+    expect(primary).toEqual(expect.arrayContaining(['bg-primary', 'text-primary-foreground']));
+    expect(primary.join(' ')).not.toMatch(/text-white/);
+    expect(buttonClass({ variant: 'chip' }).split(' ')).toEqual(
+      expect.arrayContaining(['aria-pressed:bg-honey-tint', 'aria-pressed:text-honey-text']),
+    );
+    expect(buttonClass({ variant: 'secondary' }).split(' ')).toEqual(
+      expect.arrayContaining(['border-input', 'hover:bg-secondary']),
+    );
+    expect(buttonClass({ variant: 'link' }).split(' ')).toContain('text-honey-text');
   });
 
   it('presses by changing its fill, with no scale and no opacity', () => {

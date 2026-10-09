@@ -106,29 +106,6 @@ test.describe('Bearing analytics on the recorded risk API', () => {
       await check(page, id);
     });
 
-  test('in Portuguese for a Portuguese reader, its figures in Brazil’s format, axe clean', async ({
-    page,
-    context,
-    baseURL,
-  }) => {
-    await context.addCookies([{ name: 'tf-lang', value: 'pt', url: baseURL as string }]);
-    await page.clock.setFixedTime(CAPTURED + 3 * 3600e3);
-    await page.goto('/analytics/lending');
-    await expect(page.locator('[data-ui="bearing-banner"]')).toContainText(
-      'Todo número está defasado',
-    );
-    await expect(page.locator('main p', { hasText: /^(Lendo|Precificando)/ })).toHaveCount(0, {
-      timeout: 60_000,
-    });
-    await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR');
-    const kpi = page.locator('[data-ui="bearing-kpi"]', {
-      has: page.getByText('Coberto agora', { exact: true }),
-    });
-    // the same figure, written as Brazil writes it
-    await expect(kpi).toContainText('≥ 6,82%');
-    await check(page, 'lending in Portuguese');
-  });
-
   test('the lending counters agree with the hand check of the prototype', async ({ page }) => {
     // CHECKS.md section 10: weekend, 1% tolerance, every pool: covered 6.82%, largest sale $2.57M.
     await open(page, '/analytics/lending');

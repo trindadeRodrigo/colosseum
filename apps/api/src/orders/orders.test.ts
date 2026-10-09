@@ -846,6 +846,10 @@ describe('the /v1 route table', () => {
       '/v1/orders/{id}/legs/{legId}/cancel',
       '/v1/orders/{id}/legs/{legId}/report',
       '/v1/portfolio',
+      '/v1/portfolio/exposure',
+      '/v1/portfolio/history',
+      '/v1/portfolio/plans',
+      '/v1/portfolio/rebalances',
       '/v1/shelf',
       '/v1/testnet/fund',
       '/v1/vaults/{chain}/{address}',
@@ -920,6 +924,7 @@ describe('no /v1 route can make the server sign', () => {
     expect(files.map((f) => relative(src, f)).sort()).toEqual([
       'faucet/test-funds.ts',
       'llm.ts',
+      'model-exits.ts',
       'model-quota.ts',
       'orders/chains.ts',
       'orders/continue.ts',
@@ -933,6 +938,9 @@ describe('no /v1 route can make the server sign', () => {
       'orders/personalize.ts',
       'orders/plan-join.ts',
       'orders/prepare.ts',
+      'orders/relaxed-goal-agent.ts',
+      'orders/relaxed-limits.ts',
+      'orders/relaxed-projection.ts',
       'orders/shared.ts',
       'orders/stated-amount.ts',
       'orders/stated-purpose.ts',
@@ -946,6 +954,13 @@ describe('no /v1 route can make the server sign', () => {
       'plugins/limits.ts',
       'plugins/loggable.ts',
       'plugins/paths.ts',
+      'portfolio/exposure.ts',
+      'portfolio/history.ts',
+      'portfolio/plans.ts',
+      'portfolio/rebalances-snapshots.ts',
+      'portfolio/rebalances.ts',
+      'portfolio/scope.ts',
+      'portfolio/snapshots.ts',
       'routes/v1/baskets.ts',
       'routes/v1/config.ts',
       'routes/v1/funding.ts',
@@ -956,6 +971,10 @@ describe('no /v1 route can make the server sign', () => {
       'routes/v1/mix.ts',
       'routes/v1/mock.ts',
       'routes/v1/orders.ts',
+      'routes/v1/portfolio-exposure.ts',
+      'routes/v1/portfolio-history.ts',
+      'routes/v1/portfolio-plans.ts',
+      'routes/v1/portfolio-rebalances.ts',
       'routes/v1/portfolio.ts',
       'routes/v1/shared.ts',
       'routes/v1/testnet.ts',
@@ -991,8 +1010,10 @@ describe('no /v1 route can make the server sign', () => {
     ]);
     // jose is used to verify and nowhere to sign; node:crypto to hash and to make ids.
     expect([...(packages.get('jose') ?? [])]).toEqual(['plugins/auth.ts']);
+    // the model's client, for the intake, the vault conversation and the relaxed goal agent
     expect([...(packages.get('@anthropic-ai/sdk') ?? [])]).toEqual([
       'llm.ts',
+      'orders/relaxed-goal-agent.ts',
       'vault-agent-model.ts',
     ]);
     for (const file of files) {

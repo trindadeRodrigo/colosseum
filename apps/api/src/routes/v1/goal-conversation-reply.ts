@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { Refusal, refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { type PlanInputs, preparePersonalInputs } from '../../orders/personalize';
+import type { RelaxedGoalAgent } from '../../orders/relaxed-goal-agent';
 import { statedAmountUsd } from '../../orders/stated-amount';
 import {
   type AgentAnalytics,
@@ -32,6 +33,11 @@ import { signedIn } from './orders';
  */
 export const GoalConversationReply = VaultAgentReplyShape.extend({
   chain: ChainId,
+  agent: z
+    .enum(['relaxed', 'model_led'])
+    .describe(
+      'Which agent wrote this reply: the relaxed intake (gate RELAXED-INTAKE), or the model-led conversation the server answers with when it runs with `GOAL_AGENT=model-led`. Said so that neither is ever taken for the other.',
+    ),
   goal: VaultAgentStatedPurpose.shape.goal.describe(
     'What the person said the money is for, read by the server from plain statements in their own messages; the latest one stands. Null until they have plainly said it, and after they take it back or question it. Never the model’s reading, and never filled in here: `goal/accept` works out a null one from the mix and says so.',
   ),
@@ -59,6 +65,9 @@ export function registerGoalConversationReplyRoute(
   model: VaultAgentModel | null,
   inputs: PlanInputs = async () => ({}),
   analytics?: AgentAnalytics,
+  // The relaxed intake (gate RELAXED-INTAKE): the goal agent behind /goal whenever it is configured.
+  // Null leaves the model-led conversation (`replyToVaultConversation`) to answer.
+  relaxed: RelaxedGoalAgent | null = null,
 ) {
   const path = '/v1/conversations/:chain/goal/reply';
   scope.addHook('onSend', async (req, reply, payload) => {
@@ -74,7 +83,7 @@ export function registerGoalConversationReplyRoute(
         tags: ['plans'],
         summary: 'Discuss a new goal and preview model-proposed allocations',
         description:
-          'Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview is not a plan: the amount is confirmed on the review of `POST /v1/conversations/{chain}/goal/accept` before anything is stored. No goal is stored for a new goal yet and none is taken from the request, so no pick is checked against one here and `proposal.unknowns` says so: `goal/accept` checks the mix against the goal the person said, or, where they said none, the one it works out from the mix and names (gate DEPOSIT-DERIVE).',
+          'Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. The relaxed intake answers when a model key is set, unless the server runs with `GOAL_AGENT=model-led`, which chooses the model-led conversation; `agent` says which wrote the reply. Either draws on the shared call quota, sets weights in code from the shares the server reads in the messages (an equal split otherwise), and serves no sentence of the model that states a figure. A preview is not a plan: the amount is confirmed on the review of `POST /v1/conversations/{chain}/goal/accept` before anything is stored. No goal is stored for a new goal yet and none is taken from the request, so no pick is checked against one here and `proposal.unknowns` says so: `goal/accept` checks the mix against the goal the person said, or, where they said none, the one it works out from the mix and names (gate DEPOSIT-DERIVE).',
         params: z.strictObject({ chain: ChainId }),
         body: VaultAgentRequest,
         response: {
@@ -101,7 +110,7 @@ export function registerGoalConversationReplyRoute(
           403,
           'Sign in with a wallet for this chain before discussing a new goal.',
         );
-      if (!model) {
+      if (!model && !relaxed) {
         req.log.warn(
           { reason: 'unavailable', detail: 'no_model', chain },
           'the new-goal conversation has no model configured',
@@ -144,7 +153,9 @@ export function registerGoalConversationReplyRoute(
           person: principal.userId as string,
         });
       });
-      const result = await replyToVaultConversation(req.body, context, model);
+      const result = relaxed
+        ? await relaxed.reply(req.body, context)
+        : await replyToVaultConversation(req.body, context, model);
       if (result.kind === 'failure') {
         // The reason and which check failed: never the person's words or the model's reply.
         req.log.warn(
@@ -152,6 +163,7 @@ export function registerGoalConversationReplyRoute(
             reason: result.reason,
             detail: result.detail ?? null,
             repair: result.repair ?? null,
+            agent: relaxed ? 'relaxed' : 'model_led',
             chain,
           },
           'the new-goal conversation returned no reply',
@@ -184,6 +196,7 @@ export function registerGoalConversationReplyRoute(
       return {
         ...result.reply,
         chain,
+        agent: relaxed ? ('relaxed' as const) : ('model_led' as const),
         ...statedPurposeIn(req.body.messages, context),
         amountUsd: statedAmountUsd(req.body.messages),
       };

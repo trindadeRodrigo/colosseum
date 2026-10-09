@@ -49,7 +49,7 @@ export function ExplorerLink({ signature, href, explorer, labels, className }: E
       title={signature}
       aria-label={text.view.replace('{signature}', short).replace('{explorer}', explorer)}
       className={cn(
-        'inline-flex items-center gap-1 font-mono text-source whitespace-nowrap text-primary underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+        'inline-flex items-center gap-1 font-mono text-source whitespace-nowrap text-honey-text underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
         className,
       )}
     >

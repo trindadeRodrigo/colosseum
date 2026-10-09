@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -12,8 +11,6 @@ import {
   KNOWN_BYTE_TABLES,
   REQUIRED,
   SECRET_SHAPES,
-  STAGE_BUDGET,
-  STAGE_MARKERS,
 } from '../../scripts/check-build.mjs';
 import { DEV_PAGE_MARKER } from './dev/marker';
 import { WALLET_MARKER } from './marker';
@@ -200,35 +197,6 @@ describe('the check that runs after every production build', () => {
 
   it('passes a build with none of it', () => {
     expect(checkBuild(build(CLEAN))).toEqual([]);
-  });
-
-  it('holds the joint to 180 KB gzipped (joint-stage.md), found by its renderer or the scene’s mark', () => {
-    expect(STAGE_BUDGET).toBe(180 * 1024);
-    // the mark the scene puts on its canvas, read from its source: the two cannot drift apart
-    const scene = readFileSync(
-      join(import.meta.dirname, '..', 'landing', 'joint-scene.ts'),
-      'utf8',
-    );
-    const mark = /const MARK = '([^']+)'/.exec(scene)?.[1];
-    expect(mark).toBe('tf-joint-ink');
-    expect(STAGE_MARKERS).toContain(mark);
-    // a chunk with only the scene in it (three split away) is weighed too
-    const noise = randomBytes(360 * 1024).toString('base64');
-    const sceneOnly = build({ ...CLEAN, 'static/chunks/scene.js': `"${mark}";${noise}` });
-    expect(checkBuild(sceneOnly)).toEqual([expect.stringContaining('the 3D joint')]);
-  });
-
-  it('holds the landing’s 3D joint to its budget, gzipped', () => {
-    // a chunk that compresses to little passes, however long it is
-    const small = build({
-      ...CLEAN,
-      'static/chunks/3d.js': `new WebGLRenderer;${'a'.repeat(400_000)}`,
-    });
-    expect(checkBuild(small)).toEqual([]);
-    // one that does not, over the budget, fails
-    const noise = randomBytes(360 * 1024).toString('base64');
-    const big = build({ ...CLEAN, 'static/chunks/3d.js': `new WebGLRenderer;${noise}` });
-    expect(checkBuild(big)).toEqual([expect.stringContaining('the 3D joint')]);
   });
 
   it('fails when the throwaway wallet is in a chunk', () => {

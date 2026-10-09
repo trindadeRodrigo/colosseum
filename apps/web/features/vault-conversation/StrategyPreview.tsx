@@ -1,7 +1,7 @@
 'use client';
-import { type CSSProperties, useId, useMemo, useState } from 'react';
+import { type CSSProperties, useMemo, useState } from 'react';
 import { Button } from '../../components/ui/Button';
-import { Card, CardBody, CardHeader } from '../../components/ui/Card';
+import { Card, CardBody } from '../../components/ui/Card';
 import { cn } from '../../components/ui/cn';
 import { Disclaimer } from '../../components/ui/Disclaimer';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
@@ -15,6 +15,7 @@ import { displayName } from '../order/plain';
 import { dollars } from '../portfolio/figures';
 import { fillOf, MixJoint, staggerMs, useJointMotion } from '../shared/MixJoint';
 import type { VaultStrategyPreview } from './agent';
+import { ProjectionChart } from './ProjectionChart';
 
 export function sourceValue(lang: Lang, value: number | null | undefined, unit?: string): string {
   if (value == null) return '—';
@@ -59,7 +60,6 @@ export function StrategyPreview({
    */
   use?: { label: string; onUse: () => void; primary?: boolean };
 }) {
-  const id = useId();
   const [pointed, setLit] = useState<string | null>(null);
   // a row the next draft dropped cannot stay lit
   const lit = proposal.allocations.some((line) => line.assetId === pointed) ? pointed : null;
@@ -74,6 +74,10 @@ export function StrategyPreview({
   const t = useT();
   const copy = t.shared.vault.conversation;
   const language = useLang();
+  // The mix, or the monthly evolution when the server projected one from sourced yields.
+  const [view, setView] = useState<'mix' | 'monthly'>('mix');
+  const monthly = proposal.projection;
+  const showing = monthly ? view : 'mix';
   const rows = [
     ...proposal.allocations.map((line, piece) => ({
       asset: line.assetId,
@@ -117,7 +121,7 @@ export function StrategyPreview({
     <>
       <Card
         as="section"
-        aria-labelledby={id}
+        aria-label={copy.proposed}
         mock={proposal.sources.some((source) => source.provenance !== 'live')}
         mockLabels={{
           announce: proposal.sources.some((source) => source.provenance === 'mock')
@@ -125,7 +129,6 @@ export function StrategyPreview({
             : t.shell.testNetworkLine,
         }}
       >
-        <CardHeader id={id} title={copy.proposed} />
         <CardBody className="flex min-w-0 flex-col gap-4">
           <p className="text-body font-medium [overflow-wrap:anywhere]">{proposal.objective}</p>
           <p className="text-body-sm [overflow-wrap:anywhere]">{proposal.summary}</p>
@@ -156,6 +159,39 @@ export function StrategyPreview({
               )}
             </p>
           </div>
+          {monthly && (
+            <fieldset
+              aria-label={copy.view.label}
+              data-ui="preview-view"
+              className="m-0 flex min-w-0 gap-1 self-start rounded-full border border-border p-0.5"
+            >
+              {(['mix', 'monthly'] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  aria-pressed={showing === v}
+                  onClick={() => setView(v)}
+                  className={cn(
+                    'rounded-full px-3 py-1 text-caption font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                    showing === v
+                      ? 'bg-honey-tint text-foreground'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {copy.view[v]}
+                </button>
+              ))}
+            </fieldset>
+          )}
+          {showing === 'monthly' && monthly && (
+            <ProjectionChart
+              projection={monthly}
+              lang={language}
+              sample={monthly.sourceIds.some(
+                (id) => proposal.sources.find((source) => source.id === id)?.provenance !== 'live',
+              )}
+            />
+          )}
           {/* Only the beam recedes while a reply is on its way: every word and figure stays as
               readable as it was. */}
           <MixJoint

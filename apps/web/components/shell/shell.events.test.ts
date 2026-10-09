@@ -178,12 +178,22 @@ describe('the frame', () => {
       [en.portfolio, 'page'],
       [en.analytics, null],
     ]);
+    // the portfolio's board, a page of its section and a vault's own page are under it too
+    for (const path of ['/portfolio', '/portfolio/plan/solana/abc', '/vaults/solana/abc']) {
+      location.pathname = path;
+      expect(links(await shell()).map((a) => a.getAttribute('aria-current'))).toEqual([
+        null,
+        null,
+        'page',
+        null,
+      ]);
+    }
     // on a phone the same links are in the sheet under the menu button
     const sheet = find(signedIn, '[data-ui="compact-nav-sheet"]');
     expect([...sheet.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual([
       '/shelf',
       '/goal',
-      '/monitor',
+      '/portfolio',
       '/analytics/stocks',
     ]);
     expect(find(signedIn, `button[aria-label="${en.menu}"]`).getAttribute('aria-expanded')).toBe(
@@ -562,67 +572,36 @@ describe('the account control of someone signed in (Thom, Oct 6)', () => {
   });
 });
 
-describe('light, dark, or the system’s', () => {
-  it('says which is chosen, and the server’s word is what is drawn first', async () => {
-    for (const theme of ['auto', 'light', 'dark'] as const) {
-      const host = await shell('en', theme);
-      const group = find(host, '[data-ui="theme-switch"]');
-      expect(group.getAttribute('role')).toBe('group');
-      expect(group.getAttribute('aria-label')).toBe(en.appearance);
-      expect(pressed(group)).toEqual([en.themes[theme]]);
-      await unmountAll();
-    }
+describe('light or dark, as one icon in the bar', () => {
+  it('is one button in the bar, named for what a press does, and no switches in the foot', async () => {
+    const host = await shell();
+    const toggle = find(host, '[data-ui="compact-nav-bar"] [data-ui="theme-toggle"]');
+    // on a phone the bar has no room for it: the same toggle sits in the menu's sheet instead
+    expect(
+      host.querySelectorAll('[data-ui="compact-nav-sheet"] [data-ui="theme-toggle"]'),
+    ).toHaveLength(1);
+    expect(toggle.tagName).toBe('BUTTON');
+    // the sun is drawn on a dark page and the moon on a light one, by the stylesheet alone
+    expect(toggle.textContent).toContain(en.toLight);
+    expect(toggle.textContent).toContain(en.toDark);
+    expect(host.querySelector('[data-ui="theme-switch"], [data-ui="language-switch"]')).toBeNull();
   });
 
-  it('changes the page at once and keeps the choice for the next one', async () => {
-    const host = await shell();
-    const group = find(host, '[data-ui="theme-switch"]');
-    const choose = (label: string) =>
-      click([...group.querySelectorAll('button')].find((b) => b.textContent === label) as Element);
+  it('flips what is drawn now, at once, and keeps the choice for the next page', async () => {
+    const host = await shell('en', 'dark');
     const root = document.documentElement;
-
-    await choose(en.themes.dark);
-    expect(root.className).toBe('fonts dark');
-    expect(document.cookie).toContain('tf-theme=dark');
-    expect(pressed(group)).toEqual([en.themes.dark]);
-
-    await choose(en.themes.light);
+    root.className = 'fonts dark';
+    const bar = '[data-ui="compact-nav-bar"] [data-ui="theme-toggle"]';
+    await click(find(host, bar));
     expect(root.className).toBe('fonts light');
     expect(document.cookie).toContain('tf-theme=light');
-
-    // back to the system's: the choice is forgotten, and the stylesheet follows the system again
-    await choose(en.themes.auto);
-    expect(root.className).toBe('fonts tf-auto');
-    expect(document.cookie).not.toContain('tf-theme');
-    expect(pressed(group)).toEqual([en.themes.auto]);
+    await click(find(host, bar));
+    expect(root.className).toBe('fonts dark');
+    expect(document.cookie).toContain('tf-theme=dark');
   });
 });
 
-describe('English or Portuguese', () => {
-  it('names each language in its own words, and says which is the page’s', async () => {
-    const host = await shell('pt');
-    const group = find(host, '[data-ui="language-switch"]');
-    expect(group.getAttribute('aria-label')).toBe(dictionary('pt').shell.language);
-    const buttons = [...group.querySelectorAll('button')];
-    expect(buttons.map((b) => [b.textContent, b.getAttribute('lang')])).toEqual([
-      ['English', 'en'],
-      ['Português', 'pt-BR'],
-    ]);
-    expect(pressed(group)).toEqual(['Português']);
-  });
-
-  it('stores the choice and asks the server for the page again, in that language', async () => {
-    const host = await shell('en');
-    const group = find(host, '[data-ui="language-switch"]');
-    const [english, portuguese] = [...group.querySelectorAll('button')];
-    // the language the page is already in asks for nothing
-    await click(english as Element);
-    expect(router.refresh).not.toHaveBeenCalled();
-    await click(portuguese as Element);
-    expect(document.cookie).toContain('tf-lang=pt');
-    expect(router.refresh).toHaveBeenCalledTimes(1);
-  });
-
+describe('the language', () => {
   it('says the whole shell in Portuguese when that is the language', async () => {
     const pt = dictionary('pt').shell;
     const host = await shell('pt');

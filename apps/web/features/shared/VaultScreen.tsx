@@ -8,7 +8,7 @@ import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/Card';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
-import { PAGE_TITLE } from '../../components/ui/heading';
+import { PAGE_TITLE, WORKSPACE_TITLE } from '../../components/ui/heading';
 import { Icon } from '../../components/ui/Icon';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { pinSourceOfPrice } from '../../components/ui/price-source';
@@ -121,135 +121,199 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
     !!wallet &&
     sameAddress(read.chain, wallet.address, vault.owner);
   const empty = [vault.cash, ...vault.positions].every((h) => /^0+$/.test(h.raw));
-  return (
-    <div data-ui="vault-screen" className="flex flex-col gap-8">
-      <header className="flex flex-col items-start gap-3">
-        <ChainBadge chain={read.chain} />
-        {mine ? (
-          <OwnVaultActions
-            chain={read.chain}
-            address={vault.address}
-            headingLevel={1}
-            primaryAddMoney
-            fallback={
-              <h1 id={titleId} className={PAGE_TITLE}>
-                {v.title}
-              </h1>
-            }
-          />
-        ) : (
-          <h1 id={titleId} className={PAGE_TITLE}>
-            {v.title}
-          </h1>
-        )}
-        <p className="max-w-(--tf-measure-body) text-body-lg text-muted-foreground">
-          {mine ? v.workspaceLead(read.name) : v.lead(read.name)}
-        </p>
-        {/* the way back, and the vault on its chain's own explorer */}
-        <p className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          <Link href="/monitor" className={buttonClass({ variant: 'link' })}>
-            {v.back}
-          </Link>
-          {mine && (
-            <a href="#vault-conversation" className={buttonClass({ variant: 'link' })}>
-              {v.conversation.resume}
-            </a>
-          )}
-          {explorer && (
-            <a
-              data-ui="vault-explorer"
-              href={explorer}
-              target="_blank"
-              rel="noopener"
-              className={buttonClass({ variant: 'link' })}
-            >
-              {v.explorer(t.chain.explorers[read.chain])}
-              <Icon name="ArrowUpRight" size={16} />
-            </a>
-          )}
-        </p>
-        {mine && account.status === 'ready' && account.chain === read.chain && (
-          <Link
-            data-ui="vault-share-strategy"
-            href={`/publish?vault=${encodeURIComponent(vault.address)}`}
-            className={buttonClass({ variant: 'secondary' })}
+  const weightsHref = `/vaults/${encodeURIComponent(read.chain)}/${encodeURIComponent(vault.address)}/targets`;
+  const withdrawHref = `/vaults/${encodeURIComponent(read.chain)}/${encodeURIComponent(vault.address)}/withdraw`;
+  // The way back, the explorer, and the owner's own ways in and out.
+  const links = (
+    <>
+      {/* the way back, and the vault on its chain's own explorer */}
+      <p className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <Link href="/monitor" className={buttonClass({ variant: 'link' })}>
+          {v.back}
+        </Link>
+        {explorer && (
+          <a
+            data-ui="vault-explorer"
+            href={explorer}
+            target="_blank"
+            rel="noopener"
+            className={buttonClass({ variant: 'link' })}
           >
-            {t.shared.publish.shareStrategy}
-          </Link>
+            {v.explorer(t.chain.explorers[read.chain])}
+            <Icon name="ArrowUpRight" size={16} />
+          </a>
         )}
-        {/* The owner's way out, shown to the owner alone: a vault pays nobody else. */}
-        {mine &&
-          (empty ? (
-            <p data-ui="vault-empty" className="text-body">
-              {t.withdraw.empty}
-            </p>
-          ) : (
-            <>
-              <Link
-                data-ui="vault-edit-weights"
-                href={`/vaults/${encodeURIComponent(read.chain)}/${encodeURIComponent(vault.address)}/targets`}
-                className={buttonClass({ variant: 'secondary' })}
-              >
-                {t.mix.editor.edit}
-              </Link>
-              <Link
-                data-ui="vault-withdraw"
-                href={`/vaults/${encodeURIComponent(read.chain)}/${encodeURIComponent(vault.address)}/withdraw`}
-                className={buttonClass({ variant: 'secondary' })}
-              >
-                {t.withdraw.action}
-              </Link>
-            </>
-          ))}
-        {/* Auto-follow is switched on where the vault's portfolio is: its page offers the switch. A
-            withdrawal switches it off, and this is the way back. */}
-        {mine && follows && !vault.autoFollow && (
-          <p data-ui="vault-auto-follow-off" className="max-w-(--tf-measure-body) text-body-sm">
-            {v.autoFollowOff}{' '}
-            <Link href="/shelf" className={buttonClass({ variant: 'link' })}>
-              {v.autoFollowWhere}
-            </Link>
-          </p>
-        )}
-      </header>
-
-      {mine && (
-        <Card
-          density="dense"
-          mock={read.provenance !== 'live'}
-          mockLabels={{
-            announce:
-              read.provenance === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
-          }}
+      </p>
+      {mine && account.status === 'ready' && account.chain === read.chain && (
+        <Link
+          data-ui="vault-share-strategy"
+          href={`/publish?vault=${encodeURIComponent(vault.address)}`}
+          className={buttonClass({ variant: 'secondary' })}
         >
-          <CardBody density="dense" className="flex flex-col gap-3">
-            <StatRow>
-              <Stat label={v.value}>
-                <ProvenancePin
-                  value={dollars(lang, vault.valueUsd)}
-                  obs={vaultValueSource(
-                    { ...read, vaults: [vault] },
-                    vault,
-                    t.portfolio.vault.valueMethod,
-                  )}
-                  labels={t.pin}
-                />
-              </Stat>
-              <Stat label={v.conversation.holdings}>
-                {rows.filter((row) => !/^0+$/.test(row.raw)).length}
-              </Stat>
-              <Stat label={v.autoFollow}>{vault.autoFollow ? v.on : v.off}</Stat>
-            </StatRow>
-            {unpriced(vault) > 0 && (
-              <p className="text-caption text-muted-foreground">
-                {t.portfolio.vault.unpriced(unpriced(vault))}
-              </p>
-            )}
-          </CardBody>
-        </Card>
+          {t.shared.publish.shareStrategy}
+        </Link>
       )}
-
-      {mine && port.userId && (
+      {/* The owner's way out, shown to the owner alone: a vault pays nobody else. */}
+      {mine &&
+        (empty ? (
+          <p data-ui="vault-empty" className="text-body">
+            {t.withdraw.empty}
+          </p>
+        ) : (
+          <>
+            <Link
+              data-ui="vault-edit-weights"
+              href={weightsHref}
+              className={buttonClass({ variant: 'secondary' })}
+            >
+              {t.mix.editor.edit}
+            </Link>
+            <Link
+              data-ui="vault-withdraw"
+              href={withdrawHref}
+              className={buttonClass({ variant: 'secondary' })}
+            >
+              {t.withdraw.action}
+            </Link>
+          </>
+        ))}
+      {/* Auto-follow is switched on where the vault's portfolio is: its page offers the switch. A
+          withdrawal switches it off, and this is the way back. */}
+      {mine && follows && !vault.autoFollow && (
+        <p data-ui="vault-auto-follow-off" className="max-w-(--tf-measure-body) text-body-sm">
+          {v.autoFollowOff}{' '}
+          <Link href="/shelf" className={buttonClass({ variant: 'link' })}>
+            {v.autoFollowWhere}
+          </Link>
+        </p>
+      )}
+    </>
+  );
+  const details = (
+    <details open={!mine} data-ui="vault-details">
+      <summary className={mine ? 'cursor-pointer text-body-sm' : 'hidden'}>
+        {v.conversation.details}
+      </summary>
+      <Card
+        as="section"
+        aria-labelledby={`${titleId}-pane`}
+        mock={read.provenance !== 'live'}
+        mockLabels={{
+          announce: read.provenance === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
+        }}
+      >
+        <CardHeader title={read.name} level={2} id={`${titleId}-pane`} />
+        <CardBody className="flex flex-col gap-5">
+          <StatRow>
+            <Stat label={v.value}>
+              {/* The value stands on the prices and the read of the vault: its pin says so
+                (STYLE.md rule 1), as the monitor's does. */}
+              <ProvenancePin
+                value={dollars(lang, vault.valueUsd)}
+                obs={vaultValueSource(
+                  { ...read, vaults: [vault] },
+                  vault,
+                  t.portfolio.vault.valueMethod,
+                )}
+                labels={t.pin}
+              />
+            </Stat>
+            <Stat label={v.autoFollow}>{vault.autoFollow ? v.on : v.off}</Stat>
+          </StatRow>
+          {!mine && unpriced(vault) > 0 && (
+            // The value leaves out what has no price: said here as on the owner's card above.
+            <p data-ui="vault-unpriced" className="text-caption text-muted-foreground">
+              {t.portfolio.vault.unpriced(unpriced(vault))}
+            </p>
+          )}
+          <dl className="grid gap-x-6 gap-y-1 text-body-sm sm:grid-cols-[auto_1fr]">
+            <dt className="text-muted-foreground">{v.address}</dt>
+            <dd className="break-all font-mono text-source">{vault.address}</dd>
+            <dt className="text-muted-foreground">{v.owner}</dt>
+            <dd className="break-all font-mono text-source">{vault.owner}</dd>
+            <dt className="text-muted-foreground">{v.follows}</dt>
+            <dd className="break-all">
+              {follows ? (
+                <span className="font-mono text-source">
+                  {follows} · {v.version(vault.acceptedVersion)}
+                </span>
+              ) : (
+                v.followsNothing
+              )}
+            </dd>
+          </dl>
+          <DataTable<HoldingRow>
+            caption={read.name}
+            captionHidden
+            rows={rows}
+            rowKey={(r) => r.asset}
+            columns={[
+              {
+                key: 'asset',
+                header: v.columns.asset,
+                rowHeader: true,
+                cell: (r) => displayName(r.asset, t.plan),
+              },
+              {
+                key: 'held',
+                header: v.columns.held,
+                numeric: true,
+                cell: (r) => tokens(lang, r.display),
+              },
+              {
+                key: 'price',
+                header: v.columns.price,
+                numeric: true,
+                cell: (r) => {
+                  const price = priceOf(r.asset);
+                  return price ? (
+                    <ProvenancePin
+                      value={dollars(lang, price.usdPerToken)}
+                      obs={pinSourceOfPrice(price)}
+                      labels={t.pin}
+                    />
+                  ) : (
+                    '—'
+                  );
+                },
+              },
+              {
+                key: 'weight',
+                header: v.columns.weight,
+                numeric: true,
+                // a holding with no price has no share that was worked out: never drawn as 0%
+                cell: (r) => (r.valueUsd === null ? '—' : (now[at(r.asset)] ?? '')),
+              },
+              {
+                key: 'target',
+                header: v.columns.target,
+                numeric: true,
+                cell: (r) => planned[at(r.asset)] ?? '',
+              },
+              {
+                key: 'drift',
+                header: v.columns.drift,
+                numeric: true,
+                // from the two shares as written, so they and their difference agree
+                cell: (r) =>
+                  r.valueUsd === null
+                    ? '—'
+                    : drift(
+                        lang,
+                        ((nowTenths[at(r.asset)] ?? 0) - (plannedTenths[at(r.asset)] ?? 0)) * 10,
+                      ),
+              },
+            ]}
+          />
+        </CardBody>
+      </Card>
+    </details>
+  );
+  // The owner's vault opens as the invest page does (Rodrigo, Oct 8): the chat beside the plan, so
+  // edits and rebalancing pick up where the plan was made.
+  if (mine && port.userId)
+    return (
+      <div data-ui="vault-screen" className="flex min-w-0 flex-col gap-4 md:min-h-0 md:flex-1">
         <VaultConversation
           // a new person, vault or network is another conversation; a new read of the same vault is
           // the same one, which says so of a reply it set aside (VaultConversation.tsx)
@@ -257,128 +321,82 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
           read={read}
           userId={port.userId}
           showValue={false}
-        />
-      )}
-
-      <details open={!mine} data-ui="vault-details">
-        <summary className={mine ? 'cursor-pointer text-body-sm' : 'hidden'}>
-          {v.conversation.details}
-        </summary>
-        <Card
-          as="section"
-          aria-labelledby={`${titleId}-pane`}
-          mock={read.provenance !== 'live'}
-          mockLabels={{
-            announce:
-              read.provenance === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
-          }}
-        >
-          <CardHeader title={read.name} level={2} id={`${titleId}-pane`} />
-          <CardBody className="flex flex-col gap-5">
-            <StatRow>
-              <Stat label={v.value}>
-                {/* The value stands on the prices and the read of the vault: its pin says so
-                  (STYLE.md rule 1), as the monitor's does. */}
-                <ProvenancePin
-                  value={dollars(lang, vault.valueUsd)}
-                  obs={vaultValueSource(
-                    { ...read, vaults: [vault] },
-                    vault,
-                    t.portfolio.vault.valueMethod,
-                  )}
-                  labels={t.pin}
+          heading={
+            <>
+              <div className="flex flex-wrap items-center gap-3">
+                <OwnVaultActions
+                  chain={read.chain}
+                  address={vault.address}
+                  headingLevel={1}
+                  primaryAddMoney
+                  fallback={
+                    <h1 id={titleId} className={WORKSPACE_TITLE}>
+                      {v.title}
+                    </h1>
+                  }
                 />
-              </Stat>
-              <Stat label={v.autoFollow}>{vault.autoFollow ? v.on : v.off}</Stat>
-            </StatRow>
-            {!mine && unpriced(vault) > 0 && (
-              // The value leaves out what has no price: said here as on the owner's card above.
-              <p data-ui="vault-unpriced" className="text-caption text-muted-foreground">
-                {t.portfolio.vault.unpriced(unpriced(vault))}
+                <ChainBadge chain={read.chain} />
+              </div>
+              <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
+                {v.workspaceLead(read.name)}
               </p>
-            )}
-            <dl className="grid gap-x-6 gap-y-1 text-body-sm sm:grid-cols-[auto_1fr]">
-              <dt className="text-muted-foreground">{v.address}</dt>
-              <dd className="break-all font-mono text-source">{vault.address}</dd>
-              <dt className="text-muted-foreground">{v.owner}</dt>
-              <dd className="break-all font-mono text-source">{vault.owner}</dd>
-              <dt className="text-muted-foreground">{v.follows}</dt>
-              <dd className="break-all">
-                {follows ? (
-                  <span className="font-mono text-source">
-                    {follows} · {v.version(vault.acceptedVersion)}
-                  </span>
-                ) : (
-                  v.followsNothing
-                )}
-              </dd>
-            </dl>
-            <DataTable<HoldingRow>
-              caption={read.name}
-              captionHidden
-              rows={rows}
-              rowKey={(r) => r.asset}
-              columns={[
-                {
-                  key: 'asset',
-                  header: v.columns.asset,
-                  rowHeader: true,
-                  cell: (r) => displayName(r.asset, t.plan),
-                },
-                {
-                  key: 'held',
-                  header: v.columns.held,
-                  numeric: true,
-                  cell: (r) => tokens(lang, r.display),
-                },
-                {
-                  key: 'price',
-                  header: v.columns.price,
-                  numeric: true,
-                  cell: (r) => {
-                    const price = priceOf(r.asset);
-                    return price ? (
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2">{links}</div>
+            </>
+          }
+          aside={
+            <>
+              <Card
+                density="dense"
+                mock={read.provenance !== 'live'}
+                mockLabels={{
+                  announce:
+                    read.provenance === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
+                }}
+              >
+                <CardBody density="dense" className="flex flex-col gap-3">
+                  <StatRow>
+                    <Stat label={v.value}>
                       <ProvenancePin
-                        value={dollars(lang, price.usdPerToken)}
-                        obs={pinSourceOfPrice(price)}
+                        value={dollars(lang, vault.valueUsd)}
+                        obs={vaultValueSource(
+                          { ...read, vaults: [vault] },
+                          vault,
+                          t.portfolio.vault.valueMethod,
+                        )}
                         labels={t.pin}
                       />
-                    ) : (
-                      '—'
-                    );
-                  },
-                },
-                {
-                  key: 'weight',
-                  header: v.columns.weight,
-                  numeric: true,
-                  // a holding with no price has no share that was worked out: never drawn as 0%
-                  cell: (r) => (r.valueUsd === null ? '—' : (now[at(r.asset)] ?? '')),
-                },
-                {
-                  key: 'target',
-                  header: v.columns.target,
-                  numeric: true,
-                  cell: (r) => planned[at(r.asset)] ?? '',
-                },
-                {
-                  key: 'drift',
-                  header: v.columns.drift,
-                  numeric: true,
-                  // from the two shares as written, so they and their difference agree
-                  cell: (r) =>
-                    r.valueUsd === null
-                      ? '—'
-                      : drift(
-                          lang,
-                          ((nowTenths[at(r.asset)] ?? 0) - (plannedTenths[at(r.asset)] ?? 0)) * 10,
-                        ),
-                },
-              ]}
-            />
-          </CardBody>
-        </Card>
-      </details>
+                    </Stat>
+                    <Stat label={v.conversation.holdings}>
+                      {rows.filter((row) => !/^0+$/.test(row.raw)).length}
+                    </Stat>
+                    <Stat label={v.autoFollow}>{vault.autoFollow ? v.on : v.off}</Stat>
+                  </StatRow>
+                  {unpriced(vault) > 0 && (
+                    <p className="text-caption text-muted-foreground">
+                      {t.portfolio.vault.unpriced(unpriced(vault))}
+                    </p>
+                  )}
+                </CardBody>
+              </Card>
+              {details}
+            </>
+          }
+        />
+      </div>
+    );
+  return (
+    <div data-ui="vault-screen" className="flex flex-col gap-8">
+      <header className="flex flex-col items-start gap-3">
+        <ChainBadge chain={read.chain} />
+        <h1 id={titleId} className={PAGE_TITLE}>
+          {v.title}
+        </h1>
+        <p className="max-w-(--tf-measure-body) text-body-lg text-muted-foreground">
+          {v.lead(read.name)}
+        </p>
+        {links}
+      </header>
+      {details}
     </div>
   );
 }

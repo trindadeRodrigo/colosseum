@@ -12,7 +12,6 @@ import { inTheme } from './theme';
 // 375 px, in light and in dark, and for no sideways scroll.
 
 const en = dictionary('en');
-const pt = dictionary('pt');
 test.skip(process.env.E2E_CHAIN === 'robinhood', 'the stub runs Robinhood Chain');
 const STUB = `http://localhost:${process.env.E2E_API_PORT ?? 3901}`;
 /** Screenshots are taken only for a run that names a folder for them (SCREENSHOTS_DIR). */
@@ -45,6 +44,12 @@ async function check(page: Page, name: string) {
       await page.setViewportSize({ width: 375, height: 812 });
     }
   }
+}
+
+/** Follows a link of the product's bar, as a phone does: the menu button, then the link in its sheet. */
+async function go(page: Page, name: string) {
+  await page.getByRole('button', { name: en.shell.menu }).click();
+  await page.locator('[data-ui="compact-nav-sheet"]').getByRole('link', { name }).click();
 }
 
 async function signIn(page: Page) {
@@ -178,49 +183,46 @@ test('the deposit step asks nothing the conversation did not hear: the server wo
   await expect(dollarsOf(step, 'gold')).toHaveText('$250.00');
 });
 
-test('the deposit step by keyboard, in Portuguese', async ({ page }) => {
+test('the deposit step by keyboard', async ({ page }) => {
+  // The app is English only (ENGLISH-ONLY): this walk was in Portuguese, and is now in English.
   await signIn(page);
-  await page
-    .locator('[data-ui="language-switch"]')
-    .getByRole('button', { name: 'Português' })
-    .click();
-  await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   // by keyboard from the conversation: Enter sends, Enter on "Depositar" opens the step
   const box = page.locator('textarea');
-  await box.fill('Um fundo amplo e ouro, para crescer, com risco alto');
+  await box.fill('A broad fund and gold, to grow, with high risk');
   await box.press('Enter');
   const strategy = page.locator('[data-ui="goal-strategy"]');
   await expect(strategy.locator('[data-ui="weight-notes"]')).toBeVisible();
-  await strategy.getByRole('button', { name: pt.mix.preview.deposit, exact: true }).press('Enter');
+  await strategy.getByRole('button', { name: en.mix.preview.deposit, exact: true }).press('Enter');
   const step = page.locator('[data-ui="deposit-step"]');
   await expect(step.locator('[data-ui="deposit-purpose"]')).toContainText(
-    pt.mix.deposit.purpose('grow', 'high'),
+    en.mix.deposit.purpose('grow', 'high'),
   );
   // focus lands on the amount: the person types straight away
-  const amount = page.getByLabel(pt.buy.amount.label, { exact: true });
+  const amount = page.getByLabel(en.buy.amount.label, { exact: true });
   await expect(amount).toBeFocused();
-  await page.keyboard.type('100,50');
-  await expect(dollarsOf(step, 'spy')).toHaveText(/50,25/);
-  await check(page, 'deposit-pt');
+  await page.keyboard.type('100.50');
+  await expect(dollarsOf(step, 'spy')).toHaveText(/50\.25/);
+  await check(page, 'deposit-keyboard');
   // from the amount: the three quick amounts, the drawing of the mix (one stop), then the press,
   // which Enter takes to the review
-  const press = page.getByRole('button', { name: pt.mix.deposit.reviewOf('US$ 100,50') });
+  const press = page.getByRole('button', { name: en.mix.deposit.reviewOf('$100.50') });
   for (let i = 0; i < 5; i += 1) await page.keyboard.press('Tab');
   await expect(press).toBeFocused();
   await page.keyboard.press('Enter');
   // the review's heading takes focus, and it says what the mix was checked for
-  await expect(page.getByRole('heading', { name: pt.mix.review.title })).toBeFocused();
+  await expect(page.getByRole('heading', { name: en.mix.review.title })).toBeFocused();
   await expect(page.locator('[data-ui="mix-review-purpose"]')).toHaveText(
-    pt.mix.deposit.purpose('grow', 'high'),
+    en.mix.deposit.purpose('grow', 'high'),
   );
-  await expect(page.locator('[data-ui="mix-review-total"]')).toContainText('100,50');
-  await page.getByRole('button', { name: pt.mix.deposit.backToDeposit }).press('Enter');
+  await expect(page.locator('[data-ui="mix-review-total"]')).toContainText('100.50');
+  await page.getByRole('button', { name: en.mix.deposit.backToDeposit }).press('Enter');
   // back on the step: the press that led to the review, with the amount as it was
   await expect(press).toBeFocused();
-  await expect(amount).toHaveValue('100,50');
-  await step.getByRole('button', { name: pt.mix.deposit.backToProposal }).press('Enter');
+  await expect(amount).toHaveValue('100.50');
+  await step.getByRole('button', { name: en.mix.deposit.backToProposal }).press('Enter');
   await expect(
-    strategy.getByRole('button', { name: pt.mix.preview.deposit, exact: true }),
+    strategy.getByRole('button', { name: en.mix.preview.deposit, exact: true }),
   ).toBeFocused();
 });
 
@@ -243,16 +245,19 @@ test('a vault’s own weights, edited by hand: reviewed, ordered, every step sig
   expect(source.ok(), await source.text()).toBe(true);
   const { address } = await source.json();
 
-  // through the app's own links: the throwaway sign-in does not outlive a page load
-  await page.getByRole('button', { name: en.shell.menu }).click();
-  await page
-    .locator('[data-ui="compact-nav-sheet"]')
-    .getByRole('link', { name: en.shell.portfolio })
-    .click();
-  await page
-    .locator('[data-ui="vault-summary"]')
-    .getByRole('link', { name: en.portfolio.overview.open })
-    .click();
+  // through the app's own links: the throwaway sign-in does not outlive a page load. The bar's
+  // Portfolio is now the portfolio section's board (PORT-1); the person's own vaults are in the
+  // conversation picker on the goal page (GOAL-CHAT-PORT), each opening its page. The goal page
+  // reads them when it opens, so it is opened again (by way of the board) after the vault was made.
+  await go(page, en.shell.portfolio);
+  await expect(page).toHaveURL(/\/portfolio$/);
+  await go(page, en.shell.invest);
+  await expect(page).toHaveURL(/\/goal$/);
+  const vaultOption = `vault:solana:${address}`;
+  await expect(page.locator(`[data-ui="goal-picker"] option[value="${vaultOption}"]`)).toHaveCount(
+    1,
+  );
+  await page.locator('[data-ui="goal-picker"]').selectOption(vaultOption);
   await expect(page).toHaveURL(new RegExp(`/vaults/solana/${address}$`));
   await page.getByRole('link', { name: en.mix.editor.edit }).click();
   await expect(page).toHaveURL(new RegExp(`/vaults/solana/${address}/targets$`));

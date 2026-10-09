@@ -14,7 +14,6 @@ import {
 import { dictionary } from '../../i18n';
 import { withAccount } from '../account/test/screen';
 import { GOAL_HANDOFF, GOAL_HANDOFF_OWNER } from '../goal/draft';
-import { Simulate } from '../landing/Simulate';
 import { CHECK_MS } from '../mix/DepositStep';
 import { sourceValue } from '../vault-conversation/StrategyPreview';
 import { preview } from '../vault-conversation/test/fixtures';
@@ -22,7 +21,7 @@ import { fakePort, json, PHANTOM, signedInPort } from '../wallet/test/fake-port'
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { GoalConversation, goalConversationKey } from './GoalConversation';
-import { GoalEntry } from './GoalEntry';
+import { GoalHome } from './GoalHome';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -52,7 +51,12 @@ const send = async (host: HTMLElement, words: string) => {
   await click(find(host, '[data-ui="composer-send"]'));
   await settle();
 };
-const show = (lang: 'en' | 'pt' = 'en') => mount(withAccount(lang, createElement(GoalEntry)));
+const show = (lang: 'en' | 'pt' = 'en') => mount(withAccount(lang, createElement(GoalHome)));
+async function mode(host: HTMLElement, value: string) {
+  const selector = find<HTMLSelectElement>(host, '[data-ui="goal-picker"]');
+  selector.value = value;
+  await fire(selector, new Event('change', { bubbles: true }));
+}
 beforeEach(() => {
   window.history.replaceState(null, '', '/goal');
   router.push.mockClear();
@@ -152,7 +156,9 @@ describe('private strategy exploration for a new goal', () => {
     'defaults to truthful explore workbench with no fake vault or funding (%s)',
     async (lang) => {
       const host = await show(lang);
+      // No Guided or Explore switch (#195): the conversation picker is its own control, under its own id.
       expect(host.querySelector('[data-ui="goal-mode"]')).toBeNull();
+      expect(find<HTMLSelectElement>(host, '[data-ui="goal-picker"]').value).toBe('current');
       expect(find(host, '[data-ui="goal-empty-preview"]').textContent).toContain(
         dictionary(lang).goal.explore.empty,
       );
@@ -221,6 +227,46 @@ describe('private strategy exploration for a new goal', () => {
     ).toBe(true);
     expect(messages.at(-1)).toEqual({ who: 'person', text: 'Less gold please' });
     expect(calls.every((row) => row.path === path)).toBe(true);
+  });
+  // Rodrigo, Oct 8: the picker holds this conversation and a new one; the last preview is kept
+  // in this browser and shown again on return, still a preview with no way to fund it; "New
+  // conversation" clears both.
+  it('shows the last preview again on return, offers no funding, and keeps earlier conversations to reopen', async () => {
+    let host = await show();
+    await send(host, 'Consider gold');
+    expect(host.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
+    await unmountAll();
+    host = await show();
+    await settle();
+    expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain('Consider gold');
+    expect(host.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="goal-empty-preview"]')).toBeNull();
+    expect(host.querySelector('[data-ui="buy-card"]')).toBeNull();
+    expect(
+      find(host, '[data-ui="goal-strategy"]').querySelector('button[data-variant="primary"]'),
+    ).toBeNull();
+    expect(
+      [...find<HTMLSelectElement>(host, '[data-ui="goal-picker"]').options].map((o) => o.value),
+    ).toEqual(['current', 'new']);
+    await mode(host, 'new');
+    await settle();
+    expect(find(host, '[data-ui="goal-transcript"]').textContent).toBe('');
+    expect(host.querySelector('[data-ui="goal-empty-preview"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="mix-joint"]')).toBeNull();
+    // The earlier conversation is kept, listed by its first words, and comes back with its preview.
+    await unmountAll();
+    host = await show();
+    await settle();
+    expect(host.querySelector('[data-ui="mix-joint"]')).toBeNull();
+    const saved = [...find<HTMLSelectElement>(host, '[data-ui="goal-picker"]').options].find((o) =>
+      o.value.startsWith('conversation:'),
+    );
+    expect(saved?.textContent).toBe('Consider gold');
+    await mode(host, saved?.value ?? '');
+    await settle();
+    expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain('Consider gold');
+    expect(host.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
+    expect(calls).toHaveLength(1);
   });
   it('preserves exact plain words across unavailable API and reopen without fabricating reply', async () => {
     portStore.setApi(async (url) => baseApi(url));
@@ -500,6 +546,34 @@ describe('the deposit step of a new goal', () => {
     expect(router.push).not.toHaveBeenCalled();
   });
 
+  it('sends for checking exactly the ids and shares the preview shows, and nothing of its own', async () => {
+    // a relaxed-intake mix of three lines, cash among them (gate RELAXED-INTAKE): what the deposit
+    // step sends is that mix, never the engine's own picks (gate ANY-COMPOSITION)
+    const shown = [
+      { assetId: 'solana:spy', weightBps: 5000, symbol: 'SPY' },
+      { assetId: 'solana:gldx', weightBps: 3000, symbol: 'tGLDx' },
+      { assetId: 'solana:usdc', weightBps: 2000, symbol: 'USDC' },
+    ].map((line) => ({ ...line, why: `Why ${line.symbol}.`, evidenceIds: ['exit'] }));
+    replies({ goal: 'grow', risk: 'high', proposal: { ...preview, allocations: shown } });
+    const host = await show();
+    await send(host, 'Half a fund, some gold, the rest cash; grow, high risk');
+    await click(find(host, '[data-action="deposit"]'));
+    await type(amount(host), '250');
+    await settle(CHECK_MS + 50);
+    const checked = calls.filter((call) => call.path === accept);
+    expect(checked.length).toBeGreaterThan(0);
+    for (const call of checked)
+      expect(call.body).toMatchObject({
+        origin: 'model',
+        goal: 'grow',
+        risk: 'high',
+        amountUsd: 250,
+        allocations: shown.map(({ assetId, weightBps }) => ({ assetId, weightBps })),
+      });
+    // the plan is never handed to the engine to pick its own holdings
+    expect(calls.some((call) => call.path.includes('/v1/baskets/'))).toBe(false);
+  });
+
   it('asks nothing by a tap: what an older server or the person left unsaid is sent as not said', async () => {
     // a reply with no goal or risk at all, and one with a value this app does not know
     replies({}, { goal: 'speculate', risk: 'medium' });
@@ -540,7 +614,7 @@ describe('the deposit step of a new goal', () => {
         { amountUsd: null },
       );
       const host = await (strict
-        ? mount(withAccount('en', createElement(StrictMode, null, createElement(GoalEntry))))
+        ? mount(withAccount('en', createElement(StrictMode, null, createElement(GoalHome))))
         : show());
       await send(host, 'I want to invest 2k, 70% in safe income and 30% in AI stocks');
       await click(find(host, '[data-action="deposit"]'));
@@ -1063,16 +1137,14 @@ describe('the proposed mix drawn as a joint', () => {
 });
 
 describe('existing entry handoffs', () => {
-  it('prefills actual landing words in Explore across sign-in, then consumes once on accepted words even if reply fails', async () => {
+  it('prefills handed-over words in Explore across sign-in, then consumes once on accepted words even if reply fails', async () => {
     portStore.set(fakePort());
-    const landing = await mount(withAccount('en', createElement(Simulate)));
+    // The words another screen handed over (features/goal/draft.ts), as the old landing's box did.
     const words = 'Grow $2,000 for ten years';
-    await send(landing, words);
-    expect(router.push).toHaveBeenCalledWith('/goal');
-    expect(sessionStorage.getItem(GOAL_HANDOFF)).toBe(words);
-    await unmountAll();
+    sessionStorage.setItem(GOAL_HANDOFF, words);
     portStore.setApi(async (url) => baseApi(url));
     const host = await show();
+    expect(find<HTMLSelectElement>(host, '[data-ui="goal-picker"]').value).toBe('current');
     expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe(words);
     expect(find<HTMLTextAreaElement>(host, 'textarea').disabled).toBe(true);
     expect(calls).toHaveLength(0);
@@ -1109,6 +1181,7 @@ describe('existing entry handoffs', () => {
     const words = 'Consider gold with a small budget';
     window.history.replaceState(null, '', `/goal#goal=${encodeURIComponent(words)}`);
     const host = await show();
+    expect(find<HTMLSelectElement>(host, '[data-ui="goal-picker"]').value).toBe('current');
     expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe(words);
     expect(sessionStorage.getItem(GOAL_HANDOFF)).toBe(words);
     expect(calls).toHaveLength(0);
@@ -1140,4 +1213,114 @@ describe('sourced metrics in a strategy preview', () => {
       expect(sourceValue(lang, 12.5, 'USD')).toContain(lang === 'en' ? '12.50' : '12,50');
     },
   );
+});
+
+describe('the relaxed intake’s plan on /goal (RELAXED-INTAKE)', () => {
+  const sheet = { goal: 'grow', amountUsd: 2000, chains: ['solana'] };
+  const projection = {
+    currency: 'USD',
+    rate: 0.04,
+    step: 1,
+    months: [
+      { month: '2026-11-01', balance: 2006, earned: 6, withdrawn: 0 },
+      { month: '2026-12-01', balance: 2013, earned: 13, withdrawn: 0 },
+    ],
+    basis: 'Past-rate arithmetic from the sourced yield readings, never a promise.',
+    sourceIds: [],
+  };
+  const answerWith = (extra: Record<string, unknown>) =>
+    portStore.setApi(async (url, init) => {
+      if (init?.method !== 'POST') return baseApi(url);
+      const body = JSON.parse(String(init.body));
+      calls.push({ path: url, body });
+      return json({ ...response(body.messageId), proposal: { ...preview, ...extra } });
+    });
+
+  it('leads to the deposit step only: no "Invest in this plan", and nothing sent to the engine', async () => {
+    // a reply from a server that still carries an engine sheet: it is not read, and nothing invests from it
+    answerWith({ investSheet: sheet });
+    const host = await show();
+    await send(host, 'Grow $2,000');
+    expect(host.querySelector('[data-action="invest-plan"]')).toBeNull();
+    const primary = [
+      ...find(host, '[data-ui="goal-strategy"]').querySelectorAll('button[data-variant="primary"]'),
+    ];
+    expect(primary.map((button) => button.getAttribute('data-action'))).toEqual(['deposit']);
+    expect(calls.some((call) => call.path === '/v1/baskets/personalize')).toBe(false);
+  });
+
+  it('shows the mix alone when the reply carries no projection, as the model-led conversation’s does', async () => {
+    answerWith({});
+    const host = await show();
+    await send(host, 'Grow $2,000');
+    expect(
+      find(host, '[data-ui="goal-strategy"]').querySelector('[data-ui="mix-joint"]'),
+    ).not.toBeNull();
+    expect(host.querySelector('[data-ui="preview-view"]')).toBeNull();
+    expect(host.querySelector('[data-ui="projection-chart"]')).toBeNull();
+    expect(
+      [...host.querySelectorAll('button[data-variant="primary"]')].map((button) =>
+        button.getAttribute('data-action'),
+      ),
+    ).toContain('deposit');
+  });
+
+  it('draws the projected months in honey on a chalk baseline, once asked for', async () => {
+    answerWith({ projection });
+    const host = await show();
+    await send(host, 'Grow $2,000 and add monthly');
+    const views = find(host, '[data-ui="preview-view"]');
+    expect(host.querySelector('[data-ui="projection-chart"]')).toBeNull();
+    const monthly = [...views.querySelectorAll('button')].find(
+      (button) => button.textContent === en.shared.vault.conversation.view.monthly,
+    );
+    if (!monthly) throw new Error('no monthly view');
+    await click(monthly);
+    const chart = find(host, '[data-ui="projection-chart"]');
+    expect(monthly.getAttribute('aria-pressed')).toBe('true');
+    expect(chart.querySelectorAll('.bg-primary').length).toBeGreaterThanOrEqual(2);
+    expect(chart.querySelector('fieldset')?.className).toContain('border-info');
+    expect(chart.textContent).toContain(projection.basis);
+  });
+
+  it('marks projected figures from a test-network reading as sample, quietly, and live ones not', async () => {
+    const openChart = async () => {
+      const host = await show();
+      await send(host, 'Grow $2,000 and add monthly');
+      const monthly = [...find(host, '[data-ui="preview-view"]').querySelectorAll('button')].find(
+        (button) => button.textContent === en.shared.vault.conversation.view.monthly,
+      );
+      if (!monthly) throw new Error('no monthly view');
+      await click(monthly);
+      return find(host, '[data-ui="projection-chart"]');
+    };
+    const reading = preview.sources[0];
+    if (!reading) throw new Error('no source in the fixture');
+    answerWith({ projection: { ...projection, sourceIds: [reading.id] } });
+    let chart = await openChart();
+    expect(reading.provenance).not.toBe('live');
+    expect(chart.querySelector('[data-ui="mock-plate"]')).not.toBeNull();
+    expect(chart.textContent).not.toMatch(/MOCK/);
+    await unmountAll();
+    answerWith({
+      projection: { ...projection, sourceIds: [reading.id] },
+      sources: [{ ...reading, provenance: 'live' }],
+    });
+    chart = await openChart();
+    expect(chart.querySelector('[data-ui="mock-plate"]')).toBeNull();
+  });
+
+  it('lists this conversation, a new one and the saved ones in the picker, and opens a new one empty', async () => {
+    const host = await show();
+    await send(host, 'Consider gold');
+    await mode(host, 'new');
+    await settle();
+    const options = [...find<HTMLSelectElement>(host, '[data-ui="goal-picker"]').options];
+    expect(options.map((o) => o.textContent)).toEqual([
+      en.goal.explore.picker.current,
+      en.goal.explore.picker.fresh,
+      'Consider gold',
+    ]);
+    expect(find(host, '[data-ui="goal-transcript"]').textContent).toBe('');
+  });
 });

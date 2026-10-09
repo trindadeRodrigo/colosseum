@@ -1,19 +1,14 @@
 import { goalMetadata } from '../../../components/shell/metadata';
-import { GoalEntry } from '../../../features/goal-conversation/GoalEntry';
-import { PortfolioSummary } from '../../../features/portfolio/PortfolioSummary';
+import { GoalHome } from '../../../features/goal-conversation/GoalHome';
 
-// Strategy exploration opens as a private, browser-scoped conversation and sourced preview.
-// Existing vaults stay in a collapsed switcher below; `/monitor` retains the full portfolio.
+// Strategy exploration opens as a private, browser-scoped conversation and sourced preview. A picker
+// chooses between this conversation and a new one, with the person's recent and saved conversations
+// (GoalHome); `/monitor` retains the full portfolio.
 
 export function generateMetadata() {
   return goalMetadata();
 }
 
 export default function GoalPage() {
-  return (
-    <div className="flex min-w-0 flex-col gap-8">
-      <GoalEntry />
-      <PortfolioSummary />
-    </div>
-  );
+  return <GoalHome />;
 }

@@ -110,14 +110,19 @@ describe('the showcase (/dev/ui)', () => {
     }
   });
 
-  it('spends the serif only where a spec does: the goal sentence, the wordmark, a marketing heading, the type specimen', () => {
-    const serif = all(page, (el) => classes(el).includes('font-display'));
-    for (const el of serif) {
+  it('spends the display face on headings and big numbers only: the goal card, the wordmark, a marketing heading, a KPI or stat, the type specimen', () => {
+    const display = all(page, (el) => classes(el).includes('font-display'));
+    expect(display.length).toBeGreaterThan(0);
+    for (const el of display) {
       const home = closest(el, (e) =>
-        ['goal-card', 'compact-nav', 'subscribe-block'].includes(e.attrs['data-ui'] ?? ''),
+        ['goal-card', 'compact-nav', 'subscribe-block', 'stat'].includes(e.attrs['data-ui'] ?? ''),
       );
       const specimen = closest(el, (e) => e.tag === 'figure' && text(e).startsWith('type'));
-      expect(home !== null || specimen !== null, text(el)).toBe(true);
+      const heading = /^h[1-4]$/.test(el.tag);
+      const kpi = classes(el).includes('text-b-kpi');
+      expect(home !== null || specimen !== null || heading || kpi, text(el)).toBe(true);
+      // Inter Tight is set at 600, never lighter, never a serif
+      expect(classes(el), text(el)).toContain('font-semibold');
     }
   });
 

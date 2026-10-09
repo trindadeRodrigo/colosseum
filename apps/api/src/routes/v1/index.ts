@@ -40,6 +40,7 @@ import {
 import { Refusal, refusalFromChainError } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import type { PlanInputs } from '../../orders/personalize';
+import { type RelaxedGoalAgent, relaxedGoalAgentFromEnv } from '../../orders/relaxed-goal-agent';
 import type { AgentAnalytics } from '../../orders/vault-agent';
 import { authFromEnv, enforceSignIn, identify, type TokenIssuer } from '../../plugins/auth';
 import { type Limits, registerLimits, requireDeclared } from '../../plugins/limits';
@@ -61,6 +62,10 @@ import { registerMixRoutes } from './mix';
 import { registerMockRoutes } from './mock';
 import { registerOrderRoutes } from './orders';
 import { registerPortfolioRoute } from './portfolio';
+import { registerPortfolioExposureRoute } from './portfolio-exposure';
+import { registerPortfolioHistoryRoute } from './portfolio-history';
+import { registerPortfolioPlansRoute } from './portfolio-plans';
+import { registerPortfolioRebalancesRoute } from './portfolio-rebalances';
 import { registerSharedRoutes } from './shared';
 import { registerTestnetRoute } from './testnet';
 import { registerThreadRoutes } from './thread';
@@ -110,6 +115,9 @@ export type V1Deps = {
   intakeModel?: IntakeModel | null;
   /** Private, non-executable vault dialogue. Uses the configured intake model and shared quota. */
   vaultAgentModel?: VaultAgentModel | null;
+  /** The goal agent behind /goal (gate RELAXED-INTAKE). Default: the relaxed intake when a model key is
+   * set and `GOAL_AGENT` does not opt out; null leaves the model-led conversation to answer. */
+  relaxedGoalAgent?: RelaxedGoalAgent | null;
   /** The rate limits. Default: `LIMITS`, the ones a server runs with. */
   limits?: Limits;
   /** The daily cap and the keeping time of plans made from a link. Default: `LINKED_PLANS`. */
@@ -205,6 +213,10 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
           })
         : null
       : deps.vaultAgentModel;
+  const relaxedGoalAgent =
+    deps.relaxedGoalAgent === undefined
+      ? relaxedGoalAgentFromEnv(env, quota)
+      : deps.relaxedGoalAgent;
 
   // The test faucet. Its key-holding file is loaded only here, only when a faucet key is set for a
   // chain on a test network (DESIGN-VAULT section 2, rule 5): otherwise it is never in the process.
@@ -270,16 +282,23 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
     registerFundingRoute(scope, orderDeps, testFunds ?? undefined);
     registerTestnetRoute(scope, orderDeps, testFunds);
     registerOrderRoutes(scope, orderDeps);
+    // Bearing's measured exits and the yields a plan is made with. Default: none.
+    const planInputs = deps.planInputs ?? (async () => ({}));
     registerBasketRoutes(
       scope,
       orderDeps,
-      deps.planInputs ?? (async () => ({})),
+      planInputs,
       { agentSurface: flags.agentSurface },
       deps.linkedPlans,
     );
     registerIntakeRoute(scope, orderDeps, intakeModel, deps.planInputs);
     registerThreadRoutes(scope, orderDeps);
     registerPortfolioRoute(scope, orderDeps);
+    // The portfolio section (PORT-2): read from the database alone, the person's own rows only.
+    registerPortfolioHistoryRoute(scope, orderDeps);
+    registerPortfolioPlansRoute(scope, orderDeps);
+    registerPortfolioRebalancesRoute(scope, orderDeps);
+    registerPortfolioExposureRoute(scope, orderDeps, planInputs);
     registerSharedRoutes(scope, orderDeps, deps.planInputs);
     registerVaultRoute(scope, orderDeps);
     registerVaultConversationRoutes(scope, orderDeps);
@@ -296,6 +315,7 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
       vaultAgentModel,
       deps.planInputs,
       deps.agentAnalytics,
+      relaxedGoalAgent,
     );
     registerMixRoutes(scope, orderDeps, deps.planInputs);
     // Out of the route table altogether unless a chain runs on the mock.

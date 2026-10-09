@@ -198,6 +198,9 @@ export async function compose(input: ComposeInput): Promise<Composed> {
         appendTransactionMessageInstructions(
           [
             computeUnitLimitInstruction(limit),
+            // A price wherever the cap allows one (`priceAt`): with none, a wallet such as Phantom adds
+            // its own priority-fee instruction before signing, and the app then refuses the changed
+            // transaction (devnet's recent fees are 0).
             ...(price > 0n ? [computeUnitPriceInstruction(price)] : []),
             ...instructions,
           ],
@@ -207,10 +210,14 @@ export async function compose(input: ComposeInput): Promise<Composed> {
     return compileTransaction(message);
   };
 
-  // The price is capped so the priority fee stays under `maxLamports` at the limit asked for.
+  // The price is capped so the priority fee stays under `maxLamports` at the limit asked for. It is
+  // at least 1 micro-lamport (about 1 lamport a transaction), so a wallet adds no price of its own,
+  // unless the cap allows none: `maxLamports` 0, or too small for the limit. The cap always wins.
   const priceAt = (limit: number) => {
     const cap = (maxLamports * 1_000_000n) / BigInt(limit);
-    return wanted < cap ? wanted : cap;
+    const capped = wanted < cap ? wanted : cap;
+    if (capped > 0n) return capped;
+    return cap >= 1n ? 1n : 0n;
   };
   const tooLarge = (bytes: number) =>
     new ChainError(
@@ -219,7 +226,8 @@ export async function compose(input: ComposeInput): Promise<Composed> {
     );
   const trial = build(MAX_COMPUTE_UNITS, priceAt(MAX_COMPUTE_UNITS));
   // A transaction that cannot be sent is refused before the node is asked to simulate it. The final
-  // one differs only in the two numbers of the budget, which keep their sizes.
+  // one is measured again below: its limit and price keep their sizes, but where the cap allows no
+  // price at this limit and one at the lower final limit, it gains the price instruction.
   const trialBytes = getTransactionEncoder().encode(trial).length;
   if (trialBytes > MAX_TRANSACTION_BYTES) throw tooLarge(trialBytes);
   const simulated = await ask('simulateTransaction', () =>

@@ -118,6 +118,8 @@ type AgentContextData = {
   evidence: AgentSource[];
   currentGoals: readonly unknown[];
   stockAttributes: Figures['stocks'] | null;
+  /** The chain's curated theme lists, for the relaxed intake's investable sheet (RELAXED-INTAKE). */
+  themes?: NonNullable<Figures['themes']>;
   liquidity: Array<{ assetId: string; observation: unknown | null }>;
   unknowns: string[];
   /** Bearing's analytics behind the evidence, for the model: their size and what is not measured. */
@@ -617,6 +619,7 @@ function buildAgentContext(
     evidence,
     currentGoals: input.currentGoals ?? [],
     stockAttributes: prepared.figures.stocks ?? null,
+    ...(prepared.figures.themes ? { themes: prepared.figures.themes } : {}),
     liquidity,
     unknowns,
     ...(analytics ? { analytics: analytics.prompt } : {}),
@@ -651,7 +654,7 @@ export function statedPurposeIn(
   ]);
 }
 
-function hasNonFiniteNumber(value: unknown): boolean {
+export function hasNonFiniteNumber(value: unknown): boolean {
   if (typeof value === 'number') return !Number.isFinite(value);
   if (Array.isArray(value)) return value.some(hasNonFiniteNumber);
   if (value && typeof value === 'object') return Object.values(value).some(hasNonFiniteNumber);
@@ -659,7 +662,11 @@ function hasNonFiniteNumber(value: unknown): boolean {
 }
 
 /** Exact attributed person quotes and catalog names may contain numbers; new metrics may not. */
-function hasFinancialFigure(text: string, personWords: string[], catalogNames: string[]): boolean {
+export function hasFinancialFigure(
+  text: string,
+  personWords: string[],
+  catalogNames: string[],
+): boolean {
   const names = catalogNames.filter((name) => /\p{N}/u.test(name));
   let remainder = text.replace(
     /\b(?:you said|you wrote|you asked|your request was|você disse|voce disse|você escreveu|voce escreveu|seu pedido foi)\s*:?\s*[“"]([^”"]+)[”"]/giu,
@@ -704,15 +711,32 @@ function sentencesOf(text: string, catalogNames: string[]): string[] {
 }
 
 /** Said by the server in place of a required field of the proposal whose every sentence was removed. */
-const FIGURE_REMOVED = {
+export const FIGURE_REMOVED = {
   en: 'This part of the draft was left out because it stated a figure that could not be confirmed.',
   pt: 'Esta parte da proposta foi omitida porque trazia um número que não pôde ser confirmado.',
 };
 /** Said by the server on a line of its own after what is left of a message, and once in a list that lost an item or part of one. */
-const FIGURE_CUT = {
+export const FIGURE_CUT = {
   en: 'Part of this reply was left out because it stated a figure that could not be confirmed.',
   pt: 'Parte desta resposta foi omitida porque trazia um número que não pôde ser confirmado.',
 };
+
+/**
+ * `text` without the sentences `figure` flags, and how many were cut. A figure that only shows across
+ * two sentences leaves nothing of the text, and every sentence counts. Shared with the relaxed intake.
+ */
+export function trimFigureSentences(
+  text: string,
+  figure: (text: string) => boolean,
+  catalogNames: string[],
+): { text: string; cut: number } {
+  if (!figure(text)) return { text, cut: 0 };
+  const sentences = sentencesOf(text, catalogNames);
+  const kept = sentences.filter((sentence) => !figure(sentence));
+  const rest = kept.join('').trim();
+  if (!figure(rest)) return { text: rest, cut: sentences.length - kept.length };
+  return { text: '', cut: sentences.length };
+}
 
 /**
  * The repair attempt's reply without the sentences that state a figure (`figure`), so one stray number
@@ -730,15 +754,9 @@ function withoutFigureSentences(
 ): { reply: VaultAgentModelReply; cut: number } | null {
   let cut = 0;
   const trim = (text: string): string => {
-    if (!figure(text)) return text;
-    const sentences = sentencesOf(text, catalogNames);
-    const kept = sentences.filter((sentence) => !figure(sentence));
-    cut += sentences.length - kept.length;
-    const rest = kept.join('').trim();
-    // A figure that only shows across two sentences leaves nothing of the field, and counts.
-    if (!figure(rest)) return rest;
-    cut += kept.length;
-    return '';
+    const trimmed = trimFigureSentences(text, figure, catalogNames);
+    cut += trimmed.cut;
+    return trimmed.text;
   };
   const list = (items: string[]): string[] => {
     const before = cut;
@@ -908,7 +926,7 @@ function assetNames(asset: BasketAsset, companies: string[]): RegExp[] {
  * ("can you add", "pode colocar"). The latest mention of a stock wins, so "no AAPL" withdraws an
  * earlier "I want AAPL". The model's reply never counts.
  */
-function requestedStocks(
+export function requestedStocks(
   messages: VaultAgentRequest['messages'],
   language: 'en' | 'pt',
   assets: BasketAsset[],
@@ -1205,7 +1223,7 @@ const wholeBps = (share: Pick<PersonShare, 'bps'>) =>
   Number.isInteger(share.bps) && share.bps >= 0 && share.bps <= 10_000;
 /** A share and where it sits in its piece. */
 type Found = PersonShare & { start: number; end: number };
-type PersonShare = {
+export type PersonShare = {
   assetIds: string[];
   kind: 'exact' | 'min' | 'max';
   bps: number;
@@ -1403,7 +1421,7 @@ const replaces = (next: PersonShare, earlier: PersonShare) =>
  * reports). For the latest message: `withdrawn` the shares it withdrew, `unread` the pieces that read
  * as a share and set none, and `rest` where it said the rest should go, with the assets it named.
  */
-function personShares(
+export function personShares(
   messages: VaultAgentRequest['messages'],
   language: 'en' | 'pt',
   assets: BasketAsset[],

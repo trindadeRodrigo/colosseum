@@ -38,13 +38,14 @@ describe('DataTable (data-table.md)', () => {
     for (const tr of rows) expect(byRole(tr, 'rowheader')).toHaveLength(1);
   });
 
-  it('sets figures on the right in the mono face, tabular', () => {
+  it('sets figures on the right in tabular lining figures of the UI face (mono is for sources)', () => {
     const cells = all(one(tableEl, tag('tbody')), tag('td')).filter((td) =>
       text(td).startsWith('48.0'),
     );
     expect(classes(cells[0] as never)).toEqual(
-      expect.arrayContaining(['text-right', 'font-mono', 'tabular-nums']),
+      expect.arrayContaining(['text-right', 'tabular-nums']),
     );
+    expect(classes(cells[0] as never)).not.toContain('font-mono');
     const dash = all(tableEl, tag('td')).find((td) => text(td).includes('6.0%'));
     expect(text(dash as never)).toBe('−6.0%'); // a true minus, from the caller's formatter
   });
@@ -74,13 +75,11 @@ describe('DataTable (data-table.md)', () => {
     expect(text(row)).not.toContain('MOCK');
   });
 
-  it('keeps rows 32px, or 28px dense in the condensed face, with hairlines between', () => {
+  it('keeps rows 44px, or 36px dense at the 13px cell, with hairlines between', () => {
     expect(classes(all(tableEl, tag('td'))[0] as never)).toContain('h-(--tf-row-comfortable)');
     const dense = render(table.narrow);
     expect(classes(all(dense, tag('td'))[0] as never)).toContain('h-(--tf-row-dense)');
-    expect(classes(one(dense, tag('table')))).toEqual(
-      expect.arrayContaining(['font-condensed', 'text-b-cell']),
-    );
+    expect(classes(one(dense, tag('table')))).toEqual(expect.arrayContaining(['text-b-cell']));
     expect(classes(all(one(tableEl, tag('tbody')), tag('tr'))[0] as never)).toEqual(
       expect.arrayContaining(['border-b', 'border-border']),
     );
@@ -153,7 +152,7 @@ describe('ExecutionList and ExplorerLink (data-table.md)', () => {
     expect(link.attrs).toMatchObject({ target: '_blank', rel: 'noopener' });
     expect(link.attrs['aria-label']).toBe('View transaction 4kZ9…mX2p on the sample explorer');
     expect(classes(link)).toEqual(
-      expect.arrayContaining(['font-mono', 'text-primary', 'underline']),
+      expect.arrayContaining(['font-mono', 'text-honey-text', 'underline']),
     );
     expect(classes(link).join(' ')).not.toMatch(/blue/);
     expect(shorten('4kZ9sampleSignaturemX2p')).toBe('4kZ9…mX2p');

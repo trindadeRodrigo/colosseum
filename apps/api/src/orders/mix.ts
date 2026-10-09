@@ -1,6 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { batchTrades, RebalanceError, rebalancePlan } from '@colosseum/basket';
-import { fixedMix, PERSONAL_PARAMS, purposeOfMix, reason } from '@colosseum/engine/personal';
+import {
+  eligibleForGoal,
+  fixedMix,
+  PERSONAL_PARAMS,
+  purposeOfMix,
+  reason,
+} from '@colosseum/engine/personal';
 import {
   type Address,
   type BasketAsset,
@@ -162,6 +168,19 @@ export async function checkMix(
 }
 
 type Goal = BasketSheet['goal'];
+
+/**
+ * Whether a plan for `goal` may hold an asset, as the review of a mix reads it (gate ANY-COMPOSITION):
+ * `fits` (no goal, cash, or eligible by the asset registry's rule), `stock_outside` (a stock or a fund
+ * of stocks outside the goal: the person's choice, with a warning) or `barred` (any other class outside
+ * the goal: refused, `MIX_NOT_VALID`). The relaxed intake's preview reads the same function, so a
+ * preview never shows a line the deposit step refuses.
+ */
+export type GoalFit = 'fits' | 'stock_outside' | 'barred';
+export function goalFit(asset: Pick<BasketAsset, 'cls'>, goal: Goal | null): GoalFit {
+  if (!goal || asset.cls === 'cash' || eligibleForGoal(asset, goal)) return 'fits';
+  return asset.cls === 'stock' || asset.cls === 'etf' ? 'stock_outside' : 'barred';
+}
 
 /**
  * The goal and risk a new goal's mix is reviewed and stored with: the ones the person said, and for
@@ -337,8 +356,10 @@ export function reviewMix(
         );
       // Outside the goal's list, a stock or a fund of stocks is the person's choice, with a warning
       // (gate ANY-COMPOSITION); crypto, gold and any other class stay out of an income or protect plan.
-      if (a.goal && !fixedLine.forGoal) {
-        if (asset.cls === 'stock' || asset.cls === 'etf')
+      // The cash token has no ceiling, so it never reaches here; `goalFit` lets it pass all the same.
+      const fit = a.goal ? goalFit(asset, a.goal) : 'fits';
+      if (a.goal && fit !== 'fits') {
+        if (fit === 'stock_outside')
           warn(
             'NOT_FOR_GOAL',
             reason('MIX_NOT_FOR_GOAL', { asset: asset.symbol, goal: a.goal }, a.language).text,

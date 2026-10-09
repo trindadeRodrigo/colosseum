@@ -30,6 +30,7 @@ import {
   labelled,
   portfolioBody,
   portfolioOf,
+  RH_VAULT,
   robinhoodChain,
   SECOND_VAULT,
   VAULT,
@@ -224,11 +225,12 @@ describe('the monitor, for a person with a vault on their chain', () => {
     const host = await screen();
     expect(server.to(PORTFOLIO_PATH)).toHaveLength(1);
     expect(find(host, 'h1').textContent).toBe(en.portfolio.title(1));
-    // the serif is spent once, on that line
-    // the serif is spent on the goal: in a list of goal cards the page heading is the sans face
-    // (goal-card.md), and each vault's card has its one serif sentence
-    expect(host.querySelectorAll('.font-display')).toHaveLength(1);
-    expect(find(host, '.font-display').closest('[data-ui="goal-card"]')).not.toBeNull();
+    // the display face is spent on the goal: in a list of goal cards the page heading is the UI face
+    // (goal-card.md), and each vault's card sets its sentence and its amount in Inter Tight
+    const display = [...host.querySelectorAll('.font-display')];
+    expect(display.length).toBeGreaterThanOrEqual(1);
+    expect(display.length).toBeLessThanOrEqual(2);
+    for (const el of display) expect(el.closest('[data-ui="goal-card"]')).not.toBeNull();
     expect(vaults(host)).toHaveLength(1);
     expect(find(host, `a[href="/vaults/solana/${VAULT}#vault-conversation"]`).textContent).toBe(
       en.shared.vault.conversation.resume,
@@ -925,10 +927,10 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
       `${en.portfolio.goalCard.putIn('$40,000')} · up to $40,000 within a day`,
     );
     const link = find(card, 'a');
-    // the plan is read back from the server in any tab, so the card leads to it
+    // the card leads to the vault's workbench: the chat beside the plan (VaultScreen)
     expect([link.textContent, link.getAttribute('href')]).toEqual([
       en.portfolio.goalCard.seePlan,
-      `/plan/${PLAN_ID}`,
+      `/vaults/solana/${VAULT}`,
     ]);
     // beside it, his plan: the parts by weight
     const titles = [...host.querySelectorAll('[data-ui="vault"] section h3')].map(
@@ -989,7 +991,7 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     const link = find(card, 'a');
     expect([link.textContent, link.getAttribute('href')]).toEqual([
       en.portfolio.goalCard.seePlan,
-      `/plan/${PLAN_ID}`,
+      `/vaults/solana/${VAULT}`,
     ]);
     // and what was done is the order's steps, read from the server by the order's id
     expect(server.to(`/v1/orders/${ORDER_ID}`)).toHaveLength(1);
@@ -1212,7 +1214,7 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     expect(find(card, 'h3').textContent).toBe(en.portfolio.goalCard.unknown('Solana'));
     expect(card.textContent).toContain(en.portfolio.goalCard.notJoined);
     expect(card.textContent).not.toMatch(/ of \$/);
-    expect(find(card, 'a').getAttribute('href')).toBe('/goal');
+    expect(find(card, 'a').getAttribute('href')).toBe(`/vaults/solana/${VAULT}`);
   });
 
   it('tags every activity line when one of them is on a chain the page’s head does not name', async () => {
@@ -1586,4 +1588,42 @@ describe('the way from a vault to its own page (flow audit, 34)', () => {
       expect(link.getAttribute('title')).toBe(VAULT);
     },
   );
+});
+
+describe('the way from a vault to the same vault over time (PORT-3)', () => {
+  it.each(['en', 'pt'] as const)(
+    'links each vault’s panel to its page in the portfolio section, as a text link (%s)',
+    async (lang) => {
+      api({ person: onSolana });
+      signIn();
+      const host = await screen(lang);
+      const words = dictionary(lang).portfolio.vault;
+      const link = find<HTMLAnchorElement>(panel(host), '[data-ui="vault-over-time"]');
+      expect(link.textContent).toBe(words.overTime);
+      expect(link.getAttribute('href')).toBe(`/portfolio/plan/solana/${VAULT}`);
+      // every panel's link reads the same, so its name says which vault, and holds what is written
+      const name = link.getAttribute('aria-label') ?? '';
+      expect(name).toBe(words.overTimeOf(`${VAULT.slice(0, 4)}…${VAULT.slice(-4)}`));
+      expect(name.startsWith(words.overTime)).toBe(true);
+      // a link, not a button: the page still has no primary action and still signs nothing
+      expect(link.tagName).toBe('A');
+      expect(link.getAttribute('data-variant')).toBeNull();
+      expect(primary(host)).toBeNull();
+      // it is not behind "Details": it is what a person opens the panel for next
+      expect(link.closest('[data-ui="vault-details"]')).toBeNull();
+    },
+  );
+
+  it('names each vault’s own chain and address, on two chains', async () => {
+    api({
+      person: onSolana,
+      portfolio: () => json(portfolioOf(chainOf(), robinhoodChain())),
+    });
+    signIn(EMBEDDED);
+    const host = await screen();
+    expect(
+      [...host.querySelectorAll('[data-ui="vault-over-time"]')].map((a) => a.getAttribute('href')),
+    ).toEqual([`/portfolio/plan/solana/${VAULT}`, `/portfolio/plan/robinhood/${RH_VAULT}`]);
+    expect(primary(host)).toBeNull();
+  });
 });

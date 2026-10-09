@@ -116,7 +116,7 @@ export function EmbedVault({
         lang={LOCALE[lang]}
         title={words.vault.title(answer.name)}
         lead={words.vault.lead}
-        credit={{ name: 'tenonfi', href: page, symbol: <Mark size={16} /> }}
+        credit={{ name: 'tenonfi', href: page, symbol: <Mark size={16} mono /> }}
         labels={labels}
         sample={
           vault.provenance === 'live'

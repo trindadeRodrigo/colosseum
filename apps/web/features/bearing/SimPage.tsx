@@ -303,7 +303,7 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
           </Kpi>
         </Kpis>
       </div>
-      <p className="mt-5 max-w-[60ch] font-display text-[clamp(1.15rem,1rem+0.5vw,1.4rem)]/[1.35]">
+      <p className="mt-5 max-w-[60ch] font-display font-semibold text-[clamp(1.15rem,1rem+0.5vw,1.4rem)]/[1.35]">
         {verdict}
       </p>
       <section className="mt-8">

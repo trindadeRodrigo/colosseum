@@ -2,6 +2,8 @@
 
 > Written 2026-10-07 by Rodrigo's session. Start a fresh Claude Code session in a new worktree and paste this whole file. It builds an experiment beside the guided intake, not in its place: the guided intake stays as it is until Rodrigo decides between them (section 8).
 
+> **Decided on 2026-10-08 (gate `RELAXED-INTAKE`, Rodrigo):** the relaxed intake is the goal agent behind `/goal`, no longer an experiment beside the guided intake; section 8's choice is made. The route and the web are ledger row `GOAL-CHAT-PORT`.
+
 > **Brought up to date on 2026-10-08 by the MVP** (`scripts/relaxed/intake.ts`, PR #182). Where this document and the script differ, the script is right: no `temperature` (the Claude 5 models return 400 on it); the model is held to the reply schema by the API (structured outputs, `output_config.format`), with a `say` field for the message the person reads and an `open` list of the rule-4 fields still missing, in place of `question`; output budget 4,000 tokens and `effort: medium`; Anthropic's API directly with `ANTHROPIC_API_KEY`, the model chosen with `RELAXED_MODEL` (Sonnet 5.5 by default), not the `LLM_*` gateway variables; each bucket of a `split` has its own `shape`, and the shares the person gives are scaled to the whole; the branch is cut from and the pull request goes into `staging`, since `tools/try-plans` is merged. Read the script's system prompt as the current text of section 4.
 
 ## 1. Why

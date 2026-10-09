@@ -85,15 +85,16 @@ export type CompactNavProps = {
 
 const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring';
 /**
- * A link to where the person is (compact-nav.md, link current): the 2px primary underline at a 6px
- * offset, for a section in view (`aria-current="true"`) and for the page itself (`"page"`).
+ * A link to where the person is (compact-nav.md, link current): the foreground, and the 2px honey
+ * underline at a 6px offset, for a section in view (`aria-current="true"`) and for the page itself
+ * (`"page"`).
  */
 const NAV_CURRENT = cn(
-  'aria-[current=true]:underline aria-[current=true]:decoration-primary aria-[current=true]:decoration-2 aria-[current=true]:underline-offset-[6px]',
-  'aria-[current=page]:underline aria-[current=page]:decoration-primary aria-[current=page]:decoration-2 aria-[current=page]:underline-offset-[6px]',
+  'aria-[current=true]:text-foreground aria-[current=true]:underline aria-[current=true]:decoration-primary aria-[current=true]:decoration-2 aria-[current=true]:underline-offset-[6px]',
+  'aria-[current=page]:text-foreground aria-[current=page]:underline aria-[current=page]:decoration-primary aria-[current=page]:decoration-2 aria-[current=page]:underline-offset-[6px]',
 );
 const LINK = cn(
-  'rounded-md px-3 py-2 text-[0.875rem]/5 font-medium whitespace-nowrap text-foreground transition-colors hover:bg-accent',
+  'rounded-md px-3 py-2 text-[0.875rem]/5 font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground',
   NAV_CURRENT,
   FOCUS,
 );
@@ -202,7 +203,7 @@ export function CompactNav({
       <a
         href={`#${contentId}`}
         className={cn(
-          'sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:top-3 focus-visible:left-3 focus-visible:z-40 focus-visible:rounded-md focus-visible:bg-card focus-visible:px-3 focus-visible:py-2 focus-visible:text-foreground',
+          'sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:top-3 focus-visible:left-3 focus-visible:z-40 focus-visible:rounded-lg focus-visible:bg-card focus-visible:px-3 focus-visible:py-2 focus-visible:text-foreground',
           FOCUS,
         )}
       >
@@ -233,11 +234,14 @@ export function CompactNav({
           aria-label={homeLabel}
           className={cn('flex shrink-0 items-center gap-2.5 text-foreground', FOCUS)}
         >
-          <span className="text-primary">{symbol}</span>
+          <span className="flex">{symbol}</span>
           <span
             className={cn(
-              'font-display leading-none font-normal tracking-[-0.01em] transition-[font-size] duration-[480ms] ease-seat motion-reduce:transition-none',
+              'font-display leading-none font-semibold tracking-[-0.02em] transition-[font-size] duration-[480ms] ease-seat motion-reduce:transition-none',
               compact ? 'text-[20px]' : 'text-[24px]',
+              // On a narrow phone the compact bar keeps the mark alone, so the account and its action
+              // fit beside the menu whatever the chain is called; the link keeps its name.
+              compact && 'max-[400px]:sr-only',
             )}
           >
             {wordmark}

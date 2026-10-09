@@ -185,7 +185,7 @@ export function SignInScreen({ next = AFTER_SIGN_IN, onDone, titleId }: SignInSc
             ref={heading}
             id={titleId}
             tabIndex={-1}
-            className="max-w-(--tf-measure-display) font-display text-h2 font-normal"
+            className="max-w-(--tf-measure-display) font-display text-h2 font-semibold"
           >
             {signedIn ? t.signIn.done.title : t.signIn.title}
           </h2>

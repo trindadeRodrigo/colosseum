@@ -61,7 +61,7 @@ export function DistChart(c: DistChartProps) {
     show(idx < 0 ? Math.floor(bs.length / 2) : idx + d);
   };
   const zoomBtn =
-    'w-7 cursor-pointer rounded-md border border-input font-mono text-base/6 font-medium hover:border-primary hover:text-primary disabled:cursor-default disabled:opacity-40';
+    'w-7 cursor-pointer rounded-md border border-input font-mono text-base/6 font-medium hover:border-primary hover:text-honey-text disabled:cursor-default disabled:opacity-40';
   const tools = (
     // biome-ignore lint/a11y/useSemanticElements: a pair of zoom buttons
     <div role="group" aria-label={text.zoom} className="inline-flex gap-1">

@@ -9,7 +9,6 @@ import { inTheme } from './theme';
 // swapped for the mix under test. No model is called and nothing is bought.
 
 const en = dictionary('en');
-const pt = dictionary('pt');
 test.skip(process.env.E2E_CHAIN === 'robinhood', 'the stub runs Robinhood Chain');
 const STUB = `http://localhost:${process.env.E2E_API_PORT ?? 3901}`;
 /** Screenshots are taken only for a run that names a folder for them (SCREENSHOTS_DIR). */
@@ -127,8 +126,8 @@ async function say(page: Page, words: string) {
 const shot = async (page: Page, name: string) => {
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
 };
-const shareOf = (lang: 'en' | 'pt', bps: number) =>
-  new Intl.NumberFormat(lang === 'pt' ? 'pt-BR' : 'en-US', {
+const shareOf = (_lang: 'en', bps: number) =>
+  new Intl.NumberFormat('en-US', {
     style: 'percent',
     maximumFractionDigits: 2,
   }).format(bps / 10_000);
@@ -324,7 +323,7 @@ for (const [name, mix] of [
   ['many', MANY],
   ['small', SMALL],
 ] as const)
-  test(`a draft of ${name} asset${mix.length > 1 ? 's' : ''} fits a phone and a desk, in both languages`, async ({
+  test(`a draft of ${name} asset${mix.length > 1 ? 's' : ''} fits a phone and a desk`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
@@ -360,25 +359,18 @@ for (const [name, mix] of [
     expect(await table()).toEqual(rest);
     await strategy.locator('h3').first().dispatchEvent('pointerdown', { pointerType: 'touch' });
 
-    for (const lang of ['en', 'pt'] as const) {
-      if (lang === 'pt') {
-        await page
-          .locator('[data-ui="language-switch"] button[aria-pressed="false"]')
-          .first()
-          .click();
-        await expect(strategy.getByRole('heading', { level: 3 }).first()).toHaveText(
-          pt.shared.vault.conversation.proposed,
+    // The app is English only (ENGLISH-ONLY): the card was checked in English and Portuguese, and is
+    // now checked in English, its names included.
+    for (const lang of ['en'] as const) {
+      await expect(joint.getByRole('toolbar')).toHaveAccessibleName(
+        mix.some(([, bps]) => bps < 300)
+          ? en.shared.vault.conversation.jointLabelWidened
+          : en.shared.vault.conversation.jointLabel,
+      );
+      for (const [i, [symbol, bps]] of mix.entries())
+        await expect(joint.locator('[data-part="piece"]').nth(i)).toHaveAccessibleName(
+          `${symbol}, ${shareOf(lang, bps)}`,
         );
-        await expect(joint.getByRole('toolbar')).toHaveAccessibleName(
-          mix.some(([, bps]) => bps < 300)
-            ? pt.shared.vault.conversation.jointLabelWidened
-            : pt.shared.vault.conversation.jointLabel,
-        );
-        for (const [i, [symbol, bps]] of mix.entries())
-          await expect(joint.locator('[data-part="piece"]').nth(i)).toHaveAccessibleName(
-            `${symbol}, ${shareOf('pt', bps)}`,
-          );
-      }
       for (const theme of ['dark', 'light'] as const) {
         await inTheme(page, theme);
         for (const width of [375, 1440]) {

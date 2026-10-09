@@ -163,7 +163,7 @@ export async function joinVault(
  * What a buy's request names, as a plan a vault can be joined to. Null for a request that is no buy, or
  * that names a shared portfolio the server no longer has.
  */
-async function boughtOf(db: Db, request: IntentRequest): Promise<Bought | null> {
+export async function boughtOf(db: Db, request: IntentRequest): Promise<Bought | null> {
   if (request.type !== 'buy') return null;
   if (request.family) {
     const family = await familyBySlug(db, request.family);
@@ -178,7 +178,7 @@ async function boughtOf(db: Db, request: IntentRequest): Promise<Bought | null> 
  * helpers: a shared portfolio's from the family's id, a plan's from its id, and from the buyer too for
  * a plan made from a link (gate AGENT-LINK).
  */
-async function numberWorkedOut(db: Db, bought: Bought, buyer: string): Promise<string> {
+export async function numberWorkedOut(db: Db, bought: Bought, buyer: string): Promise<string> {
   if (bought.kind === 'follow') return basketIdOf(bought.familyId);
   return basketIdOfBuy(bought.proposalId, await isLinkedProposal(db, bought.proposalId), buyer);
 }

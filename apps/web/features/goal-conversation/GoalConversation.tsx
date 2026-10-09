@@ -1,7 +1,7 @@
 'use client';
 import type { ChainId, Network, Provenance } from '@colosseum/schemas';
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Composer } from '../../components/ui/Composer';
 import { WORKSPACE_TITLE } from '../../components/ui/heading';
@@ -12,7 +12,12 @@ import { dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { DepositStep, type Purpose } from '../mix/DepositStep';
 import { share } from '../portfolio/figures';
-import { replyText, VaultAgentError, type VaultStrategyPreview } from '../vault-conversation/agent';
+import {
+  replyText,
+  strategyReplyOf,
+  VaultAgentError,
+  type VaultStrategyPreview,
+} from '../vault-conversation/agent';
 import { StrategyPreview, WeightNotes } from '../vault-conversation/StrategyPreview';
 import {
   conversationNetwork,
@@ -23,6 +28,7 @@ import {
 } from '../vault-conversation/storage';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { type GoalReply, goalAgent } from './agent';
+import { conversationStoreKey } from './conversations';
 import { consumeGoalHandoff, readGoalHandoff } from './handoff';
 
 export const goalConversationKey = (
@@ -39,18 +45,30 @@ export function GoalConversation({
   chain,
   ready,
   provenance,
+  conversationId = 'main',
+  onSaved,
 }: {
   userId: string | null;
   chain: ChainId | null;
   ready: boolean;
   provenance: Provenance | null;
+  /** Which saved conversation of this browser is on screen (conversations.ts). */
+  conversationId?: string;
+  /** Called with the person's first words each time the transcript is saved. */
+  onSaved?: (title: string) => void;
 }) {
   const t = useT();
   const lang = useLang();
   const copy = t.goal.explore;
   const api = useApiFetch();
-  const key = userId && chain && provenance ? goalConversationKey(userId, chain, provenance) : null;
+  const base =
+    userId && chain && provenance ? goalConversationKey(userId, chain, provenance) : null;
+  const key = base ? conversationStoreKey(base, conversationId) : null;
   const context = `${key}:${ready}`;
+  // Rodrigo, Oct 8: the last plan is kept in this browser beside the transcript and
+  // shown again on return. It is read back through the same check as a fresh server reply
+  // (strategyReplyOf), and it stays a preview: nothing here can buy or sign from it.
+  const previewKey = key ? `${key}:preview` : null;
   const current = useRef(context);
   current.current = context;
   const generation = useRef(0);
@@ -80,6 +98,11 @@ export function GoalConversation({
     setAmountText(words);
   };
   const [error, setError] = useState<string>();
+  // The mix on the screen was read back from this browser, not answered on this visit: it is shown, and
+  // the deposit comes back with the next reply (Rodrigo, Oct 8: a kept plan is a preview only).
+  const [kept, setKept] = useState(false);
+  // The chat folds away so the plan can take the whole width.
+  const [chatOpen, setChatOpen] = useState(true);
   useEffect(() => {
     ++generation.current;
     requestApi.current = api;
@@ -87,8 +110,16 @@ export function GoalConversation({
     cancel.current?.abort();
     held.current = key ? readLocal(key).transcript : [];
     setTurns(held.current);
+    let restored: VaultStrategyPreview | null = null;
+    try {
+      const raw = previewKey && chain ? localStorage.getItem(previewKey) : null;
+      restored = (raw && chain ? strategyReplyOf(JSON.parse(raw), chain) : null)?.proposal ?? null;
+    } catch {
+      restored = null;
+    }
     setReply(null);
-    setMix(null);
+    setMix(held.current.length ? restored : null);
+    setKept(Boolean(held.current.length && restored));
     setDepositing(false);
     setAmountText('');
     typed.current = false;
@@ -102,12 +133,38 @@ export function GoalConversation({
       ++generation.current;
       cancel.current?.abort();
     };
-  }, [api, key, context, userId, ready]);
+  }, [api, key, context, userId, ready, previewKey, chain]);
+
+  /** The last mix is kept beside the transcript, read back through the same check as a reply. */
+  function keepPreview(next: VaultStrategyPreview | null) {
+    if (!previewKey || !chain) return;
+    try {
+      if (next)
+        localStorage.setItem(
+          previewKey,
+          JSON.stringify({
+            version: 1,
+            chain,
+            messageId: 'kept',
+            message: 'kept',
+            question: null,
+            warnings: [],
+            weightNotes: [],
+            proposal: next,
+          }),
+        );
+      else localStorage.removeItem(previewKey);
+    } catch {
+      // storage full or blocked: the mix is still on screen for this visit
+    }
+  }
 
   function persist(next: Turn[]) {
     if (!key) return false;
     const saved = writeLocal(key, { revision: 0, transcript: next });
     if (!saved) setError(copy.notSaved);
+    const first = next.find((turn) => turn.who === 'person')?.text.trim();
+    if (saved && first) onSaved?.(first.length > 60 ? `${first.slice(0, 59)}…` : first);
     return saved;
   }
   function startOver() {
@@ -117,7 +174,9 @@ export function GoalConversation({
     setTurns([]);
     setText('');
     setReply(null);
+    keepPreview(null);
     setMix(null);
+    setKept(false);
     setDepositing(false);
     setAmountText('');
     typed.current = false;
@@ -198,7 +257,9 @@ export function GoalConversation({
         );
       if (result.proposal) {
         setMix(result.proposal);
+        setKept(false);
         setDepositing(false);
+        keepPreview(result.proposal);
       }
       persist(completed);
     } catch (cause) {
@@ -240,27 +301,42 @@ export function GoalConversation({
   const unanswered = !busy && ready && loaded ? turns.at(-1) : undefined;
   // a wait under 400ms shows nothing; after that the lattice assembles beside the words (STYLE.md)
   const waiting = useWaitPhase(busy) !== 'quiet';
+  const chatId = useId();
   return (
     <section
       data-ui="goal-conversation"
-      className="grid min-w-0 gap-4 lg:grid-cols-12 lg:items-start"
+      data-workbench
+      className="grid min-w-0 gap-4 md:min-h-0 md:flex-1 md:grid-cols-12 md:grid-rows-[auto_minmax(0,1fr)] md:items-stretch"
     >
-      <header className="flex flex-wrap items-baseline justify-between gap-3 lg:col-span-12">
+      <header className="flex flex-wrap items-baseline justify-between gap-3 md:col-span-12">
         <h1 className={WORKSPACE_TITLE}>{t.talk.workbench.title}</h1>
-        {turns.length > 0 && (
-          <Button variant="link" disabled={busy} onClick={startOver}>
-            {t.talk.startOver}
+        <div className="flex flex-wrap items-baseline gap-3">
+          <Button
+            variant="link"
+            aria-expanded={chatOpen}
+            aria-controls={chatId}
+            data-ui="goal-chat-toggle"
+            onClick={() => setChatOpen((open) => !open)}
+          >
+            {chatOpen ? t.talk.hideChat : t.talk.showChat}
           </Button>
-        )}
+          {turns.length > 0 && (
+            <Button variant="link" disabled={busy} onClick={startOver}>
+              {t.talk.startOver}
+            </Button>
+          )}
+        </div>
       </header>
       <div
         ref={box}
+        id={chatId}
         data-ui="goal-chat"
-        className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-24 lg:col-span-5 lg:max-h-[calc(100dvh-8rem)]"
+        hidden={!chatOpen}
+        className={`${chatOpen ? 'flex' : 'hidden'} min-w-0 flex-col gap-4 md:col-span-5 md:min-h-0`}
       >
         {turns.length === 0 && (
           <div className="flex flex-col gap-2">
-            <p className="font-display text-[1.25rem]/7">{copy.invitation}</p>
+            <p className="font-display font-semibold text-[1.25rem]/7">{copy.invitation}</p>
             <p className="text-body-sm text-muted-foreground">{copy.lead}</p>
           </div>
         )}
@@ -268,12 +344,15 @@ export function GoalConversation({
         <ol
           data-ui="goal-transcript"
           aria-live="polite"
-          className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto"
+          className="tf-scroll-thin relative flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto md:flex-1 md:pr-2"
         >
+          {/* The person's own words sit on the honey glow, so they stand apart from the replies
+              (Rodrigo, Oct 8); the column itself has no glow. */}
           {turns.map((turn) => (
             <li
+              data-who={turn.who}
               key={turn.id}
-              className={`min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] ${turn.who === 'person' ? 'border-l-2 border-primary pl-3' : ''}`}
+              className={`min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] ${turn.who === 'person' ? 'max-w-[85%] self-end rounded-lg bg-honey-tint bg-glow px-4 py-3' : ''}`}
             >
               <span className="sr-only">{turn.who === 'person' ? t.talk.you : t.talk.me}: </span>
               {['en', 'pt'].some(
@@ -359,8 +438,12 @@ export function GoalConversation({
           </ul>
         )}
       </div>
-      <div data-ui="goal-strategy" className="flex min-w-0 flex-col gap-4 lg:col-span-7">
-        {mix && chain && userId && depositing ? (
+      <div
+        data-ui="goal-strategy"
+        aria-busy={busy}
+        className={`tf-scroll-thin relative flex min-w-0 flex-col gap-4 ${chatOpen ? 'md:col-span-7' : 'md:col-span-12'} md:min-h-0 md:overflow-y-auto md:pr-2`}
+      >
+        {mix && chain && userId && depositing && !kept ? (
           <>
             <DepositStep
               chain={chain}
@@ -385,7 +468,7 @@ export function GoalConversation({
               proposal={mix}
               previewOnly={copy.draftNote}
               {...(busy ? { pending: t.shared.vault.conversation.reworking } : {})}
-              {...(chain && userId
+              {...(chain && userId && !kept
                 ? {
                     use: {
                       label: t.mix.preview.deposit,
@@ -400,7 +483,7 @@ export function GoalConversation({
         ) : (
           <div
             data-ui="goal-empty-preview"
-            className="flex min-w-0 flex-col items-start justify-center gap-3 rounded-md border border-border bg-card p-4 sm:min-h-60"
+            className="flex min-w-0 flex-col items-start justify-center gap-3 rounded-lg border border-border bg-card p-4 sm:min-h-60"
           >
             {busy && waiting ? <LatticeLoader size={32} /> : <LatticeGlyph size={32} />}
             <h2 className="text-body-lg font-medium">{t.talk.workbench.strategy}</h2>

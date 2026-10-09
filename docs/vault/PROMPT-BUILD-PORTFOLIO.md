@@ -14,6 +14,13 @@
 > - A chain on the mock is read only when `SNAPSHOT_CHAINS` names it, and the worker's mock is a chain of its own, replayed from the `vaults` rows (`apps/snapshot/README.md`).
 > - Two decisions were recorded, not one: `ON-TRACK-V1` and `SNAPSHOT-WORKER` (`docs/GATES.md`).
 
+> **As built after slice 2 (PORT-2, 2026-10-07).** The same rule: the code, `DESIGN-VAULT.md` section 3.3 and the gate row are right where these lines differ from the prompt below.
+> - The status rule is `statusOf({ snapshot, now, chainAnsweredAt, verdict? })` in `packages/basket/src/status.ts`, not `statusOf(snapshot, goal, verdict?)`: the rule reads no clock, and nothing of the goal. Its lines, in order, are in the `ON-TRACK-V1` row of `docs/GATES.md`. It has no "deposit confirmed" input: a deposit counts once the chain shows the vault holding it.
+> - `GET /v1/portfolio` is not extended: slice 1 left it as staging has it. A vault's plan is in `GET /v1/portfolio/plans` (`plan`, and `openedFor` for a vault opened to follow a shared portfolio).
+> - The rebalances list has no `keeper_legs` to read: the keeper's trades are worked out from snapshots and marked `derived`, with no transaction id, quote or reason. The reference price is the snapshot's before the build, and the quoted cost is `legs.expected`, the latest build's: `leg_attempts` holds neither.
+> - The exposure's exit cost is at the person's whole holding of each asset on a chain, or one vault's with `address`. A tier is named as the fallback and states no cost.
+> - Each of the four routes takes `chain` and `address`, says `cache-control: private, no-store`, and reads the database alone.
+
 ---
 
 ## The prompt

@@ -28,9 +28,7 @@ export async function AppDocument({ children }: { children: ReactNode }) {
             <AccountProvider>
               {/* Every link to /sign-in in the product opens the sign-in dialog over the page. */}
               <SignInDialogProvider>
-                <AppShell lang={lang} theme={theme}>
-                  {children}
-                </AppShell>
+                <AppShell lang={lang}>{children}</AppShell>
               </SignInDialogProvider>
             </AccountProvider>
           </WalletProvider>

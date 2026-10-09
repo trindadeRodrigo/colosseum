@@ -12,6 +12,7 @@ import { pinSourceOfPrice } from '../../components/ui/price-source';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { displayName } from '../order/plain';
+import { planHref } from '../portfolio-section/pages';
 import { dollars, drift, share, shareExact, sharesOf, shareTenths, tokens, utc } from './figures';
 import {
   type HoldingRow,
@@ -173,7 +174,7 @@ export function VaultPanel({
               href={`/vaults/${vault.chain}/${encodeURIComponent(vault.address)}`}
               title={vault.address}
               aria-label={words.page(shorten(vault.address))}
-              className="font-mono text-primary underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="font-mono text-honey-text underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
               {shorten(vault.address)}
             </Link>
@@ -219,6 +220,16 @@ export function VaultPanel({
             </dd>
           </dl>
         )}
+        {/* The same vault over time: its page in the portfolio section (PORT-3). A text link, so the
+            page still has no primary button. */}
+        <Link
+          data-ui="vault-over-time"
+          href={planHref(vault.chain, vault.address)}
+          aria-label={words.overTimeOf(shorten(vault.address))}
+          className={`self-start ${buttonClass({ variant: 'link' })}`}
+        >
+          {words.overTime}
+        </Link>
         {missing > 0 && (
           <p className="text-body-sm text-muted-foreground">{words.unpriced(missing)}</p>
         )}
@@ -246,7 +257,7 @@ export function VaultPanel({
       </CardBody>
       <CardBody density="dense">
         <details data-ui="vault-details">
-          <summary className="w-fit cursor-pointer text-body-sm font-medium text-primary underline decoration-1 underline-offset-4 hover:decoration-2">
+          <summary className="w-fit cursor-pointer text-body-sm font-medium text-honey-text underline decoration-1 underline-offset-4 hover:decoration-2">
             {words.details}
           </summary>
           <dl className="mt-3 grid gap-x-6 gap-y-1 text-body-sm sm:grid-cols-[auto_1fr]">

@@ -12,6 +12,7 @@ import {
   THEME_CLASS,
   themeChoice,
 } from './index';
+import { portfolioDictionary } from './portfolio';
 
 // Every sentence a person reads on the product screens, in both languages. The type holds the two
 // dictionaries to the same keys; these hold the sentences to the voice (voice-and-tone.md).
@@ -36,10 +37,15 @@ function sentences(node: unknown, path = ''): Leaf[] {
   return [];
 }
 
-/** A language's whole dictionary: the product's, and Bearing's, which ships on its own pages only. */
+/**
+ * A language's whole dictionary: the product's, and Bearing's and the portfolio section's, which each
+ * ship on their own pages only. The section's is held to every rule of the product's: nothing of
+ * Bearing's allowance for names in capitals or for fragments applies to it.
+ */
 const everything = (lang: (typeof LANGS)[number]) => ({
   ...dictionary(lang),
   bearing: bearingDictionary(lang),
+  portfolioSection: portfolioDictionary(lang),
 });
 
 const paths = (node: unknown) => [...new Set(sentences(node).map((leaf) => leaf.path))].sort();

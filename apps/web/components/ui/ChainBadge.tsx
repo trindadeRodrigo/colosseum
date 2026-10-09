@@ -13,7 +13,7 @@ export const CHAIN_NAMES: Record<ChainId, string> = {
 };
 
 const BADGE =
-  'inline-flex items-center rounded-md border border-border px-1.5 py-px font-sans text-caption font-medium whitespace-nowrap text-foreground';
+  'inline-flex items-center rounded-sm border border-border px-1.5 py-px font-sans text-caption font-medium whitespace-nowrap text-foreground';
 
 export function ChainBadge({ chain, className }: { chain: ChainId; className?: string }) {
   return (

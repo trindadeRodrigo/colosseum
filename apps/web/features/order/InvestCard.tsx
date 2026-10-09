@@ -576,7 +576,7 @@ export function InvestCard({
           ) : (
             // Accepted before, for this text: not asked again, and still here to read.
             <details data-ui="trust-kept">
-              <summary className="w-fit cursor-pointer text-body-sm font-medium text-primary underline decoration-1 underline-offset-4 hover:decoration-2">
+              <summary className="w-fit cursor-pointer text-body-sm font-medium text-honey-text underline decoration-1 underline-offset-4 hover:decoration-2">
                 {t.trust.short.title}
               </summary>
               <div className="mt-3">

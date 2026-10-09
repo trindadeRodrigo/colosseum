@@ -4,22 +4,23 @@ import { BLUE_NAMES, colorsIn, isBlueOrViolet, parseColor } from './color';
 import { context, resolve } from './css';
 
 // What the design system forbids, as things a program can find (STYLE.md, "Never"):
-//   hue       a blue or a violet, in any colour written anywhere (the range is in color.ts)
-//   shadow    a box-shadow, a drop-shadow or a text-shadow (a glow)
-//   radius    a corner that is not 0 or 2px, outside the composer
-//   font      a typeface that is not Newsreader, IBM Plex Sans (with its condensed width) or IBM Plex
-//             Mono, or one of the fallbacks the spec lists after them
+//   hue       a blue or a violet, in any colour written anywhere (the range is in color.ts), but
+//             chalk, by name, as a line: the focus ring, guides, "today" (CHALK)
+//   shadow    a box-shadow, a drop-shadow or a text-shadow (a glow), but the popover's, by name
+//   radius    a corner that is not 0, 6, 8, 10 or 16px or a pill, outside the composer (20px)
+//   font      a typeface that is not Inter Tight, Inter or IBM Plex Mono, or one of the fallbacks
+//             the spec lists after them
 //   host      a stylesheet or a font fetched from another origin at run time
-//   case      uppercase text, outside the MOCK plate
+//   case      uppercase text (captions and column heads at 12px or less are excused by the test)
 //   italic    italic or oblique text
 //   weight    a font weight lighter than 400
-//   gradient  a gradient, outside the hatch (which is drawn with one)
+//   gradient  a gradient, outside the hatch and the light (the glow and the curve fill, by name)
 //   blur      a blur or a backdrop filter (glass)
 //   align     centred or justified text; the test lists the two places a spec allows it
 //
-// What STYLE.md also forbids and nothing here finds: the other colour families (mint, lime, neon,
-// amber), pure white or black grounds, patterns behind text, Newsreader where it does not belong,
-// motion that bounces, the icons on the list, and anything about words. Those are for review.
+// What STYLE.md also forbids and nothing here finds: a second brand hue, white text on honey, honey
+// as the watch colour, patterns behind text, a serif named by a partner, motion that bounces, the
+// icons on the list, and anything about words. Those are for review.
 
 export type Kind =
   | 'hue'
@@ -47,36 +48,28 @@ export type Finding = {
 
 const KEYWORDS = new Set(['inherit', 'initial', 'unset', 'revert', 'revert-layer']);
 
-/** The three faces, and the fallbacks the .yml lists after them. Lower case. */
-export const FACES = ['newsreader', 'ibm plex sans', 'ibm plex sans condensed', 'ibm plex mono'];
+/** The three faces, and the fallbacks the .yml lists after them. Lower case. No serif (IDENTITY-2). */
+export const FACES = ['inter tight', 'inter', 'ibm plex mono'];
 export const FALLBACKS = [
   // working-brand.yml, tokens.typography
-  'newsreader variable',
-  'newsreader fallback',
-  'plex sans fallback',
   'system-ui',
   '-apple-system',
   'segoe ui',
   'arial',
-  'arial narrow',
   'sans-serif',
-  'georgia',
-  'times new roman',
-  'serif',
   'ui-monospace',
   'sfmono-regular',
   'menlo',
   'consolas',
   'monospace',
-  // the metric-matched fallbacks beside each face (globals.css; next/font made them until the faces
-  // moved to committed files)
-  'ibm plex sans fallback',
+  // the metric-matched fallbacks beside each face (globals.css)
+  'inter fallback',
+  'inter tight fallback',
   'ibm plex mono fallback',
   // the first name in the variable next/font/local writes for each face: the name of its export in
   // app/fonts.ts, which is no face (each face keeps its own name, and follows it in the variable)
-  'plexsans',
+  'intertight',
   'plexmono',
-  'plexsansgreek',
 ];
 const ALLOWED_FAMILIES = new Set([...FACES, ...FALLBACKS]);
 
@@ -126,7 +119,8 @@ function shorthandFamilies(value: string): string | null {
 }
 
 const RADIUS = /^border(?:-(?:top|bottom|start|end)-(?:left|right|start|end))?-radius$/;
-const SQUARE = new Set(['0', '0px', '2px']);
+/** The corners of the system: square, tags 6px, controls 8px, cards 10px, app tiles 16px, pills. */
+export const CORNERS = new Set(['0', '0px', '6px', '8px', '10px', '16px', '9999px']);
 const NO_SHADOW = new Set(['none', '0 0 #0000', '']);
 const TW_SHADOWS = new Set([
   '--tw-shadow',
@@ -135,10 +129,20 @@ const TW_SHADOWS = new Set([
   '--tw-inset-ring-shadow',
   '--tw-drop-shadow',
 ]);
-/** The one utility that sets uppercase: the plate that carries the word MOCK (mock-plate.md). */
-export const UPPERCASE_UTILITY = 'tf-mock-plate';
-/** The one utility drawn with a gradient: the 45° hatch (mock-plate.md). */
+/** The one utility drawn with a gradient of its own: the 45° hatch (mock-plate.md). */
 export const GRADIENT_UTILITY = 'tf-hatch';
+/** Light as the only other gradient, by name (STYLE.md, bold bet 5): the glow and the curve fill. */
+export const LIGHT = new Set(['--tf-glow', '--tf-glow-l', '--tf-curve-fill']);
+/** Chalk, the one blue: a line only, by name (the ring, guides, "today"). Never a fill. */
+export const CHALK = new Set([
+  '--ring',
+  '--sidebar-ring',
+  '--info',
+  '--tf-chalk',
+  '--tf-chalk-tint',
+]);
+/** The one shadow, by name: popovers and the composer (`shadow-popover`). */
+export const POPOVER_SHADOW = 'shadow-popover';
 
 /** A font weight as a number, or null when the value is not one. */
 function weightOf(value: string): number | null {
@@ -147,10 +151,9 @@ function weightOf(value: string): number | null {
   return value !== '' && Number.isFinite(n) ? n : null;
 }
 
-/** The two utilities of the typing box, and the corners they may have (composer.md). */
+/** The utility of the typing box, and the corner it may have (composer.md). */
 export const COMPOSER_RADIUS: Record<string, string> = {
   'rounded-composer': '20px',
-  'rounded-round': '9999px',
 };
 
 const classesOf = (selector: string): string[] =>
@@ -192,11 +195,12 @@ export function scanCss(root: Root, vars: Map<string, string>): Finding[] {
     for (const url of value.matchAll(/url\(\s*["']?(https?:\/\/[^"')\s]+)/g))
       add(decl, 'host', `${prop}: ${url[1]}`);
 
-    // hue
-    for (const literal of colorsIn(value)) {
-      const color = parseColor(literal);
-      if (color && isBlueOrViolet(color)) add(decl, 'hue', `${prop}: ${literal}`);
-    }
+    // hue (chalk is a blue by the rule, and allowed by name)
+    if (!CHALK.has(prop))
+      for (const literal of colorsIn(value)) {
+        const color = parseColor(literal);
+        if (color && isBlueOrViolet(color)) add(decl, 'hue', `${prop}: ${literal}`);
+      }
     if (!prop.startsWith('--') || /colou?r|fill|stroke|background/.test(prop))
       for (const word of value.toLowerCase().match(/[a-z]+/g) ?? [])
         if (BLUE_NAMES.has(word) && !/var\(|url\(/.test(value))
@@ -208,7 +212,7 @@ export function scanCss(root: Root, vars: Map<string, string>): Finding[] {
       if (!/^var\(--tw-/.test(value)) add(decl, 'shadow', `${prop}: ${value}`);
     }
     if (TW_SHADOWS.has(prop) && !NO_SHADOW.has(value) && !KEYWORDS.has(value))
-      add(decl, 'shadow', `${prop}: ${value}`);
+      if (!classesOf(selectors).includes(POPOVER_SHADOW)) add(decl, 'shadow', `${prop}: ${value}`);
     if (/drop-shadow\(/.test(value)) add(decl, 'shadow', `${prop}: ${value}`);
     if (prop === 'text-shadow' && !NO_SHADOW.has(value) && !KEYWORDS.has(value))
       if (!/^var\(--tw-/.test(value)) add(decl, 'shadow', `${prop}: ${value}`);
@@ -217,9 +221,9 @@ export function scanCss(root: Root, vars: Map<string, string>): Finding[] {
     // An @font-face says what a file holds, not how text is set: a variable face lists its range.
     const face = parent?.type === 'atrule' && (parent as { name?: string }).name === 'font-face';
 
-    // case: uppercase belongs to the word MOCK alone
+    // case: every uppercase is a finding; the test excuses captions and column heads by their size
     if (prop === 'text-transform' && /\buppercase\b/.test(value))
-      if (!classes.includes(UPPERCASE_UTILITY)) add(decl, 'case', `${prop}: ${value}`);
+      add(decl, 'case', `${prop}: ${value}`);
 
     // italic
     if (!face && prop === 'font-style' && /\b(italic|oblique)\b/.test(value))
@@ -233,8 +237,8 @@ export function scanCss(root: Root, vars: Map<string, string>): Finding[] {
       if (weight !== null && weight < 400) add(decl, 'weight', `${prop}: ${value}`);
     }
 
-    // gradient: only the hatch is drawn with one
-    if (/gradient\(/.test(value) && !classes.includes(GRADIENT_UTILITY))
+    // gradient: only the hatch is drawn with one, and the light is one by name
+    if (/gradient\(/.test(value) && !classes.includes(GRADIENT_UTILITY) && !LIGHT.has(prop))
       add(decl, 'gradient', `${prop}: ${value}`);
 
     // blur and glass
@@ -249,17 +253,14 @@ export function scanCss(root: Root, vars: Map<string, string>): Finding[] {
     // radius
     if (RADIUS.test(prop)) {
       const classes = classesOf(selectors);
-      const allowed =
-        context(decl).at(-1) === '.rounded-asset'
-          ? '9999px'
-          : classes.map((c) => COMPOSER_RADIUS[c]).find(Boolean);
+      const allowed = classes.map((c) => COMPOSER_RADIUS[c]).find(Boolean);
       const resolved = resolve(value, vars);
       const corners = resolved.split(/[\s/]+/).filter(Boolean);
       // inside the embed a corner is the partner's (`--embed-radius`, and their buttons'
-      // `--tf-embed-button-radius`, unset outside the embed): our 2px recedes there
+      // `--tf-embed-button-radius`, unset outside the embed): our corners recede there
       const ok =
         /^var\(--(embed-radius|tf-embed-button-radius)\b/.test(value) ||
-        corners.every((c) => SQUARE.has(c) || KEYWORDS.has(c) || c === allowed);
+        corners.every((c) => CORNERS.has(c) || KEYWORDS.has(c) || c === allowed);
       if (!ok)
         add(decl, 'radius', `${prop}: ${value}${resolved === value ? '' : ` (${resolved})`}`);
     }
@@ -324,6 +325,7 @@ export function scanSource(file: string, text: string): SourceFinding[] {
   const walk = (node: ts.Node) => {
     if (ts.isStringLiteralLike(node) || ts.isTemplateLiteralToken(node)) {
       const value = node.text;
+      // chalk is named by its variable (`var(--tf-chalk)`), never written as a colour
       for (const literal of colorsIn(value)) {
         const color = parseColor(literal);
         if (color && isBlueOrViolet(color)) found.push({ kind: 'hue', what: literal });
@@ -358,10 +360,12 @@ export function scanSource(file: string, text: string): SourceFinding[] {
         found.push({ kind: 'align', what: `${name}: ${value}` });
       if (
         /^border\w*Radius$/.test(name) &&
-        !/^["'{]*(0|0px|2|2px)["'}]*$/.test(value) &&
-        !/var\(--embed-radius\b/.test(value)
+        !/^["'{]*(0|6|8|10|16|9999)(px)?["'}]*$/.test(value) &&
+        !/var\(--(embed-radius|tf-radius-[a-z]+)\b/.test(value)
       )
         found.push({ kind: 'radius', what: `${name}: ${value}` });
+      // a corner drawn in an SVG is a drawing's own geometry (the mark, the pin, a status glyph): it
+      // is a finding, and the test excuses it by file (DRAWINGS)
       if (/^(rx|ry)$/.test(name) && !/^["'{]*0["'}]*$/.test(value))
         found.push({ kind: 'radius', what: `${name}=${value}` });
       if (

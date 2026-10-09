@@ -101,10 +101,10 @@ export function SubscribeBlock({
     >
       {(stage ?? ((head: ReactNode) => head))(
         <>
-          <p className="font-mono text-[0.75rem]/4 text-primary">{eyebrow}</p>
+          <p className="text-caption font-medium text-honey-text">{eyebrow}</p>
           <h2
             id={headingId}
-            className="mt-3 max-w-[20ch] font-display text-h2 leading-[round(1.25em,4px)] font-normal text-balance [font-variation-settings:'opsz'_36]"
+            className="mt-3 max-w-[20ch] font-display text-h2 leading-[round(1.25em,4px)] font-semibold text-balance"
           >
             {heading}
           </h2>
@@ -115,7 +115,7 @@ export function SubscribeBlock({
       {art && !photo && (
         <div
           data-ui="subscribe-art"
-          className="mt-10 w-[min(560px,100%)] rounded-md border border-border bg-background"
+          className="mt-10 w-[min(560px,100%)] rounded-xl border border-border bg-background"
         >
           {art}
         </div>
@@ -127,7 +127,7 @@ export function SubscribeBlock({
           <img
             src={photo.src}
             alt={photo.alt}
-            className="block w-full rounded-md border border-border object-cover"
+            className="block w-full rounded-xl border border-border object-cover"
           />
           <figcaption className="mt-2 text-left font-mono text-[0.75rem]/4 text-muted-foreground">
             {photo.caption}

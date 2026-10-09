@@ -17,21 +17,15 @@ export const withAccount = (lang: Lang, children: ReactNode) =>
   inLanguage(lang, <AccountProvider>{children}</AccountProvider>);
 
 /** The whole shell around a page. */
-export const inShell = (lang: Lang, theme: ThemeChoice, page: ReactNode) =>
-  withAccount(
-    lang,
-    <AppShell lang={lang} theme={theme}>
-      {page}
-    </AppShell>,
-  );
+/** `_theme` is the server's word; the shell draws no choice of its own now (the toggle reads the page). */
+export const inShell = (lang: Lang, _theme: ThemeChoice, page: ReactNode) =>
+  withAccount(lang, <AppShell lang={lang}>{page}</AppShell>);
 
 /** The shell with the sign-in dialog, as the product mounts it (components/shell/AppDocument.tsx). */
-export const inShellWithSignIn = (lang: Lang, theme: ThemeChoice, page: ReactNode) =>
+export const inShellWithSignIn = (lang: Lang, _theme: ThemeChoice, page: ReactNode) =>
   withAccount(
     lang,
     <SignInDialogProvider>
-      <AppShell lang={lang} theme={theme}>
-        {page}
-      </AppShell>
+      <AppShell lang={lang}>{page}</AppShell>
     </SignInDialogProvider>,
   );

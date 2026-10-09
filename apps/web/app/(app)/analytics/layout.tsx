@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { QuietPins } from '../../../components/ui/ProvenancePin';
 import { BearingFromBar } from '../../../features/bearing/BearingFromBar';
 import { BearingShell } from '../../../features/bearing/BearingShell';
 
@@ -9,7 +10,9 @@ import { BearingShell } from '../../../features/bearing/BearingShell';
 export default function AnalyticsLayout({ children }: { children: ReactNode }) {
   return (
     <BearingFromBar>
-      <BearingShell>{children}</BearingShell>
+      <QuietPins>
+        <BearingShell>{children}</BearingShell>
+      </QuietPins>
     </BearingFromBar>
   );
 }

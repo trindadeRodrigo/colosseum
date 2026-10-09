@@ -21,6 +21,11 @@ import {
   DISCLAIMER,
   MixReview,
   type OrderDetail,
+  PortfolioExposureResponse,
+  PortfolioHistoryResponse,
+  PortfolioPlansResponse,
+  PortfolioRebalancesQuery,
+  PortfolioRebalancesResponse,
   parseChainConfigs,
   type Recipe,
   type RecipeVersionView,
@@ -39,6 +44,18 @@ import {
 } from '@colosseum/sdk';
 import { z } from 'zod';
 import { statedAmountUsd } from '../../apps/api/src/orders/stated-amount';
+import {
+  EXPOSURE,
+  HISTORY,
+  PLANS,
+  REBALANCES,
+} from '../../apps/web/features/portfolio-section/fixtures/answers';
+import {
+  narrowExposure,
+  narrowHistory,
+  narrowPlans,
+  narrowRebalances,
+} from '../../apps/web/features/portfolio-section/fixtures/narrow';
 import { apiDouble } from '../../packages/sdk/test/api-double';
 import { type MockWorld, tampered } from '../../packages/sdk/test/mock';
 import { riskAnswer } from './stub-risk';
@@ -59,6 +76,14 @@ import { riskAnswer } from './stub-risk';
 // server that lies would, and POST /__stub/test-network has the funding answer as a test network's
 // with test funds offered (POST /v1/testnet/fund), as a server with a faucet key does. MOCK throughout: every figure says so. The /risk routes are the one
 // exception: they answer from Rodrigo's recording of the risk API (stub-risk.ts), measured and old.
+//
+// The portfolio section's four routes (GET /v1/portfolio/plans, /history, /rebalances, /exposure,
+// PORT-3) answer whoever asks with the section's own sample answers
+// (apps/web/features/portfolio-section/fixtures/answers.ts): seven vaults on two chains, one labelled a
+// test network and one the mock, and Base switched off, so the spec sees every kind of card. They are
+// samples and say so on every figure; they are not this stub's mock chain, and a buy made here does
+// not change them. Each is narrowed by `chain`, `address` and `limit` as the API narrows its own, and
+// is parsed with the contract's schema before it is sent.
 
 const PORT = Number(process.env.STUB_API_PORT ?? 3901);
 const ORIGIN = process.env.WEB_ORIGIN ?? 'http://localhost:3100';
@@ -740,6 +765,41 @@ async function placeRetarget(address: string, body: MixBody): Promise<ApplyVault
   return ApplyVaultMixResponse.parse({ status: 'ordered', review, order });
 }
 
+/**
+ * A route of the portfolio section, answered from the section's sample answers and held to the
+ * contract: its status and its body. Null for a path that is none of the four. A limit the contract
+ * refuses is answered 400, as the API answers it.
+ */
+function sectionAnswer(
+  path: string,
+  query: URLSearchParams,
+): { status: number; body: unknown } | null {
+  const q = {
+    chain: query.get('chain') ?? undefined,
+    address: query.get('address') ?? undefined,
+  };
+  switch (path) {
+    case '/v1/portfolio/plans':
+      return { status: 200, body: PortfolioPlansResponse.parse(narrowPlans(PLANS, q)) };
+    case '/v1/portfolio/exposure':
+      return { status: 200, body: PortfolioExposureResponse.parse(narrowExposure(EXPOSURE, q)) };
+    case '/v1/portfolio/rebalances': {
+      const asked = PortfolioRebalancesQuery.safeParse({ limit: query.get('limit') ?? undefined });
+      if (!asked.success)
+        return { status: 400, body: { error: 'limit is a whole number from 1 to 200' } };
+      const { limit } = asked.data;
+      return {
+        status: 200,
+        body: PortfolioRebalancesResponse.parse(narrowRebalances(REBALANCES, { ...q, limit })),
+      };
+    }
+    case '/v1/portfolio/history':
+      return { status: 200, body: PortfolioHistoryResponse.parse(narrowHistory(HISTORY, q)) };
+    default:
+      return null;
+  }
+}
+
 /** A vault as the public page reads it: what GET /v1/vaults/{chain}/{address} answers. */
 async function vaultView(address: string) {
   const state = await world.adapter.getVault(address);
@@ -1044,6 +1104,10 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       newVault: true,
       ok: f.ok,
     });
+  }
+  if (path.startsWith('/v1/portfolio/') && method === 'GET') {
+    const answer = sectionAnswer(path, url.searchParams);
+    if (answer) return send(res, answer.status, answer.body);
   }
   if (path === '/v1/portfolio') {
     // The vaults of the wallet that bought here, valued where apps/api values them (packages/basket),

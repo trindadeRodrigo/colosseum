@@ -363,7 +363,7 @@ export function MixJoint({
         })}
       </div>
       {/* The piece pointed at, said beside the beam: its row may be a long way down a phone. The hint
-          keeps its place under it, so the line is as tall lit as not; a reader hears each piece by its
+          keeps its place under it, so the line is as tall lit as not (one caption line); a reader hears each piece by its
           own name, and the drawing's name says what the hint says. */}
       <div
         aria-hidden="true"
@@ -376,7 +376,7 @@ export function MixJoint({
         {shown && (
           <p
             data-part="lit"
-            className="col-start-1 row-start-1 flex h-5 min-w-0 items-center gap-2"
+            className="col-start-1 row-start-1 flex h-(--text-caption--line-height) min-w-0 items-center gap-2"
           >
             <span className={cn('size-2.5 shrink-0', fillOf(shownAt))} />
             <span className="min-w-0 truncate font-medium text-foreground">{shown.name}</span>

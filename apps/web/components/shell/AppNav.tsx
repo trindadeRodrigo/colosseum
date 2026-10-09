@@ -11,6 +11,7 @@ import { useT } from '../../i18n/I18nProvider';
 import { buttonClass } from '../ui/button-class';
 import { CompactNav } from '../ui/CompactNav';
 import { Mark } from './Mark';
+import { ThemeToggle } from './ThemeToggle';
 
 // The product's bar is his landing's compact bar (compact-nav.md, hero-3d.html), compact from the
 // start because no product page has a stage: the mark and the wordmark, then his items mapped to the
@@ -37,7 +38,13 @@ import { Mark } from './Mark';
 const ROUTES = [
   { href: '/shelf', key: 'products', also: ['/indexes', '/publish'] },
   { href: '/goal', key: 'invest', also: ['/plan', '/orders'] },
-  { href: '/monitor', key: 'portfolio', signedIn: true },
+  // the portfolio section's board (/portfolio); the older monitor and a vault's page are under it
+  {
+    href: '/portfolio',
+    key: 'portfolio',
+    signedIn: true,
+    also: ['/portfolio', '/monitor', '/vaults'],
+  },
   // Bearing's analytics: every page of the section is under it
   { href: '/analytics/stocks', key: 'analytics', also: ['/analytics'] },
 ] as const;
@@ -45,7 +52,8 @@ const ROUTES = [
 /** The page a link stands for is the one in view: its own path, or one under it that it leads to. */
 const isCurrent = (pathname: string, route: (typeof ROUTES)[number]) =>
   pathname === route.href ||
-  ('also' in route && route.also.some((p) => pathname.startsWith(`${p}/`)));
+  ('also' in route &&
+    route.also.some((p) => pathname.startsWith(`${p}/`) || (p === '/monitor' && pathname === p)));
 
 export function AppNav() {
   const t = useT();
@@ -69,8 +77,23 @@ export function AppNav() {
         // the link whose own page this is wins over one it is under
         current: (exact ? pathname === route.href : isCurrent(pathname, route)) && 'page',
       }))}
-      action={account.action}
-      sheetHead={account.sheetHead}
+      action={
+        <div className="flex items-center gap-2">
+          {/* On a phone the bar has no room for it beside the account: it sits in the menu's sheet. */}
+          <span className="hidden sm:contents">
+            <ThemeToggle />
+          </span>
+          {account.action}
+        </div>
+      }
+      sheetHead={
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">{account.sheetHead}</div>
+          <span className="contents sm:hidden">
+            <ThemeToggle />
+          </span>
+        </div>
+      }
       labels={{ skip: t.shell.skip, main: t.shell.nav, menu: t.shell.menu }}
     />
   );

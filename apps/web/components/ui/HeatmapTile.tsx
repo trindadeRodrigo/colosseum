@@ -136,7 +136,7 @@ export function HeatmapTile({
         {state.kind === 'stale' && <StalePlate ageSec={state.ageSec} />}
         {state.kind === 'mock' && <MockPlate />}
       </div>
-      <div className="my-1 font-mono text-b-kpi font-medium">{kpi}</div>
+      <div className="my-1 font-display text-b-kpi font-semibold tabular-nums">{kpi}</div>
       {emph != null && <div className="text-b-emph font-medium">{emph}</div>}
       {note != null && (
         <div className="mt-1 max-w-[88ch] text-caption text-muted-foreground">{note}</div>
@@ -147,7 +147,7 @@ export function HeatmapTile({
           type="button"
           aria-pressed={table}
           onClick={() => setTable(!table)}
-          className="min-h-7 cursor-pointer rounded-md border border-input px-2.5 py-1 text-caption font-medium hover:border-primary hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="min-h-7 cursor-pointer rounded-full border border-input px-3 py-1 text-caption font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
           {text.table}
         </button>
@@ -156,7 +156,7 @@ export function HeatmapTile({
             type="button"
             aria-pressed={deepFirst}
             onClick={() => setDeepFirst(!deepFirst)}
-            className="min-h-7 cursor-pointer rounded-md border border-input px-2.5 py-1 text-caption font-medium hover:border-primary hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="min-h-7 cursor-pointer rounded-full border border-input px-3 py-1 text-caption font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
             {text.deepFirst}
           </button>

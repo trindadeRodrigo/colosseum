@@ -52,6 +52,9 @@ export const en = {
     disclaimer: 'Disclaimer',
     appearance: 'Appearance',
     themes: { auto: 'System', light: 'Light', dark: 'Dark' },
+    /** The theme toggle's name, for what a press does. */
+    toLight: 'Switch to light',
+    toDark: 'Switch to dark',
     language: 'Language',
     /** Beside a figure or a name that comes from a test network, after the MOCK plate. */
     testNetwork: 'test network',
@@ -240,6 +243,15 @@ export const en = {
 
   goal: {
     explore: {
+      /** The conversation picker (GoalEntry): this conversation, a new one, the saved ones, the vaults. */
+      picker: {
+        label: 'Conversation',
+        current: 'This conversation',
+        fresh: 'New conversation',
+        vaults: 'Your vaults',
+        saved: 'Saved conversations',
+        untitled: 'Earlier conversation',
+      },
       invitation: 'What would you like your strategy to do?',
       lead: 'Tell me your ideas, needs and limits. I can discuss an allocation with its sources and tradeoffs.',
       placeholder: 'Describe what you want to explore…',
@@ -509,6 +521,7 @@ export const en = {
     title: (vaults: number): string =>
       vaults > 1 ? 'What your vaults hold.' : 'What your vault holds.',
     planDetails: 'Goal and strategy details',
+    /** The page's description in its metadata; the screen itself does not show it. */
     lead: 'Your vaults, their holdings and the strategies they follow. Open a vault to continue its conversation or add money.',
     chain: 'Chain',
     reading: 'Reading your vault…',
@@ -559,6 +572,9 @@ export const en = {
       address: 'Vault address',
       /** The link from a vault's panel to its own page. */
       page: (address: string) => `Open the page of vault ${address}`,
+      /** The link from a vault's panel to the same vault over time, in the portfolio section. */
+      overTime: 'See over time',
+      overTimeOf: (address: string) => `See over time: vault ${address}`,
       value: 'Value',
       cash: 'Cash',
       autoFollow: 'Auto-follow',
@@ -701,6 +717,8 @@ export const en = {
       /** Vaults on more than one chain: counted, never added up across them. */
       manyChains: (vaults: number, chains: string) => `You have ${vaults} vaults, on ${chains}.`,
       see: 'See your portfolio',
+      /** The way to the portfolio section: the same plans, over time. */
+      overTime: 'See your plans over time',
     },
   },
 
@@ -711,6 +729,8 @@ export const en = {
       strategy: 'Strategy preview',
     },
     startOver: 'Start over',
+    hideChat: 'Hide chat',
+    showChat: 'Show chat',
     you: 'You',
     me: 'tenonfi',
   },
@@ -1393,6 +1413,20 @@ export const en = {
           'One piece per asset. Small shares are drawn wider so they can be seen; the figures in the list are exact.',
         /** On the last draft while a reply is on its way. */
         reworking: 'Reading what you said. This is the last draft.',
+        /** The preview's two views when the server projected the plan month by month. */
+        view: { label: 'Show', mix: 'Mix', monthly: 'Monthly evolution' },
+        /** The projection's chart (ProjectionChart): past-rate arithmetic, never a promise. */
+        projection: {
+          title: 'Monthly evolution',
+          yearly: 'Yearly evolution',
+          needsAmount:
+            'Tell the agent how much you will put in to see the month-by-month projection.',
+          balance: 'balance',
+          earned: 'earned so far',
+          withdrawn: 'withdrawn',
+          month: 'Month',
+          hint: 'Point at or tab to a month to read it.',
+        },
         resume: 'Resume conversation',
         holdings: 'Holdings',
         explain: 'Explain my holdings',
@@ -1863,165 +1897,31 @@ export const en = {
       main: 'Main',
       menu: 'Menu',
       skip: 'Skip to content',
-      products: 'Products',
-      invest: 'Invest',
-      resources: 'Resources',
-      analytics: 'Analytics',
       cta: 'Sign in',
       /** In place of "Sign in" for a person signed in on this browser. */
       openApp: 'Open the app',
+      /** The landing's static bar: the product, Bearing, and the API's documents. */
+      plans: 'Plans',
+      bearing: 'Bearing',
+      docs: 'Docs',
     },
-    stage: {
-      label: 'How tenonfi fits',
-      title:
-        'No product fits everyone. So we make the pieces\u00a0— and your goals decide how they fit.',
-      taglineStrong: 'Made to measure. Every joint shown.',
-      tagline:
-        'Tell us what your money needs to do. tenonfi builds the portfolio that gets it there, and shows you how.',
-      cue: 'Scroll to see it fit',
-      drawing: 'The plan, cut to fit, slides through the goal and seats; the pin goes in last.',
-      steps: [
-        {
-          n: '01 · The pieces',
-          title: 'We cut the pieces.',
-          body: 'Dollar yield, treasuries, credit, cash: each one measured for what it really pays after risk, and how fast it can be turned back into dollars.',
-        },
-        {
-          n: '02 · The fit',
-          title: 'Your goal decides how they fit.',
-          body: 'An amount, a date, cash you must be able to reach. The plan is cut to those limits and to no one else’s.',
-        },
-        {
-          n: '03 · The pin',
-          title: 'Every joint stays in sight.',
-          body: 'Every number carries its source. Every portfolio has an exit plan before the agent invests.',
-        },
-      ],
+    hero: {
+      title: 'No product fits everyone. So we make the products fit your goals.',
+      lead: 'A plan made to measure, with an exit plan before it invests, in your own vault. Every number carries its source.',
+      start: 'Start a plan',
+      see: 'See a plan',
     },
-    show: {
-      label: 'Two goals, cut two ways',
-      eyebrow: 'Two goals, two cuts',
-      title: 'Same pieces. Different people. Different fit.',
-      lead: 'What a plan looks like when it starts from a life, not a product list. Sample plans: every figure below is illustrative.',
-      sample: 'sample rates, not live',
-      estimate: 'estimate',
-      sampleUnit: 'sample',
-      perMonth: '/ month',
-      chips: 'The limits',
-      legs: 'How the pieces fit',
-      chartTable: 'The chart as a table',
-      month: 'Month',
-      balance: 'Balance',
-      /** The line under a chart that reads out the month under the crosshair. */
-      readout: {
-        hint: 'Point at the chart, tap it or use the arrow keys to read a month.',
-        series: 'What the chart draws',
-        putIn: 'put in',
-        paidOut: 'paid out',
-        base: 'base case',
-        range: 'weak to strong case',
-        weak: 'weak case',
-        strong: 'strong case',
-        goal: 'goal',
-      },
-      exitPlan: 'Exit plan before investing',
-      trip: {
-        label: 'Example: a trip in 2029',
-        alt: 'Mariana’s plan drawn as a joint, its parts stacked into one post, each as tall as its share.',
-        who: (cash: string) => `Mariana · 31 · paid in ${cash}`,
-        quote:
-          'I want a savings plan I can reach any day, that pays me $1,000 a month during a three-month trip in 2029.',
-        title: 'Trip fund · Jan–Mar 2029',
-        sub: 'Low risk · reachable in 1 day · income, so no stocks',
-        chips: [
-          'target: $1,000/mo × 3',
-          'horizon: 27 months',
-          'liquidity: 1 day',
-          'credit risk: none',
-        ],
-        kpis: { save: 'you save', for: 'for', earned: 'earned on top', odds: 'odds of funding' },
-        months: (n: number) => `${n} months`,
-        chart:
-          'Monthly balance by part, growing until January 2029, then paying out $1,000 a month for three months.',
-        payout: 'trip: $1,000/mo × 3 →',
-        legs: [
-          { name: (cash: string) => `Cash buffer (${cash})`, why: 'pays the trip months first' },
-          { name: () => 'Tokenized treasuries', why: 'dollar yield, next-day redemption' },
-          { name: () => 'Dollar lending', why: 'variable rate, instant withdrawal' },
-        ],
-        exit: 'the whole balance is reachable within a day; the trip months are paid from the cash buffer first.',
-        exitNote: 'Sourced live after you connect.',
-      },
-      growth: {
-        label: 'Example: a growth goal with higher risk',
-        alt: 'Diego’s plan drawn as a joint, its parts stacked into one post, each as tall as its share.',
-        who: 'Diego · 38 · crypto-native',
-        quote:
-          'Turn $20,000 into $35,000 by 2031 for a season in the mountains. I can live with a 25% drop along the way.',
-        title: 'Mountain season · by Dec 2031',
-        sub: 'Higher risk · growth · stocks eligible · exits measured by Bearing',
-        chips: ['start: $20,000', 'target: $35,000', 'max drawdown: 25%', 'credit risk: accepted'],
-        kpis: { add: 'you add', base: 'base case', odds: 'odds of $35k', drop: 'drop budget' },
-        maxUnit: 'max',
-        chart:
-          'Projected balance to 2031 with a base path and a range from a weak to a strong case, against the $35,000 target.',
-        goalLine: 'goal $35k',
-        legs: [
-          { name: () => 'Tokenized treasuries', why: 'ballast and the exit of first resort' },
-          { name: () => 'Private credit', why: 'higher yield, slower exit (credit risk accepted)' },
-          {
-            name: (stocks: string) => `Tokenized stocks (${stocks})`,
-            why: 'growth part, sized to what Bearing measures can be sold',
-          },
-          { name: () => 'Tokenized gold', why: 'diversifier, no yield' },
-        ],
-        exit: 'stocks are sized to what Bearing measures can be sold at the thinnest hour of the week.',
-        exitNote: 'Weekend exits are slower and cost more.',
-        oddsNote: 'Odds are estimates.',
-      },
+    stats: {
+      label: 'The platform in numbers',
+      plans: 'Plans made',
+      wallets: 'Wallets',
+      value: 'In vaults',
+      running: 'Plans running',
+      depth: 'Exit depth measured',
+      onTrack: 'On track',
+      up: 'up',
+      down: 'down',
     },
-    sim: {
-      label: 'Try your own goal',
-      eyebrow: 'Try it · no wallet needed',
-      title: 'Tell us what your money needs to do.',
-      lead: 'Describe a goal in your own words. You’ll see how it’s read and how the pieces would fit, before you connect anything.',
-      examples: [
-        '$40,000 by June 2028, cash within 7 days',
-        '$3,000 a month from 2028',
-        'Grow $25,000 over 3 years, I accept credit risk',
-      ],
-      opening: 'Opening your goal…',
-    },
-    closing: {
-      label: 'Follow along',
-      eyebrow: 'Follow along',
-      title: 'Built piece by piece. Watch it come together.',
-      lede: 'Product updates as new pieces are cut, and a short letter on goals, liquidity and what tokenized assets really pay. No hype, no price calls.',
-      drawingAlt:
-        'Ten coins, each an asset a plan can hold, from stocks and gold to tokenized treasuries, gathering one by one into one plan, each as large as its share.',
-      /** The coins of the closing (gate CLOSING-COINS). */
-      coins: {
-        line: 'One plan, ten pieces, one vault.',
-        sample: 'Sample shares, for illustration.',
-        parts: 'The sample plan’s parts',
-      },
-      email: 'Email address',
-      subscribe: 'Subscribe',
-      subscribing: 'Subscribing…',
-      group: 'What to receive',
-      updates: 'Product updates',
-      newsletter: 'Newsletter',
-      status: {
-        rest: 'Sign-ups aren’t open yet: nothing typed here is sent or kept.',
-        'invalid-email': 'That email doesn’t look complete. Check for an @ and a domain.',
-        'no-option': 'Pick at least one: product updates or the newsletter.',
-        submitting: 'Subscribing…',
-        success: 'Nothing was sent: sign-ups aren’t open yet, and your address wasn’t kept.',
-        already: 'You’re already on the list.',
-        error: 'We couldn’t save that just now. Try again in a minute.',
-      },
-    },
-    foot: 'The plans, rates and odds on this page are sample data. None of them is live.',
   },
 
   /** The partner embed (embed-shell.md): his words, in the partner's face. */
