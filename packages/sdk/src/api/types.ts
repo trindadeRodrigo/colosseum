@@ -3156,6 +3156,7 @@ export type GetPortfolioResponse = {
       valueUsd: string;
       provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
       name?: string | null;
+      number?: number;
       planId?: string | null;
     }[];
     prices: {
@@ -3293,6 +3294,7 @@ export type GetPortfolioHistoryResponse = {
     vaults: {
       address: string | string;
       name: string | null;
+      number?: number;
       source: string;
       method: string;
       points: {
@@ -3340,6 +3342,7 @@ export type GetPortfolioPlansResponse = {
       address: string | string;
       owner: string | string;
       name: string | null;
+      number?: number;
       basketId: string;
       plan: {
         kind: 'personal' | 'follow';
@@ -3789,6 +3792,7 @@ export type GetVaultsByChainByAddressResponse = {
     } | null;
     valueUsd: string;
     provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+    number?: number;
   };
   prices: {
     source: string;

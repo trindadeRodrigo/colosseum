@@ -16,6 +16,8 @@ import { chainsHeld } from '../../orders/person';
 import { type JoinLog, joinMissed } from '../../orders/plan-join';
 import { cacheVault, everyPersonPlan, vaultNames } from '../../orders/store';
 import { loggable } from '../../plugins/loggable';
+import { numbered, vaultNumbersOf } from '../../portfolio/numbers';
+import { personScope } from '../../portfolio/scope';
 import { signedIn } from './orders';
 
 async function chainPortfolio(
@@ -67,7 +69,7 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
         tags: ['portfolio'],
         summary: "The signed-in person's vaults on every chain, with holdings, prices and drift",
         description:
-          'Read from every chain this server runs that the person holds a wallet for, whatever their current chain is: each plan lives on its own chain, and `chains` has an entry for each that could be read, in the server’s order. A chain that could not be read is in `unavailable` with its code, why, and whether asking again may help: one switched off here (`CHAIN_UNAVAILABLE`, not retryable) or one whose read failed; the others are answered all the same. Only when none of the person’s chains could be read is the answer 503 `CHAIN_UNAVAILABLE`. The wallets are those of the identity token. `driftBps` is the weight of a position minus its target. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK.',
+          'Read from every chain this server runs that the person holds a wallet for, whatever their current chain is: each plan lives on its own chain, and `chains` has an entry for each that could be read, in the server’s order. A chain that could not be read is in `unavailable` with its code, why, and whether asking again may help: one switched off here (`CHAIN_UNAVAILABLE`, not retryable) or one whose read failed; the others are answered all the same. Only when none of the person’s chains could be read is the answer 503 `CHAIN_UNAVAILABLE`. The wallets are those of the identity token. `driftBps` is the weight of a position minus its target. A vault carries the `name` its owner gave it, or null, and its `number` among the person’s vaults whether it has a name or not: a count from 1 across every chain, given once and never changed, in the order the server came to hold the vaults, and left out where the server holds none. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK.',
         response: { 200: PortfolioResponse, default: OrderError },
       },
     },
@@ -128,6 +130,12 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
           return p.basketId !== null && chain ? [[`${chain}:${p.basketId}`, p.id] as const] : [];
         }),
       );
+      // And its number among the person's vaults, which a vault with no name is called by. Read from
+      // the database once the chains that answered are in the cache, and over every chain of the
+      // person's: a chain that did not answer this time changes no number.
+      const numbers = anyVault
+        ? await vaultNumbersOf(deps.db, personScope(deps.chains, principal), principal, req.log)
+        : null;
       const named = await Promise.all(
         chains.map(async (c) => {
           const names = await vaultNames(
@@ -140,6 +148,7 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
             vaults: c.vaults.map((v) => ({
               ...v,
               name: names.get(v.address) ?? null,
+              ...(numbers ? numbered(numbers, c.chain, v.address) : {}),
               planId: planOf.get(`${c.chain}:${v.basketId}`) ?? null,
             })),
           };
