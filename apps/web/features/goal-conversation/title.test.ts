@@ -41,6 +41,38 @@ describe('the name of a conversation: the first request, shortened', () => {
       expect(conversationTitle(nothing, NEUTRAL)).toBe(NEUTRAL);
   });
 
+  it('is the neutral name when there is nothing to read: only punctuation, only characters with no width', () => {
+    for (const nothing of [
+      '...',
+      '?!',
+      ' — ',
+      '\u200B\u200D\uFEFF',
+      '\u200B . \u2060',
+      '.'.repeat(80),
+    ])
+      expect(conversationTitle(nothing, NEUTRAL)).toBe(NEUTRAL);
+    // a figure, a sign or an emoji alone is something to read
+    expect(conversationTitle('7', NEUTRAL)).toBe('7');
+    expect(conversationTitle('$', NEUTRAL)).toBe('$');
+    expect(conversationTitle('🙂', NEUTRAL)).toBe('🙂');
+  });
+
+  it('reads only the start of a very long message, and never half a character', () => {
+    const long = `Gold ${'and silver '.repeat(200_000)}`;
+    const began = performance.now();
+    expect(conversationTitle(long, NEUTRAL)).toBe(
+      'Gold and silver and silver and silver and silver…',
+    );
+    expect(performance.now() - began).toBeLessThan(50);
+    // few characters as a person counts them, yet longer than what is read, the cut falling inside
+    // an emoji: said to be cut, and whole
+    const marked = `${`e${'\u0301'.repeat(30)}`.repeat(32)}abc${'🙂'.repeat(10)}`;
+    const title = conversationTitle(marked, NEUTRAL);
+    expect(title.endsWith('abc🙂🙂…')).toBe(true);
+    expect(title.isWellFormed()).toBe(true);
+    expect(count(title)).toBeLessThanOrEqual(TITLE_LENGTH + 1);
+  });
+
   it('cuts one long unbroken string where it stands', () => {
     const title = conversationTitle('x'.repeat(500), NEUTRAL);
     expect(title).toBe(`${'x'.repeat(TITLE_LENGTH)}…`);

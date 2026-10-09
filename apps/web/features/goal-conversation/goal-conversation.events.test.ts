@@ -1663,5 +1663,14 @@ describe('the relaxed intake’s plan on /goal (RELAXED-INTAKE)', () => {
     await settle();
     expect(find(host, '[data-ui="goal-transcript"]').textContent).toBe('');
     expect(named(host)).toEqual([en.goal.explore.picker.current, en.goal.explore.picker.fresh]);
+    // left for a new one, it is not kept as a saved conversation with nothing in it, now or later
+    await mode(host, 'new');
+    await settle();
+    expect(named(host)).toEqual([en.goal.explore.picker.current, en.goal.explore.picker.fresh]);
+    await unmountAll();
+    expect(named(await show())).toEqual([
+      en.goal.explore.picker.current,
+      en.goal.explore.picker.fresh,
+    ]);
   });
 });

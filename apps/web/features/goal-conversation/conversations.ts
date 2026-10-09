@@ -73,10 +73,14 @@ export const conversationName = (base: string, id: string, neutral: string) =>
 
 /**
  * Records that a conversation was written: its first words and time, newest first. Written with no
- * words (started over), nothing is recorded; the index comes back anew, so its names are read again.
+ * words (started over), it is taken off the list: a conversation with nothing in it is not a saved one.
  */
 export function touch(base: string, index: ConversationIndex, id: string, first: string) {
-  if (!first.trim()) return { ...index };
+  if (!first.trim()) {
+    const next = { ...index, items: index.items.filter((item) => item.id !== id) };
+    if (next.items.length !== index.items.length) writeIndex(base, next);
+    return next;
+  }
   const rest = index.items.filter((item) => item.id !== id);
   const old = index.items.find((item) => item.id === id);
   const next: ConversationIndex = {
