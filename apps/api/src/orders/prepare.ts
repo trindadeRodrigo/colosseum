@@ -248,7 +248,7 @@ export type BuyPlan = {
 /** An add to a vault with auto-follow on only deposits: said on the order's review. */
 export const KEEPER_INVESTS = {
   code: 'KEEPER_INVESTS',
-  text: 'This vault has auto-follow on, so this order only deposits the cash. The keeper buys the vault’s assets with it when it next rebalances this vault.',
+  text: 'This vault has auto-follow on, so this order only deposits the cash. The keeper puts it into the vault’s assets when it next rebalances this vault.',
 } as const;
 
 /**
@@ -316,8 +316,8 @@ export async function planBuy(
   if (proposal.engineVersion === MIX_VERSION && cents > centsOf(proposal.sheet.amountUsd))
     throw new Refusal(
       422,
-      `this mix was reviewed at ${usd(centsOf(proposal.sheet.amountUsd))}: it is bought at no more than that`,
-      { code: 'AMOUNT_OVER_REVIEW', fix: 'Review the mix again at the new amount, then buy it.' },
+      `this vault was reviewed at ${usd(centsOf(proposal.sheet.amountUsd))}: a deposit into it is no more than that`,
+      { code: 'AMOUNT_OVER_REVIEW', fix: 'Review the deposit again at the new amount.' },
     );
 
   return refusing(async () => {
@@ -518,7 +518,7 @@ async function buySteps(
       cashRaw: deposit,
       trades: [],
     });
-  const andBuy = riding.length ? ` and buy ${symbols(riding)}` : '';
+  const andBuy = riding.length ? ` and swap into ${symbols(riding)}` : '';
   steps.push(
     existing
       ? {
@@ -535,7 +535,7 @@ async function buySteps(
         },
   );
   for (const group of groups)
-    steps.push({ kind: 'swap', description: `Buy ${symbols(group)}`, trades: group });
+    steps.push({ kind: 'swap', description: `Swap cash into ${symbols(group)}`, trades: group });
 
   // On a chain with rent, each token account a step opens locks some: the vault's cash account when
   // the vault is new, and one for each asset the vault does not hold yet.
@@ -581,7 +581,7 @@ export async function expectedOf(
       throw new Refusal(
         422,
         `${trade.amountInRaw} raw ${trade.sell} buys no ${trade.buy} that can be held to a minimum: the amount is too small`,
-        { fix: 'Buy a larger amount.' },
+        { fix: 'Deposit a larger amount.' },
       );
     expected.push({
       inRaw: trade.amountInRaw,
@@ -767,8 +767,8 @@ async function prepareBuy(
     type: 'buy',
     owner: req.owner,
     summary: req.family
-      ? `Buy ${usd(cents)} of a shared portfolio on ${entry.config.name}, following it`
-      : `Buy ${usd(cents)} of your plan on ${entry.config.name}`,
+      ? `Deposit ${usd(cents)} into a vault on ${entry.config.name} that follows a shared portfolio`
+      : `Deposit ${usd(cents)} into your plan’s vault on ${entry.config.name}`,
     // Once, whatever the steps repeat: the approval and the deposit both carry it.
     depositRaw: plan.need.cashRaw,
     // The vault it is for, kept with it: a step is built for this number whatever becomes of the plan.
@@ -779,7 +779,7 @@ async function prepareBuy(
         ? [
             {
               code: 'MARKET_CLOSED',
-              text: 'The US stock market is closed now. You can still buy; stock tokens may trade at a wider price.',
+              text: 'The US stock market is closed now. You can still deposit; stock tokens may trade at a wider price.',
             },
           ]
         : []),

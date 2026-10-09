@@ -153,9 +153,9 @@ export async function checkMix(
   if (vault && issues.length === 0 && vaultValueUsd(vault, prices) > ORDER_LIMITS.maxAmountUsd)
     issues.push(issue('OVER_ORDER_LIMIT'));
   if (issues.length)
-    throw new Refusal(422, 'this mix cannot be bought as sent', {
+    throw new Refusal(422, 'this vault cannot take a deposit as sent', {
       code: 'MIX_NOT_VALID',
-      fix: 'Change the lines named in details.issues, then review the mix again.',
+      fix: 'Change the lines named in details.issues, then review again.',
       details: { issues: [...new Set(issues)] },
     });
   const cashBps = picks.find((p) => p.asset.id === cash.id)?.weightBps ?? 0;
@@ -391,7 +391,7 @@ export function reviewMix(
   if (a.vault && (a.vault.recipeOnchainId !== null || a.vault.autoFollow))
     warn('STOPS_FOLLOWING', reason('MIX_STOPS_FOLLOWING', {}, a.language).text, []);
   if (notForGoal.length)
-    throw new Refusal(422, 'this mix holds an asset a plan for this goal cannot hold', {
+    throw new Refusal(422, 'this vault holds an asset a plan for this goal cannot hold', {
       code: 'MIX_NOT_VALID',
       fix: 'Take out the assets named in details.issues, or choose another goal.',
       details: { issues: notForGoal },
@@ -633,7 +633,7 @@ export async function planRetarget(
       kind: 'swap' as const,
       description: group
         .map((t) =>
-          t.buy === ctx.cash.id ? `Sell ${symbol(t.sell)} for cash` : `Buy ${symbol(t.buy)}`,
+          t.buy === ctx.cash.id ? `Sell ${symbol(t.sell)} for cash` : `Swap into ${symbol(t.buy)}`,
         )
         .join(', '),
       trades: group,

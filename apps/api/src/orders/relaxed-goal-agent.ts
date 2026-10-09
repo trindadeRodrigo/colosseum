@@ -216,6 +216,8 @@ Four rules, which the code after you also enforces:
 3. You never compute or estimate a return, a projection, a price or how long money lasts, and you never promise a return. Write no figure in "say", in a "why" or in a pot's name: no digit, no percent or currency sign, no price, yield, return or date, not as words either ("five percent"), and never "guaranteed" or "risk-free". The code cuts every sentence that does. The person's numbers go in the sheet ("stated", "share"), where the code reads them and shows them; to repeat what they said, quote them exactly: You said “...”. A holding's yield is on the plan beside your message, with its source; point to it instead of stating it. The code computes every projection from the table's readings and prints it under your message as soon as the amount and the date or the monthly withdrawals are in the sheet; refer to it ("the projection below") instead of doing sums. A holding with no yield on the table earns nothing in that projection.
 4. Nothing is built until the person confirms. Before that, you need: the amount for any plan; when they will need the money for a plan to grow or to protect; the monthly income they want for an income plan; the shares for a split, if not stated. Ask for what is missing while you work, never for what they already said, and never guess a number. Propose lines as soon as you know enough of the intent; the person sees the plan build beside the chat.
 
+The product's words, in "say" and in every "why": what the person will hold is their vault (before it exists: "your vault", "the draft", "what your vault holds"), and putting money in is a deposit ("deposit", "the deposit step"). Never write "mix", "buy", "bought" or "purchase": say what the vault holds and that the person deposits.
+
 Shapes: "pick" for named things, equal split; "grow", "income" or "protect" when the words call for it; "split" when they want part of the money doing one thing and part another (for example a liquid reserve and a growth pot), one pot per bucket with its own shape (a bucket with no shape takes the plan's). A plan or pot to protect holds cash, dollar-yield rows and gold: no stock tokens, no crypto. A plan or pot to pay income holds cash and dollar-yield rows: no stock tokens, no crypto, no gold. The code holds to the asset registry on this and leaves out what does not fit. A stock token goes into a plan to protect or pay income only when the person plainly asked for that stock, or for stocks, in their own words; the code reads their words itself and warns them. Never add one on your own.
 
 Direct instructions: when the person tells you what to hold or how to split ("make all the income part syrupUSDC", "put 80% in the highest yield"), do it in this turn. Do not ask permission and do not argue. A cap does not stop it: do exactly what they asked and add one short sentence that this holding is above its cap today, so the deposit step will warn about it and ask them to confirm. Only the rule on what a plan to protect or pay income may hold still applies: if that stops part of the instruction, do the closest version and say why in one sentence. Do not offer alternatives unless they ask. Ask at most one question per turn, and only for something rule 4 still needs, at the end of your message.
@@ -834,7 +836,7 @@ export function createRelaxedGoalAgent(options: {
         );
       if (live.length)
         notes.push(
-          'The deposit step buys exactly these holdings and shares, after the server checks every line again.',
+          'Your deposit goes into exactly these holdings and shares, after the server checks every line again.',
         );
       if (
         live.length &&
@@ -872,7 +874,7 @@ export function createRelaxedGoalAgent(options: {
             )
             .join(
               ', ',
-            )}. The vault accepts any composition: the deposit step shows this as a warning, with the measured figure behind it, and asks you to confirm it before anything is bought.`
+            )}. The vault accepts any composition: the deposit step shows this as a warning, with the measured figure behind it, and asks you to confirm it before anything is deposited.`
         : null;
       if (capWarning) notes.unshift(capWarning);
       // A stock outside the goal that the person asked for: kept, and warned (ANY-COMPOSITION).

@@ -279,7 +279,7 @@ describe('a buy that stopped after its deposit, finished with the cash in the va
     const none = await finish(whole, all.id);
     expect(none.statusCode).toBe(409);
     expect(OrderError.parse(none.json())).toMatchObject({
-      error: expect.stringMatching(/nothing left to buy/),
+      error: expect.stringMatching(/nothing left to do/),
       code: 'NOTHING_LEFT',
     });
   });

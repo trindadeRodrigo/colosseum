@@ -118,7 +118,7 @@ describe('the walking skeleton: a buy on the chain of the person’s wallet, on 
 
       const placed = await order(a);
       expect(Order.parse(placed)).toMatchObject({ type: 'buy', status: 'open', owner: a.owner });
-      expect(placed.summary).toBe(`Buy $1,000.00 of your plan on ${NAME[chain]}`);
+      expect(placed.summary).toBe(`Deposit $1,000.00 into your plan’s vault on ${NAME[chain]}`);
       expect(placed.legs.map((l) => [l.chain, l.seq, l.kind, l.trades.length, l.cashRaw])).toEqual(
         steps[chain],
       );
