@@ -44,7 +44,7 @@ async function axe(page: Page, name: string) {
 async function signIn(page: Page) {
   await page.request.post(`${STUB}/__stub/reset`);
   await page.goto('/goal');
-  await page.locator('header a[href="/sign-in"]').click();
+  await page.locator('header a[href^="/sign-in"]').click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await expect(dialog).toHaveCount(0);
@@ -265,6 +265,85 @@ for (const width of [1440, 375] as const)
     expect(await cardLayout(strategy, width === 1440)).toEqual(settled);
     await axe(page, 'reply-failed');
   });
+
+test('in a full transcript a landed reply is read from its first line, a failure shows its actions, and a person who scrolled up is left there', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await signIn(page);
+  const transcript = page.locator('[data-ui="goal-transcript"]');
+  const pending = transcript.locator('[data-ui="reply-pending"]');
+  const edges = async (part: Locator) => {
+    const [box, list] = await Promise.all([boxOf(part), boxOf(transcript)]);
+    return { top: box.y - list.y, bottom: list.y + list.height - (box.y + box.height) };
+  };
+  const scrolled = () => transcript.evaluate((el) => el.scrollTop);
+  // enough turns for the transcript to scroll
+  for (const words of ['A broad fund and gold', 'A little safer', 'And some cash', 'Less gold']) {
+    const before = await transcript.locator('li[data-who="app"]').count();
+    await say(page, `${words}, and this message runs long enough to take two lines in the column`);
+    await expect(pending).toHaveCount(0);
+    await expect(transcript.locator('li[data-who="app"]')).not.toHaveCount(before);
+  }
+  expect(await transcript.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeGreaterThan(100);
+
+  // a reply longer than the transcript is tall: it starts at the top of the transcript
+  const long = Array.from({ length: 40 }, (_, i) => `Sample: line ${i + 1} of a long reply.`).join(
+    '\n',
+  );
+  let release = await hold(page, (body) => ({
+    ...body,
+    message: long,
+    question: null,
+    proposal: null,
+    weightNotes: [],
+  }));
+  await say(page, 'Tell me everything');
+  await expect(pending).toBeInViewport({ ratio: 1 });
+  await page.locator('textarea').focus();
+  release();
+  const reply = transcript.locator('li[data-who="app"]', { hasText: 'line 1 of a long reply' });
+  await expect(reply).toBeVisible();
+  await expect.poll(async () => Math.abs((await edges(reply)).top)).toBeLessThanOrEqual(1);
+  await expect(page.locator('textarea')).toBeFocused();
+
+  // a reply that does not come: the failure and both of its actions are inside the transcript's edge
+  release = await hold(page, () => 500);
+  await say(page, 'And again');
+  await expect(pending).toBeVisible();
+  release();
+  const failed = transcript.locator('[data-ui="goal-unanswered"]');
+  await expect(failed.getByRole('alert')).toBeVisible();
+  for (const part of [
+    failed.getByRole('alert'),
+    failed.getByRole('button', { name: en.goal.explore.retry }),
+    failed.getByRole('link', { name: en.goal.explore.elsewhere }),
+  ]) {
+    await expect(part).toBeInViewport({ ratio: 1 });
+    expect((await edges(part)).bottom).toBeGreaterThanOrEqual(0);
+    expect((await edges(part)).top).toBeGreaterThanOrEqual(0);
+  }
+  await expect(page.locator('textarea')).toBeFocused();
+
+  // the person scrolls up to read while the next reply is on its way: it lands without a jump
+  release = await hold(page);
+  await failed.getByRole('button', { name: en.goal.explore.retry }).click();
+  await expect(pending).toBeVisible();
+  await transcript.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  await expect.poll(() => transcript.getAttribute('data-following')).toBe('false');
+  release();
+  await expect(pending).toHaveCount(0);
+  await expect(failed).toHaveCount(0);
+  expect(await scrolled()).toBe(0);
+  // and the reply is there when they come back down
+  await transcript.evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+  await expect(transcript.locator('li').last()).toBeInViewport();
+});
 
 test('with reduced motion the same words stand beside a still mark', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
