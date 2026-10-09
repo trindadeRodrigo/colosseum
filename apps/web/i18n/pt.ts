@@ -212,7 +212,7 @@ export const pt: Dictionary = {
         'A alocação proposta e suas fontes aparecerão aqui após uma resposta. Nenhum cofre foi criado.',
       previewOnly: 'Apenas uma prévia. Este rascunho ainda não pode ser investido aqui.',
       draftNote:
-        'Um rascunho desta conversa. Nada é comprado antes de você revisar a mistura e assinar.',
+        'Um rascunho desta conversa. Deposite para escolher o valor. Nada é comprado antes de você revisar e assinar.',
       retry: 'Tentar de novo',
       elsewhere: 'Ver portfólios compartilhados',
       unavailable:
@@ -1938,7 +1938,7 @@ export const pt: Dictionary = {
   mix: {
     activity: (when: string) => `Novos pesos-alvo do seu cofre · ${when}`,
     preview: {
-      use: 'Usar esta mistura',
+      deposit: 'Depositar',
       apply: 'Aplicar ao meu cofre',
       notes: 'Como os pesos foram definidos',
       notesAlone: 'Sobre as proporções que você deu',
@@ -2090,7 +2090,7 @@ export const pt: Dictionary = {
       back: 'Voltar ao seu cofre',
     },
     failure: {
-      invalid: 'Não consigo usar esta mistura assim:',
+      invalid: 'Esta mistura não pode seguir assim:',
       signedOut: 'Seu acesso expirou. Entre de novo e tente mais uma vez.',
       noWallet: 'Seu acesso não tem carteira nesta rede. Adicione uma e tente de novo.',
       notYours: 'Este cofre não é seu.',

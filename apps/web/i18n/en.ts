@@ -250,9 +250,9 @@ export const en = {
       empty:
         'Your proposed allocation and its sources will appear here after a reply. No vault has been created.',
       previewOnly: 'Preview only. This draft cannot be invested here yet.',
-      /** On a proposal, over "Use this mix": the way from the draft to a buy. */
+      /** On a proposal, over "Deposit": the way from the draft to a buy. */
       draftNote:
-        'A draft from this conversation. Nothing is bought until you review the mix and sign.',
+        'A draft from this conversation. Deposit to choose an amount. Nothing is bought until you review and sign.',
       /** Under the box when the person's last words got no reply. */
       retry: 'Try again',
       elsewhere: 'See shared portfolios',
@@ -2045,7 +2045,8 @@ export const en = {
   mix: {
     activity: (when: string) => `New targets for your vault · ${when}`,
     preview: {
-      use: 'Use this mix',
+      /** On a new goal's proposal: the one action it leads to, the deposit step. */
+      deposit: 'Deposit',
       apply: 'Apply to my vault',
       notes: 'How the weights were set',
       notesAlone: 'About the shares you gave',
@@ -2195,7 +2196,7 @@ export const en = {
       back: 'Back to your vault',
     },
     failure: {
-      invalid: 'I can’t use this mix as it is:',
+      invalid: 'This mix can’t go ahead as it is:',
       signedOut: 'Your sign-in ran out. Sign in again and try once more.',
       noWallet: 'Your sign-in has no wallet on this chain. Add one, then try again.',
       notYours: 'This isn’t a vault of yours.',

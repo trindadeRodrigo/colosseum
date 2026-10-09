@@ -160,7 +160,7 @@ describe('private strategy exploration for a new goal', () => {
       });
       expect(calls[0].body).not.toHaveProperty('vault');
       expect(calls[0].body).not.toHaveProperty('address');
-      // on a proposal the line over "Use this mix" says how the draft is bought, not that it cannot be
+      // on a proposal the line over "Deposit" says how the draft is bought, not that it cannot be
       expect(find(host, '[data-ui="goal-strategy"]').textContent).toContain(
         dictionary(lang).goal.explore.draftNote,
       );
@@ -176,9 +176,22 @@ describe('private strategy exploration for a new goal', () => {
         ),
       ).toEqual(['40%', '60%']);
       expect(host.querySelector('[data-ui="buy-card"]')).toBeNull();
-      expect(
-        find(host, '[data-ui="goal-strategy"]').querySelector('button[data-variant="primary"]'),
-      ).toBeNull();
+      // The preview's one primary button is "Deposit" (gate DEPOSIT-STEP, Thom, Oct 8): it opens the
+      // deposit step, and neither buys, funds nor signs anything.
+      const primary = [
+        ...find(host, '[data-ui="goal-strategy"]').querySelectorAll(
+          'button[data-variant="primary"]',
+        ),
+      ];
+      expect(primary.map((button) => button.textContent)).toEqual([
+        dictionary(lang).mix.preview.deposit,
+      ]);
+      const before = calls.length;
+      await click(primary[0] as HTMLElement);
+      expect(host.querySelector('[data-ui="deposit-step"]')).not.toBeNull();
+      expect(host.querySelector('[data-ui="buy-card"]')).toBeNull();
+      expect(calls).toHaveLength(before);
+      expect(router.push).not.toHaveBeenCalled();
     },
   );
   it('sends complete words and actual prior nonexecuted draft weights to refine the next turn', async () => {
@@ -455,7 +468,14 @@ describe('the deposit step of a new goal', () => {
     replies({ goal: 'grow', risk: 'high' });
     const host = await show();
     await send(host, 'Stocks to grow, I can take high risk');
-    await click(find(host, '[data-action="use-mix"]'));
+    // the one action of the preview: named for what it does, and the card's primary button
+    const press = find(host, '[data-action="deposit"]');
+    expect(press.textContent).toBe(en.mix.preview.deposit);
+    expect(en.mix.preview.deposit).toBe('Deposit');
+    expect(dictionary('pt').mix.preview.deposit).toBe('Depositar');
+    expect(press.getAttribute('data-variant')).toBe('primary');
+    expect(find(host, '[data-ui="goal-strategy"]').textContent).not.toMatch(/use this mix/i);
+    await click(find(host, '[data-action="deposit"]'));
     const step = find(host, '[data-ui="deposit-step"]');
     expect(find(step, '[data-ui="deposit-purpose"]').textContent).toContain(
       en.mix.deposit.purpose('grow', 'high'),
@@ -475,13 +495,13 @@ describe('the deposit step of a new goal', () => {
     replies({}, { goal: 'speculate', risk: 'medium' });
     const host = await show();
     await send(host, 'Some stocks');
-    await click(find(host, '[data-action="use-mix"]'));
+    await click(find(host, '[data-action="deposit"]'));
     expect(host.querySelector('[data-ui="deposit-purpose"]')).toBeNull();
     expect(host.querySelectorAll('[data-ui="deposit-goal"] button')).toHaveLength(3);
     expect(host.querySelectorAll('[data-ui="deposit-risk"] button')).toHaveLength(3);
     expect(host.querySelectorAll('[aria-pressed="true"]')).toHaveLength(0);
     await send(host, 'medium risk please');
-    await click(find(host, '[data-action="use-mix"]'));
+    await click(find(host, '[data-action="deposit"]'));
     expect(find(host, '[data-ui="deposit-purpose"]').textContent).toContain(
       en.mix.deposit.purpose(null, 'medium'),
     );
@@ -506,7 +526,7 @@ describe('the deposit step of a new goal', () => {
     );
     const host = await show();
     await send(host, 'Stocks to grow, high risk');
-    await click(find(host, '[data-action="use-mix"]'));
+    await click(find(host, '[data-action="deposit"]'));
     await type(amount(host), '250');
     await click(find(host, '[data-action="change-mix"]'));
     expect(document.activeElement).toBe(find(host, 'textarea'));
@@ -532,7 +552,7 @@ describe('the deposit step of a new goal', () => {
     await send(host, 'more of the first, less of the second');
     expect(host.querySelector('[data-ui="deposit-step"]')).toBeNull();
     expect(strategy(host).textContent).toContain('More of one, less of the other');
-    await click(find(host, '[data-action="use-mix"]'));
+    await click(find(host, '[data-action="deposit"]'));
     expect(amount(host).value).toBe('250');
     expect(calls.filter((call) => call.path === path).at(-1)?.body.messages).toEqual(
       expect.arrayContaining([{ who: 'person', text: 'more of the first, less of the second' }]),
@@ -543,7 +563,7 @@ describe('the deposit step of a new goal', () => {
     replies({ goal: 'grow', risk: 'high' });
     const host = await show();
     await send(host, 'Stocks to grow, high risk');
-    await click(find(host, '[data-action="use-mix"]'));
+    await click(find(host, '[data-action="deposit"]'));
     await type(amount(host), '250');
     await click(
       [...host.querySelectorAll('button')].find(

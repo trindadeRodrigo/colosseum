@@ -69,7 +69,7 @@ async function tickAll(page: Page, confirm: string) {
 }
 
 /** Says a goal in the conversation and opens the deposit step of the mix it proposes. */
-async function toDeposit(page: Page, words: string, use = en.mix.preview.use) {
+async function toDeposit(page: Page, words: string, use = en.mix.preview.deposit) {
   const box = page.locator('textarea');
   await box.fill(words);
   await box.press('Enter');
@@ -188,7 +188,7 @@ test('the deposit step by keyboard, in Portuguese', async ({ page }) => {
   const step = await toDeposit(
     page,
     'Um fundo amplo e ouro, para crescer, com risco alto',
-    pt.mix.preview.use,
+    pt.mix.preview.deposit,
   );
   await expect(step.locator('[data-ui="deposit-purpose"]')).toContainText(
     pt.mix.deposit.purpose('grow', 'high'),

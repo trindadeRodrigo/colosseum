@@ -350,7 +350,13 @@ export function GoalConversation({
               proposal={mix}
               previewOnly={copy.draftNote}
               {...(chain && userId
-                ? { use: { label: t.mix.preview.use, onUse: () => setDepositing(true) } }
+                ? {
+                    use: {
+                      label: t.mix.preview.deposit,
+                      onUse: () => setDepositing(true),
+                      primary: true,
+                    },
+                  }
                 : {})}
             />
             {reply && !reply.proposal && reply.notes && <WeightNotes notes={reply.notes} />}

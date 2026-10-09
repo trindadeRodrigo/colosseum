@@ -37,8 +37,11 @@ export function StrategyPreview({
   targets?: { asset: string; targetBps: number }[];
   previewOnly?: string;
   onDiscuss?: () => void;
-  /** The one action this preview leads to: buying it for a new goal, or applying it to the vault. */
-  use?: { label: string; onUse: () => void };
+  /**
+   * The one action this preview leads to: a deposit for a new goal, which is the card's primary
+   * button, or applying it to the vault.
+   */
+  use?: { label: string; onUse: () => void; primary?: boolean };
 }) {
   const id = useId();
   const t = useT();
@@ -178,7 +181,12 @@ export function StrategyPreview({
           {(onDiscuss || use) && (
             <div className="flex flex-wrap gap-3">
               {use && (
-                <Button variant="secondary" size="dense" data-action="use-mix" onClick={use.onUse}>
+                <Button
+                  variant={use.primary ? 'primary' : 'secondary'}
+                  size={use.primary ? 'default' : 'dense'}
+                  data-action={use.primary ? 'deposit' : 'use-mix'}
+                  onClick={use.onUse}
+                >
                   {use.label}
                 </Button>
               )}
