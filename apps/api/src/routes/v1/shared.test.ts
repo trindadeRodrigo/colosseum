@@ -789,6 +789,17 @@ describe('a person buys a shared portfolio, following it on their own chain', ()
       (await get(solana, `/v1/funding?amountUsd=10&proposalId=${plans.solana}&chain=solana`))
         .statusCode,
     ).toBe(400);
+    // The funding read is refused as the order is: asked about a chain no wallet of theirs signs on.
+    const unfunded = await get(evm, `/v1/funding?amountUsd=10&family=${text.slug}&chain=solana`);
+    expect([unfunded.statusCode, unfunded.json().code, unfunded.json().error]).toEqual([
+      409,
+      'NO_WALLET_FOR_CHAIN',
+      'no wallet you signed in with signs on Solana',
+    ]);
+    // and about a chain the portfolio has no recipe on
+    expect(
+      (await get(both, `/v1/funding?amountUsd=10&family=${text.slug}&chain=robinhood`)).statusCode,
+    ).toBe(422);
     // Nothing was stored for any of them.
     for (const who of [both, evm, solana])
       expect(PortfolioResponse.parse((await get(who, '/v1/portfolio')).json()).chains).toSatisfy(

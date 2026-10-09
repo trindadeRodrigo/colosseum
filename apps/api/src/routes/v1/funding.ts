@@ -16,7 +16,7 @@ import type { ChainEntry } from '../../orders/chains';
 import { Refusal, refusing } from '../../orders/errors';
 import { familyByNameKey, familyBySlug } from '../../orders/families';
 import type { OrderDeps } from '../../orders/legs';
-import { homeChain, personChain } from '../../orders/person';
+import { chainsHeld, homeChain, personChain } from '../../orders/person';
 import { planBuy, recipeOf } from '../../orders/prepare';
 import { isLinkedProposal, loadBuyablePlan, loadFamilies } from '../../orders/store';
 import { signedIn } from './orders';
@@ -129,6 +129,13 @@ export async function readFunding(
         : slug !== undefined && query.chain !== undefined
           ? query.chain
           : await homeChain(deps.db, principal);
+  // A chain the query names is held to the person's wallets, as the order that names it is.
+  if (slug !== undefined && query.chain !== undefined && !chainsHeld(principal).includes(chain))
+    throw new Refusal(409, `no wallet you signed in with signs on ${deps.chains.name(chain)}`, {
+      code: 'NO_WALLET_FOR_CHAIN',
+      fix: `Sign in with a wallet that signs on ${deps.chains.name(chain)}, or with a passkey.`,
+      details: { retryable: false },
+    });
   const entry = deps.chains.get(chain);
   const { family } = entry.config;
   // Which of the person's wallets of this family holds their plans. On the family of their current
