@@ -576,7 +576,7 @@ export function OrderScreen({
               </Button>
             )}
             <Link
-              href="/portfolio"
+              href="/monitor"
               className={buttonClass({ variant: offer ? 'secondary' : 'primary' })}
             >
               {t.order.outcome.seePortfolio}
@@ -1124,13 +1124,13 @@ export function OrderScreen({
                 >
                   {t.order.outcome.finish}
                 </Button>
-                <Link href="/portfolio" className={buttonClass({ variant: 'secondary' })}>
+                <Link href="/monitor" className={buttonClass({ variant: 'secondary' })}>
                   {t.order.outcome.seePortfolio}
                 </Link>
               </>
             )}
             {deposited && !offerFinish && (
-              <Link href="/portfolio" className={buttonClass({ variant: 'primary' })}>
+              <Link href="/monitor" className={buttonClass({ variant: 'primary' })}>
                 {t.order.outcome.seePortfolio}
               </Link>
             )}
@@ -1197,7 +1197,7 @@ export function OrderScreen({
         {/* The order is done: the next step is the portfolio it filled, and another buy beside it. */}
         {done && !running && terms?.kind !== 'publish' && !embed?.hostEnds && (
           <div data-ui="order-next" className="flex flex-wrap items-center gap-3">
-            <Link href="/portfolio" className={buttonClass({ variant: 'primary' })}>
+            <Link href="/monitor" className={buttonClass({ variant: 'primary' })}>
               {t.order.outcome.seePortfolio}
             </Link>
             {buying && !embed && (

@@ -397,7 +397,7 @@ describe('the review', () => {
     // the next step: the portfolio the buy filled, and another buy of the same plan beside it
     const next = [...find(host, '[data-ui="order-next"]').querySelectorAll('a')];
     expect(next.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
-      [en.order.outcome.seePortfolio, '/portfolio'],
+      [en.order.outcome.seePortfolio, '/monitor'],
       [en.order.outcome.buyMore, `/plan/${PLAN_ID}/buy`],
     ]);
     expect(next[0]?.className).toContain(buttonClass({ variant: 'primary' }));
@@ -552,7 +552,7 @@ describe('what the executor answers', () => {
     // the portfolio first, where the deposit is; a new order, which deposits again, beside it
     const stopped = [...find(host, '[data-ui="order-stopped"]').querySelectorAll('a')];
     expect(stopped.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
-      [en.order.outcome.seePortfolio, '/portfolio'],
+      [en.order.outcome.seePortfolio, '/monitor'],
       [en.order.outcome.newOrder, `/plan/${PLAN_ID}/buy`],
     ]);
     expect(stopped[0]?.className).toContain(buttonClass({ variant: 'primary' }));
@@ -1402,7 +1402,7 @@ describe('what the executor answers', () => {
             'plans' in o ? en.order.outcome.depositKept : en.order.outcome.stopped('$10'),
           );
           expect(finishButton(host)).toBeUndefined();
-          expect(primary(host).getAttribute('href')).toBe('/portfolio');
+          expect(primary(host).getAttribute('href')).toBe('/monitor');
           await unmountAll();
         }
       });
