@@ -216,6 +216,14 @@ test('a step the server lies about is refused in the pane, and the pane is taken
   await pane(page).getByRole('button', { name: en.mix.deposit.backToProposal }).click();
   await expect(pane(page)).toHaveCount(0);
   await expect(page.locator('textarea')).toBeEnabled();
+  // left with its cash in the vault: said over the proposal, with the way back to the same steps
+  const note = page.locator('[data-ui="deposit-unfinished"]');
+  await expect(note).toHaveAttribute('data-landed', 'true');
+  await expect(note).toContainText(en.goal.explore.deposit.unfinished.landed('$100'));
+  await check(page, '13-left-unfinished');
+  await note.getByRole('button', { name: en.goal.explore.deposit.unfinished.back }).click();
+  await expect(pane(page)).toHaveAttribute('data-state', 'approved');
+  await expect(steps.nth(0)).toHaveAttribute('data-status', 'confirmed');
 });
 
 test('a quote that ran out before the press: the pane says so and offers a fresh check', async ({

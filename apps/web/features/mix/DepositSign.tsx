@@ -7,6 +7,9 @@ import { buttonClass } from '../../components/ui/button-class';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars } from '../goal/sheet';
 import { Invest } from '../order/Invest';
+import { readOrder } from '../order/order-api';
+import { depositLanded } from '../order/order-check';
+import { useApiFetch } from '../wallet/WalletProvider';
 
 // The deposit signed in place, on /goal (gate DEPOSIT-IN-PLACE): once the person has confirmed the
 // review, this takes the pane with the steps to sign, their progress and the finished state. It draws
@@ -15,19 +18,27 @@ import { Invest } from '../order/Invest';
 // person is trusting, the wallet's check, the order as our server made it and the one press. The
 // amount is the one typed on the deposit step, shown as a fact.
 
-/** A deposit the person approved: its plan, its order and the amount, and where it ended. */
+/**
+ * A deposit the person approved: its plan, its newest approved order and the amount. Only these ids
+ * and `left` are kept in the browser. Whether it is done is never read from there: it is what the
+ * order's own screen says, from our server, on this visit.
+ */
 export type OpenDeposit = {
   planId: string;
   orderId: string;
   amountUsd: number;
-  /** Every step is confirmed. `vault` is the vault's address where the portfolio could be read. */
+  /** Every step is confirmed, as our server says. `vault` is the vault's address where it could be read. */
   done?: { vault: string | null };
+  /** The person left it unfinished: the pane is theirs again, and the deposit is said to be waiting. */
+  left?: true;
 };
 
 /** What the conversation is told, so it can hold its box and keep the deposit across a reload. */
 export type DepositHost = {
-  /** The person pressed, or a step moved, or the deposit ended: what to keep. Null: left. */
-  onOpen: (open: OpenDeposit | null) => void;
+  /** The person pressed, or a step moved, or the deposit ended: what to keep. */
+  onOpen: (open: OpenDeposit) => void;
+  /** The person left a deposit that is not done: it is set aside, and said to be waiting. */
+  onLeave: () => void;
   /** Steps are being signed now, or no longer are. */
   onRunning: (running: boolean) => void;
 };
@@ -51,8 +62,8 @@ export function DepositSign({
   waiting?: boolean;
   /** Back to the deposit step, to type another amount. Offered until the person presses. */
   onChange?: () => void;
-  /** Back to the proposal, leaving a deposit that stopped where it is. */
-  onLeave: () => void;
+  /** Called after the host was told the deposit is left: back to the proposal. */
+  onLeave?: () => void;
   host: DepositHost;
 }) {
   const t = useT();
@@ -61,7 +72,8 @@ export function DepositSign({
   const titleId = useId();
   const [orderId, setOrderId] = useState<string | null>(resume?.orderId ?? null);
   const [running, setRunning] = useState(false);
-  const [done, setDone] = useState<{ vault: string | null } | null>(resume?.done ?? null);
+  // Done is what the order's screen says on this visit, read from our server: never a kept flag.
+  const [done, setDone] = useState<{ vault: string | null } | null>(null);
   const to = useRef(host);
   to.current = host;
   // The pane took the place of the review: its heading takes focus, so it is read from the top.
@@ -155,16 +167,86 @@ export function DepositSign({
             run(false);
           }}
           onStopped={() => run(false)}
+          // an order that finishes this one took the card: it is to review, not running
+          onFollowUp={() => run(false)}
         />
       </div>
       {approved && !running && !done && (
         <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-body-sm">
           <span className="text-muted-foreground">{s.leaveNote}</span>
-          <Button variant="link" data-action="leave-deposit" onClick={onLeave}>
+          <Link href={`/orders/${encodeURIComponent(orderId ?? '')}`} className="underline">
+            {s.orderPage}
+          </Link>
+          <Button
+            variant="link"
+            data-action="leave-deposit"
+            onClick={() => {
+              to.current.onLeave();
+              onLeave?.();
+            }}
+          >
             {t.mix.deposit.backToProposal}
           </Button>
         </p>
       )}
     </section>
+  );
+}
+
+/**
+ * A deposit the person left unfinished, said over whatever the pane shows next: where its money is, as
+ * our server has the order now, the way back to it, and that another deposit does not finish it.
+ */
+export function UnfinishedDeposit({
+  orderId,
+  amountUsd,
+  onBack,
+  onGone,
+}: {
+  orderId: string;
+  amountUsd: number;
+  /** Back to its steps, in the pane. */
+  onBack: () => void;
+  /** Our server says every step of it is confirmed: there is nothing left to say. */
+  onGone: () => void;
+}) {
+  const t = useT();
+  const lang = useLang();
+  const u = t.goal.explore.deposit.unfinished;
+  const api = useApiFetch();
+  const [landed, setLanded] = useState<boolean | null>(null);
+  const gone = useRef(onGone);
+  gone.current = onGone;
+  useEffect(() => {
+    let mine = true;
+    void readOrder(api, orderId).then((read) => {
+      if (!mine || read.kind !== 'read') return;
+      if (read.order.status === 'done') return gone.current();
+      setLanded(depositLanded(read.order));
+    });
+    return () => {
+      mine = false;
+    };
+  }, [api, orderId]);
+  const amount = dollars(amountUsd, lang);
+  return (
+    <div
+      role="status"
+      data-ui="deposit-unfinished"
+      data-landed={landed === null ? undefined : String(landed)}
+      className="flex min-w-0 flex-col gap-2 rounded-lg border border-border bg-card p-4 text-body-sm"
+    >
+      <p className="max-w-(--tf-measure-body)">
+        {landed === null ? u.unread(amount) : landed ? u.landed(amount) : u.none(amount)} {u.again}
+      </p>
+      <p className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <Button variant="link" data-action="back-to-deposit" onClick={onBack}>
+          {u.back}
+        </Button>
+        <Link href={`/orders/${encodeURIComponent(orderId)}`} className="underline">
+          {t.mix.deposit.signing.orderPage}
+        </Link>
+      </p>
+    </div>
   );
 }

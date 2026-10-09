@@ -130,4 +130,9 @@ export type OrderEmbed = {
    * order's screen then draws no link of its own under the steps.
    */
   hostEnds?: boolean;
+  /**
+   * The order that finishes this one was made, or is already in this browser: the host shows it in the
+   * same card, where it is reviewed and signed. Left out, the order's own page is opened.
+   */
+  onFinish?: (orderId: string) => void;
 };

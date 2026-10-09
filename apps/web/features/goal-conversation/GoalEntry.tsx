@@ -269,7 +269,9 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
                 : now,
           )
         }
-        chainControl={(state) => <GoalChain {...state} refocus={refocus} onChoose={startOn} />}
+        chainControl={(state) => (
+          <GoalChain {...state} on={chain} refocus={refocus} onChoose={startOn} />
+        )}
       />
     </div>
   );

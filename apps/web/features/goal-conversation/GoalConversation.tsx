@@ -10,7 +10,12 @@ import { LatticeLoader } from '../../components/ui/Skeleton';
 import { useWaitPhase } from '../../components/ui/wait';
 import { dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { type DepositHost, DepositSign, type OpenDeposit } from '../mix/DepositSign';
+import {
+  type DepositHost,
+  DepositSign,
+  type OpenDeposit,
+  UnfinishedDeposit,
+} from '../mix/DepositSign';
 import { DepositStep, type Purpose } from '../mix/DepositStep';
 import { recallOrder } from '../order/order-record';
 import { share } from '../portfolio/figures';
@@ -131,7 +136,11 @@ export function GoalConversation({
   const [signing, setSigning] = useState(false);
   // "Start over" was pressed with a deposit open: asked once more before it is left.
   const [asking, setAsking] = useState(false);
-  const locked = open !== null && !open.done;
+  // One state for every way the pane shows an approved deposit (just pressed, signing, stopped, taken
+  // up again after a reload): it holds the box and the chain, and is what every way out asks about.
+  const locked = open !== null && !open.done && !open.left;
+  const openNow = useRef(open);
+  openNow.current = open;
   const lockedNow = useRef(locked);
   lockedNow.current = locked;
   const tellDeposit = useRef(onDeposit);
@@ -173,7 +182,7 @@ export function GoalConversation({
           planId: record.proposalId,
           orderId: record.orderId,
           amountUsd: record.amountUsd,
-          ...(read.done ? { done: { vault: read.done.vault ?? null } } : {}),
+          ...(read.left === true ? { left: true as const } : {}),
         };
       else if (raw && depositKey) localStorage.removeItem(depositKey);
     } catch {
@@ -204,16 +213,31 @@ export function GoalConversation({
   /** The open deposit's ids are kept beside the transcript, so a reload finds its order again. */
   function keepOpen(next: OpenDeposit | null) {
     setOpen(next);
-    if (!next) setSigning(false);
+    if (!next || next.left) setSigning(false);
     if (!depositKey) return;
     try {
-      if (next) localStorage.setItem(depositKey, JSON.stringify(next));
+      // only the ids and whether it was left: done is the server's to say, each visit
+      if (next)
+        localStorage.setItem(
+          depositKey,
+          JSON.stringify({
+            planId: next.planId,
+            orderId: next.orderId,
+            amountUsd: next.amountUsd,
+            ...(next.left ? { left: true } : {}),
+          }),
+        );
       else localStorage.removeItem(depositKey);
     } catch {
       // storage full or blocked: the deposit is still on the pane for this visit
     }
   }
-  const host: DepositHost = { onOpen: keepOpen, onRunning: setSigning };
+  /** Leaves the deposit on the pane: one that is not done is set aside and said to be waiting. */
+  function setAside() {
+    const now = openNow.current;
+    keepOpen(now && !now.done ? { ...now, left: true } : null);
+  }
+  const host: DepositHost = { onOpen: keepOpen, onRunning: setSigning, onLeave: setAside };
 
   /** The last mix is kept beside the transcript, read back through the same check as a reply. */
   function keepPreview(next: VaultStrategyPreview | null) {
@@ -252,7 +276,8 @@ export function GoalConversation({
     // A deposit is open: leaving it is asked once more. What was sent stays sent.
     if (lockedNow.current && !sure) return setAsking(true);
     setAsking(false);
-    keepOpen(null);
+    // an unfinished deposit outlives the conversation's words: it is still said to be waiting
+    setAside();
     ++generation.current;
     held.current = [];
     setTurns([]);
@@ -344,7 +369,7 @@ export function GoalConversation({
         setKept(false);
         setDepositing(false);
         // a deposit that is done gives the pane back to the next proposal
-        keepOpen(null);
+        if (openNow.current?.done) keepOpen(null);
         keepPreview(result.proposal);
       }
       persist(completed);
@@ -545,6 +570,17 @@ export function GoalConversation({
         aria-busy={busy}
         className={`tf-scroll-thin relative flex min-w-0 flex-col gap-4 ${chatOpen ? 'md:col-span-7' : 'md:col-span-12'} md:min-h-0 md:overflow-y-auto md:pr-2`}
       >
+        {open?.left && (
+          <UnfinishedDeposit
+            orderId={open.orderId}
+            amountUsd={open.amountUsd}
+            onBack={() => {
+              setDepositing(false);
+              keepOpen({ planId: open.planId, orderId: open.orderId, amountUsd: open.amountUsd });
+            }}
+            onGone={() => keepOpen(null)}
+          />
+        )}
         {mix && chain && userId && depositing && !kept ? (
           <>
             <DepositStep
@@ -565,7 +601,7 @@ export function GoalConversation({
             />
             {reply && !reply.proposal && reply.notes && <WeightNotes notes={reply.notes} />}
           </>
-        ) : open && chain && ready ? (
+        ) : open && !open.left && chain && ready ? (
           // approved before a reload: the same steps, from the order's own record
           <DepositSign
             chain={chain}
@@ -573,7 +609,6 @@ export function GoalConversation({
             amountUsd={open.amountUsd}
             resume={open}
             host={host}
-            onLeave={() => keepOpen(null)}
           />
         ) : mix ? (
           <>

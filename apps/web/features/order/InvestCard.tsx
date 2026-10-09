@@ -121,6 +121,8 @@ export type InvestCardProps = {
    * record and our server have it, and makes no other. Nothing about it is read from the host.
    */
   resume?: { orderId: string; expiresAt: number; basketId?: string };
+  /** An order that finishes the one on the card took its place there (it is not approved yet). */
+  onFollowUp?: (orderId: string) => void;
   /** The host says where to go once every step is confirmed: no link of the card's own. */
   hostEnds?: boolean;
 };
@@ -128,7 +130,14 @@ export type InvestCardProps = {
 /** What a host that mounts a buy inside its own screen passes: the amount, and what it is told. */
 export type InvestEmbedded = Pick<
   InvestCardProps,
-  'amount' | 'onProgress' | 'onDone' | 'onStopped' | 'onVersionChanged' | 'onAmount' | 'hostEnds'
+  | 'amount'
+  | 'onProgress'
+  | 'onDone'
+  | 'onStopped'
+  | 'onVersionChanged'
+  | 'onAmount'
+  | 'hostEnds'
+  | 'onFollowUp'
 > & {
   /** The id of an order approved on this card before it was lost: the card takes it up again. */
   resumeOrder?: string;
@@ -163,6 +172,7 @@ export function InvestCard({
   amountFrom = 'field',
   resume,
   hostEnds,
+  onFollowUp,
 }: InvestCardProps) {
   const t = useT();
   const lang = useLang();
@@ -653,6 +663,24 @@ export function InvestCard({
                   onStopped?.(stopped);
                 },
                 ...(hostEnds ? { hostEnds: true } : {}),
+                // The host ends the deposit in place: the order that finishes this one takes the
+                // card, to be reviewed and signed here. It deposits nothing, so no other is made.
+                ...(hostEnds
+                  ? {
+                      onFinish: (orderId: string) => {
+                        runOf.current = null;
+                        setStarted(true);
+                        setMade({
+                          key: `finish:${orderId}`,
+                          orderId,
+                          expiresAt: 0,
+                          again: false,
+                          ...(made.basketId ? { basketId: made.basketId } : {}),
+                        });
+                        onFollowUp?.(orderId);
+                      },
+                    }
+                  : {}),
               }}
             />
           ) : (

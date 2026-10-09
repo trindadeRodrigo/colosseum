@@ -272,7 +272,12 @@ export function OrderScreen({
     unseen: boolean,
   ) {
     if (finishing) return;
-    const open = (orderId: string) => router.push(`/orders/${encodeURIComponent(orderId)}`);
+    // In a card that takes it (the pane of /goal), the order that finishes this one is shown there.
+    const open = (orderId: string) => {
+      if (!embed?.onFinish) return router.push(`/orders/${encodeURIComponent(orderId)}`);
+      setFinishing(false);
+      embed.onFinish(orderId);
+    };
     // An order is finished by one order. Where this browser already has it, that order is opened
     // and nothing is asked for: what the first one left is that order's, and its record, with what
     // the person approved in it, stays as it is.
@@ -410,6 +415,9 @@ export function OrderScreen({
       setStopping(false);
       setRunning(true);
       setOutcome(null);
+      // A run asked for again ("Try again", "Continue") is under way from the press, before its
+      // first step answers: the host is told at once.
+      if (!first) embed?.onProgress?.({ orderId: record.orderId, step: 0, of: 0, line: '' });
       const answer = await run({
         order: approved.order,
         plan: {
@@ -736,9 +744,12 @@ export function OrderScreen({
                       : t.mix.order.signTargets
                     : record.approved
                       ? t.order.resume(amount)
-                      : embed
-                        ? t.invest.press(amount)
-                        : t.order.signAndBuy(amount);
+                      : record.continues && embed
+                        ? // it deposits nothing: the press signs what the first order left
+                          t.order.outcome.finishSign
+                        : embed
+                          ? t.invest.press(amount)
+                          : t.order.signAndBuy(amount);
   // A deposit is never signed for before the trust notice is accepted (DESIGN-VAULT section 13). The
   // invest card makes the order before that, to show its prices, so the order's own page asks too:
   // an order opened here that nobody approved is held until the notice is accepted, as on the card.
@@ -1156,18 +1167,30 @@ export function OrderScreen({
             <StatusMark status="off-track" size={12} className="mt-1.5" />
             <span>
               {finishFailure.text}
-              {finishFailure.orderId && (
-                <>
-                  {' '}
-                  <Link
-                    href={`/orders/${encodeURIComponent(finishFailure.orderId)}`}
-                    data-ui="order-finish-other"
-                    className={buttonClass({ variant: 'link' })}
-                  >
-                    {t.order.outcome.openThatOrder}
-                  </Link>
-                </>
-              )}
+              {finishFailure.orderId &&
+                (embed?.onFinish && recallOrder(finishFailure.orderId, userId) ? (
+                  <>
+                    {' '}
+                    <Button
+                      variant="link"
+                      data-ui="order-finish-other"
+                      onClick={() => embed.onFinish?.(finishFailure.orderId as string)}
+                    >
+                      {t.order.outcome.openThatOrder}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {' '}
+                    <Link
+                      href={`/orders/${encodeURIComponent(finishFailure.orderId)}`}
+                      data-ui="order-finish-other"
+                      className={buttonClass({ variant: 'link' })}
+                    >
+                      {t.order.outcome.openThatOrder}
+                    </Link>
+                  </>
+                ))}
             </span>
           </p>
         )}

@@ -167,7 +167,7 @@ function Deposit({ said, onChangeMix }: { said: Purpose; onChangeMix: () => void
     provenance: 'sandbox',
     onChangeMix,
     onClose: () => {},
-    host: { onOpen: () => {}, onRunning: () => {} },
+    host: { onOpen: () => {}, onRunning: () => {}, onLeave: () => {} },
   });
 }
 const goalMix = (lang: 'en' | 'pt' = 'en', said: Purpose = SAID, onChangeMix = () => {}) =>
@@ -936,7 +936,7 @@ describe('the deposit step, kept honest while things move', () => {
           provenance: 'sandbox',
           onChangeMix: () => {},
           onClose: () => {},
-          host: { onOpen: () => {}, onRunning: () => {} },
+          host: { onOpen: () => {}, onRunning: () => {}, onLeave: () => {} },
           waiting: true,
         }),
       ),

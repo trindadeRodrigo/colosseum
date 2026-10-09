@@ -304,11 +304,22 @@ export const en = {
       deposit: {
         signing: 'The conversation waits while your deposit’s steps are signed.',
         open: 'The conversation waits while this deposit is open. Finish its steps, or go back to the proposal.',
-        leave: 'Leave this deposit? Steps already sent stay sent, and the rest stay unsigned.',
+        leave:
+          'Leave this deposit? What its confirmed steps moved stays in your vault as cash, and the rest stay unsigned. You can come back to it.',
         leaveSigning:
-          'A step is being signed. Leave this deposit? The step under way is still sent, and the rest stay unsigned.',
+          'A step is being signed. Leave this deposit? The step under way is still sent, what is confirmed stays in your vault as cash, and the rest stay unsigned.',
         stay: 'Stay',
         leaveYes: 'Leave it',
+        unfinished: {
+          landed: (amount: string) =>
+            `Your deposit of ${amount} from this conversation is unfinished: the money is in your vault as cash, and the steps after it are unsigned.`,
+          none: (amount: string) =>
+            `Your deposit of ${amount} from this conversation is unfinished: no step of it is confirmed yet.`,
+          unread: (amount: string) =>
+            `Your deposit of ${amount} from this conversation is unfinished. What its confirmed steps moved is in your vault as cash.`,
+          again: 'A new deposit adds new money; it does not finish this one.',
+          back: 'Go back to it',
+        },
       },
       timeout: 'The reply took too long. Your words are kept; try again in a moment.',
       budget:
@@ -1844,6 +1855,8 @@ export const en = {
       forSupport: 'Details for support',
       /** Finishing a buy that stopped after its deposit, where the server can (finding 24). */
       finish: 'Finish the deposit with the cash in your vault',
+      /** The press of an order that finishes another, in the card: it deposits nothing. */
+      finishSign: 'Sign the steps that were left',
       finishing: 'Making the order…',
       finishNote:
         'A new order for the steps that were left, at the price now. It deposits nothing: you review and sign it as before.',
@@ -2103,7 +2116,9 @@ export const en = {
           'You approved this deposit before this page was opened again. Its steps are where they were.',
         done: 'Your deposit is in your vault.',
         openVault: 'Open your vault',
-        leaveNote: 'This deposit stopped, and its order is kept.',
+        leaveNote:
+          'This deposit stopped. What its confirmed steps moved is in your vault as cash, and its order is kept.',
+        orderPage: 'Open its page',
       },
       editByHand: 'Edit weights by hand',
       editorLead:
@@ -2164,7 +2179,7 @@ export const en = {
       back: 'Back to your vault',
     },
     failure: {
-      invalid: 'This vault can’t go ahead as it is:',
+      invalid: 'This draft can’t go ahead as it is:',
       signedOut: 'Your sign-in ran out. Sign in again and try once more.',
       noWallet: 'Your sign-in has no wallet on this chain. Add one, then try again.',
       notYours: 'This isn’t a vault of yours.',

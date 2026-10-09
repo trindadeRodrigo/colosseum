@@ -147,7 +147,7 @@ test('a new goal’s vault from the conversation: one amount, edited by hand, re
   await expect(page.getByLabel(en.buy.amount.label, { exact: true })).toHaveCount(0);
   const press = await readyToInvest(page, { dollars: '$100' });
   await press.click();
-  await expect(page.locator('[data-ui="order-status"]')).toContainText(
+  await expect(page.locator('[data-ui="order-status"]')).toHaveText(
     en.order.outcome.done('Solana'),
     { timeout: 90_000 },
   );

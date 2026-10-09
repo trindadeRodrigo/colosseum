@@ -289,10 +289,7 @@ export function DepositStep({
             setConfirmed(null);
             setReview(null);
           }}
-          onLeave={() => {
-            host.onOpen(null);
-            onClose();
-          }}
+          onLeave={onClose}
         />
       </div>
     );
