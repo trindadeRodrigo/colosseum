@@ -10,7 +10,7 @@ import { z } from 'zod';
 import type { ModelQuota } from '../model-quota';
 import { goalFit } from './mix';
 import { ORDER_POLICY } from './prepare';
-import { catalogCap, holdingConstraints } from './relaxed-limits';
+import { catalogCap, holdingConstraints, projectionSheet } from './relaxed-limits';
 import { project, type Reading, readingsOf, series } from './relaxed-projection';
 import {
   FIGURE_CUT,
@@ -793,40 +793,52 @@ export function createRelaxedGoalAgent(options: {
         };
       });
       const stated = r.stated;
-      // The arithmetic, by code from the sourced readings, under the model's words.
-      const projection = project({
+      // The arithmetic, by code from the sourced readings, under the model's words. It starts only
+      // from what the server finds in the person's own messages (`projectionSheet`): the amount and
+      // the monthly figure in digits beside a dollar currency and inside the deposit step's limits,
+      // the dates real, ahead and within reach of the term the person gave. A figure the model
+      // reported that is not there makes no projection.
+      const today = new Date();
+      const sheet = projectionSheet(stated, messages, today);
+      const inputs = {
         lines: allocations,
         readings,
-        today: new Date(),
-        currency: stated.currency ?? null,
-        amount: stated.amount ?? null,
-        needBy: stated.need_by ?? null,
-        monthly: stated.monthly ?? null,
-        months: stated.withdraw_months ?? null,
-        withdrawStart: stated.withdraw_start ?? null,
-      });
+        today,
+        currency: 'USD',
+        amount: sheet.amount,
+        needBy: sheet.needBy,
+        monthly: sheet.monthly,
+        months: sheet.months,
+        withdrawStart: sheet.withdrawStart,
+      };
+      const text = project(inputs);
+      // never a figure that is not a number ("$∞", "NaN")
+      const projection = text && !/∞|NaN|Infinity/.test(text.text) ? text : null;
       for (const id of projection?.sourceIds ?? []) if (sourceById.has(id)) used.add(id);
       // The same arithmetic month by month, for the chart beside the plan; none for stocks only.
-      const monthly = series({
-        lines: allocations,
-        readings,
-        today: new Date(),
-        currency: stated.currency ?? null,
-        amount: stated.amount ?? null,
-        needBy: stated.need_by ?? null,
-        monthly: stated.monthly ?? null,
-        months: stated.withdraw_months ?? null,
-        withdrawStart: stated.withdraw_start ?? null,
-      });
+      const chart = projection ? series(inputs) : null;
+      const monthly =
+        chart &&
+        Number.isFinite(chart.rate) &&
+        chart.months.every((m) =>
+          [m.balance, m.earned, m.withdrawn].every((n) => Number.isFinite(n)),
+        )
+          ? chart
+          : null;
       for (const id of monthly?.sourceIds ?? []) if (sourceById.has(id)) used.add(id);
+      if (sheet.otherCurrency)
+        notes.push(
+          'No projection here: the yields it would use are dollar yields, so it is made only from an amount in dollars.',
+        );
       const message = projection
         ? `${clip(r.say, 2400 - projection.text.length - 2)}\n\n${projection.text}`
         : clip(r.say, 2400);
       const objective = [
         r.shape === 'split' ? 'Split' : r.shape[0]?.toUpperCase() + r.shape.slice(1),
-        stated.amount != null ? `${stated.amount} ${stated.currency ?? 'USD'}` : null,
+        // only the figures the server found in the person's words, never the model's reading alone
+        sheet.amount != null ? `${sheet.amount} USD` : null,
         stated.when ?? null,
-        stated.monthly != null ? `${stated.monthly} a month` : null,
+        sheet.monthly != null ? `${sheet.monthly} a month` : null,
       ]
         .filter(Boolean)
         .join(' · ');

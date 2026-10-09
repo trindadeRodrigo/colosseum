@@ -1,4 +1,4 @@
-import type { BasketAsset, VaultAgentRequest } from '@colosseum/schemas';
+import { type BasketAsset, ORDER_LIMITS, type VaultAgentRequest } from '@colosseum/schemas';
 
 // The relaxed intake's guards on a line (RELAXED-INTAKE): the cap it shows beside each holding and the
 // limits a person wrote in their own words ("at most 20% in Tesla"). Kept as the relaxed intake was
@@ -134,4 +134,138 @@ export function holdingConstraints(
     }
   }
   return [...constraints.values()];
+}
+
+// The projection's inputs (RELAXED-INTAKE: "no figure comes from the model"). The model reports the
+// amount, the dates and the monthly withdrawal it read; the projection is the server's arithmetic, so
+// what it starts from has to be the person's too. Each is used only where the server finds it in the
+// person's own messages and inside what the deposit step accepts; anything else is left out and no
+// projection is made from it.
+
+/** The least a plan's amount may be (`BasketSheet`, the deposit step's own floor). */
+export const PROJECTION_MIN_USD = 10;
+/** No projection further out than this: a date past it is a misreading, not a plan. */
+export const PROJECTION_MAX_YEARS = 60;
+
+const DOLLARS = /^(?:us\$|\$|usd|usdc|dollars?|bucks)$/i;
+const NUMBER = String.raw`\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?`;
+const SCALE = 'k|m|mil|thousand|million';
+const CURRENCY = String.raw`us\$|r\$|\$|€|£|usd|usdc|brl|eur|gbp|dollars?|bucks|reais|real|euros?|pounds?`;
+const MONEY = new RegExp(
+  String.raw`(?<![\p{L}\p{N}])(?:(?<before>us\$|r\$|\$|€|£|usd|brl|eur|gbp)\s?(?<a>${NUMBER})\s?(?<as>${SCALE})?(?![\p{L}\p{N}%])|(?<b>${NUMBER})\s?(?<bs>${SCALE})?\s?(?<after>${CURRENCY})(?![\p{L}\p{N}]))`,
+  'giu',
+);
+/** "5,000" and "5.000" are five thousand; "5.50" and "5,5" five and a half. */
+function numberOf(text: string): number {
+  const decimal = /[.,]\d{1,2}$/.exec(text)?.[0] ?? '';
+  const whole = text.slice(0, text.length - decimal.length).replace(/[.,]/g, '');
+  return Number(`${whole}${decimal ? `.${decimal.slice(1)}` : ''}`);
+}
+const scaleOf = (word: string | undefined) =>
+  !word ? 1 : /^(?:m|million)$/i.test(word) ? 1_000_000 : 1_000;
+
+/** Every amount the person wrote in digits beside its currency, and whether that currency is dollars. */
+export function personMoney(
+  messages: VaultAgentRequest['messages'],
+): { amount: number; dollars: boolean }[] {
+  const found: { amount: number; dollars: boolean }[] = [];
+  for (const message of messages) {
+    if (message.who !== 'person') continue;
+    for (const match of message.text.matchAll(MONEY)) {
+      const g = match.groups ?? {};
+      const amount = numberOf(g.a ?? g.b ?? '') * scaleOf(g.as ?? g.bs);
+      if (Number.isFinite(amount) && amount > 0)
+        found.push({ amount, dollars: DOLLARS.test(g.before ?? g.after ?? '') });
+    }
+  }
+  return found;
+}
+
+const isoDay = (iso: string | null | undefined) => {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  const at = new Date(`${iso}T00:00:00.000Z`);
+  return Number.isNaN(at.getTime()) ? null : at;
+};
+
+/** The model's sheet, as it reported it. */
+export type ReportedSheet = {
+  amount?: number | null;
+  currency?: string | null;
+  need_by?: string | null;
+  monthly?: number | null;
+  withdraw_months?: number | null;
+  withdraw_start?: string | null;
+};
+
+/**
+ * What of the reported sheet the projection may start from. An amount or a monthly figure stands only
+ * when the person wrote that number in digits beside a currency, in dollars (the readings are dollar
+ * yields: no other currency is projected from them), between the deposit step's limits. A date stands
+ * when it is a real day after today, within `PROJECTION_MAX_YEARS`, and the person's words hold its
+ * year or a term in years or months that reaches it. `otherCurrency` says a figure was left out for
+ * being in another currency, so the reply can say why there is no projection.
+ */
+export function projectionSheet(
+  reported: ReportedSheet,
+  messages: VaultAgentRequest['messages'],
+  today: Date,
+): {
+  amount: number | null;
+  monthly: number | null;
+  months: number | null;
+  needBy: string | null;
+  withdrawStart: string | null;
+  otherCurrency: boolean;
+} {
+  const money = personMoney(messages);
+  const reportedDollars = !reported.currency || DOLLARS.test(reported.currency.trim());
+  let otherCurrency = false;
+  const figure = (value: number | null | undefined, min: number) => {
+    if (value == null || !Number.isFinite(value)) return null;
+    const said = money.filter((m) => Math.abs(m.amount - value) < 0.005);
+    if (!said.length) return null;
+    if (!reportedDollars || !said.some((m) => m.dollars)) {
+      otherCurrency = true;
+      return null;
+    }
+    return value >= min && value <= ORDER_LIMITS.maxAmountUsd ? value : null;
+  };
+  const words = messages
+    .filter((m) => m.who === 'person')
+    .map((m) => m.text)
+    .join('\n');
+  const horizon = new Date(today);
+  horizon.setUTCFullYear(horizon.getUTCFullYear() + PROJECTION_MAX_YEARS);
+  const terms = [
+    ...words.matchAll(/(\d{1,3})\s*-?\s*(years?|yrs?|anos?|months?|meses|m[eê]s)/giu),
+  ].map((match) => {
+    const at = new Date(today);
+    const n = Number(match[1]);
+    if (/^(?:y|a)/i.test(match[2] ?? '')) at.setUTCFullYear(at.getUTCFullYear() + n);
+    else at.setUTCMonth(at.getUTCMonth() + n);
+    return at.getTime();
+  });
+  const date = (iso: string | null | undefined) => {
+    const at = isoDay(iso);
+    if (!at || at <= today || at > horizon) return null;
+    const inWords =
+      new RegExp(String.raw`(?<!\d)${at.getUTCFullYear()}(?!\d)`).test(words) ||
+      terms.some((term) => Math.abs(term - at.getTime()) <= 45 * 86_400_000);
+    return inWords ? (iso as string) : null;
+  };
+  const months = reported.withdraw_months;
+  return {
+    amount: figure(reported.amount, PROJECTION_MIN_USD),
+    monthly: figure(reported.monthly, 0.01),
+    months:
+      months != null &&
+      Number.isInteger(months) &&
+      months >= 1 &&
+      months <= PROJECTION_MAX_YEARS * 12
+        ? months
+        : null,
+    needBy: date(reported.need_by),
+    withdrawStart: date(reported.withdraw_start),
+    otherCurrency,
+  };
 }

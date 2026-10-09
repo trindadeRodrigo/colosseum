@@ -384,6 +384,81 @@ describe('relaxed intake: the split', () => {
   });
 });
 
+describe('relaxed intake: the projection starts from the person’s own figures', () => {
+  const yieldLines = [line('solana:usdy')];
+  const sheet = (stated: Record<string, unknown>, words: string | string[]) =>
+    run(
+      { shape: 'grow', lines: yieldLines, stated: { ...STATED, amount: null, ...stated } },
+      words,
+    );
+  const none = (reply: VaultAgentReply) => {
+    expect(reply.message).toBe('Here is a draft.');
+    expect(reply.proposal?.projection).toBeUndefined();
+    expect(JSON.stringify(reply)).not.toMatch(/\$|∞|NaN|Infinity/);
+  };
+  it('makes none from an amount and a date the person never gave', async () => {
+    const reply = await sheet(
+      { amount: 50_000, need_by: '2036-10-09' },
+      'something safe that grows',
+    );
+    none(reply);
+    expect(reply.proposal?.objective).toBe('Grow');
+  });
+  it('projects from the amount and the year the person wrote', async () => {
+    const year = new Date().getUTCFullYear() + 3;
+    const reply = await sheet(
+      { amount: 5000, need_by: `${year}-03-01` },
+      `I have $5,000 to grow until March ${year}`,
+    );
+    expect(reply.message).toContain('$5,000 placed today would earn about');
+    expect(reply.message).toContain(`By 1 Mar ${year}`);
+    expect(reply.proposal?.projection?.months.length).toBeGreaterThan(0);
+    expect(reply.proposal?.objective).toBe('Grow · 5000 USD');
+  });
+  it('reads a term in years, and "5k dollars"', async () => {
+    const at = new Date();
+    at.setUTCFullYear(at.getUTCFullYear() + 5);
+    const reply = await sheet(
+      { amount: 5000, need_by: at.toISOString().slice(0, 10) },
+      'I can put in 5k dollars for 5 years',
+    );
+    expect(reply.message).toContain('$5,000 placed today would earn about');
+    expect(reply.message).not.toContain('With no date given');
+  });
+  it('makes none when the model’s amount is not the one the person wrote', async () => {
+    none(await sheet({ amount: 50_000 }, 'I have $5,000 to grow'));
+  });
+  it('makes none from another currency, and says the yields are dollar yields', async () => {
+    for (const [stated, words] of [
+      [{ amount: 5000, currency: 'BRL' }, 'Tenho R$ 5.000 para crescer'],
+      [{ amount: 5000, currency: 'USD' }, 'Tenho R$ 5.000 para crescer'],
+      [{ amount: 5000, currency: 'BRL' }, 'I have $5,000 to grow'],
+    ] as const) {
+      const reply = await sheet(stated, words);
+      none(reply);
+      expect(notes(reply)).toContain('dollar yields');
+    }
+  });
+  it('holds the amount to what the deposit step accepts', async () => {
+    none(await sheet({ amount: 5_000_000 }, 'I have $5,000,000 to grow'));
+    none(await sheet({ amount: 5 }, 'I have $5 to grow'));
+  });
+  it('drops a date that is past, unreal, out of reach or not the person’s', async () => {
+    for (const need_by of ['1999-01-01', '2026-02-31x', '9999-01-01', '2400-06-01', '2031-01-01'])
+      expect(
+        (await sheet({ amount: 5000, need_by }, 'I have $5,000 to grow')).message,
+        need_by,
+      ).toContain('With no date given, over five years');
+  });
+  it('never prints a figure that is not a number', async () => {
+    const reply = await sheet(
+      { amount: 5000, monthly: 1e308, withdraw_months: 1e9 },
+      'I have $5,000 and want $100 a month',
+    );
+    expect(JSON.stringify(reply)).not.toMatch(/∞|NaN|Infinity|e\+/);
+  });
+});
+
 describe('relaxed intake: the model never sets a weight on its own', () => {
   const APPLIED = 'The shares you gave are applied exactly.';
   it('splits equally when the person gave no share, whatever the model reports', async () => {
