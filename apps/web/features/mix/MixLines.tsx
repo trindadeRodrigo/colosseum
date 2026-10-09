@@ -1,14 +1,14 @@
 'use client';
-import { useMemo, useState } from 'react';
 import { cn } from '../../components/ui/cn';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { AssetMark } from '../order/PlanView';
 import { dollars } from '../portfolio/figures';
-import { fillOf, MixJoint, useJointMotion } from '../shared/MixJoint';
+import { HoldingLegs, legFill, legsOf } from '../shared/HoldingLegs';
 
-// A mix, read only: the joint the conversation's preview draws (MixJoint.tsx, gate MIX-JOINT), tied to
-// a row for each asset with its share the same way, and, where the server has checked an amount, what goes into each in dollars. A figure
+// The draft, read only: the plan bar the conversation's preview draws (HoldingLegs.tsx, plan-leg.md),
+// and under it a row for each asset with its exact share and, where the server has checked an amount,
+// what goes into each in dollars. A figure
 // that is not the server's is never drawn here: an amount not checked yet is a dash.
 
 export type MixRow = {
@@ -33,40 +33,15 @@ export function MixLines({
   const lang = useLang();
   const d = t.mix.deposit;
   const copy = t.shared.vault.conversation;
-  const [pointed, setLit] = useState<string | null>(null);
-  const lit = rows.some((row) => row.assetId === pointed) ? pointed : null;
-  // The drawing moves when the mix does, never when the dollars beside it fill in.
-  const mix = rows.map((row) => `${row.assetId}=${row.weightBps}`).join(' ');
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `mix` is the rows' assets and weights
-  const shares = useMemo(
-    () => rows.map((row) => ({ key: row.assetId, bps: row.weightBps })),
-    [mix],
-  );
-  const { motion, run } = useJointMotion(shares);
+  const held = rows.map((row) => ({ key: row.assetId, name: row.name, bps: row.weightBps }));
+  const { legOf } = legsOf(held);
   const share = (bps: number) =>
     new Intl.NumberFormat(LOCALE[lang], { style: 'percent', maximumFractionDigits: 2 }).format(
       bps / 10_000,
     );
   return (
     <div data-ui="mix-lines" className="flex min-w-0 flex-col gap-3">
-      <MixJoint
-        pieces={rows.map((row) => ({
-          key: row.assetId,
-          bps: row.weightBps,
-          name: row.name,
-          share: share(row.weightBps),
-        }))}
-        words={{
-          label: copy.jointLabel,
-          hint: copy.jointHint,
-          widenedLabel: copy.jointLabelWidened,
-          widenedHint: copy.jointHintWidened,
-        }}
-        lit={lit}
-        onLit={setLit}
-        motion={motion}
-        run={run}
-      />
+      <HoldingLegs shares={held} share={share} others={copy.others} />
       <table className="w-full table-fixed border-collapse text-body-sm">
         <caption className="sr-only">{caption}</caption>
         <thead className="text-caption text-muted-foreground">
@@ -85,30 +60,19 @@ export function MixLines({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, index) => (
+          {rows.map((row) => (
             <tr
               key={row.assetId}
               data-asset={row.assetId}
               data-row={row.assetId}
-              data-lit={lit === row.assetId}
-              // the row answers as its piece does: a mouse over it, or a finger's tap
-              onPointerEnter={(e) => e.pointerType === 'mouse' && setLit(row.assetId)}
-              onPointerLeave={(e) => e.pointerType === 'mouse' && setLit(null)}
-              onPointerUp={(e) => {
-                if (e.pointerType !== 'mouse')
-                  setLit((now) => (now === row.assetId ? null : row.assetId));
-              }}
-              className={cn(
-                'border-b border-border motion-safe:transition-colors motion-safe:duration-(--tf-dur-fade)',
-                lit === row.assetId && 'bg-muted',
-              )}
+              className="border-b border-border"
             >
               <th scope="row" className="py-3 pr-2 pl-1 text-start font-normal">
                 <span className="flex min-w-0 items-center gap-2">
                   <span
                     aria-hidden="true"
                     data-part="swatch"
-                    className={cn('size-2.5 shrink-0', fillOf(index))}
+                    className={cn('size-2.5 shrink-0', legFill(legOf.get(row.assetId)))}
                   />
                   <AssetMark asset={row.assetId} />
                   <span className="min-w-0 [overflow-wrap:anywhere]">{row.name}</span>

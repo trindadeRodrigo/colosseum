@@ -11,9 +11,9 @@ import {
 import { cn } from './cn';
 import { sendsOnKey } from './composer-keys';
 import { Icon } from './Icon';
-import { LatticeGlyph } from './Lattice';
 import { COMPOSER_LABELS, type ComposerLabels } from './labels';
 import { StatusMark } from './StatusMark';
+import { WaitMark } from './WaitMark';
 
 // composer.md. The typing box: the one place where a person talks to us in their own words, and the
 // roundest box in the system (20px, with a round honey send button and the ink arrow on it). It sends
@@ -44,8 +44,14 @@ export type ComposerProps = {
    * simulator has it). The box is described by it as by its own.
    */
   describedBy?: string;
-  /** The text is being read: the box is read-only and the send button shows the still lattice. */
+  /** The text is being read: the box is read-only and the send button shows the loader. */
   busy?: boolean;
+  /**
+   * A conversation's box: while a reply is awaited the person can go on typing the next message, and
+   * only sending waits. `busyHint` says so in the hint's place, which is kept, so nothing moves.
+   */
+  typeWhileBusy?: boolean;
+  busyHint?: string;
   /** The request failed. A sentence that says what to do. The typed text is kept. */
   error?: string;
   /** Marks the box as in error when the sentence is shown elsewhere (the subscribe block's status line). */
@@ -84,6 +90,8 @@ export function Composer({
   hint,
   describedBy: elsewhere,
   busy = false,
+  typeWhileBusy = false,
+  busyHint,
   error,
   disabled = false,
   variant = 'multiline',
@@ -195,7 +203,7 @@ export function Composer({
             onKeyDown={keyDown}
             placeholder={placeholder}
             maxLength={maxLength}
-            readOnly={busy}
+            readOnly={busy && !typeWhileBusy}
             disabled={disabled}
             aria-describedby={describedBy || undefined}
             aria-invalid={error ? true : undefined}
@@ -229,7 +237,7 @@ export function Composer({
               {busySendText}
             </span>
           ) : busy ? (
-            <LatticeGlyph size={20} tone="current" />
+            <WaitMark size={22} tone="current" />
           ) : wordy ? (
             <>
               <span
@@ -245,9 +253,23 @@ export function Composer({
           )}
         </button>
       </div>
-      {hint && (
+      {hint && busyHint === undefined && (
         <p id={hintId} className="text-caption text-muted-foreground">
           {hint}
+        </p>
+      )}
+      {hint && busyHint !== undefined && (
+        // one place for two lines, as tall as the taller: nothing under the box moves when it waits
+        <p id={hintId} data-ui="composer-hint" className="grid text-caption text-muted-foreground">
+          {[hint, busyHint].map((line, i) => (
+            <span
+              key={line}
+              aria-hidden={(i === 1) === busy ? undefined : true}
+              className={cn('col-start-1 row-start-1', (i === 1) !== busy && 'invisible')}
+            >
+              {line}
+            </span>
+          ))}
         </p>
       )}
       {text.busy !== '' && (

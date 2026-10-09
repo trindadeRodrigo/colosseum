@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Composer } from '../../components/ui/Composer';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
+import { StatusMark } from '../../components/ui/StatusMark';
 import { dictionary } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { VaultMixFlow } from '../mix/VaultMixFlow';
@@ -13,6 +14,7 @@ import { displayName } from '../order/plain';
 import { dollars, share } from '../portfolio/figures';
 import { holdingsOf, unpriced, vaultValueSource } from '../portfolio/portfolio';
 import { HoldingsBar } from '../shared/HoldingsBar';
+import { DraftBuilding, PendingReply, ReplyAnnouncer, useChatScroll } from '../shared/ReplyPending';
 import { useApiFetch } from '../wallet/WalletProvider';
 import {
   agentReplyOf,
@@ -71,15 +73,19 @@ export function VaultConversation({
   // The reader's clock, read when the messages change: a kept figure says how old it is by it.
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
-    if (turns.length > 0 && transcript.current)
-      transcript.current.scrollTop = transcript.current.scrollHeight;
-    setNow(Date.now());
+    if (turns.length > 0) setNow(Date.now());
   }, [turns]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  // The transcript opens at its end, a sent message is kept in view, and a reply lands in place.
+  useChatScroll(transcript, composer, busy, `${context}:${loading}`);
   const [storage, setStorage] = useState<'local' | 'server' | 'conflict'>('local');
   const [error, setError] = useState<string>();
+  // The reply did not come: said in the transcript, where the reply would have been.
+  const [failure, setFailure] = useState<string>();
+  // What a screen reader hears, once each: that a reply is being fetched, then the reply.
+  const [announced, setAnnounced] = useState('');
   const [reply, setReply] = useState<VaultAgentReply | null>(null);
   // The preview the person chose to apply: its editor stays only while that preview is the one shown.
   const [applying, setApplying] = useState<VaultAgentReply | null>(null);
@@ -113,6 +119,8 @@ export function VaultConversation({
     setBusy(false);
     sending.current = false;
     setError(interrupted ? said.current.reread : undefined);
+    setFailure(undefined);
+    setAnnounced('');
     setStorage('local');
     setLoading(true);
     revision.current = 0;
@@ -200,11 +208,14 @@ export function VaultConversation({
     setText('');
     setReply(null);
     setError(undefined);
+    setFailure(undefined);
+    setAnnounced(copy.reading);
     setBusy(true);
     const saved = await save(next, run);
     if (generation.current !== run) return;
     if (!saved) {
       sending.current = false;
+      setAnnounced('');
       setBusy(false);
       return;
     }
@@ -220,7 +231,8 @@ export function VaultConversation({
       );
       if (generation.current !== run) return;
       if (!result) {
-        setError(copy.failed);
+        setAnnounced('');
+        setFailure(copy.failed);
         return;
       }
       // compared as they will be kept: a character our server refuses must not hide a repeat
@@ -279,20 +291,26 @@ export function VaultConversation({
       }
       completed = withinFigureBudget(completed);
       if (!transcriptOf({ revision: revision.current, transcript: completed })) {
+        setAnnounced('');
         setError(copy.capacity);
         return;
       }
       heldTurns.current = completed;
       setTurns(completed);
       setReply(result);
+      setAnnounced(
+        [`${copy.agent}: ${message}`, ...(result.proposal ? [copy.draftArrived] : [])].join(' '),
+      );
       await save(completed, run);
     } catch (cause) {
-      if (generation.current === run)
-        setError(
+      if (generation.current === run) {
+        setAnnounced('');
+        setFailure(
           cause instanceof VaultAgentError && cause.kind === 'unavailable'
             ? copy.unavailable
             : copy.failed,
         );
+      }
     } finally {
       if (generation.current === run) {
         sending.current = false;
@@ -350,6 +368,7 @@ export function VaultConversation({
                   : copy.local}
           </p>
         </div>
+        <ReplyAnnouncer text={announced} />
         {turns.length === 0 ? (
           <div className="flex flex-col items-start gap-4 py-4">
             <p className="max-w-(--tf-measure-body) text-body text-muted-foreground">
@@ -406,6 +425,17 @@ export function VaultConversation({
                 )}
               </li>
             ))}
+            {/* The reply's place, under the words it answers: the wait, then the reply itself, or
+                why it did not come. */}
+            {busy && <PendingReply speaker={copy.agent} lines={copy.pendingLines} />}
+            {!busy && failure && (
+              <li data-ui="vault-unanswered" className="min-w-0">
+                <p role="alert" className="flex items-start gap-1.5 text-body-sm text-destructive">
+                  <StatusMark status="off-track" size={12} className="mt-1.5" />
+                  <span>{failure}</span>
+                </p>
+              </li>
+            )}
           </ol>
         )}
         <div ref={composer} className="min-w-0 border-t border-border pt-4">
@@ -418,10 +448,14 @@ export function VaultConversation({
             maxLength={2000}
             placeholder={copy.placeholder}
             busy={busy}
+            // the next thought can be typed while a reply is on its way; only sending waits
+            typeWhileBusy
+            hint={copy.hint}
+            busyHint={copy.busyHint}
             disabled={loading || storage === 'conflict'}
             error={error}
             lang={language}
-            labels={{ submit: copy.submitMessage, busy: copy.reading }}
+            labels={{ submit: copy.submitMessage, busy: '' }}
           />
         </div>
       </div>
@@ -432,6 +466,17 @@ export function VaultConversation({
       >
         {/* The proposal leads when there is one: it is what the person is working on. */}
         {reply?.notes && !proposal && <WeightNotes notes={reply.notes} />}
+        {/* A reply is on its way and no draft is shown (a sent message clears the last one, on
+            purpose): the place a draft would take says so. It promises none. */}
+        {busy && !proposal && (
+          <div data-ui="vault-building">
+            <Card as="section" aria-label={copy.building}>
+              <CardBody>
+                <DraftBuilding title={copy.building} line={copy.buildingLine} />
+              </CardBody>
+            </Card>
+          </div>
+        )}
         {proposal && (
           <section data-ui="vault-proposal">
             <StrategyPreview
