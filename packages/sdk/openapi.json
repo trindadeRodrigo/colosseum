@@ -11193,7 +11193,7 @@
       "get": {
         "summary": "What the signed-in wallet is missing on its chain: the dollar token and native gas",
         "tags": ["funding"],
-        "description": "On the chain of the plan that `proposalId` names, which a buy of it is on; otherwise on the person’s current chain (`GET /v1/me`). With `amountUsd` and `proposalId` (a plan) or `family` (a shared portfolio’s slug), the need is that of a buy of that amount: the whole deposit in the chain’s dollar token, and the network fee of every step the order would have. With neither, the need is nothing and the answer is what the wallet holds. `missingRaw` is what to add. It reads one wallet, named in the answer: `wallet` when the query names one of the person’s on that chain, and otherwise the wallet their plans are held by (the outside wallet when that names the chain, the wallet made in the app when the chain was picked). An order may name any of the person’s wallets of that family as its owner: ask about the one the order will name. Every figure carries its source, its time and its method, and `provenance`: `mock` on the mock chain, `sandbox` on a test network.",
+        "description": "On the chain of the plan that `proposalId` names, which a buy of it is on; on the chain `chain` names with `family`, the recipe a buy of a shared portfolio follows; otherwise on the person’s current chain (`GET /v1/me`). With `amountUsd` and `proposalId` (a plan) or `family` (a shared portfolio’s slug), the need is that of a buy of that amount: the whole deposit in the chain’s dollar token, and the network fee of every step the order would have. With neither, the need is nothing and the answer is what the wallet holds. `missingRaw` is what to add. It reads one wallet, named in the answer: `wallet` when the query names one of the person’s on that chain, and otherwise the wallet their plans are held by (the outside wallet when that names the chain, the wallet made in the app when the chain was picked). An order may name any of the person’s wallets of that family as its owner: ask about the one the order will name. Every figure carries its source, its time and its method, and `provenance`: `mock` on the mock chain, `sandbox` on a test network.",
         "parameters": [
           {
             "schema": {
@@ -11239,6 +11239,15 @@
             },
             "in": "query",
             "name": "family",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["solana", "base", "robinhood"]
+            },
+            "in": "query",
+            "name": "chain",
             "required": false
           },
           {
@@ -14023,7 +14032,7 @@
       "post": {
         "summary": "Plan an order from an intent. Nothing is built or signed",
         "tags": ["orders"],
-        "description": "Today: a buy of a stored plan (`proposalId`). An order is on one chain, the chain the signed-in person's plans live on (`GET /v1/me`), and the plan has to be one made for that chain. The whole amount is deposited in the chain's dollar token: `depositRaw` on the order. Each step it concerns repeats it as `cashRaw`, the approval and the step that deposits alike, so the steps' figures are not added up. The trades buy the plan's assets with the invested share, in its proportions, and what the plan keeps in cash stays in the vault as cash. The answer lists one leg per step, in the order they are signed. `owner` must be wallets of the signed-in person. A chain that is switched off answers `CHAIN_UNAVAILABLE`. Every leg carries `provenance`: `mock` on the mock chain.",
+        "description": "Today: a buy of a stored plan (`proposalId`). An order is on one chain: the plan's own, a vault's own, or for a shared portfolio (`family`) the chain `chain` names, which has to be one the portfolio has a recipe on and one a wallet of the person signs on (409 `NO_WALLET_FOR_CHAIN` otherwise), else the person's current chain (`GET /v1/me`). The whole amount is deposited in the chain's dollar token: `depositRaw` on the order. Each step it concerns repeats it as `cashRaw`, the approval and the step that deposits alike, so the steps' figures are not added up. The trades buy the plan's assets with the invested share, in its proportions, and what the plan keeps in cash stays in the vault as cash. The answer lists one leg per step, in the order they are signed. `owner` must be wallets of the signed-in person. A chain that is switched off answers `CHAIN_UNAVAILABLE`. Every leg carries `provenance`: `mock` on the mock chain.",
         "requestBody": {
           "required": true,
           "content": {
@@ -14065,6 +14074,10 @@
                       },
                       "family": {
                         "type": "string"
+                      },
+                      "chain": {
+                        "type": "string",
+                        "enum": ["solana", "base", "robinhood"]
                       },
                       "version": {
                         "type": "integer",
@@ -21631,7 +21644,7 @@
       "get": {
         "summary": "Every shared portfolio, or those with a recipe on one chain",
         "tags": ["shared portfolios"],
-        "description": "From the server's store, not the chains: each recipe's versions are the last the server read (`source: 'cache'`). A signed-in person is offered only the portfolios with a recipe on their own chain: pass `chain`. A recipe on a chain this server has switched off is left out. `autoFollow` says whether the auto-follow switch is offered: not on a portfolio that holds an asset with no price oracle on that chain, whose followers get the one-tap prompt instead. `name` and `copy` are the creator's words: `textMatches` says which version's hash they match, if any. `figures` is what the server has measured about the version in effect, the readings a plan is made from: each holding's stored yield and the most of it that can be sold within the exit window (each null where the server has none, never zero). Nothing is added up across the holdings.",
+        "description": "From the server's store, not the chains: each recipe's versions are the last the server read (`source: 'cache'`). With no `chain`, every portfolio, each with the chains it has a recipe on (`chains`): the app lists them together, each labelled with its chains (gate CHAIN-AT-THE-PLAN). `chain` limits the answer to the portfolios with a recipe on that chain. A recipe on a chain this server has switched off is left out. `autoFollow` says whether the auto-follow switch is offered: not on a portfolio that holds an asset with no price oracle on that chain, whose followers get the one-tap prompt instead. `name` and `copy` are the creator's words: `textMatches` says which version's hash they match, if any. `figures` is what the server has measured about the version in effect, the readings a plan is made from: each holding's stored yield and the most of it that can be sold within the exit window (each null where the server has none, never zero). Nothing is added up across the holdings.",
         "parameters": [
           {
             "schema": {
@@ -22248,7 +22261,7 @@
       "post": {
         "summary": "Test network only: send the signed-in wallet the test tokens and gas a buy is missing",
         "tags": ["funding"],
-        "description": "For the one chain the person’s plans live on, when it runs on a test network and this server holds a faucet key for it (GET /v1/funding says `testFunds: true`). The server works out what is missing for this buy itself, as GET /v1/funding does, and sends that with a small margin: test dollars and the native token for fees, transferred from the faucet’s float. Never on mainnet. A person may ask three times a day, the faucet as a whole a hundred; one send is at most $5,000 in test dollars. The faucet is a wallet holding a float of test tokens that it transfers from, with no mint authority or role; a send the float cannot cover answers 409 with `test funds are low; ask the team` (or `test gas is low; ask the team`). The answer names what was sent and the test network’s transaction ids, and nothing about the node or the key.",
+        "description": "For the one chain the buy is on (the plan’s own, the vault’s own, or for a shared portfolio the chain `chain` names with `family`, else the person’s current chain), when it runs on a test network and this server holds a faucet key for it (GET /v1/funding says `testFunds: true`). The server works out what is missing for this buy itself, as GET /v1/funding does, and sends that with a small margin: test dollars and the native token for fees, transferred from the faucet’s float. Never on mainnet. A person may ask three times a day, the faucet as a whole a hundred; one send is at most $5,000 in test dollars. The faucet is a wallet holding a float of test tokens that it transfers from, with no mint authority or role; a send the float cannot cover answers 409 with `test funds are low; ask the team` (or `test gas is low; ask the team`). The answer names what was sent and the test network’s transaction ids, and nothing about the node or the key.",
         "requestBody": {
           "required": true,
           "content": {
@@ -22281,6 +22294,10 @@
                   "family": {
                     "type": "string",
                     "pattern": "^[a-z0-9][a-z0-9-]*$"
+                  },
+                  "chain": {
+                    "type": "string",
+                    "enum": ["solana", "base", "robinhood"]
                   },
                   "vault": {
                     "anyOf": [

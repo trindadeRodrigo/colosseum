@@ -169,7 +169,7 @@ export function BearingShell({ children }: { children: ReactNode }) {
   );
 }
 
-/** Which chain every figure on the page is read for: named in the address, following the app's bar. */
+/** Which chain every figure on the page is read for: named in the address; the pages' own filter. */
 export function ChainToggle() {
   const { chain, setChain } = useBearing();
   const t = useWords();
