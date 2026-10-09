@@ -1,4 +1,10 @@
-import { type ChainId, chainFamily, type Network, normalizeAddress } from '@colosseum/schemas';
+import {
+  type ChainId,
+  chainFamily,
+  FIGURE_REFERENCE,
+  type Network,
+  normalizeAddress,
+} from '@colosseum/schemas';
 import type { ApiFetch } from '../account/person';
 import { networkFor } from '../order/readiness';
 import { type Figured, factsOf, figuredOf } from './agent';
@@ -50,18 +56,26 @@ const FIGURES_CHARS = 200_000;
 const keptFigures = (rows: readonly Turn[]) => rows.flatMap((row) => row.figures ?? []);
 
 /**
- * The turns within what our server keeps of figures: past it the oldest replies give theirs up and
- * read as their plain text, so one long conversation never refuses every later save.
+ * A text whose figures are not kept: each figure's place holds `said` ("figure no longer kept"),
+ * never the bare value. A value without its pin, its age and its sample mark is not shown.
  */
-export function withinFigureBudget(turns: Turn[]): Turn[] {
+export const withoutFigures = (template: string, said: string): string =>
+  template.replace(FIGURE_REFERENCE, () => said).slice(0, 8000);
+
+/**
+ * The turns within what our server keeps of figures: past it the oldest replies give theirs up, and
+ * then say so in each figure's place, so one long conversation never refuses every later save.
+ */
+export function withinFigureBudget(turns: Turn[], said: string): Turn[] {
   const rows = [...turns];
   for (
     let at = 0;
     at < rows.length && JSON.stringify(keptFigures(rows)).length > FIGURES_CHARS;
     at += 1
   ) {
-    const { figures: _figures, ...plain } = rows[at] as Turn;
-    rows[at] = plain;
+    const row = rows[at] as Turn;
+    if (row.figures)
+      rows[at] = { id: row.id, who: row.who, text: withoutFigures(row.figures.template, said) };
   }
   return rows;
 }
@@ -106,12 +120,13 @@ export function transcriptOf(value: unknown): Transcript | null {
     )
       return null;
     ids.add(row.id);
-    total += text.length;
     if (row.who === 'person') personWords += `${personWords ? '\n\n' : ''}${text.trim()}`;
     // Figures are our server's, on a reply only. Kept ones that cannot be read void the history, as
     // any other malformed row does: a figure is never shown from data that is not one.
     const figures = row.figures === undefined ? undefined : turnFiguresOf(row.figures);
     if (figures === null || (figures && row.who !== 'app')) return null;
+    // counted as it is sent back to the model: with its placeholders where it has them
+    total += Math.max(text.length, figures?.template.length ?? 0);
     rows.push({ id: row.id, who: row.who, text, ...(figures ? { figures } : {}) });
   }
   if (

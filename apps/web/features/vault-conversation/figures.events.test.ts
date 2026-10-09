@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 
 import { VaultConversationTranscript } from '@colosseum/schemas';
-import { createElement } from 'react';
+import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
+import { dictionary } from '../../i18n';
 import { withAccount } from '../account/test/screen';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
@@ -26,6 +27,7 @@ vi.mock('../wallet/signing', () => import('../wallet/test/mock-signing'));
 
 // Figures by reference (gate FIGURES-BY-REFERENCE): what our server measured, drawn as a figure.
 const userId = 'did:privy:test';
+const en = dictionary('en');
 const exit = 'exit:solana:gldx:worst';
 const ref = (id: string) => `{{fact:${id}}}`;
 const measured = (over: Record<string, unknown> = {}) => ({
@@ -200,7 +202,7 @@ describe('a figure the conversation states', () => {
     expect(transcriptText(host)).not.toMatch(/\d|[{}]/u);
   });
 
-  it('shows the plain words when the figures cannot be read, and never a brace', async () => {
+  it('shows no part of a reply whose figures cannot be read: never a bare number, never a brace', async () => {
     const unread = [
       // a placeholder that names no fact
       {
@@ -217,15 +219,22 @@ describe('a figure the conversation states', () => {
         prose: { message: `It costs ${ref(missing.id)}.`, question: null, proposal: null },
         facts: [{ ...missing, value: 3 }],
       },
+      'figures',
     ];
-    for (const figures of unread) {
-      const parsed = agentReplyOf(
-        answer({ message: 'It costs 0.4%.', figures })({ body: '{"messageId":"m"}' }),
-        read,
-      );
-      expect(parsed?.message).toBe('It costs 0.4%.');
-      expect(parsed?.figures).toBeUndefined();
-    }
+    for (const figures of unread)
+      expect(
+        agentReplyOf(
+          answer({ message: 'It costs 0.4%.', figures })({ body: '{"messageId":"m"}' }),
+          read,
+        ),
+      ).toBeNull();
+    serve(answer({ message: 'It costs 0.4%.', figures: unread[0] }), null);
+    const refused = await show();
+    await say(refused, 'What would selling cost?');
+    expect(refused.textContent).not.toContain('0.4%');
+    expect(refused.textContent).toContain(en.shared.vault.conversation.failed);
+    await unmountAll();
+    localStorage.clear();
     // a server that sends no figures at all: plain words, as before
     serve(answer({ message: 'It costs little to sell.' }), null);
     const host = await show();
@@ -356,7 +365,7 @@ describe('a kept conversation', () => {
       expect(transcriptOf(bad)).toBeNull();
   });
 
-  it('lets the oldest replies give up their figures before a long history refuses to save', () => {
+  it('lets the oldest replies give up their figures before a long history refuses to save, and says so in each place', () => {
     const turns: Turn[] = Array.from({ length: 300 }, (_, i) => ({
       id: String(i),
       who: 'app',
@@ -366,12 +375,64 @@ describe('a kept conversation', () => {
         facts: [measured({ method: 'm'.repeat(1000) }) as never],
       },
     }));
-    const within = withinFigureBudget(turns);
-    expect(within[0]?.figures).toBeUndefined();
-    expect(within.at(-1)?.figures).toBeDefined();
-    expect(within.every((turn, at) => turn.text === turns[at]?.text)).toBe(true);
+    const within = withinFigureBudget(turns, '(figure no longer kept)');
+    expect(within[0]).toEqual({ id: '0', who: 'app', text: 'It costs (figure no longer kept).' });
+    expect(within.at(-1)).toEqual(turns.at(-1));
+    // no turn is left with a bare value and no pin
+    for (const turn of within) expect(turn.text).not.toMatch(/[{}]/u);
+    expect(within.filter((turn) => !turn.figures).every((turn) => !/\d/u.test(turn.text))).toBe(
+      true,
+    );
     expect(transcriptOf({ revision: 0, transcript: turns })).toBeNull();
     expect(transcriptOf({ revision: 0, transcript: within })).not.toBeNull();
     expect(VaultConversationTranscript.safeParse(within).success).toBe(true);
+  });
+
+  it('counts a kept reply as it is sent back to the model, with its placeholders', () => {
+    const long = `${'word '.repeat(1200)}${ref(exit)}.`;
+    const row = (id: number): Turn => ({
+      id: String(id),
+      who: 'app',
+      text: 'x',
+      figures: { template: long, facts: [measured() as never] },
+    });
+    // by their one-character texts these fit; by what goes back to the model they do not
+    expect(long.length * 40).toBeGreaterThan(220_000);
+    expect(
+      transcriptOf({ revision: 0, transcript: Array.from({ length: 40 }, (_, i) => row(i)) }),
+    ).toBeNull();
+    expect(
+      transcriptOf({ revision: 0, transcript: Array.from({ length: 30 }, (_, i) => row(i)) }),
+    ).not.toBeNull();
+  });
+
+  it('starts showing an age in a tab left open', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    try {
+      const kept = {
+        transcript: [
+          { id: 'a', who: 'person', text: 'What would selling cost?' },
+          {
+            id: 'b',
+            who: 'app',
+            text: 'Selling it all today would cost about 0.4%.',
+            figures: {
+              template: `Selling it all today would cost about ${ref(exit)}.`,
+              facts: [measured({ fetchedAt: new Date(Date.now() - 50 * 60_000).toISOString() })],
+            },
+          },
+        ],
+      };
+      serve(answer({ message: 'unused' }), kept);
+      const host = await show();
+      await settle();
+      expect(host.querySelector('[data-ui="figure-age"]')).toBeNull();
+      await act(async () => {
+        vi.advanceTimersByTime(20 * 60_000);
+      });
+      expect(find(host, '[data-ui="figure-age"]').textContent).toContain('1 hour old');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -227,9 +227,8 @@ export function replyText(message: string, question?: string | null): string {
 }
 
 /**
- * The figures of a reply, when every placeholder of its prose names one of its facts. Anything else
- * and the reply is shown from its plain fields, which hold the same values as text: a malformed
- * `figures` never voids the reply, and never shows a brace.
+ * The figures of a reply, when every placeholder of its prose names one of its facts; undefined for
+ * anything else, and the caller then shows no part of the reply.
  */
 function replyFiguresOf(value: unknown, withProposal: boolean): ReplyFigures | undefined {
   const row = record(value);
@@ -430,6 +429,9 @@ export function strategyReplyOf(value: unknown, chain: ChainId): VaultAgentReply
     };
   }
   const figures = replyFiguresOf(row.figures, proposal !== undefined);
+  // Figures that were sent and cannot be read: the plain fields hold their values with no pin, so the
+  // reply is not shown at all rather than with a bare number.
+  if (row.figures != null && !figures) return null;
   return {
     message: row.message,
     ...(row.question ? { question: row.question as string } : {}),

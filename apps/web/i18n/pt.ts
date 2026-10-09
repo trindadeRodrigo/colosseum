@@ -1344,6 +1344,7 @@ export const pt: Dictionary = {
         draftIntro: 'Proposta preliminar, não aplicada:',
         figureSaid: '{value}, um valor medido',
         figureSaidAged: '{value}, um valor medido, {age}',
+        figureNotKept: '(valor não guardado)',
         comparison: 'Meta atual → fatia proposta',
         reasons: 'Escolhas e fontes',
         tradeoffs: 'Escolhas e consequências',

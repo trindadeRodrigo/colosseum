@@ -19,6 +19,7 @@ import { useApiFetch } from '../wallet/WalletProvider';
 import {
   agentReplyOf,
   figuredOf,
+  referencesIn,
   replyText,
   type VaultAgent,
   VaultAgentError,
@@ -36,6 +37,7 @@ import {
   type Turn,
   transcriptOf,
   withinFigureBudget,
+  withoutFigures,
   writeLocal,
 } from './storage';
 
@@ -75,6 +77,11 @@ export function VaultConversation({
   useEffect(() => {
     if (turns.length > 0) setNow(Date.now());
   }, [turns]);
+  // and once a minute after, so an age appears in a tab left open
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(tick);
+  }, []);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -245,10 +252,12 @@ export function VaultConversation({
       const facts = result.figures?.facts ?? [];
       const kept = (text: string, template: string): Turn => {
         const figures = template.length <= 8000 ? figuredOf(template, facts) : undefined;
+        // Figures that cannot be kept are never kept as bare values: their places say so.
+        const stated = referencesIn(template).length > 0;
         return {
           id: crypto.randomUUID(),
           who: 'app',
-          text,
+          text: stated && !figures ? withoutFigures(template, copy.figureNotKept) : text,
           ...(figures ? { figures } : {}),
         };
       };
@@ -289,7 +298,7 @@ export function VaultConversation({
         });
         completed.push(kept(chunk, template));
       }
-      completed = withinFigureBudget(completed);
+      completed = withinFigureBudget(completed, copy.figureNotKept);
       if (!transcriptOf({ revision: revision.current, transcript: completed })) {
         setAnnounced('');
         setError(copy.capacity);
