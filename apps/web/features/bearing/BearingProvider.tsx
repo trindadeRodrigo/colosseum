@@ -349,12 +349,19 @@ export function BearingProvider({
   return <BearingContext.Provider value={value}>{children}</BearingContext.Provider>;
 }
 
-/** A promise's answer as state: null until it settles, again null when its inputs change. */
-export function useAnswer<T>(make: () => Promise<T> | null, deps: readonly unknown[]): T | null {
+/**
+ * A promise's answer as state: null until it settles, again null when its inputs change. The maker is
+ * handed `left`, which says whether its answer was left: its inputs changed, or the page that asked
+ * went away. Work still going on for an answer nobody waits for can stop there.
+ */
+export function useAnswer<T>(
+  make: (left: () => boolean) => Promise<T> | null,
+  deps: readonly unknown[],
+): T | null {
   const [state, setState] = useState<{ deps: readonly unknown[]; value: T } | null>(null);
   useEffect(() => {
     let live = true;
-    const p = make();
+    const p = make(() => !live);
     if (!p) return;
     p.then((value) => {
       if (live) setState({ deps, value });

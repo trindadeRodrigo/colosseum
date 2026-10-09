@@ -25,7 +25,7 @@ It reads Robinhood Chain mainnet (chain 4663), whatever network the product itse
 Known limits:
 
 - **Best single pool overstates cost when liquidity is split.** A router that splits a sale across pools does better than any one of them. The gap grows with size.
-- **Only pools the vault can reach are measured.** Other venues on Robinhood Chain quote stock tokens tighter than Uniswap does; an aggregator would use them, the vault's router does not.
+- **Only pools the vault can reach are measured.** Other venues on Robinhood Chain quote stock tokens tighter than Uniswap does; an aggregator would use them, the vault's router does not. Which venues, with their pools and 28 days of volume each: `docs/risk/PLAN-UNIVERSE.md` section 6, "The venues we do not read (RU.13)", Table 5 (`pnpm risk:venues`).
 - Pool prices of one token differ by up to about 0.3% (a 0.3% pool is not arbitraged inside its fee). Measuring each pool against its own mid is right on average and can be off by that much in one sample.
 - A pool that runs out is treated differently by kind. A v3-style pool answers with a partial fill: the unfilled part counts as lost in `costPct` and shows in `unfilledShare`. The v4 Quoter refuses the size (`NotEnoughLiquidity`), so a v4 pool gives no quote there.
 - The public RPCs cap `eth_call` at 50M gas. A size that walks a whole pool can exceed it; that pool is then missing at that size (`quoted` shows it). v3 quotes stop at 20M gas per swap, and a v4 batch that runs out of gas is asked again without its largest size, up to three times.

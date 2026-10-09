@@ -74,6 +74,7 @@ export const bearingPt: BearingDictionary = {
   reasons: {
     no_samples_in_regime: 'ainda sem amostras neste regime',
     insufficient_samples: 'poucas amostras para ajustar',
+    not_a_number: 'o valor guardado não pôde ser usado',
     beyond_measured_size: 'além do maior tamanho medido',
     no_reference_price: 'sem preço de referência',
     no_external_source: 'sem fonte externa para isto',
@@ -88,6 +89,7 @@ export const bearingPt: BearingDictionary = {
     api_error: 'a API não respondeu',
     nothing_selected: 'nada selecionado',
     no_price_source: 'sem fonte de preço',
+    no_quote_price: 'sem preço em dólar para a moeda de cotação',
   },
   filter: {
     all: (n: number) => `Todos (${n})`,
@@ -96,7 +98,14 @@ export const bearingPt: BearingDictionary = {
     selectAll: 'Todos',
     selectNone: 'Nenhum',
   },
+  /** Beside a figure made of parts when some have no figure: it is of the measured ones only. */
+  partial: (n: number) => `dos ${n} medidos`,
   pie: {
+    /** Under the legend: the pools with no figure, which get no slice. */
+    missing: (n: number) =>
+      n === 1
+        ? '1 pool não tem número e não é desenhado.'
+        : `${n} pools não têm número e não são desenhados.`,
     others: (n: number) => `${n} ${n === 1 ? 'outro pool' : 'outros pools'}`,
     point: 'Aponte para uma fatia ou uma linha para ver o valor.',
   },
@@ -190,11 +199,31 @@ export const bearingPt: BearingDictionary = {
     },
     tvl: {
       title: 'TVL no tempo',
-      none: 'o coletor registra o valor do pool hora a hora só para os pools de liquidez concentrada que formam os 80% maiores do TVL do registro, e nenhum dos pools selecionados é um deles. O TVL de hoje da seleção está nos contadores; a capacidade de saída no tempo é medida para todo ativo.',
+      none: 'o valor do pool no tempo é registrado só para alguns dos pools de liquidez concentrada, e nenhum dos pools selecionados é um deles. O TVL de hoje da seleção está nos contadores; a capacidade de saída no tempo é medida para todo ativo.',
       reading: (n: number) => `Lendo ${n} ${n === 1 ? 'pool registrado' : 'pools registrados'}…`,
       recorded: 'TVL no tempo, pools registrados',
-      note: (n: number, of: number, share: string | null) =>
-        `${n} de ${of} pools selecionados são registrados de hora em hora${share ? `, com ${share} do TVL da seleção` : ''}; o valor dos tokens que a liquidez deles guarda, sem contar taxas não coletadas. Um pool sem registro numa hora mantém seu último valor por até 6 h. Os registros começaram em 2026-10-01.`,
+      note: (
+        n: number,
+        of: number,
+        share: string | null,
+        noUsd: number,
+        failed = 0,
+        why = '',
+        behind = 0,
+      ) =>
+        `${n} de ${of} pools selecionados ${n === 1 ? 'é registrado e entra' : 'são registrados e entram'} na soma${share ? `, com ${share} do TVL da seleção` : ''}; o valor dos tokens que a liquidez ${n === 1 ? 'dele' : 'deles'} guarda, sem contar taxas não coletadas.${
+          noUsd
+            ? ` ${n ? 'Mais ' : ''}${noUsd} ${noUsd === 1 ? 'é registrado e não tem' : 'são registrados e não têm'} preço em dólar para a moeda de cotação, por isso não ${noUsd === 1 ? 'entra' : 'entram'} na soma.`
+            : ''
+        }${
+          failed
+            ? ` ${n || noUsd ? 'Mais ' : ''}${failed} não ${failed === 1 ? 'carregou' : 'carregaram'} (${why}), por isso não ${failed === 1 ? 'entra' : 'entram'} na soma.`
+            : ''
+        }${
+          behind
+            ? ` ${n || noUsd || failed ? 'Mais ' : ''}${behind} não ${behind === 1 ? 'tem' : 'têm'} registro nas 6 h antes da hora mais recente, por isso não ${behind === 1 ? 'entra' : 'entram'} na soma.`
+            : ''
+        } Um pool sem registro numa hora mantém seu último valor por até 6 h. Nenhum registro é anterior a 2026-10-01.`,
       value: 'valor do pool',
       valueLegend: 'valor do pool (TVL)',
       held: 'parte no ativo',
@@ -209,11 +238,11 @@ export const bearingPt: BearingDictionary = {
       reading: 'Lendo o pool…',
       both: 'Liquidez por faixa de preço, os dois lados',
       failed: (error: string) =>
-        `${error}. O coletor registra só os pools que formam os 80% maiores do TVL do registro; escolha um sem “não registrado”, ou espere pela leitura ao vivo.`,
-      recordedAt: (at: string) => `o registro horário mais recente do coletor, ${at}`,
-      liveAt: (at: string) => `lido ao vivo às ${at} UTC`,
+        `${error}. Só alguns pools são registrados; escolha um sem “não registrado”, ou espere pela leitura ao vivo.`,
+      recordedAt: (at: string) => `a partir do registro mais recente do pool, ${at}`,
+      liveAt: (at: string) => `a partir da leitura ao vivo das ${at} UTC`,
       note: (when: string) =>
-        `guardada a até ±30% do preço, a partir de ${when}; o ativo espera acima do preço (vendido conforme sobe), a moeda de cotação abaixo (usada para comprar conforme cai); + e − para zoom`,
+        `guardada a até ±30% do preço, ${when}; o ativo espera acima do preço (vendido conforme sobe), a moeda de cotação abaixo (usada para comprar conforme cai); + e − para zoom`,
       aria: (pool: string) =>
         `Liquidez do pool ${pool} por faixa de preço em torno do preço do pool`,
       src: 'gráfico de distribuição',

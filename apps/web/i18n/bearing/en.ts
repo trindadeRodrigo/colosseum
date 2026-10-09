@@ -75,6 +75,7 @@ export const bearingEn = {
   reasons: {
     no_samples_in_regime: 'no samples in this regime yet',
     insufficient_samples: 'too few samples to fit',
+    not_a_number: 'the stored value could not be used',
     beyond_measured_size: 'beyond the largest size measured',
     no_reference_price: 'no reference price',
     no_external_source: 'no external source for this',
@@ -89,6 +90,7 @@ export const bearingEn = {
     api_error: 'the API returned no answer',
     nothing_selected: 'nothing selected',
     no_price_source: 'no price source',
+    no_quote_price: 'no USD price for the quote token',
   },
   filter: {
     all: (n: number) => `All (${n})`,
@@ -97,7 +99,14 @@ export const bearingEn = {
     selectAll: 'All',
     selectNone: 'None',
   },
+  /** Beside a figure made of parts when some have no figure: it is of the measured ones only. */
+  partial: (n: number) => `of the ${n} measured`,
   pie: {
+    /** Under the legend: the pools with no figure, which get no slice. */
+    missing: (n: number) =>
+      n === 1
+        ? '1 pool has no figure and is not drawn.'
+        : `${n} pools have no figure and are not drawn.`,
     others: (n: number) => `${n} other pool${n === 1 ? '' : 's'}`,
     point: 'Point at a slice or a row for its value.',
   },
@@ -189,11 +198,34 @@ export const bearingEn = {
     },
     tvl: {
       title: 'TVL over time',
-      none: 'the collector records the pool value hour by hour only for the concentrated-liquidity pools that make up the top 80% of registry TVL, and none of the selected pools is one of them. Today’s TVL of the selection is in the counters; exit capacity over time is measured for every asset.',
+      none: 'the pool value over time is recorded only for some of the concentrated-liquidity pools, and none of the selected pools is one of them. Today’s TVL of the selection is in the counters; exit capacity over time is measured for every asset.',
       reading: (n: number) => `Reading ${n} recorded pool${n === 1 ? '' : 's'}…`,
       recorded: 'TVL over time, recorded pools',
-      note: (n: number, of: number, share: string | null) =>
-        `${n} of ${of} selected pools are recorded hourly${share ? `, holding ${share} of the selection’s TVL` : ''}; the value of the tokens their liquidity holds, uncollected fees not counted. A pool not recorded in an hour keeps its last value for up to 6 h. Recordings began 2026-10-01.`,
+      // n and share count the pools in the sum; noUsd, the recorded ones left out for want of a price;
+      // failed, the ones whose history did not load, with why in the reader's words; behind, the ones
+      // whose newest recording is too old to count in the hour the figure is taken from
+      note: (
+        n: number,
+        of: number,
+        share: string | null,
+        noUsd: number,
+        failed = 0,
+        why = '',
+        behind = 0,
+      ) =>
+        `${n} of ${of} selected pools ${n === 1 ? 'is' : 'are'} recorded and in the sum${share ? `, holding ${share} of the selection’s TVL` : ''}; the value of the tokens ${n === 1 ? 'its' : 'their'} liquidity holds, uncollected fees not counted.${
+          noUsd
+            ? ` ${noUsd}${n ? ' more' : ''} ${noUsd === 1 ? 'is recorded and has' : 'are recorded and have'} no USD price for the quote token, so ${noUsd === 1 ? 'it is' : 'they are'} not in the sum.`
+            : ''
+        }${
+          failed
+            ? ` ${failed}${n || noUsd ? ' more' : ''} did not load (${why}), so ${failed === 1 ? 'it is' : 'they are'} not in the sum.`
+            : ''
+        }${
+          behind
+            ? ` ${behind}${n || noUsd || failed ? ' more' : ''} ${behind === 1 ? 'has' : 'have'} no recording within 6 h of the newest hour, so ${behind === 1 ? 'it is' : 'they are'} not in the sum.`
+            : ''
+        } A pool not recorded in an hour keeps its last value for up to 6 h. No recording is older than 2026-10-01.`,
       value: 'pool value',
       valueLegend: 'pool value (TVL)',
       held: 'of which in the asset',
@@ -208,11 +240,12 @@ export const bearingEn = {
       reading: 'Reading the pool…',
       both: 'Liquidity by price band, both sides',
       failed: (error: string) =>
-        `${error}. The collector records only the pools that make up the top 80% of registry TVL; pick one without “not recorded”, or wait for the live read.`,
-      recordedAt: (at: string) => `the collector’s newest hourly recording, ${at}`,
-      liveAt: (at: string) => `read live ${at} UTC`,
+        `${error}. Only some pools are recorded; pick one without “not recorded”, or wait for the live read.`,
+      // each carries its own preposition (Portuguese joins it to the article); `note` sets it in whole
+      recordedAt: (at: string) => `from the pool’s newest recording, ${at}`,
+      liveAt: (at: string) => `from a live read at ${at} UTC`,
       note: (when: string) =>
-        `held within ±30% of the price, from ${when}; the asset waits above the price (sold into as it rises), the quote below (bought with as it falls); + and − zoom`,
+        `held within ±30% of the price, ${when}; the asset waits above the price (sold into as it rises), the quote below (bought with as it falls); + and − zoom`,
       aria: (pool: string) => `Liquidity of pool ${pool} by price band around the pool price`,
       src: 'distribution chart',
       pool: 'Pool',

@@ -65,6 +65,11 @@ export type Pool = {
   venue: string;
   assetSymbol: string;
   quoteSymbol: string | null;
+  /**
+   * How a seller reaches dollars through the pool: `direct_usd`, `via_sol`, `via_xstock`, or `other`,
+   * a quote token with no measured way to dollars: no recording of such a pool has a dollar value.
+   */
+  exitPath: string;
   tvlUsd: number | null;
   /** DexScreener's 24 h volume of the pair, as reported when the pool was registered. */
   discoveryVolume24hUsd?: number | null;
@@ -126,7 +131,16 @@ export type LendPoint = {
 };
 export type LendHistBody = Series<LendPoint>;
 
-export type LiqHistBody = Series<{ t: string; valueUsd: number | null; assetUsd: number | null }>;
+export type LiqHistBody = Series<{
+  t: string;
+  valueUsd: number | null;
+  assetUsd: number | null;
+  /** Why a recording has no dollar value (`no_quote_price`: its quote token has no measured price). */
+  usdNullReason?: string | null;
+}> & {
+  /** What the API says its recordings are: `live`, or `mock` or `sandbox`, never shown as live. */
+  provenance?: string;
+};
 
 export type LiquidityBody = {
   pool: string;
@@ -139,8 +153,13 @@ export type LiquidityBody = {
   midPrice: number;
   asset?: string;
   quote?: string;
-  totalAssetUsd?: number;
-  totalQuoteUsd?: number;
+  /**
+   * Both null when the quote token has no price in dollars: the band amounts are then not in dollars.
+   * `usdNullReason` says so where the API names its reason.
+   */
+  totalAssetUsd?: number | null;
+  totalQuoteUsd?: number | null;
+  usdNullReason?: string | null;
   basis?: string;
   fetchedAt: string;
   source: string;

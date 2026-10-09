@@ -258,6 +258,7 @@ const REGIME_NAMES: Record<FactRegime, string> = {
 const NULL_REASONS: Record<FactNullReason, string> = {
   no_samples_in_regime: 'no samples in that regime yet',
   insufficient_samples: 'too few samples',
+  not_a_number: 'the computed figure was not a number',
   beyond_measured_size: 'the size is beyond the measured depth',
   no_reference_price: 'no reference prices collected',
   no_external_source: 'no external price source',
@@ -267,6 +268,7 @@ const NULL_REASONS: Record<FactNullReason, string> = {
   not_followed: 'not traced',
   gate_open: 'waiting on a decision',
   not_applicable: 'does not apply',
+  no_oracle: 'no price oracle for this asset',
 };
 const UNITS: Record<FactUnit, string> = {
   fraction: 'fraction',
@@ -274,6 +276,7 @@ const UNITS: Record<FactUnit, string> = {
   ratio: 'ratio',
   count: 'count',
   hours: 'hours',
+  seconds: 'seconds',
 };
 
 /** What each analytics id measures, for the model's legend and, with the asset's details, the reply. */
