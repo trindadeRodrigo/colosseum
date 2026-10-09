@@ -577,9 +577,9 @@ export const en = {
     chainOff: (chain: string) => `${chain} is switched off on our server for now.`,
     title: (vaults: number): string =>
       vaults > 1 ? 'What your vaults hold.' : 'What your vault holds.',
-    planDetails: 'Goal and strategy details',
+    planDetails: 'Goal and target details',
     /** The page's description in its metadata; the screen itself does not show it. */
-    lead: 'Your vaults, their holdings and the strategies they follow. Open a vault to continue its conversation or add money.',
+    lead: 'Your vaults, their holdings and their targets. Open a vault to continue its conversation or add money.',
     chain: 'Chain',
     reading: 'Reading your vault…',
     signedOut:
@@ -733,7 +733,7 @@ export const en = {
       strategy: 'Where this deposit goes',
       title: 'Add money to your vault',
       lead: (chain: string) =>
-        `Add to this vault on ${chain} using its current strategy. Review the deposit and its steps before your wallet signs.`,
+        `Add to this vault on ${chain} at its current targets. Review the deposit and its steps before your wallet signs.`,
       amountHint: 'From $10 to $1,000,000.',
       missing:
         'I can’t find this vault among yours. Open your portfolio, then choose the vault there.',
@@ -1501,15 +1501,15 @@ export const en = {
         resume: 'Resume conversation',
         holdings: 'Holdings',
         explain: 'Explain my holdings',
-        explainPrompt: 'Explain what my vault holds and how it relates to its current strategy.',
+        explainPrompt: 'Explain what my vault holds and how it relates to its current targets.',
         considerChange: 'Consider a change',
-        changePrompt: 'I want to consider a change to my vault’s strategy.',
+        changePrompt: 'I want to consider a change to my vault’s targets.',
         discuss: 'Discuss this proposal',
         discussPrompt:
-          'Help me review the proposed strategy, its tradeoffs and what remains unknown.',
+          'Help me review the proposed targets, their tradeoffs and what remains unknown.',
         change: 'Change',
         points: 'pp',
-        removed: 'Removed from the proposed strategy',
+        removed: 'Removed from the proposed targets',
         details: 'Vault details and price sources',
         draftIntro: 'Draft proposal, not applied:',
         comparison: 'Current target → proposed share',
@@ -1526,31 +1526,31 @@ export const en = {
         notSaved: 'This browser could not save these messages. Keep this page open.',
         capacity: 'This conversation has reached its limit. Your earlier messages are kept.',
         unavailable:
-          'Your message is saved. The vault conversation service is not available yet; no reply or strategy change was produced.',
-        failed: 'I could not get a reply. Your words are kept; no strategy change was produced.',
+          'Your message is saved. The conversation isn’t answering right now; no reply or change was produced.',
+        failed: 'I could not get a reply. Your words are kept; no change was produced.',
         reread:
           'The vault was read again while I was answering, so I set that answer aside. Your words are kept; ask again for a reply on what it holds now.',
         pending:
-          'A conversation about this vault, with its current holdings as context. The conversation service is being connected.',
-        empty: 'Ask about what this vault holds, its strategy, or a change you want to consider.',
+          'A conversation about this vault, with its current holdings as context. It isn’t answering right now.',
+        empty: 'Ask about what this vault holds, its targets, or a change you want to consider.',
         history: 'Saved conversation',
         you: 'You',
-        agent: 'Tenonfi',
+        agent: 'tenonfi',
         placeholder: 'Ask about this vault or describe a change…',
         submitMessage: 'Send message',
         /** Read out once when a message is sent; nothing on the screen carries it. */
         reading: 'Getting a reply',
         current: 'What it holds now',
         noHoldings: 'This vault holds no tokens now.',
-        targets: 'Current strategy targets',
+        targets: 'Current targets',
         targetsNote: 'Targets recorded on chain, separate from the shares held now.',
-        proposed: 'Proposed strategy',
+        proposed: 'Proposed targets',
         previewOnly:
-          'Preview only. Your vault has not changed. Applying a strategy update is not available here yet.',
+          'A draft. Your vault has not changed, and nothing changes until you review and sign.',
       },
       address: 'Vault address',
       workspaceLead: (chain: string) =>
-        `Your holdings and strategy on ${chain}. Keep the conversation here as your plans change.`,
+        `Your holdings and targets on ${chain}. Keep the conversation here as your plans change.`,
       lead: (chain: string) =>
         `Read from ${chain} for this page. Anyone can see a vault: what it holds is public on its chain.`,
       loading: 'Reading the vault…',
