@@ -348,7 +348,7 @@ describe('the owner’s page at rest', () => {
     ]);
     // the way back is navigation: a link over the name, not one of the actions
     const back = find(host, '[data-ui="vault-back"]');
-    expect(back.getAttribute('href')).toBe('/monitor');
+    expect(back.getAttribute('href')).toBe('/portfolio');
     expect(actions.contains(back)).toBe(false);
     // nothing a person reads says "mix" or "buy"
     expect(screen(host).textContent).not.toMatch(/\b(mix|buy)\b/i);
@@ -836,6 +836,27 @@ describe('a reload in the middle of signing', () => {
     },
   );
 
+  it('a pane opened and left while the kept order is still being asked about is not reopened by the answer', async () => {
+    let answer: (response: Response) => void = () => {};
+    const waiting = new Promise<Response>((done) => {
+      answer = done;
+    });
+    api({ more: (path) => (path === `/v1/orders/${ORDER_ID}` ? waiting : undefined) });
+    expect(kept(everything(), terms('withdraw'))).toBe(true);
+    keepAction(USER, 'solana', MY_VAULT, { kind: 'withdraw', orderId: ORDER_ID });
+    const host = await show();
+    // the read has not answered: the holdings are there, and the person opens Deposit and leaves it
+    expect(screen(host).dataset.pane).toBe('holdings');
+    await click(find(host, '[data-action="vault-deposit"]'));
+    await settle();
+    await click(find(pane(host), '[data-action="leave-action"]'));
+    expect(screen(host).dataset.pane).toBe('holdings');
+    answer(json(everything()));
+    for (let i = 0; i < 4; i += 1) await settle(30);
+    expect(screen(host).dataset.pane).toBe('holdings');
+    expect(host.querySelector('[data-ui="vault-action-pane"]')).toBeNull();
+  });
+
   it('starting again forgets the order that stopped: a reload does not return to it', async () => {
     api();
     expect(kept(everything(), terms('withdraw'))).toBe(true);
@@ -927,6 +948,11 @@ describe('a reload in the middle of signing', () => {
     expect(server.calls.map((c) => c.path)).toContain(`/v1/orders/${FOLLOW}`);
     expect(pane(host).querySelector('[data-ui="vault-action-amount"]')).toBeNull();
     expect(pane(host).textContent).not.toContain(p.amount);
+    // and the pane is headed for what it is: no "Sign your deposit", no "the whole amount goes in"
+    expect(find(pane(host), ':scope > header h2').textContent).toBe(p.finish.title);
+    expect(find(pane(host), ':scope > header').textContent).toContain(p.finish.lead);
+    expect(pane(host).textContent).not.toContain(p.panes.deposit.signTitle);
+    expect(pane(host).textContent).not.toContain(p.panes.deposit.lead);
     expect(pane(host).querySelector('input[inputmode="decimal"]')).toBeNull();
     expect(server.calls.filter((c) => c.path === '/v1/orders' && c.method === 'POST')).toEqual([]);
   });

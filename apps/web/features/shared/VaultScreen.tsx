@@ -117,7 +117,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
         <Link href="/shelf" className={buttonClass({ variant: 'secondary' })}>
           {t.shared.family.backToShelf}
         </Link>
-        <Link href="/monitor" className={buttonClass({ variant: 'link' })}>
+        <Link href="/portfolio" className={buttonClass({ variant: 'link' })}>
           {v.back}
         </Link>
       </section>
@@ -162,7 +162,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
     </a>
   );
   const back = (
-    <Link href="/monitor" data-ui="vault-back" className={buttonClass({ variant: 'link' })}>
+    <Link href="/portfolio" data-ui="vault-back" className={buttonClass({ variant: 'link' })}>
       {v.back}
     </Link>
   );
@@ -264,8 +264,12 @@ function OwnVault({
     // where an order was made to finish it, that one says how the line stands
     const first = recallOrder(kept.orderId, userId);
     const asked = first ? latestOf(first, recallOrders(userId)).orderId : kept.orderId;
+    const before = tokens.current;
     readOrder(apiFetch, asked).then((answer) => {
       if (!mine) return;
+      // a pane was opened while this was asked, and maybe left again: the person chose since, and
+      // what was kept is theirs to have dropped. Nothing is opened over that.
+      if (tokens.current !== before) return;
       if (answer.kind === 'read' && (answer.order.status === 'done' || stoppedShort(answer.order)))
         return keepAction(userId, read.chain, vault.address, null);
       tokens.current += 1;

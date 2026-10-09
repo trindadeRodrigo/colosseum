@@ -272,11 +272,18 @@ export function VaultAction({
     >
       <header className="flex min-w-0 flex-col gap-2">
         <h2 id={titleId} tabIndex={-1} className="font-display text-h4 font-semibold outline-none">
-          {done ? p.ended : open.orderId || pressed ? words.signTitle : words.title}
+          {done
+            ? p.ended
+            : finishes
+              ? p.finish.title
+              : open.orderId || pressed
+                ? words.signTitle
+                : words.title}
         </h2>
         {!done && (
           <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
-            {open.resumed ? words.resumed : words.lead}
+            {/* an order that finishes a deposit adds no money: never said as a deposit of the amount */}
+            {finishes ? p.finish.lead : open.resumed ? words.resumed : words.lead}
           </p>
         )}
       </header>

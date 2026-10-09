@@ -1425,7 +1425,7 @@ describe('a vault’s public page', () => {
     for (let i = 0; i < 3; i += 1) await settle(50);
     expect(asked).toBe(1);
     const ways = [...host.querySelectorAll('a')].map((link) => link.getAttribute('href'));
-    expect(ways).toEqual(['/shelf', '/monitor']);
+    expect(ways).toEqual(['/shelf', '/portfolio']);
   });
 });
 
@@ -1607,7 +1607,7 @@ describe('the chain, on the shelf and on a vault’s page', () => {
       const back = [...host.querySelectorAll('a')].find(
         (a) => a.textContent === en.shared.vault.back,
       );
-      expect(back?.getAttribute('href')).toBe('/monitor');
+      expect(back?.getAttribute('href')).toBe('/portfolio');
       if (chain === 'robinhood') expect(host.textContent).not.toMatch(/usdc/i);
     },
   );
@@ -1654,7 +1654,7 @@ describe('the flow audit’s findings on these screens (34, 38, 42)', () => {
     const back = [...host.querySelectorAll('a')].find(
       (a) => a.textContent === en.shared.vault.back,
     );
-    expect(back?.getAttribute('href')).toBe('/monitor');
+    expect(back?.getAttribute('href')).toBe('/portfolio');
     const explorer = find<HTMLAnchorElement>(host, '[data-ui="vault-explorer"]');
     expect(explorer.textContent).toBe(en.shared.vault.explorer('Solscan'));
     expect(explorer.getAttribute('href')).toBe(explorerAddressUrlFor('solana', VAULT, false));

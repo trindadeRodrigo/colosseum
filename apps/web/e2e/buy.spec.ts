@@ -94,7 +94,7 @@ test('his landing page: the hero alone, its faces, its numbers, and "Start a pla
   await expect(page.locator('[data-ui="landing-stats"] [data-ui="pin-glyph"]')).toHaveCount(3);
   await expect(page.locator('main')).not.toContainText('MOCK');
   await expect(
-    page.locator('[data-ui="landing-bar"]').getByRole('link', { name: en.landing.nav.cta }),
+    page.locator('[data-ui="landing-bar"]').getByRole('link', { name: en.shell.signIn }),
   ).toBeVisible();
   // no page scroll sideways, on a phone or a desk, in either ground
   for (const theme of ['light', 'dark'] as const) {
@@ -140,8 +140,20 @@ test('signed in, the logo leads to the landing, and its bar leads back into the 
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.landing.hero.title);
   const bar = page.locator('[data-ui="landing-bar"]');
-  await expect(bar.getByRole('link', { name: en.landing.nav.cta })).toHaveCount(0);
-  await bar.getByRole('link', { name: en.landing.nav.openApp }).click();
+  // the bar's action is the account control, as in the app, and never "Open the app". The landing is
+  // its own document and the throwaway sign-in does not outlive a page load, so here the control
+  // settles on "Sign in" (a real sign-in shows the chip: e2e/account-control.spec.ts signs in on it)
+  await expect(bar.locator('[data-ui="account-control"]')).toHaveAttribute(
+    'data-state',
+    'signed-out',
+    { timeout: 60_000 },
+  );
+  await expect(bar.getByText(/Open the app|Go to app/)).toHaveCount(0);
+  // on a phone the bar holds no links: the way into the app is the hero's
+  await page
+    .locator('[data-ui="landing-hero"]')
+    .getByRole('link', { name: en.landing.hero.start })
+    .click();
   await expect(page).toHaveURL(/\/goal$/);
 });
 
@@ -151,7 +163,7 @@ async function toBuy(page: Page, o: { fund?: 'mock' | 'test' } = {}) {
   if (o.fund === 'test') await page.request.post(`${STUB}/__stub/test-network`);
   // the bar's "Sign in" opens the sign-in dialog over the goal (SIGN-IN-FLOW); the person stays there
   await page.goto('/goal');
-  await page.locator('header a[href="/sign-in"]').click();
+  await page.locator('header a[href^="/sign-in"]').click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await expect(dialog).toHaveCount(0);

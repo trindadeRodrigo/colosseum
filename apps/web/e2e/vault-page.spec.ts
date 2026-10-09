@@ -59,7 +59,7 @@ async function go(page: Page, name: string) {
 async function toVault(page: Page): Promise<string> {
   await page.request.post(`${STUB}/__stub/reset`);
   await page.goto('/goal');
-  await page.locator('header a[href="/sign-in"]').click();
+  await page.locator('header a[href^="/sign-in"]').click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await expect(dialog).toHaveCount(0);

@@ -25,12 +25,13 @@ export const pt: Dictionary = {
     signOutFailed:
       'Não consegui encerrar sua sessão: o serviço de login não respondeu. Tente de novo.',
     account: 'Sua carteira',
+    accountLoading: 'Carregando sua conta…',
     slow: {
-      title: 'O login está lento',
+      title: 'Sua conta ainda está carregando',
       wallets:
-        'Você entrou, mas o serviço de login ainda não entregou suas carteiras. Nada foi perdido.',
+        'Suas carteiras ainda não chegaram. Nosso servidor pode estar acordando, o que pode levar até um minuto. Nada foi perdido.',
       server:
-        'Você entrou, mas nosso servidor ainda não disse em qual rede fica o seu plano. Nada foi perdido.',
+        'Nosso servidor ainda não disse em qual rede fica o seu plano. Ele pode estar acordando, o que pode levar até um minuto. Nada foi perdido.',
       service:
         'O serviço de login ainda não respondeu, então não sei dizer se você entrou. Você pode continuar olhando.',
       again: 'Tentar de novo',
@@ -62,31 +63,39 @@ export const pt: Dictionary = {
 
   signIn: {
     title: 'Entre com uma carteira que é sua.',
-    lead: 'Seu plano fica em um cofre de onde só você pode sacar, então ele precisa de uma carteira que seja sua. Crie uma com uma chave de acesso ou conecte uma que você já usa.',
+    lead: 'Use uma chave de acesso ou uma carteira que você já tem.',
     loading: 'Carregando o login…',
     notLoaded: 'O login não carregou aqui.',
     openPage: 'Abrir a página de login',
     close: 'Fechar o login',
     passkey: {
       title: 'Chave de acesso',
-      body: 'Você não precisa anotar frase de recuperação. Eu uso a chave de acesso que este aparelho guarda para este site. A carteira que criamos para você só abre com essa chave.',
-      continue: 'Continuar com uma chave de acesso',
-      createNew: 'Criar uma chave de acesso nova',
-      createNewNote:
-        'É sua primeira vez? Uma chave de acesso nova abre uma conta nova, com uma carteira nova e vazia. Ela não abre uma carteira que você já tem.',
+      create: 'Criar uma chave de acesso',
+      createNote:
+        'Primeira vez aqui? Isso abre uma conta nova, com uma carteira nova e vazia. Não abre uma conta que você já tem.',
+      continue: 'Usar minha chave de acesso',
+      continueNote: 'Já entrou aqui antes? Use a chave de acesso daquela vez.',
+      unavailable:
+        'Chaves de acesso não funcionam neste navegador ou neste quadro, então estas duas opções estão indisponíveis. Abra a página em um navegador atual ou conecte uma carteira.',
+      what: 'O que é uma chave de acesso?',
+      body: 'Uma chave que este aparelho guarda para este site, aberta do jeito que você abre o aparelho: digital, rosto ou código. Não há frase de recuperação para anotar. A carteira que criamos para você só abre com essa chave.',
       waiting: 'Aguardando sua chave de acesso…',
       making: 'Criando sua carteira…',
     },
     wallet: {
       title: 'Carteira',
-      body: 'Conecte uma carteira que você já usa. Seu plano fica na rede dela: Solana para uma carteira Solana, Robinhood Chain para uma carteira Ethereum.',
-      connect: 'Conectar uma carteira',
       found: 'Carteiras encontradas neste navegador',
       waiting: 'Aguardando sua carteira…',
-      none: 'Nenhuma carteira foi encontrada neste navegador. Instale uma ou abra esta página no navegador da própria carteira. Ou continue com uma chave de acesso: não precisa instalar nada.',
+      lives: (chain: string) => `Seu plano fica na ${chain}`,
+      livesEither: (a: string, b: string) => `Seu plano fica na ${a} ou na ${b}`,
+      none: 'Nenhuma carteira foi encontrada neste navegador.',
+      other: 'Sua carteira não está na lista?',
+      otherBody:
+        'Só aparecem as carteiras deste navegador. Instale a sua ou abra esta página no navegador da própria carteira. Ou use uma chave de acesso: não precisa instalar nada.',
       both: (wallet: string) =>
         `${wallet} funciona na Solana e na Robinhood Chain. Escolha a rede onde seu plano fica: isso não pode ser mudado depois.`,
       before: 'Já entrou antes? Escolha a rede que você escolheu naquela vez.',
+      back: 'Voltar às carteiras',
       off: (wallet: string) =>
         `${wallet} só funciona em redes indisponíveis no nosso servidor por enquanto, então não pode ser usada para entrar. Use outra carteira ou uma chave de acesso.`,
       chains: 'A rede do seu plano',
@@ -109,7 +118,7 @@ export const pt: Dictionary = {
       passkeyNotCreated:
         'A chave de acesso não foi criada: a janela foi fechada ou o tempo acabou. Nada foi salvo. Tente de novo quando quiser.',
       passkeyNotUsed:
-        'Nenhuma chave de acesso foi usada. Se você criou uma em outro aparelho, use esse aparelho ou escolha “usar um celular” na janela.',
+        'Nenhuma chave de acesso foi usada. Se você fez a sua em outro aparelho, use esse aparelho ou escolha “usar um celular” na janela. Ela também pode estar em outro navegador ou em um gerenciador de senhas: abra esta página lá.',
       passkeyUnknown:
         'Não reconheço essa chave de acesso: nenhuma conta aqui foi aberta com ela. Tente a chave com que você se cadastrou.',
       passkeyNotAccepted:
@@ -239,6 +248,7 @@ export const pt: Dictionary = {
       local: 'Este navegador · conversa privada de rascunho',
       signIn: 'Entre para explorar uma estratégia privada.',
       readingAccount: 'Sua conta e rede precisam estar prontas antes de eu buscar uma resposta.',
+      loadingAccount: 'Carregando sua conta…',
       empty:
         'A alocação proposta e suas fontes aparecerão aqui após uma resposta. Nenhum cofre foi criado.',
       previewOnly: 'Apenas uma prévia. Este rascunho ainda não pode ser investido aqui.',
@@ -1433,6 +1443,10 @@ export const pt: Dictionary = {
         backToHoldings: 'Voltar ao que você tem',
         backToVault: 'Voltar ao seu cofre',
         amount: 'Valor do depósito',
+        finish: {
+          title: 'Termine seu depósito',
+          lead: 'Estes passos trocam o dinheiro que já está no seu cofre. Nenhum dinheiro novo é depositado.',
+        },
         ended: 'Os passos terminaram',
         endedLead: 'Como cada passo terminou está dito abaixo dos passos.',
         panes: {
@@ -1880,8 +1894,6 @@ export const pt: Dictionary = {
       main: 'Principal',
       menu: 'Menu',
       skip: 'Pular para o conteúdo',
-      cta: 'Entrar',
-      openApp: 'Abrir o app',
       plans: 'Planos',
       bearing: 'Bearing',
       docs: 'Docs',
