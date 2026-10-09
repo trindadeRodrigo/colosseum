@@ -94,7 +94,7 @@ afterAll(async () => {
   for (const step of undo.reverse()) await step();
 });
 
-const { post, get, fund, order, build, land, report, settleAll, read } = orderFlow({
+const { post, get, put, fund, order, build, land, report, settleAll, read } = orderFlow({
   app: () => app,
   registry: () => registry,
   plans: () => plans,
@@ -696,7 +696,107 @@ describe('a person buys a shared portfolio, following it on their own chain', ()
     expect([stale.statusCode, stale.json().code]).toEqual([409, 'VERSION_CHANGED']);
   });
 
-  it('refuses a portfolio that is not on the chain the person is on (ONE-CHAIN)', async () => {
+  it('buys on the chain of the recipe the request names, whatever the current chain is (CHAIN-AT-THE-PLAN)', async () => {
+    // A portfolio published on Robinhood Chain only, and a passkey person whose new plans start on Solana.
+    const creator = await someone('robinhood');
+    const text = fresh();
+    const components = WITHOUT_GOLD.map((c) => ({
+      ...c,
+      asset: c.asset.replace('solana', 'robinhood'),
+    }));
+    const made = await post(creator, '/v1/orders', {
+      ...publishBody(creator, text, components),
+      creator: { evm: creator.evm },
+      recipes: [{ chain: 'robinhood', components }],
+    });
+    expect(made.statusCode, made.body).toBe(200);
+    await fund(creator);
+    await settleAll(creator, OrderDetail.parse(made.json()));
+
+    const buyer = await someone('passkey');
+    expect((await put(buyer, '/v1/me/chain', { chain: 'solana' })).statusCode).toBe(200);
+    const body = { type: 'buy', owner: buyer.owner, amountUsd: 100, family: text.slug };
+    // With no chain named it is the current chain's recipe, and there is none.
+    const unnamed = await post(buyer, '/v1/orders', body);
+    expect([unnamed.statusCode, unnamed.json().error]).toEqual([
+      422,
+      'this shared portfolio is not published on Solana',
+    ]);
+    const funded = await post(buyer, '/v1/mock/fund', { chain: 'robinhood', cashUsd: 10_000 });
+    expect(funded.statusCode, funded.body).toBe(200);
+    const res = await post(buyer, '/v1/orders', { ...body, chain: 'robinhood' });
+    expect(res.statusCode, res.body).toBe(200);
+    const placed = OrderDetail.parse(res.json());
+    expect(placed.summary).toBe(
+      'Buy $100.00 of a shared portfolio on Robinhood Chain, following it',
+    );
+    // one order, one chain: every step is on the recipe's, from the person's wallet there
+    expect([...new Set(placed.legs.map((l) => l.chain))]).toEqual(['robinhood']);
+    expect(placed.owner).toMatchObject({ evm: buyer.evm });
+    expect((await settleAll(buyer, placed)).status).toBe('done');
+    const portfolio = PortfolioResponse.parse((await get(buyer, '/v1/portfolio')).json());
+    const vault = portfolio.chains
+      .find((c) => c.chain === 'robinhood')
+      ?.vaults.find((v) => v.basketId === basketIdOf(familyIdOf(text.slug)));
+    expect(vault).toMatchObject({
+      recipeOnchainId: (await page(text.slug)).recipes[0]?.onchainId,
+      acceptedVersion: 1,
+    });
+    // The person's current chain is where it was: a buy stores nothing about it.
+    expect((await get(buyer, '/v1/me')).json().chain).toBe('solana');
+
+    // The funding read is asked about the same chain, and plans the same buy there.
+    const funding = await get(
+      buyer,
+      `/v1/funding?amountUsd=10&family=${text.slug}&chain=robinhood`,
+    );
+    expect(funding.statusCode, funding.body).toBe(200);
+    expect([funding.json().chain, funding.json().wallet, funding.json().newVault]).toEqual([
+      'robinhood',
+      buyer.evm,
+      false,
+    ]);
+    expect((await get(buyer, `/v1/funding?amountUsd=10&family=${text.slug}`)).statusCode).toBe(422);
+  });
+
+  it('refuses a chain the portfolio has no recipe on, one no wallet of the person signs on, and a chain with no portfolio', async () => {
+    const creator = await someone();
+    const text = fresh();
+    await published(creator, text);
+    // Published on Solana only: a passkey person signs on both, and Robinhood Chain has no recipe.
+    const both = await someone('passkey');
+    const buy = (who: Person, more: object) =>
+      post(who, '/v1/orders', { type: 'buy', owner: who.owner, amountUsd: 100, ...more });
+    const noRecipe = await buy(both, { family: text.slug, chain: 'robinhood' });
+    expect([noRecipe.statusCode, noRecipe.json().error]).toEqual([
+      422,
+      'this shared portfolio is not published on Robinhood Chain',
+    ]);
+    // An EVM wallet alone cannot buy the Solana recipe, whatever the request names.
+    const evm = await someone('robinhood');
+    const noWallet = await buy(evm, { family: text.slug, chain: 'solana' });
+    expect([noWallet.statusCode, noWallet.json().code, noWallet.json().error]).toEqual([
+      409,
+      'NO_WALLET_FOR_CHAIN',
+      'no wallet you signed in with signs on Solana',
+    ]);
+    // A plan and a vault are on their own chain: `chain` goes with a shared portfolio only.
+    const solana = await someone();
+    const withPlan = await buy(solana, { proposalId: plans.solana, chain: 'solana' });
+    expect(withPlan.statusCode).toBe(400);
+    expect(withPlan.json().error).toMatch(/send it with `family`/);
+    expect(
+      (await get(solana, `/v1/funding?amountUsd=10&proposalId=${plans.solana}&chain=solana`))
+        .statusCode,
+    ).toBe(400);
+    // Nothing was stored for any of them.
+    for (const who of [both, evm, solana])
+      expect(PortfolioResponse.parse((await get(who, '/v1/portfolio')).json()).chains).toSatisfy(
+        (chains: { vaults: unknown[] }[]) => chains.every((c) => c.vaults.length === 0),
+      );
+  });
+
+  it('with no chain named, refuses a portfolio that is not on the person’s current chain (ONE-CHAIN)', async () => {
     const creator = await someone();
     const text = fresh();
     await published(creator, text);

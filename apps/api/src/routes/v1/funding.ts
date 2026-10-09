@@ -94,7 +94,7 @@ export function registerFundingRoute(
         summary:
           'What the signed-in wallet is missing on its chain: the dollar token and native gas',
         description:
-          'On the chain of the plan that `proposalId` names, which a buy of it is on; otherwise on the person’s current chain (`GET /v1/me`). With `amountUsd` and `proposalId` (a plan) or `family` (a shared portfolio’s slug), the need is that of a buy of that amount: the whole deposit in the chain’s dollar token, and the network fee of every step the order would have. With neither, the need is nothing and the answer is what the wallet holds. `missingRaw` is what to add. It reads one wallet, named in the answer: `wallet` when the query names one of the person’s on that chain, and otherwise the wallet their plans are held by (the outside wallet when that names the chain, the wallet made in the app when the chain was picked). An order may name any of the person’s wallets of that family as its owner: ask about the one the order will name. Every figure carries its source, its time and its method, and `provenance`: `mock` on the mock chain, `sandbox` on a test network.',
+          'On the chain of the plan that `proposalId` names, which a buy of it is on; on the chain `chain` names with `family`, the recipe a buy of a shared portfolio follows; otherwise on the person’s current chain (`GET /v1/me`). With `amountUsd` and `proposalId` (a plan) or `family` (a shared portfolio’s slug), the need is that of a buy of that amount: the whole deposit in the chain’s dollar token, and the network fee of every step the order would have. With neither, the need is nothing and the answer is what the wallet holds. `missingRaw` is what to add. It reads one wallet, named in the answer: `wallet` when the query names one of the person’s on that chain, and otherwise the wallet their plans are held by (the outside wallet when that names the chain, the wallet made in the app when the chain was picked). An order may name any of the person’s wallets of that family as its owner: ask about the one the order will name. Every figure carries its source, its time and its method, and `provenance`: `mock` on the mock chain, `sandbox` on a test network.',
         querystring: FundingQuery,
         response: { 200: FundingResponse, default: OrderError },
       },
@@ -118,15 +118,17 @@ export async function readFunding(
   query: FundingQuery,
 ): Promise<{ entry: ChainEntry; read: FundingResponse }> {
   const { amountUsd, proposalId, family: slug, vault, vaultChain } = query;
-  // A plan is bought on its own chain, and a vault is added to on its own; anything else is asked
-  // about on the current chain.
+  // A plan is bought on its own chain, and a vault is added to on its own; a shared portfolio on the
+  // chain the query names for it, as its order will; anything else is asked about on the current chain.
   const plan = amountUsd !== undefined && proposalId !== undefined;
   const chain =
     vault !== undefined && vaultChain !== undefined
       ? vaultChain
       : plan
         ? await planChain(deps, proposalId, principal)
-        : await homeChain(deps.db, principal);
+        : slug !== undefined && query.chain !== undefined
+          ? query.chain
+          : await homeChain(deps.db, principal);
   const entry = deps.chains.get(chain);
   const { family } = entry.config;
   // Which of the person's wallets of this family holds their plans. On the family of their current
@@ -154,7 +156,7 @@ export async function readFunding(
           ...(vault !== undefined
             ? { vault: { chain, address: vault } }
             : slug !== undefined
-              ? { family: slug }
+              ? { family: slug, ...(query.chain !== undefined ? { chain: query.chain } : {}) }
               : { proposalId }),
         },
         {
