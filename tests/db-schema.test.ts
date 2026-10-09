@@ -49,7 +49,7 @@ describe('db schema', () => {
   });
 });
 
-// DESIGN-VAULT section 4; snapshot0018 and private history0019.
+// DESIGN-VAULT section 4; snapshot0018, private history0019 and a vault's number0020.
 const EXPECTED_VAULT = [
   'chains',
   'users',
@@ -65,6 +65,7 @@ const EXPECTED_VAULT = [
   'plan_turns',
   'vault_conversations',
   'vaults',
+  'vault_numbers',
   'vault_snapshots',
   'snapshot_runs',
   'follows',
@@ -81,7 +82,7 @@ const EXPECTED_VAULT = [
 describe('db schema: vault tables', () => {
   const tables = (Object.values(basketSchema) as unknown[]).filter(isTable) as PgTable[];
 
-  it('declares the 25 vault tables, and none that the core schema already has', () => {
+  it('declares the 26 vault tables, and none that the core schema already has', () => {
     const names = tables.map((t) => getTableName(t));
     expect([...names].sort()).toEqual([...EXPECTED_VAULT].sort());
     expect(names.filter((n) => EXPECTED.includes(n))).toEqual([]);

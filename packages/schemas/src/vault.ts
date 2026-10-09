@@ -72,6 +72,14 @@ export const VaultName = z
   .refine((s) => !/[\p{Cc}\p{Cf}\u2028\u2029]/u.test(s), 'a name has no control character');
 export type VaultName = z.infer<typeof VaultName>;
 
+/**
+ * A vault's number among its owner's vaults, from 1 (gate `VAULT-NUMBER`): a vault with no name is
+ * called "Vault #N". It is the owner's own count across every chain, given once in the order the
+ * server came to hold their vaults and never changed after. Only the owner is answered it.
+ */
+export const VaultNumber = z.number().int().positive();
+export type VaultNumber = z.infer<typeof VaultNumber>;
+
 export const VaultState = z.object({
   chain: ChainId,
   address: Address,

@@ -16,10 +16,13 @@ import { Refusal, refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { sameVaultAddress } from '../../orders/prepare';
 import { cacheVault, nameVault } from '../../orders/store';
+import { numbered, vaultNumbersOf } from '../../portfolio/numbers';
+import { personScope } from '../../portfolio/scope';
 import { signedIn } from './orders';
 
 // The public vault page's read (WEB-4, DESIGN-VAULT section 11): any vault, by its chain and address,
-// read from the chain for the answer, so a visitor with no funds sees real state. Nothing is written.
+// read from the chain for the answer, so a visitor with no funds sees real state. Nothing is written
+// for a visitor. The vault's owner, signed in, is answered its number among their vaults as well.
 //
 // Anybody may ask, so an answer is kept for a few seconds per address: a link opened by many, or a
 // page asked again and again, reads the chain once in that time and not once per request.
@@ -34,25 +37,49 @@ export function registerVaultRoute(scope: FastifyInstance, deps: OrderDeps) {
   scope.withTypeProvider<ZodTypeProvider>().get(
     '/v1/vaults/:chain/:address',
     {
-      config: { auth: 'public', limit: 'standard' },
+      config: { auth: 'public', limit: 'standard', optionalSignIn: true },
       schema: {
         tags: ['portfolio'],
         summary: 'One vault, read from its chain, for anybody',
         description:
-          "The vault's holdings, targets, value, weights and drift, read from its chain for this answer, with the reference prices they were worked out with. Anybody may read it: a vault's state is public on its chain. A chain this server has switched off answers `CHAIN_UNAVAILABLE`; an address in the other chain family's form answers 400, and one where there is no vault 404. Every figure carries `provenance`.",
+          "The vault's holdings, targets, value, weights and drift, read from its chain for this answer, with the reference prices they were worked out with. Anybody may read it: a vault's state is public on its chain. A chain this server has switched off answers `CHAIN_UNAVAILABLE`; an address in the other chain family's form answers 400, and one where there is no vault 404. Every figure carries `provenance`. A sign-in is never needed. To a signed-in caller one of whose wallets owns the vault, `vault.number` is its number among their vaults, where the server holds one; anybody else is answered none, and nothing of how many vaults the owner has.",
         params: VaultRouteParams,
         response: { 200: VaultResponse, default: OrderError },
       },
     },
-    async (req) => {
+    async (req, reply) => {
+      // Before anything is read, so a refusal carries them too: the answer depends on who asks (the
+      // owner's has the vault's number), and nothing between a caller and the server keeps one
+      // caller's answer for the next.
+      reply.header('cache-control', 'private, no-store');
+      reply.header('vary', 'Authorization');
       const { chain, address } = req.params;
       if (!isAddressOf(chainFamily(chain), address))
         throw new Refusal(400, `that is not an address of ${deps.chains.name(chain)}`);
       const entry = deps.chains.get(chain);
       const key = `${chain}:${address}`;
       const now = deps.now().getTime();
+      // The kept answer is anybody's, so the owner's number is never in it: it is added to the answer
+      // of the one request, for the owner alone, and that answer is not for the next caller.
+      const forCaller = async (answer: VaultResponse): Promise<VaultResponse> => {
+        const principal = req.principal;
+        if (principal?.kind !== 'user') return answer;
+        const { vault } = answer;
+        const owns = principal.wallets.some(
+          (w) =>
+            w.family === entry.config.family && sameVaultAddress(chain, w.address, vault.owner),
+        );
+        if (!owns) return answer;
+        const numbers = await vaultNumbersOf(
+          deps.db,
+          personScope(deps.chains, principal),
+          principal,
+          req.log,
+        );
+        return { ...answer, vault: { ...vault, ...numbered(numbers, chain, vault.address) } };
+      };
       const hit = kept.get(key);
-      if (hit && now - hit.at < VAULT_KEPT_MS) return hit.answer;
+      if (hit && now - hit.at < VAULT_KEPT_MS) return forCaller(hit.answer);
       const answer: VaultResponse = await refusing(async () => {
         let state: Awaited<ReturnType<typeof entry.adapter.getVault>>;
         try {
@@ -83,7 +110,7 @@ export function registerVaultRoute(scope: FastifyInstance, deps: OrderDeps) {
       for (const [k, v] of kept)
         if (kept.size > VAULT_KEPT_MAX || now - v.at >= VAULT_KEPT_MS) kept.delete(k);
         else break;
-      return answer;
+      return forCaller(answer);
     },
   );
   // The name a person gives a vault of theirs (several vaults, each with its own name). The vault is

@@ -358,6 +358,32 @@ export const vaults = pgTable(
 );
 
 /**
+ * A vault's number among its person's vaults (gate `VAULT-NUMBER`): "Vault #N" is what a vault with no
+ * name is called. Given once, the next free number of the person, when the server first holds the vault
+ * as theirs, and never rewritten: no row is updated or deleted, so a number is not given twice and an
+ * earlier vault that turns up later (a wallet added to the person) takes the next one. It is the
+ * person's, not the wallet's: one count across both chains. The row names the vault by chain and
+ * address and does not hang off the cache row, which is rewritten on every read.
+ */
+export const vaultNumbers = pgTable(
+  'vault_numbers',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    chainId: chainId(),
+    address: text('address').notNull(),
+    number: integer('number').notNull(),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.chainId, t.address] }),
+    unique('vault_numbers_user_number_key').on(t.userId, t.number),
+    check('vault_numbers_number_positive', sql`${t.number} > 0`),
+  ],
+);
+
+/**
  * One read of one vault at one time, kept whole: the view, and every price it stood on. A cache with
  * its time, as `vaults` is, but never overwritten: the rows of a vault are its history. Only the
  * snapshot worker (apps/snapshot) writes it, and it names a vault by its chain and address, as the
