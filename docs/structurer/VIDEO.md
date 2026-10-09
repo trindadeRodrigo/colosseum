@@ -1,5 +1,7 @@
 # VIDEO.md — 3-minute script and shot list (draft, D9-PM finalises)
 
+> Historical: a draft script for the first product. It does not describe the current product (`docs/vault/HANDOFF-VAULT.md`).
+
 Guardrails (HANDOFF §9): lead with the BRL schedule under stress and the risk sheet; "policy in your wallet, not a fund" in the first sentence; one-slide Glider/Ondo answer; Nexa as analog, not opener; claim only what is live or signed; label every mock; no yield figure spoken as a promise, only "as of today, source on screen".
 
 ## Script (narration, English; goal typed in Portuguese on screen)

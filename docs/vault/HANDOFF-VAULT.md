@@ -2,6 +2,8 @@
 
 *Written 2026-10-01 by Thom, and rewritten the same day in the words of the brand strategy on the `design` branch. Companion to `docs/structurer/HANDOFF-IDEA1.md` (the structurer) and `docs/risk/HANDOFF-RISK.md` (the liquidity and risk layer, "Bearing" in the brand). Thom and Rodrigo spoke on Oct 1 and the work continues on this basis; the decisions are listed below and in `docs/GATES.md`. Technical design: `DESIGN-VAULT.md`. How it maps onto the code in this repo: `CONVERGENCE-VAULT.md`. Review of the current code: `AUDIT-VAULT.md`. Research behind it: `research/`.*
 
+> Changed since this was written, each by a gate in `docs/GATES.md`: the product is built and shown on test networks, not mainnet (`SHOW`, `SPEND`), and Base is off (`BASE`); it is English only (`ENGLISH-ONLY`); the goal is said in a chat (`RELAXED-INTAKE`) and the deposit opens in place on `/goal` (`DEPOSIT-STEP`); a person's own vault may hold any composition of listed assets (`ANY-COMPOSITION`). Where the MVP list and the demo outline below say mainnet, read the test networks.
+
 The positioning stays as it is: tell us what your money needs to do, and the product builds the portfolio that gets it there, with an exit plan before it invests and every joint in sight. This document is about what it takes to make each part of that sentence hold on chain, for every asset, on more than one chain.
 
 The name is Tenonfi (decided on Oct 3, gate `NAME` in `docs/GATES.md`). This document says "the product".
@@ -28,10 +30,10 @@ Three things around the engine and Bearing, and two smaller ones.
 
 ## What a person does
 
-1. **Says what the money needs to do,** in a sentence or a short form: the outcome, the amount, the date, how much risk, cash they must be able to reach. They connect a wallet or create one with a passkey, so the product sees what they already hold. Someone who creates a wallet picks a chain, and can switch it later. A plan lives on the chain it was made on, and the product proposes only what exists there.
+1. **Says what the money needs to do,** in a chat: the outcome, the amount, the date, how much risk, cash they must be able to reach. They connect a wallet or create one with a passkey, so the product sees what they already hold. They choose the chain where the plan starts (gate `CHAIN-AT-THE-PLAN`). A plan lives on the chain it was made on, and the product proposes only what exists there.
 2. **Confirms the sheet.** The goal and the limits, written down and editable.
 3. **Sees the plan before anything moves:** each line with its reason ("less Nvidia because you already hold $4k of it", "20% in dollar yield because you need the money in 18 months"), and the exit plan at their size: how much they can get back, how fast, at what cost.
-4. **Buys in one tap.** The trades run on the plan's chain and the assets land in their own vault.
+4. **Deposits in place.** The deposit opens on the page where the plan was made. The trades run on the plan's chain and the assets land in their own vault.
 5. **Stays on track.** The product shows drift and whether the goal still lands. Rebalancing takes one tap, or runs by itself inside the limits.
 6. **Can start from a shared portfolio, or publish their own.**
 
@@ -109,12 +111,12 @@ The positioning's three frames, with what this proposal adds to the third. No pr
 
 What Colosseum's form needs: a live app, a public GitHub repo, a 2–3 minute pitch video, a technical demo video of 3 minutes or less, team backgrounds, the chains and tools used, a go-to-market plan, and disclosure of prior work.
 
-What must work live on mainnet, with real small amounts. These nine things are the MVP:
+What must work, on the test networks since Oct 2 (gates `SHOW` and `SPEND`; first written as "live on mainnet, with real small amounts"). These nine things are the MVP:
 
 1. **Sign in two ways.** Connect a wallet, or create one with just a passkey (no seed phrase). Nobody is asked for a chain: a person starts on the chain the bar shows, or on their outside wallet's, and switches it from the bar. A plan lives on the chain it was made on. The product shows what the chain needs in cash and gas, and does not bridge.
 2. **Shared portfolios.** At least six on the shelf with real assets, at least two published on more than one chain. A person is offered the ones with a recipe on their chain.
-3. **A plan from a sentence or a form,** with a reason on every line. Three test people must get three visibly different plans.
-4. **One-tap buy.** One confirmation places real swaps on the plan's chain, with a status per leg and a retry if one fails.
+3. **A plan from a conversation,** with a reason on every line. Three test people must get three visibly different plans.
+4. **Deposit in one step.** One confirmation places the swaps on the plan's chain, with a status per leg and a retry if one fails.
 5. **The portfolio.** The plan's holdings read from its chain, valued correctly (stock tokens carry dividend multipliers), with drift from target.
 6. **Rebalance in one tap,** on whichever chain the plan is on.
 7. **Publish and follow.** Publish a shared portfolio with its version recorded on chain, follow it from a second account, update it, and the follower is prompted to rebalance. Auto-follow is per plan, off by default, and goes live on each chain once that chain's price-check tests pass, Solana first.
@@ -171,7 +173,7 @@ What agents can't do, and what therefore sets the pace: funding and testing real
 - Solana and Robinhood Chain first; Base follows if there is time (Oct 2).
 - A plan lives on one chain: the chain of the wallet the person created or connected when signing in. The product proposes only what exists on that chain, and the deposit, the vault and every trade of the plan are there. A plan is never split across chains. A shared portfolio may be published on more than one chain, and a person gets the recipe of their own (Oct 3).
 - Someone who creates a wallet in the app picks its chain at that moment (Oct 3). Since Oct 6 the chain is the person's current chain; since Oct 9 it is chosen on the page where a plan starts, lists show both chains, and nothing else follows it (gate `CHAIN-AT-THE-PLAN`). Each plan stays on the chain it was made on (gate `CHAIN-SWITCH`).
-- What an asset may weigh comes from Bearing's measured exit numbers: the cap per asset on chain, the ceiling per line in a plan and the exit cost shown. The tiers on the asset list rest on price impact alone; they are a fallback where nothing is measured, and are labelled as such (Oct 3).
+- What an asset may weigh comes from Bearing's measured exit numbers: the cap per asset on chain, the ceiling per line in a plan and the exit cost shown. The tiers on the asset list rest on price impact alone; they are a fallback where nothing is measured, and are labelled as such (Oct 3). In a person's own vault the measured exit capacity is a warning that cites its figure, not a cap (gate `ANY-COMPOSITION`, Oct 8).
 - A plan whose goal is to protect holds no stock tokens: dollar yield, gold and cash only. Income plans hold none either, and growth plans are unchanged. The asset registry's eligibility enforces it (Oct 3).
 - Wallet connect or a passkey wallet (Privy).
 - The product is not for US persons, and the terms say so. There is no location block and no banner.

@@ -1,5 +1,7 @@
 # HANDOFF: Idea 1 build for the Colosseum video
 
+> Historical: the first product (goals in reais, in Portuguese or English, run from the person's wallet). Superseded by `docs/vault/HANDOFF-VAULT.md`; the engine it specified is still in use.
+
 *Written 2026-09-30.*
 
 **Purpose.** This file is the full context for writing a build plan. The founder will ask another model to write a prompt from it, and that prompt will generate the day-by-day plan. Everything a planner needs is here. It does not assume access to earlier conversations.

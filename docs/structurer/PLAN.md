@@ -1,5 +1,7 @@
 # PLAN.md — 12-day build plan, Colosseum Crypto World's Fair
 
+> Historical: the build plan of the first product. Superseded by `docs/vault/PLAN-VAULT.md` and the ledger, `docs/vault/STATE-VAULT.md`.
+
 *Written Wed 2026-09-30 from `HANDOFF-IDEA1.md` (authoritative), `eval/FINAL.md`, `eval/FEASIBILITY.md`, `eval/IDEA1-MARKET.md`, `eval/PANEL.md`. Build runs Thu Oct 1 (D1) to Mon Oct 12 (D12). Video recorded by Sun Oct 11. Submission 11:59pm PT Oct 12.*
 
 Calendar: D1 Thu Oct 1 · D2 Fri Oct 2 · **D3 Sat Oct 3 · D4 Sun Oct 4** · D5 Mon Oct 5 · D6 Tue Oct 6 · D7 Wed Oct 7 · D8 Thu Oct 8 · D9 Fri Oct 9 · **D10 Sat Oct 10 · D11 Sun Oct 11** · D12 Mon Oct 12. Weekends in bold: xStocks depth is thin, so xStocks execution is scheduled on weekdays only.
