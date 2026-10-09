@@ -76,6 +76,7 @@
     "risk:cost-breakdown": "tsx scripts/risk/facts/cost-breakdown.ts",
     "risk:network-fees": "tsx scripts/risk/facts/network-fees.ts",
     "risk:freeze-market-fixture": "tsx scripts/risk/facts/freeze-market-fixture.ts && biome format --write fixtures/risk/prices/market-series.json",
+    "risk:freeze-oracle-fixture": "tsx scripts/risk/facts/freeze-oracle-fixture.ts && biome format --write fixtures/risk/oracle",
     "risk:freeze-split-fixture": "tsx scripts/risk/facts/freeze-split-fixture.ts && biome format --write fixtures/risk/split",
     "risk:lending-measure": "tsx scripts/risk/lending-measure.ts",
     "risk:lending-registry": "tsx scripts/risk/lending-registry.ts",

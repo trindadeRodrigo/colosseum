@@ -265,6 +265,7 @@ const NULL_REASONS: Record<FactNullReason, string> = {
   not_followed: 'not traced',
   gate_open: 'waiting on a decision',
   not_applicable: 'does not apply',
+  no_oracle: 'no price oracle for this asset',
 };
 const UNITS: Record<FactUnit, string> = {
   fraction: 'fraction',
@@ -272,6 +273,7 @@ const UNITS: Record<FactUnit, string> = {
   ratio: 'ratio',
   count: 'count',
   hours: 'hours',
+  seconds: 'seconds',
 };
 
 /** What each analytics id measures, for the model's legend and, with the asset's details, the reply. */

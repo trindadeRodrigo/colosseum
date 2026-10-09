@@ -18,7 +18,7 @@ export const FactRegime = z.enum([
 export type FactRegime = z.infer<typeof FactRegime>;
 
 /** fraction: 0.01 = 1%. ratio: dimensionless (coverage, weekend ÷ market hours). */
-export const FactUnit = z.enum(['fraction', 'usd', 'ratio', 'count', 'hours']);
+export const FactUnit = z.enum(['fraction', 'usd', 'ratio', 'count', 'hours', 'seconds']);
 export type FactUnit = z.infer<typeof FactUnit>;
 
 /** measured: read or computed from chain data. lower_bound: the true value is at least this. assumption: a
@@ -49,6 +49,8 @@ export const FactNullReason = z.enum([
   'gate_open',
   /** The fact does not apply to this asset or pool. */
   'not_applicable',
+  /** The asset has no oracle the vault could check a rebalance against (gate UNIVERSE). */
+  'no_oracle',
 ]);
 export type FactNullReason = z.infer<typeof FactNullReason>;
 
@@ -210,6 +212,70 @@ export const FlowFacts = z.object({
 });
 export type FlowFacts = z.infer<typeof FlowFacts>;
 
+/** The oracle of one bucket of time (PLAN-UNIVERSE RU.9). The oracle and the pool mid are read apart and set side
+ *  by side, never blended into one price (gate ORACLE-VS-DEX). */
+export const OracleBucketFacts = z.object({
+  /** Age of the oracle's price when it was read: the read's time less the oracle's own timestamp. */
+  ageMedian: Fact,
+  ageP95: Fact,
+  /** (pool mid − oracle) ÷ oracle, signed, at the median of the paired readings. */
+  gapMedian: Fact,
+  /** The same gap without its sign, at the 95th percentile and at its largest. */
+  gapAbsP95: Fact,
+  gapAbsMax: Fact,
+  /** Share of hours in which the vault's price check, at the limits of `limits`, would have refused a trade. An hour
+   *  read more than once counts by the share of its readings refused. */
+  refusedShare: Fact,
+  /** The same share for the age limit alone, and for the distance from the oracle's own one-hour average alone. */
+  refusedByAgeShare: Fact,
+  refusedByDistanceShare: Fact,
+});
+export type OracleBucketFacts = z.infer<typeof OracleBucketFacts>;
+
+/** What a rebalance the vault runs by itself needs to know of an asset's oracle (PLAN-UNIVERSE RU.9). These are
+ *  measurements; the vault's limits are the vault's to set. */
+export const OracleFacts = z.object({
+  /** Which oracle and where, as the chain's asset list names it; null when the stock has none. */
+  feed: z
+    .object({
+      kind: z.enum(['chainlink', 'scope']),
+      /** Chainlink: the feed's proxy address. Scope: the entry index in the price account. */
+      ref: z.string().min(1),
+      account: z.string().nullable(),
+      /** Scope: the entry of the one-hour average the vault compares the price with. */
+      averageRef: z.string().nullable(),
+      description: z.string().nullable(),
+      /** What the oracle prices, where its source says so; null with `pricesReason` where it does not. */
+      prices: z.string().nullable(),
+      pricesReason: z.string().nullable(),
+      source: z.string().min(1),
+      fetchedAt: z.string().datetime(),
+      method: z.string().min(1),
+      provenance: Provenance,
+    })
+    .nullable(),
+  /** Why there is no oracle, as the asset list says it (`no_feed`, `no_scope_entry`); null with one. */
+  feedReason: z.string().nullable(),
+  /** True only with an oracle (gate UNIVERSE). False carries `no_oracle`. */
+  autoRebalance: z.boolean(),
+  autoRebalanceReason: z.string().nullable(),
+  /** A question about this oracle the asset list leaves to the vault stream; carried through, not answered. */
+  autoRebalanceOpen: z.string().nullable(),
+  /** The limits the refusal shares are counted against, each with where it was read. */
+  limits: z.object({
+    maxAgeSeconds: Fact,
+    /** Largest distance between the price and its one-hour average. */
+    maxDistance: Fact,
+  }),
+  /** The readings behind the figures: from the first to the last oracle reading used. */
+  window: z.object({ from: z.string().datetime(), to: z.string().datetime() }).nullable(),
+  byRegime: z.array(OracleBucketFacts.extend({ regime: FactRegime })),
+  /** The hours the vault's keeper may trade in at all (its session, closed days out): outside them a trade is
+   *  refused whatever the oracle says. */
+  vaultSession: OracleBucketFacts.extend({ session: z.string().min(1) }),
+});
+export type OracleFacts = z.infer<typeof OracleFacts>;
+
 export const AssetFacts = z.object({
   assetId: z.string().min(1),
   symbol: z.string().min(1),
@@ -304,6 +370,8 @@ export const AssetFacts = z.object({
       }),
     })
     .optional(),
+  /** The oracle a rebalance is checked against (PLAN-UNIVERSE RU.9); absent for an asset on no asset list. */
+  oracle: OracleFacts.optional(),
   coverage: DataCoverage,
   methodVersion: z.string().min(1),
   provenance: Provenance,
