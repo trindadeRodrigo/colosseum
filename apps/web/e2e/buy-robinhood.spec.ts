@@ -2,8 +2,9 @@ import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
 import { openPlan, readyToInvest } from './invest';
 
-// A person's buy on Robinhood Chain, end to end in a browser, on the mock chain: they switch the bar to
-// Robinhood Chain before they sign in, see its shelf, and the plan they open is on it (CHAIN-SWITCH).
+// A person's buy on Robinhood Chain, end to end in a browser, on the mock chain: the shelf is one list
+// whatever the chain, they choose Robinhood Chain for their plan on /goal before they sign in, and the
+// plan they open is on it (gates CHAIN-AT-THE-PLAN, CHAIN-SWITCH).
 // The stub runs its mock as Robinhood Chain (E2E_CHAIN=robinhood sets STUB_CHAIN), so the order is what apps/api plans
 // on an EVM chain: an approval of the deposit, then a create that deposits and trades. The executor
 // builds each step from the stub, holds it to the review with the real guard, has the throwaway wallet
@@ -24,26 +25,24 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   page,
 }) => {
   await page.request.post(`${STUB}/__stub/reset`);
-  // signed out, the bar's switcher moves the shelf to Robinhood Chain, and the address names it
+  // signed out, the shelf is every chain's portfolios: one lead, and no chain in the address
   await page.goto('/shelf');
-  const switcher = page.locator('[data-ui="chain-switch"] > button');
-  await expect(switcher).toHaveAttribute('aria-label', en.chain.switch.current('Solana'), {
-    timeout: 60_000,
-  });
-  await switcher.click();
-  await page.locator('[data-ui="chain-switch-panel"] button[data-chain="robinhood"]').click();
-  await expect(switcher).toHaveAttribute('aria-label', en.chain.switch.current(NAME));
-  await expect(page).toHaveURL(/\/shelf\?chain=robinhood$/);
-  await expect(page.locator('main')).toContainText(en.shared.shelf.lead(NAME));
+  await expect(page.locator('main')).toContainText(en.shared.shelf.lead, { timeout: 60_000 });
+  await expect(page).toHaveURL(/\/shelf$/);
 
-  // the bar's "Sign in" opens the sign-in dialog over the goal (SIGN-IN-FLOW); nothing more is asked
+  // the chain of a new plan is chosen on /goal, beside the box; the bar's "Sign in" then opens the
+  // sign-in dialog over the goal (SIGN-IN-FLOW), and nothing more is asked
   await page.goto('/goal');
+  const chains = page.getByRole('group', { name: en.chain.choice.legend }).getByRole('radio');
+  await expect(chains).toHaveCount(2);
+  await page.getByRole('radio', { name: new RegExp(`^${NAME}`) }).check();
+  await expect(chains.nth(1)).toBeChecked();
   await page.locator('header a[href^="/sign-in"]').click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/goal$/);
-  // signed in, the bar's one account control is on the chain the switcher was on
+  // signed in, the bar's one account control is on the chain chosen on the page
   await expect(page.locator('header [data-ui="account-menu-button"]')).toHaveAttribute(
     'data-chain',
     'robinhood',

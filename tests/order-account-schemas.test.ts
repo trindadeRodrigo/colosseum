@@ -94,6 +94,17 @@ describe('one chain per order', () => {
     const settings = { type: 'settings', vault: SOLANA, autoFollow: false };
     expect(IntentRequest.parse({ ...settings, chains: ['solana'] })).toEqual(settings);
   });
+
+  it('a buy of a shared portfolio may name the one chain of the recipe it follows', () => {
+    const buy = { type: 'buy', owner: { evm: EVM }, amountUsd: 10, family: 'core' };
+    expect(IntentRequest.parse({ ...buy, chain: 'robinhood' })).toEqual({
+      ...buy,
+      chain: 'robinhood',
+    });
+    // one chain, by its id: never a list, and never a wallet family
+    for (const chain of [['robinhood'], 'evm', 'Robinhood Chain', null])
+      expect([chain, IntentRequest.safeParse({ ...buy, chain }).success]).toEqual([chain, false]);
+  });
 });
 
 describe('the cash a step carries', () => {
@@ -188,6 +199,18 @@ describe('the bodies of /v1/me and /v1/funding', () => {
       amountUsd: 10,
       family: 'core',
     });
+    // The chain of the recipe the buy follows goes with the slug, and with nothing else.
+    expect(FundingQuery.parse({ amountUsd: '10', family: 'core', chain: 'robinhood' })).toEqual({
+      amountUsd: 10,
+      family: 'core',
+      chain: 'robinhood',
+    });
+    for (const query of [
+      { chain: 'solana' },
+      { amountUsd: '10', proposalId: ID, chain: 'solana' },
+      { amountUsd: '10', family: 'core', chain: 'evm' },
+    ])
+      expect([query, FundingQuery.safeParse(query).success]).toEqual([query, false]);
   });
 
   it('a funding query may name the wallet to read, as an address in the form used here', () => {

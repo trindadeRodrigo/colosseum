@@ -64,7 +64,8 @@ const bodyOf = async (res: Response): Promise<Record<string, unknown>> => {
  */
 export type BuyOf =
   | { proposalId: string }
-  | { family: string }
+  /** `chain`: the chain of the recipe the buy follows, as the order names it (gate CHAIN-AT-THE-PLAN). */
+  | { family: string; chain?: ChainId }
   | { vault: string; vaultChain: ChainId };
 
 /** Where the screen that adds money to a vault lives. */
@@ -84,7 +85,7 @@ export async function readFunding(
     ...('vault' in ask
       ? { vault: ask.vault, vaultChain: ask.vaultChain }
       : 'family' in ask
-        ? { family: ask.family }
+        ? { family: ask.family, ...(ask.chain ? { chain: ask.chain } : {}) }
         : { proposalId: ask.proposalId }),
     wallet: ask.wallet,
   });
