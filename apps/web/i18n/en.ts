@@ -39,7 +39,7 @@ export const en = {
       wallets:
         'Your wallets haven’t come through yet. Our server may be waking up, which can take up to a minute. Nothing is lost.',
       server:
-        'Our server hasn’t said yet which chain your plan lives on. It may be waking up, which can take up to a minute. Nothing is lost.',
+        'Our server hasn’t said yet which chain your vault lives on. It may be waking up, which can take up to a minute. Nothing is lost.',
       /** Nobody is known to be signed in: the sign-in service has not loaded at all. */
       service:
         'The sign-in service hasn’t answered yet, so I can’t tell whether you’re signed in. You can still look around.',
@@ -124,8 +124,8 @@ export const en = {
       found: 'Wallets found in this browser',
       waiting: 'Waiting for your wallet…',
       /** Under a wallet's name: where a plan made with it lives. Nothing is switched by the person. */
-      lives: (chain: string) => `Your plan lives on ${chain}`,
-      livesEither: (a: string, b: string) => `Your plan lives on ${a} or ${b}`,
+      lives: (chain: string) => `Your vault lives on ${chain}`,
+      livesEither: (a: string, b: string) => `Your vault lives on ${a} or ${b}`,
       none: 'No wallet was found in this browser.',
       /** Under the list, a quiet disclosure: a wallet that is not in it. It connects nothing. */
       other: 'Wallet not listed?',
@@ -133,7 +133,7 @@ export const en = {
         'Only wallets in this browser are listed. Install yours, or open this page inside your wallet’s own browser. Or use a passkey: it needs nothing installed.',
       /** A wallet that signs on both families: the chain is asked before it signs. */
       both: (wallet: string) =>
-        `${wallet} works on Solana and on Robinhood Chain. Choose the chain your plan lives on: it can’t be changed later.`,
+        `${wallet} works on Solana and on Robinhood Chain. Choose the chain your vault lives on: it can’t be changed later.`,
       /** After `both`: someone who signed in before chooses again what they chose then. */
       before: 'Signed in before? Choose the chain you chose then.',
       /** From the chain question back to the list. */
@@ -142,7 +142,7 @@ export const en = {
       off: (wallet: string) =>
         `${wallet} works only on chains switched off on our server for now, so it can’t be used to sign in. Use another wallet, or a passkey.`,
       /** The name of the group of the two chains to choose from. */
-      chains: 'The chain of your plan',
+      chains: 'The chain of your vault',
     },
     /** The sign-in screen when the sign-in service has not loaded after a few seconds. */
     silent: {
@@ -495,7 +495,7 @@ export const en = {
     blocked: {
       chainNotChosen: 'Choose a chain from the bar at the top first.',
       chainUnknown:
-        'I can’t tell yet which chain your plan lives on, so I can’t build for it. Ask again, above.',
+        'I can’t tell yet which chain your vault lives on, so I can’t build for it. Ask again, above.',
       refused: 'Our server didn’t accept these limits. Check each field, then try again.',
       chainOff: (chain: string) =>
         `${chain} is switched off on our server for now, so I can’t build a plan there. Your limits are kept.`,
@@ -620,7 +620,7 @@ export const en = {
     reading: 'Reading your vault…',
     signedOut:
       'Sign in to see your portfolio. It sits in a vault on the chain of your wallet, and only you can withdraw from it.',
-    noChain: 'Choose the chain your plan lives on first: your vault is on that chain.',
+    noChain: 'Choose the chain your vault lives on first.',
     chooseChain: 'Choose the chain',
     throwaway:
       'The throwaway wallet has no account on our server, so there is no vault of it to read.',
@@ -1199,7 +1199,7 @@ export const en = {
       refused: 'Our server didn’t accept this order. Check the amount, then try again.',
       signedOut:
         'Our server doesn’t recognise your sign-in any more. Sign out, then sign in again.',
-      noChain: 'Choose the chain your plan lives on first.',
+      noChain: 'Choose the chain your vault lives on first.',
       noStore:
         'This browser keeps nothing between pages, so I can’t keep your order. Allow this site to store data, then try again.',
     },
