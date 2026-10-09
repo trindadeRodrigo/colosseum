@@ -33,6 +33,9 @@ test.describe('a plan’s page on the stub', () => {
   test('the goal first, then the plan over time, every figure with its pin, axe clean', async ({
     page,
   }) => {
+    // The fixture's readings end Oct 7 11:56 UTC; the chart's hourly steps are counted back from now,
+    // so the clock is held just after them and the arrow keys land on the same readings every run.
+    await page.clock.setFixedTime(Date.parse('2026-10-08T00:00:00Z'));
     await openSignedIn(page, '/portfolio');
     await toPlan(page, INCOME);
     // the goal is the page's heading and its one serif line
