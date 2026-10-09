@@ -1,13 +1,14 @@
 'use client';
-import type {
-  ChainId,
-  PortfolioResponse,
-  RecipeVersionView,
-  SharedFamily,
-  SharedRecipe,
-  Target,
-  VaultView,
-  VersionsResponse,
+import {
+  type ChainId,
+  chainFamily,
+  type PortfolioResponse,
+  type RecipeVersionView,
+  type SharedFamily,
+  type SharedRecipe,
+  type Target,
+  type VaultView,
+  type VersionsResponse,
 } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -24,8 +25,7 @@ import { SkeletonRows } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { useAccount } from '../account/AccountProvider';
-import { switchFailure } from '../account/ChainSwitch';
+import { ChainChoice } from '../account/ChainChoice';
 import { dollars, parseNumber } from '../goal/sheet';
 import { formatBps, tokenName } from '../order/amounts';
 import { Invest } from '../order/Invest';
@@ -37,7 +37,7 @@ import { goalLine } from '../order/plain';
 import { networkFor } from '../order/readiness';
 import { unpriced, holdingsOf as vaultHoldingsOf } from '../portfolio/portfolio';
 import { goalOfVault } from '../portfolio/vault-goal';
-import { useApiFetch } from '../wallet/WalletProvider';
+import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { type ChainCheck, familyIdFor, isVaultOf, useChainRecipe } from './chain-recipe';
 import { HoldingsBar } from './HoldingsBar';
 import { isPlatformCreator } from './platform';
@@ -50,8 +50,10 @@ import type { FollowTerms, SharedTerms } from './terms';
 import { type SharedPerson, shortAddress, useSharedPerson } from './use-person';
 import { FamilyWait } from './waits';
 
-// A shared portfolio's page (DESIGN-VAULT section 11): its name and creator, the recipe of the
-// person's own chain (gate ONE-CHAIN) with the version in effect and the one that waits, whether
+// A shared portfolio's page (DESIGN-VAULT section 11): its name and creator, each recipe a wallet of
+// the person's signs on (one at a time: a portfolio with a recipe on both chains asks which, gate
+// CHAIN-AT-THE-PLAN; a buy is on that recipe's chain, ONE-CHAIN) with the version in effect and the
+// one that waits, whether
 // auto-follow is offered (gate GOLD-ONE-TAP), the person's vaults with a follow and the prompt when the
 // portfolio changed, and every version. The version and weights are read from the chain by this app
 // where it can (chain-recipe.ts): what it reads is what is shown and what a follow is held to, and our
@@ -122,14 +124,23 @@ export function followedOf(recipe: SharedRecipe, check: ChainCheck): Followed | 
 
 export function FamilyScreen({ slug }: { slug: string }) {
   const t = useT();
+  const lang = useLang();
   const apiFetch = useApiFetch();
+  const port = useWalletPort();
   const person = useSharedPerson();
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [round, setRound] = useState(0);
   // A buy was refused because the portfolio has a newer version: the page reads it again and says so.
   const [changed, setChanged] = useState(false);
+  // The recipe on the page, for a portfolio the person can use on more than one chain.
+  const [picked, setPicked] = useState<ChainId | null>(null);
+  // A deposit was pressed and has not ended: the recipe on the page is the one it is signing on, so
+  // nothing here may change the chain under it (the section would be drawn again and the run cut).
+  const [running, setRunning] = useState(false);
+  const show = (chain: ChainId) => {
+    if (!running) setPicked(chain);
+  };
   const titleId = useId();
-  const chain = person.kind === 'ready' ? person.chain : null;
   const settled = person.kind !== 'loading';
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `round` reads the portfolio again
@@ -138,13 +149,14 @@ export function FamilyScreen({ slug }: { slug: string }) {
     let mine = true;
     // What was read stays on the page while it is read again: only the first read shows the wait.
     setLoad((was) => (was.kind === 'read' ? was : { kind: 'loading' }));
-    readFamily(apiFetch, slug, chain).then((read) => {
+    // Every recipe: which of them the person can use is worked out here, from their wallets.
+    readFamily(apiFetch, slug, null).then((read) => {
       if (mine) setLoad(read.kind === 'read' ? { kind: 'read', family: read.value.family } : read);
     });
     return () => {
       mine = false;
     };
-  }, [apiFetch, slug, chain, settled, round]);
+  }, [apiFetch, slug, settled, round]);
 
   if (load.kind === 'loading') return <FamilyWait />;
   if (load.kind !== 'read')
@@ -176,20 +188,28 @@ export function FamilyScreen({ slug }: { slug: string }) {
     );
 
   const { family } = load;
-  const mine = chain ? family.recipes.find((r) => r.chain === chain) : null;
-  const recipes = chain ? (mine ? [mine] : []) : family.recipes;
+  const f = t.shared.family;
+  // Signed in: the recipes on a chain a wallet of theirs signs on, one on the page at a time,
+  // starting with the chain their new plans start on. Signed out: every recipe, and nothing offered.
+  const usable =
+    person.kind === 'ready' ? family.recipes.filter((r) => person.held.includes(r.chain)) : [];
+  const chosen =
+    usable.find((r) => r.chain === picked) ??
+    (person.kind === 'ready' ? usable.find((r) => r.chain === person.chain) : undefined) ??
+    usable[0] ??
+    null;
+  const recipes = chosen ? [chosen] : family.recipes;
+  const nameOf = (chain: ChainId) => port.network(chain)?.name ?? t.chain.names[chain];
   return (
     <div data-ui="family-screen" className="flex flex-col gap-8">
       <header className="flex flex-col gap-3">
         <Link href="/shelf" className={`${buttonClass({ variant: 'link' })} self-start`}>
-          {t.shared.family.backToShelf}
+          {f.backToShelf}
         </Link>
         <h1 id={titleId} className={`${PAGE_TITLE} [overflow-wrap:anywhere]`}>
           {family.name}
         </h1>
-        <p className="max-w-(--tf-measure-body) text-body text-muted-foreground">
-          {t.shared.family.nextStep}
-        </p>
+        <p className="max-w-(--tf-measure-body) text-body text-muted-foreground">{f.nextStep}</p>
         {family.copy && (
           <p className="max-w-(--tf-measure-body) whitespace-pre-line text-body-lg [overflow-wrap:anywhere]">
             {family.copy}
@@ -197,18 +217,46 @@ export function FamilyScreen({ slug }: { slug: string }) {
         )}
       </header>
 
-      {chain && !mine && (
-        <p className="max-w-(--tf-measure-body) text-body">
-          {t.shared.family.notHere(t.chain.names[chain])}
+      {person.kind === 'ready' && usable.length === 0 && family.recipes.length > 0 && (
+        // On a chain no wallet of theirs signs on: shown, and said plainly why nothing is offered.
+        <p data-ui="family-no-wallet" className="max-w-(--tf-measure-body) text-body">
+          {f.noWalletFor(
+            new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(
+              family.recipes.map((r) => nameOf(r.chain)),
+            ),
+          )}
         </p>
+      )}
+      {chosen && usable.length > 1 && (
+        <ChainChoice
+          data-ui="family-chain"
+          className="max-w-md"
+          legend={f.which}
+          hint={running ? f.whichLocked : f.whichHint}
+          value={chosen.chain}
+          disabled={running}
+          onChange={show}
+          options={usable.map((r) => ({
+            chain: r.chain,
+            name: nameOf(r.chain),
+            address: port.active(chainFamily(r.chain))?.address ?? null,
+            provenance: r.provenance,
+          }))}
+          labels={{
+            testNetwork: t.shell.testNetwork,
+            sampleFigure: t.shell.sampleFigure,
+            wallet: t.chain.choice.wallet,
+            saving: t.chain.switch.saving,
+          }}
+        />
       )}
       {recipes.map((recipe) => (
         <RecipeSection
           key={recipe.chain}
           family={family}
           recipe={recipe}
-          person={person}
           changed={changed}
+          onRunning={setRunning}
           onVersionChanged={() => {
             setChanged(true);
             setRound((n) => n + 1);
@@ -216,10 +264,18 @@ export function FamilyScreen({ slug }: { slug: string }) {
           onReread={() => setRound((n) => n + 1)}
         />
       ))}
-      {person.kind === 'ready' && <VaultsElsewhere family={family} chain={person.chain} />}
-      <VersionsPanel slug={family.slug} chain={chain} />
+      {chosen && usable.length > 1 && (
+        <VaultsElsewhere
+          family={family}
+          chain={chosen.chain}
+          among={usable.map((r) => r.chain)}
+          locked={running}
+          onShow={show}
+        />
+      )}
+      <VersionsPanel slug={family.slug} chain={chosen?.chain ?? null} />
       <Link href="/shelf" className={`${buttonClass({ variant: 'link' })} self-start`}>
-        {t.shared.family.backToShelf}
+        {f.backToShelf}
       </Link>
     </div>
   );
@@ -229,14 +285,15 @@ export function FamilyScreen({ slug }: { slug: string }) {
 function RecipeSection({
   family,
   recipe,
-  person,
   changed,
+  onRunning,
   onVersionChanged,
   onReread,
 }: {
   family: SharedFamily;
   recipe: SharedRecipe;
-  person: SharedPerson;
+  /** A deposit was pressed (true) or ended, stopped or was put off (false): the page locks its chain. */
+  onRunning: (running: boolean) => void;
   /** A buy was refused for a newer version, and the page read the portfolio again. */
   changed: boolean;
   onVersionChanged: () => void;
@@ -244,9 +301,15 @@ function RecipeSection({
 }) {
   const t = useT();
   const lang = useLang();
+  // The person on this recipe's own chain, with their wallet there: a buy and a follow are on it.
+  const person = useSharedPerson(recipe.chain);
   // The amount to invest, typed on this page; locked once the person has pressed.
   const [amountText, setAmountText] = useState('');
-  const [pressed, setPressed] = useState(false);
+  const [pressed, setPressedHere] = useState(false);
+  const setPressed = (now: boolean) => {
+    setPressedHere(now);
+    onRunning(now);
+  };
   const f = t.shared.family;
   const chainName = t.chain.names[recipe.chain];
   const own = person.kind === 'ready' && person.chain === recipe.chain;
@@ -515,31 +578,40 @@ function RecipeSection({
 }
 
 /**
- * The person's vaults on another chain than the current one that follow this portfolio. A vault is
- * updated on its own chain (CHAIN-SWITCH), and this page signs on the current chain only, so it says
- * which chain to switch to, with the switch.
+ * The person's vaults that follow this portfolio on another chain than the recipe on the page. A vault
+ * is updated on its own chain, so the page says where it is, with the way to show that chain's recipe.
  */
-function VaultsElsewhere({ family, chain }: { family: SharedFamily; chain: ChainId }) {
+function VaultsElsewhere({
+  family,
+  chain,
+  among,
+  locked,
+  onShow,
+}: {
+  family: SharedFamily;
+  /** The chain of the recipe on the page. */
+  chain: ChainId;
+  /** The chains whose recipe the page can show for this person. */
+  among: readonly ChainId[];
+  /** A deposit is running on the recipe on the page: the way to another chain waits for it. */
+  locked: boolean;
+  onShow: (chain: ChainId) => void;
+}) {
   const t = useT();
   const f = t.shared.family;
   const apiFetch = useApiFetch();
-  const { choose } = useAccount();
-  const [elsewhere, setElsewhere] = useState<ChainId[]>([]);
-  const [failed, setFailed] = useState('');
+  const [following, setFollowing] = useState<ChainId[]>([]);
   useEffect(() => {
     let mine = true;
     const recipeOn = new Map(family.recipes.map((r) => [r.chain, r.onchainId]));
     readPortfolio(apiFetch).then((read) => {
       if (!mine || read.kind !== 'read') return;
-      setElsewhere(
+      setFollowing(
         read.value.chains
-          .filter(
-            (entry) =>
-              entry.chain !== chain &&
-              entry.vaults.some(
-                (v) =>
-                  v.recipeOnchainId !== null && v.recipeOnchainId === recipeOn.get(entry.chain),
-              ),
+          .filter((entry) =>
+            entry.vaults.some(
+              (v) => v.recipeOnchainId !== null && v.recipeOnchainId === recipeOn.get(entry.chain),
+            ),
           )
           .map((entry) => entry.chain),
       );
@@ -547,31 +619,19 @@ function VaultsElsewhere({ family, chain }: { family: SharedFamily; chain: Chain
     return () => {
       mine = false;
     };
-  }, [apiFetch, chain, family]);
+  }, [apiFetch, family]);
+  const elsewhere = following.filter((other) => other !== chain && among.includes(other));
   if (elsewhere.length === 0) return null;
   return (
     <div data-ui="vaults-elsewhere" className="flex flex-col items-start gap-2">
       {elsewhere.map((other) => (
         <p key={other} className="max-w-(--tf-measure-body) text-body">
           {f.elsewhere(t.chain.names[other])}{' '}
-          <Button
-            variant="link"
-            onClick={() => {
-              setFailed('');
-              choose(other).catch((e: unknown) =>
-                setFailed(switchFailure(t, e, t.chain.names[other])),
-              );
-            }}
-          >
-            {f.switchTo(t.chain.names[other])}
+          <Button variant="link" disabled={locked} onClick={() => onShow(other)}>
+            {f.showOn(t.chain.names[other])}
           </Button>
         </p>
       ))}
-      {failed && (
-        <p role="alert" className="text-body-sm text-destructive">
-          {failed}
-        </p>
-      )}
     </div>
   );
 }

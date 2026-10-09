@@ -273,10 +273,18 @@ export const IntentRequest = z.discriminatedUnion('type', [
     maxSlippageBps: Bps.max(ORDER_LIMITS.maxSlippageBps).optional(),
     proposalId: z.string().optional(),
     /**
-     * A shared portfolio's slug, in place of `proposalId`: the buy opens a vault that follows it on the
-     * person's chain (or adds to the one that does), with auto-follow off.
+     * A shared portfolio's slug, in place of `proposalId`: the buy opens a vault that follows it (or
+     * adds to the one that does), with auto-follow off, on the chain `chain` names, else on the
+     * person's current chain.
      */
     family: z.string().optional(),
+    /**
+     * With `family` only: the chain of the recipe to follow, for a portfolio published on more than
+     * one (gate CHAIN-AT-THE-PLAN). It has to be a chain the portfolio has a recipe on and one a wallet
+     * of the person signs on (409 `NO_WALLET_FOR_CHAIN` otherwise). Left out, the person's current
+     * chain. The order is still on one chain (ONE-CHAIN): a plan and a vault name none, they have their own.
+     */
+    chain: ChainId.optional(),
     /**
      * With `family`: the version of the shared portfolio the person reviewed. The order is refused with
      * `VERSION_CHANGED` when another is in effect, then or when a step is built. Left out, the version in
@@ -290,9 +298,10 @@ export const IntentRequest = z.discriminatedUnion('type', [
      */
     vault: z.object({ chain: ChainId, address: Address }).optional(),
     /**
-     * Never sent. A buy names no chain: it is on the chain of the person's wallet, where the plan
-     * lives (gate ONE-CHAIN). The field a buy once took is refused with a sentence, not ignored, so a
-     * caller that still asks for a split across chains is told instead of getting another order.
+     * Never sent. A buy is on one chain (gate ONE-CHAIN): a plan's own, a vault's own, or the one
+     * `chain` names for a shared portfolio. The list a buy once took is refused with a sentence, not
+     * ignored, so a caller that still asks for a split across chains is told instead of getting
+     * another order.
      */
     chains: z
       .never({

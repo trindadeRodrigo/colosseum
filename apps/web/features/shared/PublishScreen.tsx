@@ -1,5 +1,5 @@
 'use client';
-import { chainFamily, type SharedFamily, type Target } from '@colosseum/schemas';
+import { ChainId, chainFamily, type SharedFamily, type Target } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -105,7 +105,14 @@ export function PublishScreen() {
   const router = useRouter();
   const apiFetch = useApiFetch();
   const port = useWalletPort();
-  const person = useSharedPerson();
+  // The chain of the vault whose strategy is shared, as the vault's page names it in the address
+  // (`?vault=…&chain=…`); with none named, the chain the person's new plans start on.
+  const [named] = useState<ChainId | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const read = ChainId.safeParse(new URLSearchParams(window.location.search).get('chain'));
+    return read.success ? read.data : null;
+  });
+  const person = useSharedPerson(named);
   const chain = person.kind === 'ready' ? person.chain : null;
   const mock = person.kind === 'ready' ? person.mock : false;
   const assets = chain ? assetsFor(chain, mock) : [];
@@ -247,7 +254,11 @@ export function PublishScreen() {
       <section className="flex flex-col items-start gap-4">
         <h1 className={PAGE_TITLE}>{p.title}</h1>
         <p className="max-w-(--tf-measure-body) text-body">
-          {person.kind === 'no-chain' ? t.goal.blocked.chainNotChosen : p.signIn}
+          {person.kind === 'no-chain'
+            ? t.goal.blocked.chainNotChosen
+            : person.kind === 'no-wallet'
+              ? t.chain.switch.noWallet(t.chain.names[person.chain])
+              : p.signIn}
         </p>
         <Link href="/sign-in?next=/publish" className={buttonClass({ variant: 'secondary' })}>
           {t.shell.signIn}

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import type { ChainId } from '@colosseum/schemas';
-import { act, createElement, useState } from 'react';
+import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, unmountAll } from '../../components/ui/test/dom';
 import { BearingProvider } from './BearingProvider';
@@ -11,8 +11,8 @@ import { LendingPage } from './LendingPage';
 import { inPortuguese, NOW } from './test/cases';
 import { snapshotReader } from './test/snapshot';
 
-// Bearing per chain, as a person uses it: the toggle at the top, the address that names the chain, the
-// bar it follows, and what a page says where Robinhood Chain has nothing collected yet.
+// Bearing per chain, as a person uses it: the toggle at the top, the address that names the chain, its
+// own memory of the last choice, and what a page says where Robinhood Chain has nothing collected yet.
 
 const router = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn() }));
 vi.mock('next/navigation', () => ({
@@ -61,10 +61,10 @@ const tags = (host: HTMLElement) =>
   [...host.querySelectorAll('[data-ui="chain-badge"]')]
     .filter((b) => !b.closest('[data-ui="bearing-chains"]'))
     .map((b) => b.textContent);
-const onStocks = (reader = snapshotReader(), barChain?: ChainId | null) =>
+const onStocks = (reader = snapshotReader()) =>
   createElement(
     BearingProvider,
-    { reader, now: NOW, barChain } as never,
+    { reader, now: NOW } as never,
     createElement(BearingShell, null, createElement(DexPage, { page: 'stocks' })),
   );
 
@@ -91,7 +91,9 @@ describe('the chain toggle', () => {
     ) as HTMLButtonElement;
     await click(rh);
     expect(router.replace).toHaveBeenLastCalledWith('/analytics/stocks?chain=robinhood');
-    expect(localStorage.getItem('tf-chain')).toBe('robinhood');
+    // kept for these pages, and not as the chain the rest of the app is on
+    expect(localStorage.getItem('tf-bearing-chain')).toBe('robinhood');
+    expect(localStorage.getItem('tf-chain')).toBeNull();
     await until(host, (h) => reads(h, 'robinhood'));
     expect(reader.read).toContain('/risk/assets?tau=0.01&chain=robinhood');
     expect(host.querySelectorAll('[data-ui="bearing-kpi"]').length).toBe(5);
@@ -139,83 +141,29 @@ describe('the chain toggle', () => {
     expect(router.replace).not.toHaveBeenCalled();
   });
 
-  it('with none named, opens on the chain this browser was last on, and names it', async () => {
-    localStorage.setItem('tf-chain', 'robinhood');
+  it('with none named, opens on the chain chosen here last, and names it', async () => {
+    localStorage.setItem('tf-bearing-chain', 'robinhood');
     const host = await mount(onStocks());
     await until(host, (h) => reads(h, 'robinhood'));
     expect(router.replace).toHaveBeenCalledWith('/analytics/stocks?chain=robinhood');
   });
 
-  it('follows the app’s bar when its chain changes', async () => {
-    let switchTo: (c: ChainId) => void = () => {};
-    function Bar() {
-      const [bar, setBar] = useState<ChainId>('solana');
-      switchTo = setBar;
-      return onStocks(snapshotReader(), bar);
-    }
-    const host = await mount(createElement(Bar));
-    await until(host, (h) => reads(h, 'solana'));
-    await act(async () => switchTo('robinhood'));
-    await until(host, (h) => reads(h, 'robinhood'));
-    expect(router.replace).toHaveBeenLastCalledWith('/analytics/stocks?chain=robinhood');
-    expect(localStorage.getItem('tf-chain')).toBe('robinhood');
-  });
-});
-
-describe('the account settling under the bar', () => {
-  // The bar says nothing while the account loads (undefined), then the person's chain.
-  function Settling({
-    search,
-    reader,
-  }: {
-    search: string;
-    reader: ReturnType<typeof snapshotReader>;
-  }) {
-    const [bar, setBar] = useState<ChainId | null | undefined>(undefined);
-    settle = setBar;
-    window.history.replaceState(null, '', `/analytics/stocks${search}`);
-    return createElement(
-      BearingProvider,
-      { reader, now: NOW, barChain: bar, followsBar: true } as never,
-      createElement(BearingShell, null, createElement(DexPage, { page: 'stocks' })),
-    );
-  }
-  let settle: (c: ChainId | null) => void = () => {};
-
-  it('keeps the chain a shared link names when a Robinhood person’s account lands', async () => {
+  it('does not open on the chain the rest of the app was last on', async () => {
+    localStorage.setItem('tf-chain', 'robinhood');
     const reader = snapshotReader();
-    const host = await mount(createElement(Settling, { search: '?chain=solana', reader }));
-    await act(async () => settle('robinhood'));
+    const host = await mount(onStocks(reader));
     await until(host, (h) => reads(h, 'solana'));
-    expect(reads(host, 'solana')).toBe(true);
-    expect(router.replace).not.toHaveBeenCalled();
+    expect(router.replace).toHaveBeenCalledWith('/analytics/stocks?chain=solana');
     expect(reader.read.some((p) => p.includes('chain=robinhood'))).toBe(false);
   });
 
-  it('reads nothing until the account lands, then opens on its chain, with no Solana first', async () => {
+  it('reads at once: it waits for no account', async () => {
     const reader = snapshotReader();
-    const host = await mount(createElement(Settling, { search: '', reader }));
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
-    });
-    expect(reader.read.filter((p) => p.startsWith('/risk/assets'))).toEqual([]);
-    await act(async () => settle('robinhood'));
-    await until(host, (h) => reads(h, 'robinhood'));
-    expect(reader.read.filter((p) => p.startsWith('/risk/assets?'))).toEqual([
-      '/risk/assets?tau=0.01&chain=robinhood',
-    ]);
-    expect(router.replace).toHaveBeenCalledWith('/analytics/stocks?chain=robinhood');
-  });
-
-  it('still follows the bar when the person switches it after that', async () => {
-    const host = await mount(
-      createElement(Settling, { search: '?chain=solana', reader: snapshotReader() }),
-    );
-    await act(async () => settle('solana'));
+    const host = await mount(onStocks(reader));
     await until(host, (h) => reads(h, 'solana'));
-    await act(async () => settle('robinhood'));
-    await until(host, (h) => reads(h, 'robinhood'));
-    expect(router.replace).toHaveBeenLastCalledWith('/analytics/stocks?chain=robinhood');
+    expect(reader.read.filter((p) => p.startsWith('/risk/assets?'))).toEqual([
+      '/risk/assets?tau=0.01',
+    ]);
   });
 });
 

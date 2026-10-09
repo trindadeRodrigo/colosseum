@@ -12,8 +12,7 @@ import { StatusMark } from '../../components/ui/StatusMark';
 import { ScreenWait } from '../../components/waits/ScreenWait';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { useAccount } from '../account/AccountProvider';
-import { chainInAddress } from '../account/chain-choice';
+import { ChainBadgeMarked } from '../account/ChainName';
 import { formatBps, tokenName } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { AssetMark } from '../order/PlanView';
@@ -29,11 +28,11 @@ import { ShelfWait } from './waits';
 // The shelf (DESIGN-VAULT section 11; gate PRODUCTS-PLAN-PANE): a card per shared portfolio, the
 // figures first: one bar of what it holds with each share under it, each holding's yield with its pin, what it
 // is for in one line of its creator's, its chain and who published it. Whether auto-follow is offered
-// and a version that waits are on its page. It shows the portfolios with a recipe on one chain: a signed-in
-// person's current chain, or the chain someone signed out picked in the bar (gate CHAIN-SWITCH). The
-// address names it (`?chain=robinhood`), so a link opens the same shelf. What a card says is the
-// server's store: the portfolio's page reads the chain. A creator's name and description are text,
-// never markup or a link.
+// and a version that waits are on its page. It is one list of every chain's portfolios, for everyone
+// (gate CHAIN-AT-THE-PLAN): each card names the chain or chains it has a recipe on and keeps its own
+// sample mark, since the list mixes chains that are run differently. Which recipe a person can buy
+// is the portfolio's page's to say. What a card says is the server's store: the page reads the chain.
+// A creator's name and description are text, never markup or a link.
 
 type Load =
   | { kind: 'loading' }
@@ -47,45 +46,30 @@ export function ShelfScreen() {
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [round, setRound] = useState(0);
   const titleId = useId();
-  const { chain: looking, choose } = useAccount();
-  const chain =
-    person.kind === 'ready' ? person.chain : person.kind === 'signed-out' ? looking : null;
   const settled = person.kind !== 'loading';
-
-  // The address names the chain: someone signed out who opens a link to another chain's shelf is
-  // moved to it, once; after that the address follows the chain the bar shows.
-  const adopted = useRef(false);
-  useEffect(() => {
-    if (!settled || !chain) return;
-    if (!adopted.current) {
-      adopted.current = true;
-      const named = chainInAddress(window.location.search);
-      if (person.kind === 'signed-out' && named && named !== chain) {
-        void choose(named);
-        return;
-      }
-    }
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('chain') === chain) return;
-    params.set('chain', chain);
-    window.history.replaceState(null, '', `${window.location.pathname}?${params}`);
-  }, [settled, chain, person.kind, choose]);
+  // Where publishing is offered or not is said of the chain the person's new plans start on.
+  const chainName = person.kind === 'ready' ? t.chain.names[person.chain] : null;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `round` reads the shelf again
   useEffect(() => {
     if (!settled) return;
     let mine = true;
     setLoad({ kind: 'loading' });
-    readShelf(apiFetch, chain).then((read) => {
+    // No chain is named: every portfolio, each with the chains it has a recipe on. One whose every
+    // recipe is on a chain our server has switched off has nothing to show, and is left out.
+    readShelf(apiFetch, null).then((read) => {
       if (mine)
-        setLoad(read.kind === 'read' ? { kind: 'read', families: read.value.families } : read);
+        setLoad(
+          read.kind === 'read'
+            ? { kind: 'read', families: read.value.families.filter((f) => f.recipes.length > 0) }
+            : read,
+        );
     });
     return () => {
       mine = false;
     };
-  }, [apiFetch, chain, settled, round]);
+  }, [apiFetch, settled, round]);
 
-  const chainName = chain ? t.chain.names[chain] : null;
   // Signed in when the page was read, signed out now: the person left while looking at it.
   const wasIn = useRef(false);
   const [left, setLeft] = useState(false);
@@ -101,9 +85,7 @@ export function ShelfScreen() {
         <h1 id={titleId} className={PAGE_TITLE}>
           {t.shared.shelf.title}
         </h1>
-        <p className="max-w-(--tf-measure-body) text-body-lg">
-          {chainName ? t.shared.shelf.lead(chainName) : t.shared.shelf.leadAll}
-        </p>
+        <p className="max-w-(--tf-measure-body) text-body-lg">{t.shared.shelf.lead}</p>
         {person.kind === 'ready' && person.publishable && (
           <Link href="/publish" className={`${buttonClass({ variant: 'link' })} self-start`}>
             {t.shared.shelf.publish}
@@ -119,9 +101,9 @@ export function ShelfScreen() {
           </p>
         )}
         {/* the bar says "signed out" to a screen reader; the page says it to the eye, with what it still shows */}
-        {left && person.kind === 'signed-out' && chainName && (
+        {left && person.kind === 'signed-out' && (
           <p data-ui="shelf-signed-out" className="max-w-(--tf-measure-body) text-body-sm">
-            {t.shared.shelf.signedOut(chainName)}
+            {t.shared.shelf.signedOut}
           </p>
         )}
       </header>
@@ -144,7 +126,7 @@ export function ShelfScreen() {
       ) : load.families.length === 0 ? (
         <Card>
           <CardEmpty
-            sentence={chainName ? t.shared.shelf.empty(chainName) : t.shared.shelf.emptyAll}
+            sentence={t.shared.shelf.empty}
             action={
               person.kind === 'ready' && person.publishable ? (
                 <Link href="/publish" className={buttonClass({ variant: 'link' })}>
@@ -173,14 +155,31 @@ function FamilyCard({ family }: { family: SharedFamily }) {
   const c = t.shared.shelf.card;
   const p = t.shared.product;
   const locale = LOCALE[lang];
-  const [recipe] = family.recipes;
+  // A portfolio on one chain shows that recipe's figures. One on more shows what is the family's own
+  // (its name, its creator's words) and each chain's recipe beside that chain's name: one chain's
+  // weights, creator or version are never drawn under another chain's label.
+  const [first, ...more] = family.recipes;
+  const recipe = more.length === 0 ? first : undefined;
   const href = `/indexes/${encodeURIComponent(family.slug)}`;
   const notLive = family.recipes.some((r) => r.provenance !== 'live');
+  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.sampleFigure };
   const paying = recipe
     ? holdingsOf(recipe, recipe.active.components, t).flatMap((h) =>
         h.yield ? [{ asset: h.asset, yield: h.yield }] : [],
       )
     : [];
+  /** Who published a recipe and which version is in effect, on its chain. */
+  const published = (r: SharedRecipe) => (
+    <p className="flex flex-wrap items-baseline gap-x-2 text-body-sm text-muted-foreground">
+      <span className="font-mono text-source" title={r.creator}>
+        {c.by(shortAddress(r.creator))}
+      </span>
+      {isPlatformCreator(networkFor(r.chain, r.provenance === 'mock'), r.chain, r.creator) && (
+        <span className="font-medium text-foreground">{c.platform}</span>
+      )}
+      <span>{c.version(r.active.version)}</span>
+    </p>
+  );
   return (
     <Card
       as="article"
@@ -188,9 +187,12 @@ function FamilyCard({ family }: { family: SharedFamily }) {
       className="h-full"
       mock={notLive}
       mockLabels={{
-        announce: family.recipes.some((r) => r.provenance === 'sandbox')
-          ? t.shell.testNetworkLine
-          : t.shell.mockAnnounce,
+        // Recipes run differently say so each beside their chain; the card's line is the plain one.
+        announce:
+          recipe?.provenance === 'sandbox' ||
+          (!recipe && family.recipes.every((r) => r.provenance === 'sandbox'))
+            ? t.shell.testNetworkLine
+            : t.shell.mockAnnounce,
       }}
     >
       <CardHeader
@@ -203,8 +205,8 @@ function FamilyCard({ family }: { family: SharedFamily }) {
             {family.name}
           </Link>
         }
-        // The list mixes chains, so each card names its own.
-        meta={<ChainBadges chains={family.chains} />}
+        // The list mixes chains, so each card names its own; one on more names each beside its recipe.
+        meta={recipe ? <ChainBadges chains={family.chains} /> : undefined}
       />
       <CardBody className="flex flex-col gap-3">
         {/* The figures first: what it holds, as one bar with each share said under it, then its yield. */}
@@ -255,27 +257,40 @@ function FamilyCard({ family }: { family: SharedFamily }) {
             )}
           </p>
         )}
+        {!recipe && (
+          // On more than one chain: each chain's own weights, publisher and version, under its name
+          // and how it is run. Its yields and exit are on the portfolio's page, per chain.
+          <>
+            <p className="text-body-sm text-muted-foreground">{t.shared.family.perChain}</p>
+            <ul data-ui="shelf-recipes" className="flex flex-col gap-3">
+              {family.recipes.map((r, i) => (
+                <li
+                  key={r.chain}
+                  data-ui="shelf-recipe"
+                  data-chain={r.chain}
+                  className="flex min-w-0 flex-col gap-1 border-l border-border pl-3"
+                >
+                  <ChainBadgeMarked
+                    chain={r.chain}
+                    provenance={r.provenance}
+                    labels={marks}
+                    announce={i === 0}
+                  />
+                  <Weights recipe={r} locale={locale} />
+                  {published(r)}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
         {/* What it is for, in the creator's own words: one line, as text. */}
         {family.copy && (
           <p className="line-clamp-2 max-w-(--tf-measure-body) text-body-sm [overflow-wrap:anywhere]">
             {family.copy}
           </p>
         )}
-        <p className="flex flex-wrap items-baseline gap-x-2 text-body-sm text-muted-foreground">
-          {recipe && (
-            <span className="font-mono text-source" title={recipe.creator}>
-              {c.by(shortAddress(recipe.creator))}
-            </span>
-          )}
-          {recipe &&
-            isPlatformCreator(
-              networkFor(recipe.chain, recipe.provenance === 'mock'),
-              recipe.chain,
-              recipe.creator,
-            ) && <span className="font-medium text-foreground">{c.platform}</span>}
-          {recipe && <span>{c.version(recipe.active.version)}</span>}
-        </p>
-        {recipe && recipe.textMatches === null && (
+        {recipe && published(recipe)}
+        {family.recipes.some((r) => r.textMatches === null) && (
           <p className="flex items-start gap-1.5 text-body-sm">
             <StatusMark status="watch" className="mt-1.5" />
             <span>{t.shared.text.unverified}</span>

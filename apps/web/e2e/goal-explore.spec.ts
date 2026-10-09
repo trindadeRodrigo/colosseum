@@ -28,12 +28,23 @@ test('new-goal exploration opens a responsive preview-only workbench', async ({ 
       .evaluateAll((options) => options.map((o) => (o as HTMLOptionElement).value)),
   ).toEqual(['current', 'new']);
   await expect(page.locator('[data-ui="goal-conversation"]')).toBeVisible();
+  // The chain of the plan is chosen here, beside the box (gate CHAIN-AT-THE-PLAN): two options, one
+  // group, moved with the arrow keys.
+  const chains = page.getByRole('group', { name: en.chain.choice.legend }).getByRole('radio');
+  await expect(chains).toHaveCount(2);
+  await expect(chains.first()).toBeChecked();
+  await chains.first().focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(chains.nth(1)).toBeChecked();
+  await expect(chains.nth(1)).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
+  await expect(chains.first()).toBeChecked();
   await expect(page.locator('[data-ui="goal-empty-preview"]')).toContainText(
     en.goal.explore.previewOnly,
   );
   await expect(
     page.locator(
-      '[data-ui="holdings-bar"], [data-ui="mix-joint"], [data-ui="invest-card"], [data-ui="order-step"], [data-ui="plan-invest"]',
+      '[data-ui="holdings-bar"], [data-ui="holding-legs"], [data-ui="invest-card"], [data-ui="order-step"], [data-ui="plan-invest"]',
     ),
   ).toHaveCount(0);
   await expect(page.locator('[data-ui="invest-screen"]')).toHaveCount(0);

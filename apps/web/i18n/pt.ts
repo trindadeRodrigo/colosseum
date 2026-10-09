@@ -196,6 +196,26 @@ export const pt: Dictionary = {
     noWallet:
       'Você entrou, mas ainda não há carteira vinculada ao seu login, então não há rede para o seu plano.',
     reading: 'Verificando em qual rede seu plano fica…',
+    choice: {
+      legend: 'Rede deste plano',
+      hint: 'Um plano fica em uma rede. Escolha antes da primeira mensagem.',
+      wallet: (address: string) => `carteira ${address}`,
+      onlyWallet: (chain: string) =>
+        `Este plano vai ficar na ${chain}: a carteira com que você entrou só assina lá.`,
+      onlyOn: (chain: string) =>
+        `Este plano vai ficar na ${chain}: é a única rede que nosso servidor roda por enquanto.`,
+      on: 'Este plano fica na',
+      change: 'Trocar',
+      changeLabel: 'Trocar a rede deste plano',
+      confirm: (chain: string) =>
+        `Cada rede tem seus próprios ativos, então este rascunho não pode ir para a ${chain}. Ele continua nas suas conversas salvas.`,
+      start: (chain: string) => `Começar uma conversa nova na ${chain}`,
+      keep: 'Manter esta',
+      fixed: 'A rede fica como está enquanto uma resposta ou um depósito está em andamento.',
+      opened: (chain: string) =>
+        `Esta conversa é da ${chain}, então planos novos agora começam na ${chain}.`,
+      done: (chain: string) => `Planos novos agora começam na ${chain}.`,
+    },
   },
 
   goal: {
@@ -222,8 +242,14 @@ export const pt: Dictionary = {
       empty:
         'A alocação proposta e suas fontes aparecerão aqui após uma resposta. Nenhum cofre foi criado.',
       previewOnly: 'Apenas uma prévia. Este rascunho ainda não pode ser investido aqui.',
+      building: 'Preparando seu primeiro rascunho',
       working:
-        'Preparando um rascunho a partir do que você disse. Ele aparece aqui com suas fontes.',
+        'Ele aparece aqui com suas fontes. Se eu precisar perguntar algo antes, a pergunta vem na conversa.',
+      pendingLines: [
+        'Lendo o que você disse…',
+        'Olhando o catálogo da sua rede e conferindo a resposta…',
+        'Ainda trabalhando. Isso pode levar um pouco.',
+      ],
       draftNote:
         'Um rascunho desta conversa. Deposite para escolher o valor. Nada é comprado antes de você revisar e assinar.',
       retry: 'Tentar de novo',
@@ -455,8 +481,6 @@ export const pt: Dictionary = {
     },
     chainOut: (chain: string) => `${chain} está indisponível agora.`,
     chainOff: (chain: string) => `${chain} está indisponível no nosso servidor por enquanto.`,
-    notHeld: (chain: string) =>
-      `Nenhuma carteira desta conta está na ${chain}, então nada é lido lá.`,
     title: (vaults: number) =>
       vaults > 1 ? 'O que seus cofres guardam.' : 'O que seu cofre guarda.',
     planDetails: 'Detalhes do objetivo e da estratégia',
@@ -473,8 +497,8 @@ export const pt: Dictionary = {
       'Este servidor ainda não lê cofres, então não há nada para mostrar aqui. Não vou mostrar posições inventadas no lugar.',
     down: {
       word: 'Indisponível',
-      body: (chain: string) =>
-        `A ${chain} não respondeu, então não consigo ler seu cofre agora. Não conseguir lê-lo não move nada. Tente de novo daqui a pouco.`,
+      body: (chains: string) =>
+        `Sem resposta de ${chains}, então não consigo ler seus cofres agora. Não conseguir lê-los não move nada. Tente de novo daqui a pouco.`,
     },
     unreachable: 'Não consegui falar com nosso servidor para ler seu cofre. Tente de novo.',
     unreadable:
@@ -485,8 +509,7 @@ export const pt: Dictionary = {
       'Ainda não consigo ler seu cofre: o serviço de login não me deu a parte do seu login que lista suas carteiras. Espere um minuto e tente de novo.',
     again: 'Ler de novo',
     againBusy: 'Lendo…',
-    empty: (chain: string) =>
-      `Você ainda não tem cofre na ${chain}. Um cofre é criado quando você compra seu primeiro plano.`,
+    empty: 'Você ainda não tem cofre. Um cofre é criado no seu primeiro depósito.',
     startGoal: 'Comece pelo seu objetivo',
     group: {
       worth: (vaults: number, chain: string) =>
@@ -1007,18 +1030,13 @@ export const pt: Dictionary = {
     },
     shelf: {
       title: 'Portfólios que as pessoas compartilharam.',
-      lead: (chain: string) =>
-        `Explore estratégias publicadas na ${chain}. Abra uma para revisar os ativos, as fontes e as opções de investir ou seguir.`,
-      leadAll:
-        'Cada um é uma lista de ativos e pesos que quem o criou publicou numa rede. Entre para ver os da sua rede.',
+      lead: 'Explore estratégias publicadas em todas as redes que rodamos. Cada uma diz em qual rede está. Abra uma para ver seus ativos, fontes e opções para investir ou seguir.',
       loading: 'Lendo os portfólios compartilhados…',
-      empty: (chain: string) => `Nenhum portfólio foi compartilhado na ${chain} ainda.`,
-      emptyAll: 'Nenhum portfólio foi compartilhado ainda.',
+      empty: 'Nenhum portfólio foi compartilhado ainda.',
       publish: 'Publicar um portfólio',
       publishSoon: (chain: string) =>
         `Publicar um portfólio na ${chain} está a caminho. Por enquanto dá para publicar na Solana.`,
-      signedOut: (chain: string) =>
-        `Você saiu da conta. Esta ainda é a prateleira da ${chain}; entre para seguir um portfólio.`,
+      signedOut: 'Você saiu da conta. Os portfólios continuam listados; entre para seguir um.',
       card: {
         by: (creator: string) => `por ${creator}`,
         platform: 'Da tenonfi',
@@ -1086,11 +1104,14 @@ export const pt: Dictionary = {
       backToShelf: 'Voltar aos portfólios compartilhados',
       lead: (chain: string) =>
         `Uma lista de ativos e pesos que quem a criou publicou na ${chain}. Segui-la quer dizer que um cofre seu assume esses pesos; uma versão nova entra em vigor depois de um prazo, e você a vê antes disso.`,
-      notHere: (chain: string) =>
-        `Este portfólio não está publicado na ${chain}, sua rede atual, então não dá para segui-lo daqui.`,
-      elsewhere: (chain: string) =>
-        `Você tem um cofre na ${chain} que segue este portfólio. Troque para a ${chain} para atualizá-lo lá.`,
-      switchTo: (chain: string) => `Trocar para a ${chain}`,
+      noWalletFor: (chains: string) =>
+        `Este portfólio está na ${chains}, e a carteira com que você entrou não assina lá. Não dá para investir nele nem segui-lo com este login.`,
+      which: 'Rede em que investir',
+      whichHint: 'O cofre que você abre segue este portfólio na rede que você escolher.',
+      whichLocked: 'A rede fica fixa enquanto este depósito roda.',
+      perChain: 'O que ele guarda muda conforme a rede.',
+      elsewhere: (chain: string) => `Você tem um cofre na ${chain} que segue este portfólio.`,
+      showOn: (chain: string) => `Mostrar na ${chain}`,
       recipe: (chain: string) => `Na ${chain}`,
       inEffect: 'Em vigor',
       since: (when: string) => `desde ${when}`,
@@ -1280,14 +1301,21 @@ export const pt: Dictionary = {
       title: 'Um cofre, como a rede o tem',
       conversation: {
         proposedShare: 'Fatia proposta',
-        jointLabel:
-          'A estratégia proposta desenhada como um encaixe: uma peça para cada ativo, com a largura da sua fatia.',
-        jointHint: 'Uma peça por ativo, com a largura da sua fatia.',
-        jointLabelWidened:
-          'A estratégia proposta desenhada como um encaixe: uma peça para cada ativo. Fatias pequenas são desenhadas mais largas do que são, para ficarem visíveis; cada peça diz sua fatia exata.',
-        jointHintWidened:
-          'Uma peça por ativo. Fatias pequenas são desenhadas mais largas para ficarem visíveis; os números da lista são exatos.',
-        reworking: 'Lendo o que você disse. Este é o último rascunho.',
+        others: (count: number) => `${count} outros`,
+        reworking: 'Lendo sua mensagem. Abaixo está o rascunho de antes.',
+        waitingAction: 'Aguardando a resposta…',
+        hint: 'Enter para enviar · Shift+Enter para nova linha',
+        busyHint:
+          'Aguardando esta resposta. Você pode continuar digitando e enviar quando ela chegar.',
+        draftArrived: 'Há um rascunho no cartão de prévia.',
+        pendingLines: [
+          'Lendo o que você disse…',
+          'Olhando seu cofre e o catálogo da rede dele, e conferindo a resposta…',
+          'Ainda trabalhando. Isso pode levar um pouco.',
+        ],
+        building: 'Preparando uma resposta',
+        buildingLine:
+          'Se a resposta propuser uma mudança, o rascunho aparece aqui com suas fontes. Seu cofre não muda.',
         view: { label: 'Mostrar', mix: 'Composição', monthly: 'Evolução mensal' },
         projection: {
           title: 'Evolução mensal',
@@ -1343,7 +1371,7 @@ export const pt: Dictionary = {
         agent: 'Tenonfi',
         placeholder: 'Pergunte sobre este cofre ou descreva uma mudança…',
         submitMessage: 'Enviar mensagem',
-        reading: 'Buscando uma resposta…',
+        reading: 'Buscando uma resposta',
         current: 'O que tem agora',
         noHoldings: 'Este cofre não tem tokens agora.',
         targets: 'Metas da estratégia atual',
@@ -1865,7 +1893,8 @@ export const pt: Dictionary = {
       risks: { low: 'Baixo', medium: 'Médio', high: 'Alto' },
       choose: 'Escolha um',
       confirm: 'Confirmar e ir para a compra',
-      confirming: 'Confirmando…',
+      confirming: 'Conferindo e salvando…',
+      opening: 'Abrindo o próximo passo…',
     },
     deposit: {
       title: 'Depositar nesta mistura',
@@ -1909,7 +1938,7 @@ export const pt: Dictionary = {
       checked: 'Conferido com os preços de hoje. Nada foi comprado ainda.',
       review: 'Revisar o depósito',
       reviewOf: (amount: string) => `Revisar o depósito de ${amount}`,
-      reviewing: 'Conferindo…',
+      reviewing: 'Conferindo os preços de hoje…',
       changeMix: 'Mudar a mistura',
       next: 'Nada é comprado nem assinado nesta página. Em seguida você confere a revisão e assina cada passo na tela de compra.',
       brokenMix:

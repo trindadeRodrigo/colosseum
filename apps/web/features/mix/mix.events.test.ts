@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import type { MixReview } from '@colosseum/schemas';
 import { vaultOf } from '@colosseum/sdk';
-import { createElement, StrictMode, useState } from 'react';
+import { act, createElement, StrictMode, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, fire, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
@@ -518,6 +518,105 @@ describe('a new goal’s mix, made into a plan', () => {
     });
     expect(router.push).toHaveBeenCalledWith(`/plan/${proposalId}/buy`);
     expect(localStorage.getItem(`tf-plan:${proposalId}`)).not.toBeNull();
+  });
+
+  it('says on each press what is being done while it waits: the check, the saving, the way to the next step', async () => {
+    const proposalId = '0f6a3b9e-2c4d-4e5f-8a7b-1c2d3e4f5a6b';
+    const { planOn } = await import('../order/test/fixtures');
+    const plan = planOn('solana');
+    const waiting: (() => void)[] = [];
+    const calls: Call[] = [];
+    portStore.setApi(async (url, init) => {
+      if (!url.endsWith('/goal/accept')) return json({}, 404);
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      calls.push({ url, body });
+      await new Promise<void>((done) => waiting.push(done));
+      return body.confirm
+        ? json({
+            status: 'stored',
+            review: reviewOf({ ...of(body), unconfirmed: [] }),
+            proposalId,
+            proposal: plan.proposal,
+          })
+        : json({ status: 'review', review: reviewOf(of(body)) });
+    });
+    const release = async () => {
+      await act(async () => waiting.shift()?.());
+      await settle();
+    };
+    /** The label a button shows now, and whether the mark of a wait is beside it. */
+    const shown = (button: HTMLElement) => {
+      const label = [...button.querySelectorAll(':scope > span > span')].find(
+        (el) => el.getAttribute('aria-hidden') !== 'true',
+      );
+      return [
+        label?.textContent,
+        label?.querySelector('[data-ui="lattice"], [data-ui="lattice-loader"]') != null,
+      ];
+    };
+    const host = await goalMix();
+    // pressed before the amount's own check has answered: the press asks, and says what it asks
+    await type(amountBox(host), '100');
+    const review = find(host, '[data-action="deposit-review"]');
+    review.focus();
+    expect(shown(review)).toEqual([en.mix.deposit.reviewOf('$100'), false]);
+    await click(review);
+    expect(calls.map((call) => call.body.confirm)).toEqual([false]);
+    expect(shown(review)).toEqual([en.mix.deposit.reviewing, true]);
+    expect(review.getAttribute('aria-busy')).toBe('true');
+    expect(review.getAttribute('aria-disabled')).toBe('true');
+    // it keeps the focus, and a second press asks nothing more
+    expect(document.activeElement).toBe(review);
+    await click(review);
+    expect(calls).toHaveLength(1);
+    // no figure is shown before the server sent it
+    expect(amounts(host)['solana:gldx']).toBe(`—${en.mix.deposit.unchecked}`);
+    await settle(450);
+    expect(review.querySelector('[data-ui="lattice-loader"]')).not.toBeNull();
+    await release();
+    // the review: its confirm says what the server does with the press, then that the screen is opening
+    await click(box(host));
+    const confirm = find(host, '[data-action="mix-confirm"]');
+    confirm.focus();
+    expect(shown(confirm)).toEqual([en.mix.goal.confirm, false]);
+    await click(confirm);
+    expect(shown(confirm)).toEqual([en.mix.goal.confirming, true]);
+    expect(confirm.getAttribute('aria-busy')).toBe('true');
+    expect(document.activeElement).toBe(confirm);
+    await click(confirm);
+    expect(calls.filter((call) => call.body.confirm)).toHaveLength(1);
+    expect(router.push).not.toHaveBeenCalled();
+    await release();
+    // stored: the route change is asked for, and the button says so until the next screen takes over
+    expect(router.push).toHaveBeenCalledWith(`/plan/${proposalId}/buy`);
+    expect(shown(confirm)).toEqual([en.mix.goal.opening, true]);
+    expect(confirm.getAttribute('aria-busy')).toBe('true');
+    // what was sent is what was sent before this change: the same two requests, nothing added
+    expect(calls.map((call) => Object.keys(call.body).sort())).toEqual([
+      [
+        'acceptedWarnings',
+        'allocations',
+        'amountUsd',
+        'confirm',
+        'goal',
+        'language',
+        'origin',
+        'risk',
+        'version',
+      ],
+      [
+        'acceptedWarnings',
+        'allocations',
+        'amountUsd',
+        'confirm',
+        'goal',
+        'language',
+        'origin',
+        'reviewHash',
+        'risk',
+        'version',
+      ],
+    ]);
   });
 
   it('shows each row the dollars the server checked, and a dash until it has', async () => {

@@ -1,4 +1,11 @@
-import { FundingResponse, PortfolioResponse, TestFundsResponse } from '@colosseum/schemas';
+import { randomUUID } from 'node:crypto';
+import { familyIdOf } from '@colosseum/basket';
+import {
+  FundingResponse,
+  OrderDetail,
+  PortfolioResponse,
+  TestFundsResponse,
+} from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { TestFundsSend, TestFundsSender } from '../../faucet/test-funds';
@@ -75,7 +82,7 @@ afterAll(async () => {
   for (const step of undo.reverse()) await step();
 });
 
-const { post, get, fund, order, settleAll } = orderFlow({
+const { post, get, put, fund, order, settleAll } = orderFlow({
   app: () => faucetApp,
   registry: () => registry,
   plans: () => plans,
@@ -134,6 +141,75 @@ describe('POST /v1/testnet/fund', () => {
     expect(theirs.statusCode).toBe(403);
     const extra = await post(a, '/v1/testnet/fund', { ...ask(), cashRaw: '1000000000000' });
     expect(extra.statusCode).toBe(400);
+  });
+});
+
+// A deposit into a shared portfolio names the chain of its recipe (gate CHAIN-AT-THE-PLAN): the faucet
+// reads the need on that chain, as GET /v1/funding does, whatever the person's current chain is.
+describe('POST /v1/testnet/fund for a shared portfolio on a named chain', () => {
+  /** A portfolio published on Solana through the mock's routes, by a Solana creator. */
+  async function published() {
+    const creator = await someone();
+    const slug = `t-${randomUUID().replaceAll('-', '').slice(0, 16)}`;
+    data.trackFamily(familyIdOf(slug));
+    const letters = slug.replace(/[0-9]/g, (d) => 'abcdefghij'[Number(d)] ?? 'a').slice(2, 14);
+    dressed = false;
+    try {
+      await fund(creator);
+      const res = await post(creator, '/v1/orders', {
+        type: 'publish',
+        creator: { solana: creator.solana },
+        family: slug,
+        name: `Test ${letters}`,
+        copy: 'Three test tokens.',
+        recipes: [
+          {
+            chain: 'solana',
+            components: [
+              { kind: 'asset', asset: 'solana:spy', weightBps: 4000 },
+              { kind: 'asset', asset: 'solana:nvda', weightBps: 3000 },
+              { kind: 'asset', asset: 'solana:tsla', weightBps: 3000 },
+            ],
+          },
+        ],
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      await settleAll(creator, OrderDetail.parse(res.json()));
+    } finally {
+      dressed = true;
+    }
+    return slug;
+  }
+
+  it('sends to the person’s wallet on the chain named, though their new plans start on another', async () => {
+    const slug = await published();
+    const who = data.track(await person(issuer, 'passkey'));
+    expect((await put(who, '/v1/me/chain', { chain: 'robinhood' })).statusCode).toBe(200);
+    const body = { amountUsd: 50, family: slug };
+    // with no chain named it is asked of the current chain, where the portfolio has no recipe
+    expect((await post(who, '/v1/testnet/fund', body)).statusCode).toBe(422);
+    const before = sent.length;
+    const res = await post(who, '/v1/testnet/fund', { ...body, chain: 'solana' });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(TestFundsResponse.parse(res.json()).wallet).toBe(who.solana);
+    expect(sent.length).toBe(before + 1);
+    expect(sent.at(-1)?.to).toBe(who.solana);
+    expect(sent.at(-1)?.cashRaw).toBeGreaterThan(50_000_000n);
+  });
+
+  it('refuses a chain no wallet of the person signs on, and a chain sent with a plan, and sends nothing', async () => {
+    const slug = await published();
+    const evm = data.track(await person(issuer, 'robinhood'));
+    const before = sent.length;
+    const res = await post(evm, '/v1/testnet/fund', {
+      amountUsd: 50,
+      family: slug,
+      chain: 'solana',
+    });
+    expect([res.statusCode, res.json().code]).toEqual([409, 'NO_WALLET_FOR_CHAIN']);
+    const a = await someone();
+    expect((await post(a, '/v1/testnet/fund', { ...ask(), chain: 'solana' })).statusCode).toBe(400);
+    expect(sent.length).toBe(before);
   });
 });
 

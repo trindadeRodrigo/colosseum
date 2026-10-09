@@ -9,6 +9,7 @@ import { PAGE_TITLE } from '../../components/ui/heading';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { Status } from '../../components/ui/StatusMark';
 import { ScreenWait } from '../../components/waits/ScreenWait';
+import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { ChainBadgeMarked, ChainMark } from '../account/ChainName';
@@ -60,27 +61,18 @@ export function MonitorScreen() {
   const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.sampleFigure };
   const groupId = useId();
 
-  const chain = state.kind === 'reading' || state.kind === 'answered' ? state.chain : null;
-  const network = chain ? port.network(chain) : null;
-  const chainName = chain ? (network?.name ?? t.chain.names[chain]) : '';
   const outcome = state.kind === 'answered' && state.outcome.kind === 'read' ? state.outcome : null;
   const chains = outcome?.chains ?? [];
   const vaults = chains.flatMap((entry) => entry.vaults);
   // The chains the person holds a vault on. On one, the page is that chain's; on more, it is grouped.
   const held = chains.filter((entry) => entry.vaults.length > 0);
-  // The chain the bar is on was read and holds no vault, while another does: the page says so first,
-  // and names the chain of each vault below, so the bar and the page agree (the flow audit, 36).
-  const emptyHere =
-    outcome?.current === 'read' &&
-    chain !== null &&
-    held.length > 0 &&
-    !held.some((entry) => entry.chain === chain);
-  const grouped = held.length > 1 || emptyHere;
+  const grouped = held.length > 1;
   const read = held.length === 1 ? held[0] : chains[0];
-  const shownChain = read?.chain ?? chain;
+  const shownChain = read?.chain ?? null;
   const nameOf = (id: ChainId) => port.network(id)?.name ?? t.chain.names[id];
   // How the chain is run: the API's word on the chain it read, or else the wallet's.
-  const chainLabel = read?.provenance ?? network?.provenance ?? 'mock';
+  const chainLabel =
+    read?.provenance ?? (shownChain ? port.network(shownChain)?.provenance : null) ?? 'mock';
   /** What a chain's vaults are worth together, with the pin of that sum. */
   const totalOf = (entry: PortfolioChain) =>
     chainTotal(
@@ -89,11 +81,19 @@ export function MonitorScreen() {
       words.group.method(entry.vaults.length, nameOf(entry.chain)),
     );
 
-  // The answer has nothing of the chain the bar is on. "No wallet of this sign-in is on <chain>" is
-  // said only where there is none: where the account lists a wallet there, the chain was simply not
-  // read this time, and the page says that (the flow audit, finding 37).
-  const notHeld = outcome?.current === 'not-held' && chain !== null;
-  const hasWallet = account.status === 'ready' && chain !== null && account.options.includes(chain);
+  // The chains a wallet of theirs signs on, as the account lists them, and the ones among them the
+  // answer says nothing of, read or unavailable: each was simply not read this time, and the page
+  // says that of the chain by name (the flow audit, finding 37). No chain is "the current one" here.
+  const mine = account.status === 'ready' ? account.options : [];
+  const unread = outcome
+    ? mine.filter(
+        (id) =>
+          !outcome.chains.some((entry) => entry.chain === id) &&
+          !outcome.unavailable.some((u) => u.chain === id),
+      )
+    : [];
+  const list = (names: string[]) =>
+    new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(names);
 
   /**
    * A vault whose cash is far above its plan because a buy stopped after its deposit: said over the
@@ -343,7 +343,7 @@ export function MonitorScreen() {
         // Each chain that could not be read says so; the ones that were read are shown all the same.
         body = (
           <>
-            {(state.outcome.unavailable.length > 0 || notHeld) && (
+            {(state.outcome.unavailable.length > 0 || unread.length > 0) && (
               <ul data-ui="chains-out" className="flex flex-col gap-1.5">
                 {state.outcome.unavailable.map((u) => (
                   <li key={u.chain} data-chain={u.chain}>
@@ -354,52 +354,38 @@ export function MonitorScreen() {
                     </Status>
                   </li>
                 ))}
-                {notHeld && chain && (
-                  <li data-chain={chain}>
-                    <Status status="watch">
-                      {(hasWallet ? words.chainOut : words.notHeld)(nameOf(chain))}
-                    </Status>
+                {unread.map((id) => (
+                  <li key={id} data-chain={id}>
+                    <Status status="watch">{words.chainOut(nameOf(id))}</Status>
                   </li>
-                )}
+                ))}
               </ul>
             )}
             {/* a chain that may answer next time, or one a wallet is on that was not read, is asked again */}
-            {(state.outcome.unavailable.some((u) => u.retryable) || (notHeld && hasWallet)) && (
+            {(state.outcome.unavailable.some((u) => u.retryable) || unread.length > 0) && (
               <div>{readAgain}</div>
             )}
-            {/* "No vault on <chain> yet" is said only of a chain that was read, and only when every
-                chain of theirs was: a chain that could not be read may hold one. */}
-            {vaults.length === 0 &&
-            state.outcome.current === 'read' &&
-            state.outcome.unavailable.length === 0 ? (
-              say(
-                words.empty(chainName),
-                <Link href="/goal" className={link}>
-                  {words.startGoal}
-                </Link>,
-              )
-            ) : vaults.length === 0 ? null : grouped ? (
-              <>
-                {emptyHere && (
-                  <p data-ui="chain-empty" data-chain={chain ?? undefined} className="text-body">
-                    {words.empty(chainName)}{' '}
-                    <Link href="/goal" className={link}>
-                      {words.startGoal}
-                    </Link>
-                  </p>
-                )}
-                {held.map(chainGroup)}
-              </>
-            ) : (
-              held.map((entry) => (
-                <div key={entry.chain} className="flex min-w-0 flex-col gap-4">
-                  {entry.vaults.length > 1 && chainWorth(entry)}
-                  <div data-ui="vault-grid" className="grid items-start gap-5 lg:grid-cols-2">
-                    {entry.vaults.map((vault) => vaultBlock(entry, vault))}
-                  </div>
-                </div>
-              ))
-            )}
+            {/* "You have no vault yet" is said only when every chain of theirs was read: a chain
+                that could not be read may hold one. */}
+            {vaults.length === 0 && unread.length === 0 && state.outcome.unavailable.length === 0
+              ? say(
+                  words.empty,
+                  <Link href="/goal" className={link}>
+                    {words.startGoal}
+                  </Link>,
+                )
+              : vaults.length === 0
+                ? null
+                : grouped
+                  ? held.map(chainGroup)
+                  : held.map((entry) => (
+                      <div key={entry.chain} className="flex min-w-0 flex-col gap-4">
+                        {entry.vaults.length > 1 && chainWorth(entry)}
+                        <div data-ui="vault-grid" className="grid items-start gap-5 lg:grid-cols-2">
+                          {entry.vaults.map((vault) => vaultBlock(entry, vault))}
+                        </div>
+                      </div>
+                    ))}
           </>
         );
         break;
@@ -416,7 +402,9 @@ export function MonitorScreen() {
           <Card>
             <CardBody className="flex flex-col items-start gap-3">
               <Status status="watch">{words.down.word}</Status>
-              <p className="max-w-(--tf-measure-body) text-body-sm">{words.down.body(chainName)}</p>
+              <p className="max-w-(--tf-measure-body) text-body-sm">
+                {words.down.body(list(mine.map(nameOf)))}
+              </p>
               {readAgain}
             </CardBody>
           </Card>
@@ -475,7 +463,7 @@ export function MonitorScreen() {
                   .length,
               0,
             )}
-            partial={outcome.unavailable.length > 0 || outcome.current !== 'read'}
+            partial={outcome.unavailable.length > 0 || unread.length > 0}
           />
         )}
         {/* Another plan is always on offer: each plan bought opens a vault of its own. */}

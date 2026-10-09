@@ -359,7 +359,14 @@ export function SkeletonCards({ count = 3 }: { count?: number }) {
 }
 
 /** The lattice that assembles: horizontals slide in, then the verticals drop, then a hold. */
-export function LatticeLoader({ size = 24 }: { size?: number }) {
+export function LatticeLoader({
+  size = 24,
+  tone = 'muted',
+}: {
+  size?: number;
+  /** `muted` on a surface; `current` takes the text colour, inside a filled button. */
+  tone?: 'muted' | 'current';
+}) {
   const at = [0.5, 16.5, 32.5, 47.5];
   return (
     <svg
@@ -371,7 +378,10 @@ export function LatticeLoader({ size = 24 }: { size?: number }) {
       fill="none"
       stroke="currentColor"
       strokeWidth={48 / size}
-      className="tf-lattice-assemble shrink-0 overflow-hidden text-muted-foreground"
+      className={cn(
+        'tf-lattice-assemble shrink-0 overflow-hidden',
+        tone === 'muted' && 'text-muted-foreground',
+      )}
     >
       {at.map((p, i) => (
         <path

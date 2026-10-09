@@ -1,11 +1,10 @@
 import type { ChainId } from '@colosseum/schemas';
 
 // The chain Bearing's figures are read for: Solana or Robinhood Chain, one at a time, named in the
-// address (`?chain=robinhood`) so a link opens on it. With none named it follows the chain the app's bar
-// is on, else the one this browser was last on (the bar's own memory, `recallChain` of
-// features/account/chain-choice.ts, gate CHAIN-SWITCH), else Solana. Choosing one here is remembered
-// the same way (`rememberChain`), and moves the bar of someone signed out with it (BearingFromBar). It
-// does not move a signed-in person's chain: that is where their plans are made, and the bar's to change.
+// address (`?chain=robinhood`) so a link opens on it. With none named it is the one chosen on these
+// pages last, kept in this browser, else Solana. It is a filter of these pages and nothing else (gate
+// CHAIN-AT-THE-PLAN): it does not follow the chain a person's new plans start on, and choosing one
+// here does not move that.
 
 export const BEARING_CHAINS = ['solana', 'robinhood'] as const satisfies readonly ChainId[];
 export type BearingChain = (typeof BEARING_CHAINS)[number];
@@ -20,18 +19,29 @@ export const chainInSearch = (search: string): BearingChain | null => {
   return isBearingChain(v) ? v : null;
 };
 
-/** The chain to read: the address's, else the bar's, else this browser's, else Solana. */
-export function pickChain(
-  search: string,
-  bar: ChainId | null | undefined,
-  stored: string | null,
-): BearingChain {
-  return (
-    chainInSearch(search) ??
-    (isBearingChain(bar) ? bar : null) ??
-    (isBearingChain(stored) ? stored : null) ??
-    FIRST
-  );
+const KEY = 'tf-bearing-chain';
+
+/** The chain chosen on these pages last, in this browser, or null. Storage may be off. */
+export function recallBearingChain(): BearingChain | null {
+  try {
+    const stored = window.localStorage.getItem(KEY);
+    return isBearingChain(stored) ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+export function rememberBearingChain(chain: BearingChain): void {
+  try {
+    window.localStorage.setItem(KEY, chain);
+  } catch {
+    // Storage is off: the choice holds for this page only.
+  }
+}
+
+/** The chain to read: the address's, else the one chosen here last, else Solana. */
+export function pickChain(search: string, stored: string | null): BearingChain {
+  return chainInSearch(search) ?? (isBearingChain(stored) ? stored : null) ?? FIRST;
 }
 
 /** The address with the chain named in it, the rest of its query kept. */

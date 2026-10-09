@@ -1,17 +1,17 @@
 'use client';
 import type { ChainId, Network, Provenance } from '@colosseum/schemas';
 import Link from 'next/link';
-import { useEffect, useId, useRef, useState } from 'react';
+import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Composer } from '../../components/ui/Composer';
 import { WORKSPACE_TITLE } from '../../components/ui/heading';
 import { LatticeGlyph } from '../../components/ui/Lattice';
-import { LatticeLoader } from '../../components/ui/Skeleton';
-import { useWaitPhase } from '../../components/ui/wait';
+import { StatusMark } from '../../components/ui/StatusMark';
 import { dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { DepositStep, type Purpose } from '../mix/DepositStep';
 import { share } from '../portfolio/figures';
+import { DraftBuilding, PendingReply, ReplyAnnouncer, useChatScroll } from '../shared/ReplyPending';
 import {
   replyText,
   strategyReplyOf,
@@ -47,6 +47,8 @@ export function GoalConversation({
   provenance,
   conversationId = 'main',
   onSaved,
+  chainControl,
+  carried,
 }: {
   userId: string | null;
   chain: ChainId | null;
@@ -56,6 +58,16 @@ export function GoalConversation({
   conversationId?: string;
   /** Called with the person's first words each time the transcript is saved. */
   onSaved?: (title: string) => void;
+  /**
+   * The chain of this plan, drawn beside the box (GoalChain, gate CHAIN-AT-THE-PLAN): a choice while
+   * the conversation has no words, its badge with "Change" once it has.
+   */
+  chainControl?: (state: { started: boolean; busy: boolean }) => ReactNode;
+  /**
+   * Words typed before the first message on another chain, carried over when the chain was changed
+   * beside the box: the box starts with them.
+   */
+  carried?: RefObject<{ chain: ChainId; text: string } | null>;
 }) {
   const t = useT();
   const lang = useLang();
@@ -78,8 +90,11 @@ export function GoalConversation({
   const held = useRef<Turn[]>([]);
   const prefill = useRef<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLOListElement>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() =>
+    carried?.current && carried.current.chain === chain ? carried.current.text : '',
+  );
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [reply, setReply] = useState<GoalReply | null>(null);
@@ -98,6 +113,10 @@ export function GoalConversation({
     setAmountText(words);
   };
   const [error, setError] = useState<string>();
+  // The reply did not come: said in the transcript, where the reply would have been.
+  const [failure, setFailure] = useState<string>();
+  // What a screen reader hears, once each: that a reply is being fetched, then the reply.
+  const [announced, setAnnounced] = useState('');
   // The mix on the screen was read back from this browser, not answered on this visit: it is shown, and
   // the deposit comes back with the next reply (Rodrigo, Oct 8: a kept plan is a preview only).
   const [kept, setKept] = useState(false);
@@ -126,8 +145,11 @@ export function GoalConversation({
     setBusy(false);
     sending.current = false;
     prefill.current = readGoalHandoff(userId, ready);
-    setText(prefill.current ?? '');
+    // What the box holds stays: it is empty on a new conversation, or the words carried over.
+    setText((now) => prefill.current ?? now);
     setError(undefined);
+    setFailure(undefined);
+    setAnnounced('');
     setLoaded(true);
     return () => {
       ++generation.current;
@@ -181,6 +203,8 @@ export function GoalConversation({
     setAmountText('');
     typed.current = false;
     setError(undefined);
+    setFailure(undefined);
+    setAnnounced('');
     persist([]);
   }
   async function send(words: string) {
@@ -201,6 +225,8 @@ export function GoalConversation({
     sending.current = true;
     setBusy(true);
     setError(undefined);
+    setFailure(undefined);
+    setAnnounced(t.shared.vault.conversation.reading);
     setText('');
     // The mix on the card stays while its successor is worked on, marked as the one before, and its
     // deposit action waits for the reply.
@@ -241,12 +267,19 @@ export function GoalConversation({
         completed.push({ id: crypto.randomUUID(), who: 'app', text: chunk });
       }
       if (!transcriptOf({ revision: 0, transcript: completed })) {
+        setAnnounced('');
         setError(copy.capacity);
         return;
       }
       held.current = completed;
       setTurns(completed);
       setReply(result);
+      setAnnounced(
+        [
+          `${t.talk.me}: ${replyText(result.message, result.question)}`,
+          ...(result.proposal ? [t.shared.vault.conversation.draftArrived] : []),
+        ].join(' '),
+      );
       // Written as this page reads an amount back: "1500,5" in Portuguese, "1500.5" in English.
       if (result.amountUsd !== null && !typed.current)
         setAmountText(
@@ -266,7 +299,8 @@ export function GoalConversation({
       if (active()) {
         // their words go back in the box, unless they have typed something else meanwhile
         setText((now) => (now === '' ? words : now));
-        setError(
+        setAnnounced('');
+        setFailure(
           cause instanceof VaultAgentError && cause.kind === 'unavailable'
             ? cause.reason === 'timeout'
               ? copy.timeout
@@ -299,8 +333,7 @@ export function GoalConversation({
   const toChat = () => box.current?.querySelector('textarea')?.focus();
   // The person's last words with no reply after them: a failed reply, or one a reload cut short.
   const unanswered = !busy && ready && loaded ? turns.at(-1) : undefined;
-  // a wait under 400ms shows nothing; after that the lattice assembles beside the words (STYLE.md)
-  const waiting = useWaitPhase(busy) !== 'quiet';
+  useChatScroll(list, box, busy, `${context}:${loaded}`);
   const chatId = useId();
   return (
     <section
@@ -341,9 +374,11 @@ export function GoalConversation({
           </div>
         )}
         <p className="text-caption text-muted-foreground">{copy.local}</p>
+        <ReplyAnnouncer text={announced} />
+        {/* Not a live region: the wait and the reply are announced once each, above. */}
         <ol
+          ref={list}
           data-ui="goal-transcript"
-          aria-live="polite"
           className="tf-scroll-thin relative flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto md:flex-1 md:pr-2"
         >
           {/* The person's own words sit on the honey glow, so they stand apart from the replies
@@ -373,6 +408,30 @@ export function GoalConversation({
               )}
             </li>
           ))}
+          {/* The reply's place, under the words it answers: the wait, then the reply itself, or
+              why it did not come and the way to ask again. */}
+          {busy && <PendingReply speaker={t.talk.me} lines={copy.pendingLines} />}
+          {unanswered?.who === 'person' && (
+            <li data-ui="goal-unanswered" data-who="app" className="flex min-w-0 flex-col gap-2">
+              {failure && (
+                <p role="alert" className="flex items-start gap-1.5 text-body-sm text-destructive">
+                  <StatusMark status="off-track" size={12} className="mt-1.5" />
+                  <span>{failure}</span>
+                </p>
+              )}
+              <p
+                data-ui="goal-retry"
+                className="flex flex-wrap items-center gap-x-4 gap-y-1 text-body-sm"
+              >
+                <Button variant="link" data-act="goal-retry" onClick={() => send(unanswered.text)}>
+                  {copy.retry}
+                </Button>
+                <Link href="/shelf" className="underline">
+                  {copy.elsewhere}
+                </Link>
+              </p>
+            </li>
+          )}
         </ol>
         {!ready && (
           <p className="text-body-sm text-muted-foreground">
@@ -384,6 +443,13 @@ export function GoalConversation({
             {t.shell.signIn}
           </Link>
         )}
+        {/* A draft exists once a reply came: words that got none leave the chain a plain choice. It
+            is fixed while a reply is worked on and through the deposit step and its signing. */}
+        {loaded &&
+          chainControl?.({
+            started: turns.some((turn) => turn.who === 'app'),
+            busy: busy || depositing,
+          })}
         <Composer
           label={copy.invitation}
           labelHidden
@@ -393,27 +459,15 @@ export function GoalConversation({
           maxLength={2000}
           placeholder={copy.placeholder}
           busy={busy}
+          // the next thought can be typed while a reply is on its way; only sending waits
+          typeWhileBusy
+          hint={t.shared.vault.conversation.hint}
+          busyHint={t.shared.vault.conversation.busyHint}
           disabled={!ready || !loaded}
           error={error}
           lang={lang}
-          labels={{
-            submit: t.shared.vault.conversation.submitMessage,
-            busy: t.shared.vault.conversation.reading,
-          }}
+          labels={{ submit: t.shared.vault.conversation.submitMessage, busy: '' }}
         />
-        {unanswered?.who === 'person' && (
-          <p
-            data-ui="goal-retry"
-            className="flex flex-wrap items-center gap-x-4 gap-y-1 text-body-sm"
-          >
-            <Button variant="link" data-act="goal-retry" onClick={() => send(unanswered.text)}>
-              {copy.retry}
-            </Button>
-            <Link href="/shelf" className="underline">
-              {copy.elsewhere}
-            </Link>
-          </p>
-        )}
         {loaded && turns.length === 0 && (
           <ul
             data-ui="goal-starters"
@@ -467,7 +521,11 @@ export function GoalConversation({
             <StrategyPreview
               proposal={mix}
               previewOnly={copy.draftNote}
-              {...(busy ? { pending: t.shared.vault.conversation.reworking } : {})}
+              wait={{
+                banner: t.shared.vault.conversation.reworking,
+                action: t.shared.vault.conversation.waitingAction,
+              }}
+              pending={busy}
               {...(chain && userId && !kept
                 ? {
                     use: {
@@ -483,20 +541,20 @@ export function GoalConversation({
         ) : (
           <div
             data-ui="goal-empty-preview"
+            data-state={busy ? 'building' : 'empty'}
             className="flex min-w-0 flex-col items-start justify-center gap-3 rounded-lg border border-border bg-card p-4 sm:min-h-60"
           >
-            {busy && waiting ? <LatticeLoader size={32} /> : <LatticeGlyph size={32} />}
-            <h2 className="text-body-lg font-medium">{t.talk.workbench.strategy}</h2>
-            {/* one region for both lines, there before its words change, so a screen reader hears
-                that a draft is being worked on */}
-            <p
-              role="status"
-              data-ui={busy ? 'goal-working' : undefined}
-              className="max-w-[48ch] text-body-sm text-muted-foreground"
-            >
-              {busy ? copy.working : copy.empty}
-            </p>
-            <p className="text-caption text-muted-foreground">{copy.previewOnly}</p>
+            {busy ? (
+              // the first draft is being worked on: said at heading size, with the rows it will fill
+              <DraftBuilding title={copy.building} line={copy.working} note={copy.previewOnly} />
+            ) : (
+              <>
+                <LatticeGlyph size={32} />
+                <h2 className="text-body-lg font-medium">{t.talk.workbench.strategy}</h2>
+                <p className="max-w-[48ch] text-body-sm text-muted-foreground">{copy.empty}</p>
+                <p className="text-caption text-muted-foreground">{copy.previewOnly}</p>
+              </>
+            )}
             {reply?.notes && <WeightNotes notes={reply.notes} />}
           </div>
         )}
