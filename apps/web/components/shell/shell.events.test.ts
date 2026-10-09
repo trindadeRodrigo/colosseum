@@ -575,7 +575,11 @@ describe('the account control of someone signed in (Thom, Oct 6)', () => {
 describe('light or dark, as one icon in the bar', () => {
   it('is one button in the bar, named for what a press does, and no switches in the foot', async () => {
     const host = await shell();
-    const toggle = find(host, 'header [data-ui="theme-toggle"]');
+    const toggle = find(host, '[data-ui="compact-nav-bar"] [data-ui="theme-toggle"]');
+    // on a phone the bar has no room for it: the same toggle sits in the menu's sheet instead
+    expect(
+      host.querySelectorAll('[data-ui="compact-nav-sheet"] [data-ui="theme-toggle"]'),
+    ).toHaveLength(1);
     expect(toggle.tagName).toBe('BUTTON');
     // the sun is drawn on a dark page and the moon on a light one, by the stylesheet alone
     expect(toggle.textContent).toContain(en.toLight);
@@ -587,10 +591,11 @@ describe('light or dark, as one icon in the bar', () => {
     const host = await shell('en', 'dark');
     const root = document.documentElement;
     root.className = 'fonts dark';
-    await click(find(host, '[data-ui="theme-toggle"]'));
+    const bar = '[data-ui="compact-nav-bar"] [data-ui="theme-toggle"]';
+    await click(find(host, bar));
     expect(root.className).toBe('fonts light');
     expect(document.cookie).toContain('tf-theme=light');
-    await click(find(host, '[data-ui="theme-toggle"]'));
+    await click(find(host, bar));
     expect(root.className).toBe('fonts dark');
     expect(document.cookie).toContain('tf-theme=dark');
   });

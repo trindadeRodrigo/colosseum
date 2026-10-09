@@ -239,6 +239,9 @@ export function CompactNav({
             className={cn(
               'font-display leading-none font-semibold tracking-[-0.02em] transition-[font-size] duration-[480ms] ease-seat motion-reduce:transition-none',
               compact ? 'text-[20px]' : 'text-[24px]',
+              // On a narrow phone the compact bar keeps the mark alone, so the account and its action
+              // fit beside the menu whatever the chain is called; the link keeps its name.
+              compact && 'max-[400px]:sr-only',
             )}
           >
             {wordmark}

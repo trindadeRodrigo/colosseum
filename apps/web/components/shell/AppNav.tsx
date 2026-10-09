@@ -79,11 +79,21 @@ export function AppNav() {
       }))}
       action={
         <div className="flex items-center gap-2">
-          <ThemeToggle />
+          {/* On a phone the bar has no room for it beside the account: it sits in the menu's sheet. */}
+          <span className="hidden sm:contents">
+            <ThemeToggle />
+          </span>
           {account.action}
         </div>
       }
-      sheetHead={account.sheetHead}
+      sheetHead={
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">{account.sheetHead}</div>
+          <span className="contents sm:hidden">
+            <ThemeToggle />
+          </span>
+        </div>
+      }
       labels={{ skip: t.shell.skip, main: t.shell.nav, menu: t.shell.menu }}
     />
   );
