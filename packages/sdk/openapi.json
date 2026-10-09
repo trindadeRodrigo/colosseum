@@ -8971,7 +8971,7 @@
       "post": {
         "summary": "Review a mix for a new goal, and store it as a plan once confirmed",
         "tags": ["plans"],
-        "description": "Requires matching sign-in tokens and a verified wallet for the chain. The goal, risk, amount and term are the ones the person confirmed. The lines are checked again against the chain now, whoever chose them: each a listed asset of this chain or its own cash token, once, in whole basis points of at least 1, at most 16 that are not cash, and all adding up to exactly 10,000; every asset needs a price the vault can trade on. Any failure answers 422 `MIX_NOT_VALID` with `details.issues` (`CODE` or `CODE:assetId`). What would once have kept a line out is a warning instead: a line over its exit ceiling (measured, or its tier where nothing is measured), over the asset list’s cap, or a stock or fund of stocks in an income or protect plan. Any other class outside an income or protect goal (crypto, gold) is refused (`NOT_FOR_GOAL:<asset>` in `details.issues`). Each warning has an `id`, and every review a `reviewHash` over the lines, the goal, risk, term and amount, and every warning with its figures. With `confirm` false, a `reviewHash` that is not the review’s as the server reads it now, or any warning id missing from `acceptedWarnings`, the answer is `status: review` with `unconfirmed`, and nothing is stored or built. Every figure is the server’s and carries its source; `origin` is the client’s statement of who chose the weights, kept with what is stored. Cache-Control: private, no-store. Confirmed with every warning accepted, the mix is stored as a plan in the engine’s shape (`engineVersion` `mix-1`, `origin`), its lines the weights sent, and `proposalId` is bought by `POST /v1/orders` like any plan. The same mix confirmed again by the same person answers the same id and the plan as first stored. A buy of it is refused above the amount it was reviewed at (`AMOUNT_OVER_REVIEW`). Nothing is bought or signed here. The plan is not advice: see `disclaimer`.",
+        "description": "Requires matching sign-in tokens and a verified wallet for the chain. The amount and term are the ones the person confirmed, and the goal and risk the ones they said; a goal or risk sent as null or left out is worked out from the mix (gate DEPOSIT-DERIVE: `protect` when a plan to protect may hold every line, else `grow`; the lowest risk whose cap per issuer holds the stocks and crypto together and whose cap per stock holds each), and the review names it in `fromMix`. The lines are checked again against the chain now, whoever chose them: each a listed asset of this chain or its own cash token, once, in whole basis points of at least 1, at most 16 that are not cash, and all adding up to exactly 10,000; every asset needs a price the vault can trade on. Any failure answers 422 `MIX_NOT_VALID` with `details.issues` (`CODE` or `CODE:assetId`). What would once have kept a line out is a warning instead: a line over its exit ceiling (measured, or its tier where nothing is measured), over the asset list’s cap, or a stock or fund of stocks in an income or protect plan. Any other class outside an income or protect goal (crypto, gold) is refused (`NOT_FOR_GOAL:<asset>` in `details.issues`). Each warning has an `id`, and every review a `reviewHash` over the lines, the goal, risk, term and amount, and every warning with its figures. With `confirm` false, a `reviewHash` that is not the review’s as the server reads it now, or any warning id missing from `acceptedWarnings`, the answer is `status: review` with `unconfirmed`, and nothing is stored or built. Every figure is the server’s and carries its source; `origin` is the client’s statement of who chose the weights, kept with what is stored. Cache-Control: private, no-store. Confirmed with every warning accepted, the mix is stored as a plan in the engine’s shape (`engineVersion` `mix-1`, `origin`), its lines the weights sent, and `proposalId` is bought by `POST /v1/orders` like any plan. The same mix confirmed again by the same person answers the same id and the plan as first stored. A buy of it is refused above the amount it was reviewed at (`AMOUNT_OVER_REVIEW`). Nothing is bought or signed here. The plan is not advice: see `disclaimer`.",
         "requestBody": {
           "required": true,
           "content": {
@@ -9030,12 +9030,26 @@
                     "pattern": "^[0-9a-f]{64}$"
                   },
                   "goal": {
-                    "type": "string",
-                    "enum": ["grow", "income", "protect"]
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": ["grow", "income", "protect"]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "risk": {
-                    "type": "string",
-                    "enum": ["low", "medium", "high"]
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": ["low", "medium", "high"]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "amountUsd": {
                     "type": "number",
@@ -9054,8 +9068,6 @@
                   "language",
                   "allocations",
                   "confirm",
-                  "goal",
-                  "risk",
                   "amountUsd"
                 ],
                 "additionalProperties": false
@@ -9116,6 +9128,18 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "risk": {
+                              "type": "string",
+                              "enum": ["low", "medium", "high"]
+                            },
+                            "fromMix": {
+                              "maxItems": 2,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": ["goal", "risk"]
+                              }
                             },
                             "amountUsd": {
                               "type": "number",
@@ -9443,6 +9467,18 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "risk": {
+                              "type": "string",
+                              "enum": ["low", "medium", "high"]
+                            },
+                            "fromMix": {
+                              "maxItems": 2,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": ["goal", "risk"]
+                              }
                             },
                             "amountUsd": {
                               "type": "number",
@@ -10505,7 +10541,7 @@
       "post": {
         "summary": "Discuss a new goal and preview model-proposed allocations",
         "tags": ["plans"],
-        "description": "Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview requires separate fresh goal and amount confirmation before any financial review. No goal is stored for a new goal yet and none is taken from the request, so no pick is checked against one here and `proposal.unknowns` says so: `POST /v1/conversations/{chain}/goal/accept` checks the mix against the goal the person confirms.",
+        "description": "Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview is not a plan: the amount is confirmed on the review of `POST /v1/conversations/{chain}/goal/accept` before anything is stored. No goal is stored for a new goal yet and none is taken from the request, so no pick is checked against one here and `proposal.unknowns` says so: `goal/accept` checks the mix against the goal the person said, or, where they said none, the one it works out from the mix and names (gate DEPOSIT-DERIVE).",
         "requestBody": {
           "required": true,
           "content": {
@@ -10847,7 +10883,7 @@
                           "type": "null"
                         }
                       ],
-                      "description": "What the person said the money is for, read by the server from plain statements in their own messages; the latest one stands. Null until they have plainly said it, and after they take it back or question it. Never the model’s reading and never defaulted."
+                      "description": "What the person said the money is for, read by the server from plain statements in their own messages; the latest one stands. Null until they have plainly said it, and after they take it back or question it. Never the model’s reading, and never filled in here: `goal/accept` works out a null one from the mix and says so."
                     },
                     "risk": {
                       "anyOf": [
@@ -10859,7 +10895,19 @@
                           "type": "null"
                         }
                       ],
-                      "description": "The risk the person said they accept, read the same way. Null until they have plainly said it; never defaulted."
+                      "description": "The risk the person said they accept, read the same way. Null until they have plainly said it; never filled in here."
+                    },
+                    "amountUsd": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The sum the person said they start with, in dollars, read by the server from their own messages (gate DEPOSIT-DERIVE): the newest message that writes a sum in dollars, one sum there or none; never a rate a month, an age, a year or the model’s words. A starting value for the deposit step, which the person changes or confirms on the review. Null: not written, not in dollars, or two sums in one message."
                     }
                   },
                   "required": [
@@ -10872,7 +10920,8 @@
                     "weightNotes",
                     "chain",
                     "goal",
-                    "risk"
+                    "risk",
+                    "amountUsd"
                   ],
                   "additionalProperties": false
                 }
@@ -22416,6 +22465,18 @@
                                 }
                               ]
                             },
+                            "risk": {
+                              "type": "string",
+                              "enum": ["low", "medium", "high"]
+                            },
+                            "fromMix": {
+                              "maxItems": 2,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": ["goal", "risk"]
+                              }
+                            },
                             "amountUsd": {
                               "type": "number",
                               "minimum": 0
@@ -22742,6 +22803,18 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "risk": {
+                              "type": "string",
+                              "enum": ["low", "medium", "high"]
+                            },
+                            "fromMix": {
+                              "maxItems": 2,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": ["goal", "risk"]
+                              }
                             },
                             "amountUsd": {
                               "type": "number",

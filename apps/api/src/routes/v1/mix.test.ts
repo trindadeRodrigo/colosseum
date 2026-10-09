@@ -388,6 +388,64 @@ describe('POST /v1/conversations/{chain}/goal/accept', () => {
     expect(await hashOf({ goal: 'protect' })).not.toBe(base);
   });
 
+  it('works out from the mix a goal or risk the person did not say, and says which (DEPOSIT-DERIVE)', async () => {
+    const s = await setup();
+    const review = async (over: object) => {
+      const answer = await s.post(ACCEPT, goal(over));
+      expect(answer.statusCode, answer.body).toBe(200);
+      return AcceptGoalMixResponse.parse(answer.json()).review;
+    };
+    // 70% dollar yield and 10% in each of two stocks: a plan to grow, within every low cap
+    const spread = {
+      allocations: [
+        { assetId: 'solana:usdc', weightBps: 1000 },
+        { assetId: 'solana:nvda', weightBps: 1000 },
+        { assetId: 'solana:tsla', weightBps: 1000 },
+        { assetId: 'solana:yield', weightBps: 7000 },
+      ],
+    };
+    const unsaid = await review({ ...spread, goal: null, risk: null });
+    expect(unsaid).toMatchObject({ goal: 'grow', risk: 'low', fromMix: ['goal', 'risk'] });
+    // left out is the same as null, and the review is the one a person who said them would see
+    const { goal: _goal, risk: _risk, ...bare } = goal(spread);
+    expect((await s.post(ACCEPT, bare)).json().review).toEqual(unsaid);
+    expect((await review({ ...spread, goal: 'grow', risk: 'low' })).reviewHash).toBe(
+      unsaid.reviewHash,
+    );
+    // 40% in one stock is past every cap on one stock: the highest risk
+    expect(await review({ goal: null, risk: null })).toMatchObject({ goal: 'grow', risk: 'high' });
+    // dollar yield and cash alone: a plan to protect, at the lowest risk
+    expect(
+      await review({
+        goal: null,
+        risk: null,
+        allocations: [
+          { assetId: 'solana:usdc', weightBps: 1000 },
+          { assetId: 'solana:yield', weightBps: 9000 },
+        ],
+      }),
+    ).toMatchObject({ goal: 'protect', risk: 'low', fromMix: ['goal', 'risk'] });
+    // what the person said stands, checked as before: only the rest is worked out
+    const income = await review({ ...spread, goal: 'income', risk: null });
+    expect(income).toMatchObject({ goal: 'income', risk: 'low', fromMix: ['risk'] });
+    expect(income.unconfirmed).toEqual(
+      expect.arrayContaining(['NOT_FOR_GOAL:solana:nvda', 'NOT_FOR_GOAL:solana:tsla']),
+    );
+    expect(unsaid.unconfirmed.filter((id) => id.startsWith('NOT_FOR_GOAL'))).toEqual([]);
+    const said = await review({ ...spread, goal: 'grow', risk: 'high' });
+    expect(said).toMatchObject({ goal: 'grow', risk: 'high' });
+    expect(said.fromMix).toBeUndefined();
+    // confirmed, the plan is stored with what was worked out
+    const stored = AcceptGoalMixResponse.parse(
+      (await s.confirm(ACCEPT, goal({ ...spread, goal: null, risk: null }))).json(),
+    );
+    if (stored.status !== 'stored') throw new Error('not stored');
+    expect(stored.proposal.sheet).toMatchObject({ goal: 'grow', risk: 'low' });
+    expect(stored.proposal.flags).toEqual(
+      expect.arrayContaining(['from_mix:goal', 'from_mix:risk']),
+    );
+  });
+
   it('stores a plan the existing buy turns into legs, unchanged', async () => {
     const s = await setup();
     const res = AcceptGoalMixResponse.parse(

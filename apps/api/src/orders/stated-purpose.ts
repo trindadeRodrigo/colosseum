@@ -2,8 +2,8 @@ import type { VaultAgentRequest, VaultAgentStatedPurpose } from '@colosseum/sche
 
 // What a new goal's money is for and the risk the person accepts, read by the server from the person's
 // own messages (gate DEPOSIT-STEP). The goal decides which assets a plan may hold, so this reader errs
-// towards reading nothing: a miss is asked again by one tap on the deposit step, a wrong value is a
-// wrong plan. The model has no part in it.
+// towards reading nothing: a miss is worked out from the mix by the server (gate DEPOSIT-DERIVE) and
+// said as such, a wrong value is a wrong plan. The model has no part in it.
 //
 // A message is read whole, never in pieces. It states a goal only when it holds exactly one goal value
 // of a short closed English and Portuguese word list, on whole words, and every other word of the whole

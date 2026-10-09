@@ -2022,10 +2022,12 @@ export const pt: Dictionary = {
       currency: 'US$',
       changePurpose: 'Mudar',
       changePurposeLabel: 'Mudar o objetivo ou o risco na conversa',
-      askGoal: 'Para que é este dinheiro?',
-      askRisk: 'Quanto risco ele pode correr?',
-      askWhy:
-        'Você não disse isso na conversa, e eu não adivinho: o objetivo decide quais ativos o plano pode ter. Toque em um, ou diga na conversa.',
+      fromMix: (goal: boolean, risk: boolean) =>
+        goal && risk
+          ? 'Os dois calculados a partir da mistura que você escolheu.'
+          : goal
+            ? 'O objetivo é calculado a partir da mistura que você escolheu.'
+            : 'O risco é calculado a partir da mistura que você escolheu.',
       limits: 'De US$ 10 a US$ 1.000.000.',
       quick: 'Valores rápidos',
       quickOne: (amount: string) => `Depositar ${amount}`,
@@ -2034,7 +2036,6 @@ export const pt: Dictionary = {
       share: 'Parte',
       unchecked: 'ainda não conferido',
       needAmount: 'Digite um valor para ver quanto vai para cada ativo.',
-      needPurpose: 'Escolha o objetivo e o risco para ver quanto vai para cada ativo.',
       checking: 'Conferindo com os preços de hoje…',
       checked: 'Conferido com os preços de hoje. Nada foi comprado ainda.',
       review: 'Revisar o depósito',
@@ -2056,7 +2057,6 @@ export const pt: Dictionary = {
         reply: 'Espere a resposta na conversa primeiro.',
         weights: 'Corrija os pesos no editor primeiro.',
         amount: 'Digite um valor primeiro.',
-        purpose: 'Escolha o objetivo e o risco primeiro.',
       },
       errors: {
         notAmount: 'Digite um valor em dólares, como 250 ou 250,50.',

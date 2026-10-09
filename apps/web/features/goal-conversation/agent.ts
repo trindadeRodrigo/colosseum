@@ -13,14 +13,20 @@ const oneOf = <T extends string>(allowed: readonly T[], value: unknown): T | nul
   allowed.find((option) => option === value) ?? null;
 
 /**
- * A new goal's reply: the conversation's, with what the person said the money is for and the risk they
- * accept. Each is the server's reading of the person's own words, or null: a server that sends
- * neither, or a value this app does not know, is read as not said, and nothing is ever filled in here.
+ * A new goal's reply: the conversation's, with what the person said the money is for, the risk they
+ * accept and the sum they start with. Each is the server's reading of the person's own words, or null:
+ * a server that sends none, or a value this app does not know, is read as not said, and nothing is
+ * ever filled in here. The sum only starts the deposit step's amount, which the person can change
+ * (gate DEPOSIT-DERIVE).
  */
 export type GoalReply = VaultAgentReply & {
   goal: (typeof GOALS)[number] | null;
   risk: (typeof RISKS)[number] | null;
+  amountUsd: number | null;
 };
+
+const sum = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
 
 /** Creation has a chain and person history, never an existing vault or fabricated address. */
 export async function goalAgent(
@@ -67,5 +73,10 @@ export async function goalAgent(
     throw new VaultAgentError('failed');
   const reply = strategyReplyOf(body, chain);
   if (!reply) throw new VaultAgentError('failed');
-  return { ...reply, goal: oneOf(GOALS, body.goal), risk: oneOf(RISKS, body.risk) };
+  return {
+    ...reply,
+    goal: oneOf(GOALS, body.goal),
+    risk: oneOf(RISKS, body.risk),
+    amountUsd: sum(body.amountUsd),
+  };
 }
