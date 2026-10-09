@@ -334,7 +334,7 @@ describe('home', () => {
     expect(
       Array.from(host.querySelectorAll('img')).every(
         (image) =>
-          /^\/assets\/tokens\/[a-z]+\.png$/.test(image.getAttribute('src') ?? '') &&
+          /^\/assets\/tokens\/[a-z]+\.(png|svg)$/.test(image.getAttribute('src') ?? '') &&
           !image.hasAttribute('onerror'),
       ),
     ).toBe(true);
