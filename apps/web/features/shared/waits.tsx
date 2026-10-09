@@ -1,11 +1,17 @@
 'use client';
-import type { ChainId } from '@colosseum/schemas';
+import { ChainId } from '@colosseum/schemas';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { buttonClass } from '../../components/ui/button-class';
 import { ChainBadge } from '../../components/ui/ChainBadge';
-import { PAGE_TITLE } from '../../components/ui/heading';
-import { Skeleton, SkeletonLine, SkeletonListRow } from '../../components/ui/Skeleton';
+import { PAGE_TITLE, WORKSPACE_TITLE } from '../../components/ui/heading';
+import {
+  Skeleton,
+  SkeletonLine,
+  SkeletonListRow,
+  SkeletonTable,
+} from '../../components/ui/Skeleton';
 import { ScreenWait } from '../../components/waits/ScreenWait';
 import { useT } from '../../i18n/I18nProvider';
 import { PlanViewWait } from '../order/waits';
@@ -301,4 +307,105 @@ export function PublishWait() {
       }
     />
   );
+}
+
+/**
+ * A vault's own page (VaultScreen), as its workbench: the way back, its name and value with its
+ * actions; the conversation beside what it holds, which is a card with one bar, a label a holding
+ * and the table of them. The name, the value and every holding are still bars: none is drawn.
+ */
+export function VaultWait() {
+  const t = useT();
+  const v = t.shared.vault;
+  return (
+    <ScreenWait
+      label={v.loading}
+      // the workbench's own frame: the page's width and height, as the vault's page takes them
+      className="flex min-w-0 flex-col md:min-h-0 md:flex-1"
+      skeleton={
+        <div
+          data-ui="vault-wait"
+          data-workbench
+          className="grid min-w-0 gap-4 md:min-h-0 md:flex-1 md:grid-cols-12 md:grid-rows-[minmax(0,auto)_minmax(15rem,1fr)] md:items-stretch"
+        >
+          <div className="flex min-w-0 flex-col gap-2 md:col-span-12">
+            {/* the way back works while the vault is read */}
+            <p className="text-caption">
+              <Link href="/portfolio" className={buttonClass({ variant: 'link' })}>
+                {v.back}
+              </Link>
+            </p>
+            <div aria-hidden="true" className="flex flex-col gap-2">
+              <SkeletonLine className={WORKSPACE_TITLE} width="w-40" />
+              <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+                <SkeletonLine className="font-display text-h3" width="w-36" />
+                {/* on a phone the third action wraps under the pair, as the page's does */}
+                <div className="flex flex-wrap items-center gap-3 max-sm:w-[16.25rem]">
+                  <Skeleton className="h-10 w-24 rounded-md max-sm:w-[7.25rem]" />
+                  <Skeleton className="h-10 w-24 rounded-md max-sm:w-[7.25rem]" />
+                  <Skeleton className="h-6 w-12" />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div
+            aria-hidden="true"
+            data-wait="chat"
+            className="flex min-w-0 flex-col gap-4 md:col-span-5"
+          >
+            <div className="flex flex-col gap-1">
+              <SkeletonLine className="text-body" width="w-44" />
+              <SkeletonLine className="text-caption" width="w-56" />
+            </div>
+            <SkeletonLine className="text-body-sm" width="w-full" lines={2} />
+            <div className="flex flex-wrap gap-2">
+              <Skeleton className="h-8 w-36 rounded-md" />
+              <Skeleton className="h-8 w-36 rounded-md" />
+            </div>
+            {/* the typing box at the pane's foot, with the line under it */}
+            <div className="mt-auto flex flex-col gap-2 max-md:mt-[3.3125rem]">
+              <Skeleton className="h-[4.875rem] w-full rounded-lg" />
+              <SkeletonLine className="text-caption/8" width="w-48" />
+            </div>
+          </div>
+          <div
+            aria-hidden="true"
+            data-wait="holdings"
+            className="min-w-0 self-start rounded-lg border border-border bg-card md:col-span-7 md:mr-2"
+          >
+            <p className="p-6 text-h4 font-semibold">{v.page.holdings}</p>
+            <div className="flex min-w-0 flex-col gap-5 border-t border-border p-6">
+              <div className="flex flex-col gap-3">
+                <Skeleton className="h-3 w-full rounded-full" />
+                {[0, 1].map((i) => (
+                  <div key={i} className="flex h-6 items-center gap-2">
+                    <Skeleton className="size-2.5 rounded-none" />
+                    <Skeleton className="h-3 w-24" />
+                  </div>
+                ))}
+              </div>
+              <SkeletonTable
+                framed={false}
+                rows={3}
+                columns={[
+                  { track: 'minmax(0,2fr)' },
+                  { align: 'end' },
+                  { align: 'end' },
+                  { align: 'end' },
+                  { align: 'end' },
+                ]}
+              />
+            </div>
+          </div>
+        </div>
+      }
+    />
+  );
+}
+
+/** Add money's wait before the page runs (its `loading.tsx`): the chain is the address's own. */
+export function AddMoneyRouteWait() {
+  const { chain } = useParams<{ chain?: string }>();
+  const known = ChainId.safeParse(chain);
+  return <AddMoneyWait chain={known.success ? known.data : null} />;
 }

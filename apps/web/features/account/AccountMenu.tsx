@@ -5,6 +5,7 @@ import { ChainLogo } from '../../components/ui/ChainLogo';
 import { CopyButton } from '../../components/ui/CopyButton';
 import { shorten } from '../../components/ui/format';
 import { Icon } from '../../components/ui/Icon';
+import { Skeleton, SkeletonLine } from '../../components/ui/Skeleton';
 import { useT } from '../../i18n/I18nProvider';
 import { explorerAddressUrlFor, onMock } from '../order/readiness';
 import { useWalletPort } from '../wallet/WalletProvider';
@@ -38,7 +39,16 @@ const ITEM =
 const WALLET_CHAINS: readonly ChainId[] = ['solana', 'robinhood'];
 
 /** What the menu holds, and the phone's sheet under its own heading: the wallets, then sign out. */
-export function AccountBlock({ out, className }: { out: SignOutState; className?: string }) {
+export function AccountBlock({
+  out,
+  waiting = false,
+  className,
+}: {
+  out: SignOutState;
+  /** The account is still being read: a wallet's row keeps its place until the wallets are known. */
+  waiting?: boolean;
+  className?: string;
+}) {
   const t = useT();
   const port = useWalletPort();
   // One row for each chain the person has a wallet on: the wallet of that chain's family.
@@ -55,6 +65,24 @@ export function AccountBlock({ out, className }: { out: SignOutState; className?
 
   return (
     <div data-ui="account-block" className={className}>
+      {/* While the wallets are read: one row in outline, the chain's mark and name over the address
+          and its copy. Hidden from a screen reader; the control says the account is loading, once. */}
+      {waiting && wallets.length === 0 && (
+        <div
+          aria-hidden="true"
+          data-ui="account-wallets-wait"
+          className="flex flex-col gap-1 px-2 pt-2"
+        >
+          <span className="flex items-center gap-2">
+            <Skeleton className="size-4 rounded-full" />
+            <SkeletonLine className="text-caption" width="w-20" />
+          </span>
+          <span className="flex min-h-10 items-center gap-2">
+            <SkeletonLine className="font-mono text-source" width="w-28" />
+            <Skeleton className="size-6 rounded-md" />
+          </span>
+        </div>
+      )}
       {wallets.length > 0 && (
         <ul
           aria-label={t.shell.wallets}
@@ -119,7 +147,7 @@ export function AccountBlock({ out, className }: { out: SignOutState; className?
           })}
         </ul>
       )}
-      <div className={wallets.length > 0 ? 'border-t border-border pt-2' : undefined}>
+      <div className={wallets.length > 0 || waiting ? 'border-t border-border pt-2' : undefined}>
         <button
           type="button"
           data-ui="sign-out"
@@ -192,7 +220,7 @@ export function AccountMenu({
           style={{ right: -nudge }}
           className="absolute top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-md border border-border bg-popover p-2 text-popover-foreground"
         >
-          <AccountBlock out={out} className="flex flex-col gap-2" />
+          <AccountBlock out={out} waiting={waiting} className="flex flex-col gap-2" />
         </div>
       )}
     </div>

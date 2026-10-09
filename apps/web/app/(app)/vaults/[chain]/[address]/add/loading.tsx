@@ -1,7 +1,6 @@
-import { RouteWait } from '../../../../../../components/shell/RouteWait';
+import { AddMoneyRouteWait } from '../../../../../../features/shared/waits';
 
-// While the page is made on the server: the card it opens with, in its own shape.
-
+// While the page is made on the server: add money in outline, on the chain the address names.
 export default function Loading() {
-  return <RouteWait shape="plan" />;
+  return <AddMoneyRouteWait />;
 }

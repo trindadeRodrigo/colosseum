@@ -2,14 +2,11 @@
 import { ChainId, chainFamily, type VaultResponse } from '@colosseum/schemas';
 import Link from 'next/link';
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
-import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card } from '../../components/ui/Card';
 import { PAGE_TITLE, WORKSPACE_TITLE } from '../../components/ui/heading';
 import { Icon } from '../../components/ui/Icon';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
-import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { type CallFailure, readOrder } from '../order/order-api';
@@ -35,6 +32,7 @@ import {
   VaultAction,
 } from './VaultAction';
 import { VaultDetails, VaultHoldings } from './VaultHoldings';
+import { VaultWait } from './waits';
 
 // A vault, for anybody (DESIGN-VAULT section 11, the public vault page): its owner, what it
 // follows, its value, and what it holds, cash included, each with its share now, planned share, the
@@ -93,11 +91,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
         load.read.chain !== known.data ||
         !sameAddress(load.read.chain, load.read.vault.address, address)))
   )
-    return (
-      <Card>
-        <CardWait label={v.loading} skeleton={<SkeletonSummary />} />
-      </Card>
-    );
+    return <VaultWait />;
   if (load.kind !== 'read')
     return (
       <section aria-labelledby={titleId} className="flex flex-col items-start gap-4">

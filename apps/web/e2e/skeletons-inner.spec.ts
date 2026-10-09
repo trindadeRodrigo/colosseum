@@ -11,6 +11,7 @@ import {
   STUB,
   shot,
   WIDTHS,
+  walletAddress,
 } from './waits';
 
 // The screens of a vault's own money in outline (WEB-SKELETONS-2): withdraw, add money and the
@@ -35,11 +36,9 @@ async function withVault(page: Page): Promise<string> {
   if (await on.isVisible({ timeout: 3_000 }).catch(() => false))
     await on.click({ timeout: 3_000 }).catch(() => {});
   await expect(page).toHaveURL(/\/shelf/);
-  const wallet = page.locator('[data-ui="account-menu-button"] span[title]').first();
-  await expect(wallet).toHaveAttribute('title', /.+/);
   const made = await page.request.post(`${STUB}/__stub/source-vault`, {
     data: {
-      owner: await wallet.getAttribute('title'),
+      owner: await walletAddress(page),
       targets: [
         { asset: 'solana:spy', weightBps: 6000 },
         { asset: 'solana:gold', weightBps: 4000 },
@@ -52,7 +51,15 @@ async function withVault(page: Page): Promise<string> {
 
 async function waitsInPlace(
   page: Page,
-  o: { name: string; path: string; held: RegExp; settled: string; regions: Region[] },
+  o: {
+    name: string;
+    path: string;
+    held: RegExp;
+    settled: string;
+    regions: Region[];
+    /** The page's title is there while it waits; a vault's name is not known yet. */
+    title?: boolean;
+  },
 ) {
   const h = await hold(page, o.held);
   await push(page, o.path);
@@ -63,7 +70,7 @@ async function waitsInPlace(
   );
   await expectAnnouncedOnce(page);
   // the page's own title is there while it waits, and only once
-  await expect(page.locator('main h1')).toHaveCount(1);
+  if (o.title !== false) await expect(page.locator('main h1')).toHaveCount(1);
   await expect(async () => {
     expect(await page.title()).toMatch(/\S/);
   }).toPass();
@@ -82,6 +89,42 @@ async function waitsInPlace(
 
 for (const width of WIDTHS) {
   test.describe(`at ${width}px`, () => {
+    test('a vault’s own page waits as its workbench: its head, the conversation and what it holds', async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const address = await withVault(page);
+      await waitsInPlace(page, {
+        name: 'vault',
+        path: `/vaults/solana/${address}`,
+        // the vault's read; the name comes with the portfolio, which the page waits for by itself
+        held: /\/v1\/vaults\//,
+        settled: '[data-ui="vault-screen"]',
+        title: false,
+        regions: [
+          {
+            name: 'way back',
+            waiting: '[data-ui="vault-wait"] a[href="/portfolio"]',
+            loaded: '[data-ui="vault-back"]',
+          },
+          {
+            name: 'conversation',
+            waiting: '[data-wait="chat"]',
+            loaded: '[data-ui="vault-chat"]',
+            sized: 'by-data',
+          },
+          {
+            name: 'what it holds',
+            waiting: '[data-wait="holdings"]',
+            loaded: '[data-ui="vault-plan"] [data-ui="card"]',
+            sized: 'by-data',
+          },
+        ],
+      });
+      // the way back is a link while the page waits, not a picture of one
+      await expect(page.locator('[data-ui="vault-back"]')).toHaveAttribute('href', '/portfolio');
+    });
+
     test('withdraw waits as its head and the card of its steps', async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
       const address = await withVault(page);
