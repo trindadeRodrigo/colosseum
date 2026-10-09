@@ -94,6 +94,8 @@ export function DepositStep({
   const [changed, setChanged] = useState(false);
   const [ticked, tick] = useTicks(review);
   const [busy, setBusy] = useState(false);
+  // The plan is stored and the next screen is on its way: the button says so until the route changes.
+  const [opening, setOpening] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
   // The amount has been still for a moment, or the field was left: only then is it said to be wrong.
@@ -249,6 +251,7 @@ export function DepositStep({
     }
     const { proposalId, proposal } = answer.value;
     rememberPlan({ id: proposalId, userId, proposal, rollUp: null });
+    setOpening(true);
     router.push(`/plan/${encodeURIComponent(proposalId)}/buy`);
   }
 
@@ -270,7 +273,8 @@ export function DepositStep({
           review={review}
           ticked={ticked}
           onTick={tick}
-          confirmLabel={busy ? t.mix.goal.confirming : t.mix.goal.confirm}
+          confirmLabel={t.mix.goal.confirm}
+          busyLabel={opening ? t.mix.goal.opening : t.mix.goal.confirming}
           onConfirm={confirm}
           onBack={() => setReview(null)}
           backLabel={d.backToDeposit}
@@ -429,6 +433,7 @@ export function DepositStep({
                 data-action="deposit-review"
                 busy={busy}
                 busyLabel={d.reviewing}
+                busyMark
                 disabled={blocked !== null}
                 aria-describedby={blocked !== null && tried ? reasonId : undefined}
                 onDisabledClick={() => setTried(true)}
