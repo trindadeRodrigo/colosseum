@@ -637,7 +637,6 @@ describe('a reference stands alone, as the figure it is', () => {
     `You hold ${A}OO shares.`,
     `You hold ${A}x more.`,
     `You hold ${A}\u200bmillion.`,
-    `You hold **${A}** tokens.`,
     `Worth ${A}**${A}.`,
     `It costs ${V}/day.`,
     `It costs ${V} /day.`,
@@ -754,9 +753,11 @@ describe('a reference stands alone, as the figure it is', () => {
       `Compared with ${tesla.symbol}, ${sym} costs 0.4% to sell.`,
     ],
     [
-      `${sym} is ${S} of the vault.\nIts price is ${ref(`price:${stock.id}`)}`,
-      `${sym} is 50% of the vault.\nIts price is $100.00`,
+      `${sym} is ${S} of the vault.\nIts price is ${ref(`price:${stock.id}`)}.`,
+      `${sym} is 50% of the vault.\nIts price is $100.00.`,
     ],
+    // emphasis marks around a reference are not served
+    [`You hold **${A}** tokens.`, 'You hold 10 tokens.'],
     // marks that reorder or hide text are taken out of what is served
     [`Worth \u202e${V}\u202c today.`, 'Worth $1,000.00 today.'],
   ])('serves a reference that stands alone: %s', async (sentence, shown) => {
@@ -829,5 +830,320 @@ describe('a measured value that is not zero is never written as zero', () => {
     expect(amount?.label).toContain('underlying');
     expect(amount?.method).toContain('multiplier');
     expect(amount?.label).not.toContain('tokens');
+  });
+});
+
+// The second review of #216 (the re-check at 5b74904d): its probes, and its 24 natural answers.
+describe('a figure is read with what stands around it', () => {
+  const tesla = assets.find((asset) => asset.id === 'solana:tslax');
+  if (!tesla) throw new Error('Incomplete offline catalog fixture');
+  const position = (asset: typeof stock, units: bigint, targetBps: number) => ({
+    asset: asset.id,
+    raw: (units * 10n ** BigInt(asset.decimals)).toString(),
+    display: units.toString(),
+    multiplier: '1',
+    targetBps,
+    lastKeeperAt: null,
+  });
+  const figures = (exitCost: number) => [
+    {
+      metric: 'exit_worst' as const,
+      regime: 'us_offhours_weekday' as const,
+      value: exitCost,
+      ...pin,
+    },
+    { metric: 'weekend' as const, value: null, reason: 'no_samples_in_regime' as const },
+    { metric: 'volatility' as const, value: 0.35, ...pin },
+    { metric: 'drawdown' as const, value: 0.4, ...pin },
+  ];
+  const ctx = () => {
+    const base = buildVaultAgentContext({
+      state: {
+        ...state,
+        positions: [
+          position(stock, 10n, 3000),
+          position(tesla, 5n, 3000),
+          position(reserve, 500n, 2000),
+        ],
+      },
+      entry: offline,
+      prices: [cash, stock, tesla, reserve].map((asset) => ({
+        asset: asset.id,
+        usdPerToken: asset === stock ? '100' : asset === tesla ? '200' : '1',
+        ageSeconds: 0,
+        maxAgeSeconds: 300,
+        market: 'open' as const,
+        source: 'fixture',
+        method: 'fixture',
+        fetchedAt: '2026-10-07T19:59:00.000Z',
+        provenance: 'mock' as const,
+      })),
+      prepared: {
+        shelf,
+        figures: {
+          yields: [
+            {
+              assetId: reserve.id,
+              quotedYield: 0.05,
+              haircutYield: 0.04,
+              source: 'y',
+              method: 'fixture',
+              fetchedAt: now,
+              provenance: 'mock',
+            },
+          ],
+        },
+      } as Built['prepared'],
+      person: 'p',
+      currentGoals: [{ goal: 'grow' }],
+      analytics: sheet({
+        assets: [
+          { assetId: stock.id, modelledOn: null, figures: figures(0.004) },
+          { assetId: tesla.id, modelledOn: null, figures: figures(0.006) },
+        ],
+      }),
+    });
+    return {
+      ...base,
+      stockAttributes: {
+        stocks: [
+          { symbol: stock.symbol, company: 'NVIDIA Corporation', sources: [] },
+          { symbol: tesla.symbol, company: 'Tesla, Inc.', sources: [] },
+        ],
+      },
+    } as unknown as typeof base;
+  };
+  const F: Record<string, string> = {
+    NV: ref(`holding:${stock.id}:value`),
+    NA: ref(`holding:${stock.id}:amount`),
+    NS: ref(`holding:${stock.id}:share`),
+    NT: ref(`holding:${stock.id}:target`),
+    NP: ref(`price:${stock.id}`),
+    NX: ref(`exit:${stock.id}:worst`),
+    TX: ref(`exit:${tesla.id}:worst`),
+    TV: ref(`holding:${tesla.id}:value`),
+    NW: ref(`weekend:${stock.id}`),
+    ND: ref(`drawdown:${stock.id}`),
+    TD: ref(`drawdown:${tesla.id}`),
+    NVOL: ref(`vol:${stock.id}`),
+    W: ref('vault:value'),
+    CV: ref(`holding:${cash.id}:value`),
+    CS: ref(`holding:${cash.id}:share`),
+    Y: ref(`yield:${reserve.id}:0:quoted`),
+    RV: ref(`holding:${reserve.id}:value`),
+  };
+  const fill = (text: string) =>
+    text.replace(/\[(\w+)\]/g, (whole, key: string) => F[key] ?? whole);
+  const ask = async (reply: unknown) => {
+    const model = fake(reply);
+    const out = await replyToVaultConversation(request('Tell me about my vault.'), ctx(), model);
+    return { out, calls: vi.mocked(model.read).mock.calls.length };
+  };
+  /** What is left of `sentence` when it is followed by a sentence that is always served. */
+  const left = async (sentence: string) => {
+    const { out } = await ask(said(`${fill(sentence)} A new line follows.`));
+    return served(out).reply.message;
+  };
+  const CUT = `A new line follows.\n${FIGURE_CUT}`;
+
+  it.each([
+    'You can count on [Y] a year from the reserve.',
+    'The reserve locks in [Y] a year.',
+    'The reserve pays [Y] every year.',
+    'The reserve pays [Y] a year, like clockwork.',
+    'A steady [Y] a year comes from the reserve.',
+    'The reserve reliably pays [Y] a year.',
+    'You get [Y] a year from the reserve, no matter what.',
+    'The reserve pays a fixed [Y] a year.',
+    'Your money earns [Y] a year in the reserve, with no risk of loss.',
+    'The reserve pays [Y] a year for as long as you hold it.',
+    'Put it in the reserve and collect [Y] a year.',
+    'The reserve can not pay less than [Y] a year.',
+    'Next year the reserve pays [Y] again.',
+    'You get at least [Y] from the reserve.',
+    'You are sure to get [Y] from it.',
+    'The reserve gives you [Y] each and every time.',
+    'The reserve earns [Y] a year on top of [NV] you hold in Nvidia.',
+    // framed as a measurement, and still a promise
+    'The quoted yield of [Y] a year is one you can count on.',
+    'The current yield, [Y] a year, is locked in.',
+    'Its measured yield is a steady [Y] a year.',
+    'The quoted yield is [Y] now and at least that next year.',
+    'O rendimento cotado de [Y] ao ano é garantido.',
+  ])('cuts a yield that is not said as a measurement, or is promised: %s', async (sentence) => {
+    expect(await left(sentence)).toBe(CUT);
+  });
+
+  it.each([
+    [
+      'Its quoted yield is [Y] a year, measured from past rates.',
+      'Its quoted yield is 5% a year, measured from past rates.',
+    ],
+    ['The reserve’s quoted yield is [Y] a year.', 'The reserve’s quoted yield is 5% a year.'],
+    ['Its yield at the last reading was [Y].', 'Its yield at the last reading was 5%.'],
+    ['The reserve currently yields [Y] a year.', 'The reserve currently yields 5% a year.'],
+    ['So far the reserve has paid [Y] a year.', 'So far the reserve has paid 5% a year.'],
+  ])('serves a yield said as a measurement: %s', async (sentence, shown) => {
+    expect(await left(sentence)).toBe(`${shown} A new line follows.`);
+  });
+
+  it.each([
+    'What does Nvidia return in a year? About [NS] of it is yours to keep.',
+    'Expected yearly return on Nvidia. It comes to [NS] or so.',
+    'Nvidia will keep rising. Think of it as [NS] here.',
+    'Nvidia returns a lot… [NS] to be exact.',
+    'Nvidia returns, e.g. [NS].',
+    'Nvidia annual return (approx. [NS]) is strong.',
+    'Nvidia grows every year by about\n\n[NS]\n\nand that is a lot.',
+    'Nvidia return, year after year: about [NS].',
+    'Yearly return on Nvidia:\n- [NS] is the figure.',
+    'Tesla is volatile. It trades at [NP].',
+  ])('reads the words of the sentence before a reference too: %s', async (sentence) => {
+    const shown = await left(sentence);
+    expect(shown).not.toMatch(/\d/u);
+    expect(shown).toContain(FIGURE_CUT);
+  });
+
+  it.each(['About [NS].', 'Think [NS].', '[NS].', 'USDC: [NV].', 'Nvidia. [NS].'])(
+    'cuts a reference with too few words of its own to say what it is: %s',
+    async (sentence) => {
+      const shown = await left(`Something about your vault. ${sentence}`);
+      expect(shown).not.toMatch(/\d/u);
+      expect(shown).toContain(FIGURE_CUT);
+    },
+  );
+
+  it('reads fields that are shown together as one: a heading and the figure under it', async () => {
+    const { out, calls } = await ask({
+      message: 'Here is the plan.',
+      question: null,
+      proposal: {
+        objective: 'Expected return per year:',
+        summary: fill('It stands at [NS] of the whole.'),
+        allocations: [
+          { assetId: stock.id, why: fill('Nvidia. [NS].'), evidenceIds: [`price:${stock.id}`] },
+        ],
+        stated: [],
+        tradeoffs: ['Yearly return on Nvidia you can count on:', fill('It is [NS] of the vault.')],
+        unknowns: [],
+      },
+    });
+    expect(calls).toBe(2);
+    const proposal = served(out).reply.proposal;
+    expect(
+      JSON.stringify([proposal?.summary, proposal?.tradeoffs, proposal?.allocations]),
+    ).not.toMatch(/28\.57%/u);
+    expect(proposal?.objective).toBe('Expected return per year:');
+    // the question is shown under the message
+    const asked = await ask({
+      message: 'What does Nvidia return in a year?',
+      question: fill('Is [NS] of the vault enough for you?'),
+      proposal: null,
+    });
+    expect(served(asked.out).reply.question).toBeNull();
+  });
+
+  it.each([
+    'You make [NV] each on Nvidia.',
+    'You stand to make [NV] on Nvidia.',
+    'Nvidia made you [NV] so far.',
+    'Nvidia is [NV] in the red.',
+    'Nvidia is [NV] in the black.',
+    'Nvidia is [NV] above what you put in.',
+    'Nvidia is [NS] overvalued.',
+    'Nvidia is [NS] undervalued.',
+    'Nvidia has a [NS] chance of beating the market.',
+    'The odds are [NS] for Nvidia.',
+    'Its probability is [NS] for Nvidia.',
+    'Your money is [NS] safe in Nvidia.',
+    'Nvidia beats the market by [NS] in a typical twelvemonth.',
+    'You owe [NV] in tax on Nvidia.',
+    'The fee on Nvidia is [NS] of what you hold.',
+    'Nvidia is worth less than [NV] today.',
+    'Nvidia is worth more than [NV] today.',
+    'You earned [NV] on Nvidia.',
+    'Your profit on Nvidia is [NV].',
+    'Nvidia vale [NV] millones.',
+    'Nvidia holds [NA] Mio units.',
+    'Nvidia holds [NA] lakh units.',
+    'Nvidia holds [NA] crore units.',
+  ])('cuts a claim the figure does not measure: %s', async (sentence) => {
+    expect(await left(sentence)).toBe(CUT);
+  });
+
+  it.each([
+    'Nvidia re͏turns about [NS] a ye͏ar.',
+    'Nvidia holds [NA] mil͏lion units.',
+    'Nvidia holds [NA] mil️lion units.',
+    'Nvidia rеturns about [NS] a yеar.',
+    'Nvidia holds [NA] miᅠllion units.',
+    'Nvidia holds [NA] mіllion units.',
+    'Nvidia holds [NA] μnits today.',
+  ])('cuts a referenced sentence with a hidden or a look-alike letter: %s', async (sentence) => {
+    expect(await left(sentence)).toBe(CUT);
+  });
+
+  it.each([
+    ['Tesla trades at [NP].'],
+    ['Your gold is worth [NV].'],
+    ['Your biggest stock is Tesla, worth [NV].'],
+    ['Your cash is worth [NV].'],
+    ['The reserve is worth [NV].'],
+    ['Nvidia is up [NS] today.'],
+    ['Nvidia went down and is now [NS] of the vault.'],
+    ['Nvidia is down [NS] today.'],
+    ['Nvidia, [NS] up on the day, leads.'],
+    ['Its high-yield days pay [NS] to you.'],
+    ['Nvidia fell, and its annualised volatility is [NVOL].'],
+    ['Tesla’s largest drawdown was [TD], and Nvidia’s annualised volatility is [NVOL].'],
+  ])('still cuts what the relaxed rules must not let through: %s', async (sentence) => {
+    expect(await left(sentence)).toBe(CUT);
+  });
+
+  // The reviewer's 24 natural answers to the five questions of the description: 17 were served whole,
+  // 5 trimmed and 2 emptied. Each is served whole.
+  it.each([
+    'Your Nvidia holding is worth [NV] right now. That is [NA] units at a reference price of [NP] each.',
+    'Your Nvidia is worth about [NV] at the current reference price.',
+    'You hold [NA] NVDAx, worth [NV] at today’s reference price. That’s about [NS] of your vault.',
+    'Selling all of your Nvidia today would cost about [NX] in the worst measured conditions.',
+    'Selling everything at once would cost roughly [NX] for Nvidia and [TX] for Tesla, based on the worst regime Bearing has measured. Your dollar-yield reserve and cash have no measured exit cost.',
+    'About [CS] of your vault is cash, which is [CV] in USDC.',
+    'Cash makes up [CS] of your vault ([CV]). The rest is split between Nvidia, Tesla and the reserve.',
+    'Weekend exit capacity for Nvidia is [NW], so I can’t tell you how it compares to weekdays yet.',
+    'There are no weekend samples for NVDAx yet, so that figure is unknown rather than zero.',
+    'I can’t rank them for you, but here are the measured figures: selling Nvidia would cost about [NX], and selling Tesla about [TX]. Both are worst-case measurements.',
+    'Nvidia’s measured exit cost is [NX] and Tesla’s is [TX], so you can compare them directly.',
+    'Your vault is worth [W] in total. Nvidia is [NV], Tesla is [TV], the reserve is [RV] and cash is [CV].',
+    'Your vault is worth [W]. Nvidia is the largest stock position at [NS], against a target of [NT].',
+    'Nvidia is currently [NS] of your vault, and its target is [NT], so it is close to where you set it.',
+    'The reserve’s quoted yield is [Y] a year. That is a past observation, not a promise.',
+    'Nvidia’s largest measured drawdown was [ND], and its annualised volatility is [NVOL]. It can move a lot.',
+    'Nvidia has dropped as much as [ND] in the past, which gives you a sense of the downside.',
+    'At the current price of [NP], your [NA] units of Nvidia come to [NV].',
+    'Right now Nvidia trades at [NP]. You hold [NA] units, for a total value of [NV].',
+    'Your Nvidia position: **[NV]** ([NS] of the vault).',
+    'Your dollar-yield reserve is worth [RV].',
+    'If you sold it all today, the cost would be about [NX] of the amount sold. That is the worst case measured; it would likely be lower during market hours.',
+    'Your Nvidia holding is up to date as of the last read: [NV]. I don’t have a figure for how much it has gained since you bought it.',
+    'Tesla would cost about [TX] to sell and Nvidia about [NX]. I can’t say which is cheaper, but both figures are measured at the reference size.',
+  ])('serves a natural answer whole: %s', async (answer) => {
+    const { out, calls } = await ask(said(fill(answer)));
+    expect(calls).toBe(1);
+    const message = served(out).reply.message;
+    expect(message).not.toContain(FIGURE_CUT);
+    expect(message).not.toMatch(/[{}*]/u);
+  });
+
+  it('serves a reference the model set in bold without the marks', async () => {
+    const { out } = await ask(
+      said(fill('Your Nvidia position: **[NV]** and __[NS]__ of the vault.')),
+    );
+    expect(served(out).reply.message).toBe(
+      'Your Nvidia position: $1,000.00 and 28.57% of the vault.',
+    );
+    expect(served(out).reply.figures?.prose.message).toBe(
+      fill('Your Nvidia position: [NV] and [NS] of the vault.'),
+    );
   });
 });

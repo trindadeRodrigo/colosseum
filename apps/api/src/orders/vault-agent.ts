@@ -778,22 +778,24 @@ export function trimFigureSentences(
  * tradeoffs or unknowns that lost an item or part of one holds it once. A question left empty is
  * dropped; an objective, a summary or a pick's reason left empty is the server's `FIGURE_REMOVED`,
  * never words made up for the model. Null when nothing of the message is left, or no room for the note.
+ * Fields shown together are read together: the question under the message, the summary under the
+ * objective, a list item under the item before.
  */
 function withoutFigureSentences(
   reply: VaultAgentModelReply,
-  figure: (text: string) => boolean,
-  catalogNames: string[],
+  /** One text without its figure sentences; `lead` is the text shown just above it. */
+  trimmed: (text: string, lead: string) => { text: string; cut: number },
   language: 'en' | 'pt',
 ): { reply: VaultAgentModelReply; cut: number } | null {
   let cut = 0;
-  const trim = (text: string): string => {
-    const trimmed = trimFigureSentences(text, figure, catalogNames);
-    cut += trimmed.cut;
-    return trimmed.text;
+  const trim = (text: string, lead = ''): string => {
+    const left = trimmed(text, lead);
+    cut += left.cut;
+    return left.text;
   };
   const list = (items: string[]): string[] => {
     const before = cut;
-    const kept = items.map(trim).filter(Boolean);
+    const kept = items.map((item, at) => trim(item, items[at - 1] ?? '')).filter(Boolean);
     return cut === before ? kept : [...kept.slice(0, 11), FIGURE_CUT[language]];
   };
   const message = trim(reply.message);
@@ -803,16 +805,16 @@ function withoutFigureSentences(
   return {
     reply: {
       message: said,
-      question: (reply.question === null ? null : trim(reply.question)) || null,
+      question: (reply.question === null ? null : trim(reply.question, reply.message)) || null,
       proposal: proposal && {
         ...proposal,
         objective: trim(proposal.objective) || FIGURE_REMOVED[language],
-        summary: trim(proposal.summary) || FIGURE_REMOVED[language],
+        summary: trim(proposal.summary, proposal.objective) || FIGURE_REMOVED[language],
         tradeoffs: list(proposal.tradeoffs),
         unknowns: list(proposal.unknowns),
         allocations: proposal.allocations.map((allocation) => ({
           ...allocation,
-          why: trim(allocation.why) || FIGURE_REMOVED[language],
+          why: trim(allocation.why, '') || FIGURE_REMOVED[language],
         })),
       },
     },
@@ -830,7 +832,7 @@ const REPAIR_HINTS: Record<string, string> = {
   prose_figure:
     'Prose contained a financial figure, percentage, price, yield, date or written-out number. Numbers may appear in prose only inside an exact catalog name or an exact quote of the person in attributed quotation marks. The server sets the weights. Rewrite every prose field with no digit, no percent or currency sign and no "guaranteed" or "risk-free": when kind is vault, state a measured figure only as its reference, {{fact:<id>}} with an id given in this request; otherwise describe it in words and cite its id in evidenceIds. Never repeat its value.',
   figure_reference:
-    'Prose held a figure reference, {{fact:<id>}}, that the server will not serve. Either its id is not one given in this request with a value (an id in evidence that carries a value, or a key of analytics.assets[].values; when kind is new_goal no reference is allowed), or it does not stand alone as the figure it is. A reference stands alone when: it is outside quotation marks; a space and a word, or plain sentence punctuation, is on each side of it, so no sign, symbol, letter or digit touches it and two references have a word between them; and its sentence has no magnitude or percent word (hundred, thousand, million, k, percent), no multiplier, fraction, sign or arithmetic in words (double, half, a fifth, times, minus, sum), no number or currency word beside it, no rate or return word unless every reference in the sentence is a yield: figure (return, yield, APY, earn, pays, a year, monthly), no rise or fall unless it is a drawdown: figure, no forecast (will, expected), no promise beside a yield (should, always), and names no other asset than the one the figure is of. Rewrite the sentence so the reference stands alone, or write it without the figure. Never type the number instead.',
+    'Prose held a figure reference, {{fact:<id>}}, that the server will not serve. Either its id is not one given in this request with a value (an id in evidence that carries a value, or a key of analytics.assets[].values; when kind is new_goal no reference is allowed), or it does not stand alone as the figure it is. A reference stands alone when: it is outside quotation marks; a space and a word, or plain sentence punctuation, is on each side of it, so no sign, symbol, letter or digit touches it and two references have a word between them; and its sentence has no magnitude or percent word (hundred, thousand, million, k, percent), no multiplier, fraction, sign or arithmetic in words (double, half, a fifth, times, minus, sum), no number or currency word beside it, no rate or return word unless every reference in the sentence is a yield: figure (return, yield, APY, earn, pays, a year, monthly), no rise or fall unless it is a drawdown: figure, no forecast (will, expected), no claim a figure does not measure (made, chance, tax, fee, overvalued), and names no other asset than the one the figure is of; a yield: figure needs a word that says it is a measurement (quoted, measured, observed, current, past, so far) and no promise (should, always, at least, count on, steady, fixed). The sentence before a reference, and the field shown above it, are read with it. Rewrite the sentence so the reference stands alone, or write it without the figure. Never type the number instead.',
   prose_claims_applied:
     'Prose said something was applied, created, funded, traded or approved. A proposal is only a private preview; nothing has been applied.',
   allocation_unlisted: "An allocation named an assetId that is not in this chain's catalog.",
@@ -1234,6 +1236,8 @@ const CLASS_WORDS: Array<[(asset: BasketAsset) => boolean, string[]]> = [
 ];
 /** A word that names a class of assets, not one asset. */
 const CLASS_NAME = new RegExp(`^(?:${CLASS_WORDS.flatMap(([, words]) => words).join('|')})$`, 'iu');
+/** The dollar-yield assets as a person and the model call them; read for figures only, never for shares. */
+const RESERVE_NAME = word('reserves?|reservas?|dollar[-\\s]yield', 'iu');
 // Tickers that are everyday words in English or Portuguese ("na minha meta", "pump"): beside a number
 // they name the asset only as written (META, METAx) or as the company is capitalised (Meta).
 const EVERYDAY = new Set([
@@ -1784,11 +1788,23 @@ export async function replyToVaultConversation(
     language: parsed.data.language,
     sentences: (text) => sentencesOf(text, catalogNames),
     digitNames: catalogNames,
-    // a name that is one asset's: a class word ("stocks") names no single one
-    named: (text) =>
-      namer(text).flatMap((span) =>
-        span.ids.length === 1 && !CLASS_NAME.test(text.slice(span.start, span.end)) ? span.ids : [],
-      ),
+    // A name that is one asset's, and a word for cash, gold or the reserve, which names every listed
+    // asset of that class. "Stocks" and "crypto" name too many to say whose a figure is.
+    named: (text) => {
+      const spans = namer(text);
+      const isClass = (span: Named) => CLASS_NAME.test(text.slice(span.start, span.end));
+      const narrow = (span: Named) =>
+        span.ids.every((id) => ['cash', 'gold'].includes(catalog.get(id)?.cls ?? ''));
+      return {
+        own: spans.flatMap((span) => (span.ids.length === 1 && !isClass(span) ? span.ids : [])),
+        classes: [
+          ...spans.flatMap((span) => (isClass(span) && narrow(span) ? span.ids : [])),
+          ...(RESERVE_NAME.test(text)
+            ? [...catalog.values()].filter((a) => a.cls === 'dollar_yield').map((a) => a.id)
+            : []),
+        ],
+      };
+    },
   });
   // References over both attempts that named no figure of this request; a count for the log.
   let unknownReferences = 0;
@@ -1869,7 +1885,39 @@ export async function replyToVaultConversation(
     // figure it is, is an unbacked figure all the same.
     const typed = (text: string) =>
       hasFinancialFigure(withoutReferences(text), personWords, catalogNames);
-    const figure = (text: string) => typed(text) || references.unbacked(text).length > 0;
+    // Each prose field with the one shown just above it, whose last sentence is read with its first.
+    const fieldsOf = ({ message, question, proposal: draft }: VaultAgentModelReply) =>
+      [
+        [message, ''],
+        [question ?? '', message],
+        ...(draft
+          ? [
+              [draft.objective, ''],
+              [draft.summary, draft.objective],
+              ...draft.tradeoffs.map((item, at) => [item, draft.tradeoffs[at - 1] ?? '']),
+              ...draft.unknowns.map((item, at) => [item, draft.unknowns[at - 1] ?? '']),
+              ...draft.allocations.map((allocation) => [allocation.why, '']),
+            ]
+          : []),
+      ] as Array<[string, string]>;
+    const unbackedIn = (reply: VaultAgentModelReply) =>
+      fieldsOf(reply).flatMap(([text, lead]) => references.unbacked(text, lead));
+    const figured = (reply: VaultAgentModelReply) =>
+      proseOf(reply).some(typed) || unbackedIn(reply).length > 0;
+    /** One text without the sentences that type a figure or hold a reference that cannot be served. */
+    const trimmed = (text: string, lead: string) => {
+      const parts = references.parts(text, lead);
+      const kept = parts.filter((part) => !part.why.length && !typed(part.sentence));
+      if (kept.length === parts.length && !typed(text)) return { text, cut: 0 };
+      const rest = kept
+        .map((part) => part.sentence)
+        .join('')
+        .trim();
+      // a figure that only shows across two sentences leaves nothing of the text
+      return typed(rest)
+        ? { text: '', cut: parts.length }
+        : { text: rest, cut: parts.length - kept.length };
+    };
     const proseOf = ({ message, question, proposal: draft }: VaultAgentModelReply) => [
       message,
       question ?? '',
@@ -1901,12 +1949,10 @@ export async function replyToVaultConversation(
         })),
       },
     };
-    if (proseOf(model).some(figure)) {
-      const unbacked = proseOf(model).flatMap(references.unbacked);
+    if (figured(model)) {
+      const unbacked = unbackedIn(model);
       unknownReferences += unbacked.length;
-      const kept = final
-        ? withoutFigureSentences(model, figure, catalogNames, request.language)
-        : null;
+      const kept = final ? withoutFigureSentences(model, trimmed, request.language) : null;
       if (!kept)
         return proseOf(model).some(typed) || !unbacked.length
           ? rejected('prose_figure')
@@ -2067,7 +2113,7 @@ export async function replyToVaultConversation(
       return rejected('allocation_ineligible', [`Left out: ${leftOut.join(', ')}.`]);
     // What is served is read whole for a figure once more, after both cuts and with the server's own
     // sentences in it.
-    if (gone.length && proseOf({ ...said, proposal: { ...preview, stated } }).some(figure))
+    if (gone.length && figured({ ...said, proposal: { ...preview, stated } }))
       return rejected('prose_figure');
     const unconfirmed = stated.flatMap((share, index) =>
       person.read.some(
