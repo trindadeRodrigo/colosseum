@@ -16,3 +16,20 @@ SHA-256:
 - syrupusdc.png: fd5e60afefe8e9c209587769e9fe1dced0120826a261cf8cb0ed015cdb22d4fe
 - syrupusdc.svg (source): 84394a230ec8564d24b2eba188395d82577625cc8e765e7a3760a03dc0e6ed64
 - paxg.png: 0db15d4ea8f3ee8ed713a9e04dd7ef34222e8ccc7e9b3a8b5abb5ffc432b3dd3
+
+## Decision, and what is still text
+
+Thom, 2026-10-09: a token shows its issuer's own artwork where the token has it, otherwise the company's or fund's official mark; unaltered, on the neutral tile `AssetMark` draws, with the ticker as the fallback. Files are kept here and keyed by the token's name as `tokenName` gives it, so a test token (`tSPYx`) and the token it stands in for (`SPYx`) show one picture. Every screen draws a holding through `AssetMark` (`features/order/PlanView.tsx`), so a token has one face.
+
+No file has been added since Oct 7. These assets still show their ticker, and each needs a file fetched from the source named, by a person or with a person's word in the session that fetches it, with the URL and date added to the table above:
+
+| Assets | Where the artwork should come from |
+|---|---|
+| SPYx, QQQx, NVDAx, TSLAx, AAPLx, METAx, MSFTx, AMZNx, GOOGLx, MSTRx, CRCLx, GLDx (Solana; and their `t…x` test tokens) | the xStocks issuer's own token images (its product pages or token metadata) |
+| AAPL, MSFT, NVDA, TSM, SPY, GLD, SGOV (Robinhood Chain) | the token issuer's artwork if it publishes any; otherwise each company's or fund's brand or press kit |
+| USDC | Circle's brand kit |
+| USDG, tUSDG | the issuer's brand resources |
+| USDY | Ondo's brand resources |
+| JitoSOL, JUP | Jito's and Jupiter's brand kits |
+| syrupUSDT | Maple, as syrupUSDC above |
+| mYield, BRLx, the sample asset | none: not real tokens, they keep the ticker |

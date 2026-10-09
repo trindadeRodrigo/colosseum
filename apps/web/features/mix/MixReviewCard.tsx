@@ -47,6 +47,7 @@ export function MixReviewCard({
   ticked,
   onTick,
   confirmLabel,
+  busyLabel,
   onConfirm,
   onBack,
   backLabel,
@@ -59,6 +60,11 @@ export function MixReviewCard({
   ticked: ReadonlySet<string>;
   onTick: (id: string, on: boolean) => void;
   confirmLabel: string;
+  /**
+   * What the confirm says while it runs, beside the loader: what is being done ("Checking and saving…").
+   * Left out, the caller changes `confirmLabel` itself.
+   */
+  busyLabel?: string;
   onConfirm: () => void;
   onBack: () => void;
   /** Where "back" leads, when it is not to changing the mix: the deposit step of a new goal. */
@@ -221,7 +227,9 @@ export function MixReviewCard({
           <Button
             variant="primary"
             data-action="mix-confirm"
-            disabled={busy || left > 0}
+            {...(busyLabel !== undefined
+              ? { busy, busyLabel, busyMark: true, disabled: left > 0 }
+              : { disabled: busy || left > 0 })}
             onClick={onConfirm}
           >
             {confirmLabel}
