@@ -5,9 +5,8 @@ import { Card, CardBody } from '../../components/ui/Card';
 import { cn } from '../../components/ui/cn';
 import { Disclaimer } from '../../components/ui/Disclaimer';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
-import { LatticeLoader } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
-import { useWaitPhase } from '../../components/ui/wait';
+import { WaitMark } from '../../components/ui/WaitMark';
 import { type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { AssetMark } from '../order/PlanView';
@@ -41,7 +40,8 @@ export function StrategyPreview({
   proposal,
   targets,
   previewOnly,
-  pending,
+  wait,
+  pending: waiting = false,
   onDiscuss,
   use,
 }: {
@@ -49,10 +49,17 @@ export function StrategyPreview({
   targets?: { asset: string; targetBps: number }[];
   previewOnly?: string;
   /**
-   * A reply is on its way and this is the draft before it: the words that say so. The card stays, dimmed,
-   * and its action waits, so the new draft can show what changed.
+   * For a host that keeps the draft on the card while the next reply is on its way: what the card
+   * says then. `banner` leads the card ("Reading your message. Below is the draft from before."),
+   * and `action` stands in the action's place beside the loader ("Waiting for the reply…"). Given
+   * always, so their places are kept and nothing moves when the wait starts or ends.
    */
-  pending?: string;
+  wait?: { banner: string; action: string };
+  /**
+   * A reply is on its way and this is the draft before it. The draft stays, set back as a whole (grey
+   * ink, never faded text: it still reads at 4.5:1), so the next one can show what changed.
+   */
+  pending?: boolean;
   onDiscuss?: () => void;
   /**
    * The one action this preview leads to: a deposit for a new goal, which is the card's primary
@@ -69,8 +76,7 @@ export function StrategyPreview({
     [proposal],
   );
   const { motion, run } = useJointMotion(shares);
-  // the loader beside the pending words comes only once the wait is over 400ms (STYLE.md)
-  const waiting = useWaitPhase(Boolean(pending)) !== 'quiet';
+  const pending = waiting && wait !== undefined;
   const t = useT();
   const copy = t.shared.vault.conversation;
   const language = useLang();
@@ -130,214 +136,238 @@ export function StrategyPreview({
         }}
       >
         <CardBody className="flex min-w-0 flex-col gap-4">
-          <p className="text-body font-medium [overflow-wrap:anywhere]">{proposal.objective}</p>
-          <p className="text-body-sm [overflow-wrap:anywhere]">{proposal.summary}</p>
-          {/* One line's place for two: the note on the draft, or that a new one is being worked on. */}
+          {/* One place for two lines, as tall as the taller: the note on the draft, or the banner that
+              says a reply is on its way and this is the draft from before. Nothing under it moves. */}
           <div className="grid">
             <p
               aria-hidden={pending ? true : undefined}
               className={cn(
-                'col-start-1 row-start-1 text-caption text-muted-foreground',
+                'col-start-1 row-start-1 self-center text-caption text-muted-foreground',
                 pending && 'invisible',
               )}
             >
               {previewOnly ?? copy.previewOnly}
             </p>
-            {/* the region is there before its words are, so a screen reader hears them come */}
+            {wait && !pending && (
+              // the banner's size, kept while there is none
+              <p
+                aria-hidden="true"
+                className="invisible col-start-1 row-start-1 flex items-center gap-3 px-3 py-2 text-body-sm font-medium"
+              >
+                <span className="size-5 shrink-0" />
+                {wait.banner}
+              </p>
+            )}
+            {/* not a live region: the conversation announces the wait, once (ReplyAnnouncer) */}
             <p
-              role="status"
               data-ui="preview-pending"
-              className="col-start-1 row-start-1 flex items-start gap-2 text-caption text-muted-foreground"
+              className={cn(
+                'col-start-1 row-start-1 flex items-center gap-3 self-center rounded-md text-body-sm font-medium',
+                pending ? 'bg-honey-tint px-3 py-2' : 'invisible',
+              )}
             >
               {pending && (
                 <>
-                  <span className="flex size-5 shrink-0 items-center">
-                    {waiting && <LatticeLoader size={16} />}
-                  </span>
-                  {pending}
+                  <WaitMark size={20} tone="current" />
+                  {wait?.banner}
                 </>
               )}
             </p>
           </div>
-          {monthly && (
-            <fieldset
-              aria-label={copy.view.label}
-              data-ui="preview-view"
-              className="m-0 flex min-w-0 gap-1 self-start rounded-full border border-border p-0.5"
-            >
-              {(['mix', 'monthly'] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  aria-pressed={showing === v}
-                  onClick={() => setView(v)}
-                  className={cn(
-                    'rounded-full px-3 py-1 text-caption font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
-                    showing === v
-                      ? 'bg-honey-tint text-foreground'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {copy.view[v]}
-                </button>
-              ))}
-            </fieldset>
-          )}
-          {showing === 'monthly' && monthly && (
-            <ProjectionChart
-              projection={monthly}
-              lang={language}
-              sample={monthly.sourceIds.some(
-                (id) => proposal.sources.find((source) => source.id === id)?.provenance !== 'live',
-              )}
-            />
-          )}
-          {/* Only the beam recedes while a reply is on its way: every word and figure stays as
-              readable as it was. */}
-          <MixJoint
-            pieces={rows.flatMap((row) =>
-              row.piece === null
-                ? []
-                : [
-                    {
-                      key: row.asset,
-                      bps: row.proposed,
-                      name: row.symbol ?? displayName(row.asset, t.plan),
-                      share: allocationShare(row.proposed),
-                    },
-                  ],
+          {/* The draft from before, set back as a whole while a reply is on its way: its ink goes
+              grey and its beam and swatches recede. Every word and figure stays readable, and so do
+              the letters on an asset's mark, which are text and are not faded. */}
+          <div
+            data-ui="preview-draft"
+            data-set-back={pending ? true : undefined}
+            className={cn(
+              'flex min-w-0 flex-col gap-4 motion-safe:transition-colors motion-safe:duration-(--tf-dur-fade)',
+              pending && 'text-muted-foreground [&_[data-part=swatch]]:opacity-60',
             )}
-            words={{
-              label: copy.jointLabel,
-              hint: copy.jointHint,
-              widenedLabel: copy.jointLabelWidened,
-              widenedHint: copy.jointHintWidened,
-            }}
-            lit={lit}
-            onLit={setLit}
-            motion={motion}
-            run={run}
-            receded={Boolean(pending)}
-          />
-          <table className="w-full table-fixed border-collapse text-body-sm">
-            <caption className="sr-only">{targets ? copy.comparison : copy.proposed}</caption>
-            <thead className="text-caption text-muted-foreground">
-              <tr className="border-b border-border">
-                <th scope="col" className="py-2 text-start font-normal">
-                  {t.shared.vault.columns.asset}
-                </th>
-                <th
-                  scope="col"
-                  className={`py-2 text-end font-normal ${targets ? 'w-[6.5rem] sm:w-[8.5rem]' : 'w-20'}`}
-                >
-                  {targets ? copy.comparison : copy.proposedShare}
-                </th>
-                {targets && (
-                  <th scope="col" className="w-14 py-2 text-end font-normal">
-                    {copy.change}
-                  </th>
+          >
+            <p className="text-body font-medium [overflow-wrap:anywhere]">{proposal.objective}</p>
+            <p className="text-body-sm [overflow-wrap:anywhere]">{proposal.summary}</p>
+            {monthly && (
+              <fieldset
+                aria-label={copy.view.label}
+                data-ui="preview-view"
+                className="m-0 flex min-w-0 gap-1 self-start rounded-full border border-border p-0.5"
+              >
+                {(['mix', 'monthly'] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    aria-pressed={showing === v}
+                    onClick={() => setView(v)}
+                    className={cn(
+                      'rounded-full px-3 py-1 text-caption font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                      showing === v
+                        ? 'bg-honey-tint text-foreground'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {copy.view[v]}
+                  </button>
+                ))}
+              </fieldset>
+            )}
+            {showing === 'monthly' && monthly && (
+              <ProjectionChart
+                projection={monthly}
+                lang={language}
+                sample={monthly.sourceIds.some(
+                  (id) =>
+                    proposal.sources.find((source) => source.id === id)?.provenance !== 'live',
                 )}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr
-                  key={row.asset}
-                  data-row={row.asset}
-                  data-lit={row.piece !== null ? lit === row.asset : undefined}
-                  {...(row.piece !== null
-                    ? {
-                        // the row answers as its piece does: a mouse over it, or a finger's tap
-                        onPointerEnter: (e) => e.pointerType === 'mouse' && setLit(row.asset),
-                        onPointerLeave: (e) => e.pointerType === 'mouse' && setLit(null),
-                        onPointerUp: (e) => {
-                          if (e.pointerType !== 'mouse')
-                            setLit((now) => (now === row.asset ? null : row.asset));
-                        },
-                      }
-                    : {})}
-                  style={enters(row) ? rowDelay(row) : undefined}
-                  className={cn(
-                    'border-b border-border align-top motion-safe:transition-colors motion-safe:duration-(--tf-dur-fade)',
-                    lit === row.asset && 'bg-muted',
-                    enters(row) && 'tf-joint-row',
-                  )}
-                >
-                  <th scope="row" className="py-3 pr-2 pl-1 text-start font-normal">
-                    <span className="flex min-w-0 items-center gap-2">
-                      {/* the piece's own colour, so the row and the piece are one thing to the eye */}
-                      <span
-                        aria-hidden="true"
-                        data-part="swatch"
-                        className={cn(
-                          'size-2.5 shrink-0',
-                          row.piece === null ? 'border border-border' : fillOf(row.piece),
-                        )}
-                      />
-                      <AssetMark asset={row.asset} />
-                      <span className="min-w-0 [overflow-wrap:anywhere]">
-                        {row.symbol ?? displayName(row.asset, t.plan)}
-                      </span>
-                    </span>
-                    <span className="mt-2 block text-caption text-muted-foreground [overflow-wrap:anywhere]">
-                      {row.why}
-                    </span>
+              />
+            )}
+            <MixJoint
+              pieces={rows.flatMap((row) =>
+                row.piece === null
+                  ? []
+                  : [
+                      {
+                        key: row.asset,
+                        bps: row.proposed,
+                        name: row.symbol ?? displayName(row.asset, t.plan),
+                        share: allocationShare(row.proposed),
+                      },
+                    ],
+              )}
+              words={{
+                label: copy.jointLabel,
+                hint: copy.jointHint,
+                widenedLabel: copy.jointLabelWidened,
+                widenedHint: copy.jointHintWidened,
+              }}
+              lit={lit}
+              onLit={setLit}
+              motion={motion}
+              run={run}
+              receded={pending}
+            />
+            <table className="w-full table-fixed border-collapse text-body-sm">
+              <caption className="sr-only">{targets ? copy.comparison : copy.proposed}</caption>
+              <thead className="text-caption text-muted-foreground">
+                <tr className="border-b border-border">
+                  <th scope="col" className="py-2 text-start font-normal">
+                    {t.shared.vault.columns.asset}
                   </th>
-                  <td className="py-3 pr-1 text-end tabular-nums">
-                    {/* the final figure, whole, from the first frame: it drops in, it never counts */}
-                    <span
-                      key={`${row.current}:${row.proposed}`}
-                      data-part="share"
-                      style={figureMoves(row) ? rowDelay(row) : undefined}
-                      className={cn('inline-block', figureMoves(row) && 'tf-joint-figure')}
-                    >
-                      {targets
-                        ? `${allocationShare(row.current)} → ${allocationShare(row.proposed)}`
-                        : allocationShare(row.proposed)}
-                    </span>
-                  </td>
+                  <th
+                    scope="col"
+                    className={`py-2 text-end font-normal ${targets ? 'w-[6.5rem] sm:w-[8.5rem]' : 'w-20'}`}
+                  >
+                    {targets ? copy.comparison : copy.proposedShare}
+                  </th>
                   {targets && (
-                    <td className="py-3 pr-1 text-end text-caption tabular-nums">
-                      {change(row.proposed - row.current)}
-                    </td>
+                    <th scope="col" className="w-14 py-2 text-end font-normal">
+                      {copy.change}
+                    </th>
                   )}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          <WeightNotes notes={proposal.weightNotes} allocations={proposal.allocations} />
-          {proposal.warnings.length > 0 && (
-            <div data-ui="mix-warnings" className="flex flex-col gap-2">
-              <h3 className="text-caption font-medium">{m.warnings}</h3>
-              {proposal.warnings.map((warning) => {
-                const figure = proposal.sources.find((source) => source.id === warning.evidenceId);
-                return (
-                  <p
-                    key={`${warning.code}:${warning.assetId}`}
-                    data-warning={warning.code}
-                    className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm"
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr
+                    key={row.asset}
+                    data-row={row.asset}
+                    data-lit={row.piece !== null ? lit === row.asset : undefined}
+                    {...(row.piece !== null
+                      ? {
+                          // the row answers as its piece does: a mouse over it, or a finger's tap
+                          onPointerEnter: (e) => e.pointerType === 'mouse' && setLit(row.asset),
+                          onPointerLeave: (e) => e.pointerType === 'mouse' && setLit(null),
+                          onPointerUp: (e) => {
+                            if (e.pointerType !== 'mouse')
+                              setLit((now) => (now === row.asset ? null : row.asset));
+                          },
+                        }
+                      : {})}
+                    style={enters(row) ? rowDelay(row) : undefined}
+                    className={cn(
+                      'border-b border-border align-top motion-safe:transition-colors motion-safe:duration-(--tf-dur-fade)',
+                      lit === row.asset && 'bg-muted',
+                      enters(row) && 'tf-joint-row',
+                    )}
                   >
-                    <StatusMark status="watch" className="mt-1.5" />
-                    <span className="[overflow-wrap:anywhere]">
-                      {warning.code === 'over_exit_capacity'
-                        ? m.warning.overExit(nameOf(warning.assetId))
-                        : m.warning.outsideGoal(nameOf(warning.assetId))}
-                      {warning.code === 'over_exit_capacity' && figure?.value != null && (
-                        <>
-                          {' '}
-                          <ProvenancePin
-                            value={`${figure.label ?? ''}: ${sourceValue(language, figure.value, figure.unit)}`}
-                            obs={figure}
-                            labels={t.pin}
-                          />
-                        </>
-                      )}
-                    </span>
-                  </p>
-                );
-              })}
-            </div>
-          )}
+                    <th scope="row" className="py-3 pr-2 pl-1 text-start font-normal">
+                      <span className="flex min-w-0 items-center gap-2">
+                        {/* the piece's own colour, so the row and the piece are one thing to the eye */}
+                        <span
+                          aria-hidden="true"
+                          data-part="swatch"
+                          className={cn(
+                            'size-2.5 shrink-0',
+                            row.piece === null ? 'border border-border' : fillOf(row.piece),
+                          )}
+                        />
+                        <AssetMark asset={row.asset} />
+                        <span className="min-w-0 [overflow-wrap:anywhere]">
+                          {row.symbol ?? displayName(row.asset, t.plan)}
+                        </span>
+                      </span>
+                      <span className="mt-2 block text-caption text-muted-foreground [overflow-wrap:anywhere]">
+                        {row.why}
+                      </span>
+                    </th>
+                    <td className="py-3 pr-1 text-end tabular-nums">
+                      {/* the final figure, whole, from the first frame: it drops in, it never counts */}
+                      <span
+                        key={`${row.current}:${row.proposed}`}
+                        data-part="share"
+                        style={figureMoves(row) ? rowDelay(row) : undefined}
+                        className={cn('inline-block', figureMoves(row) && 'tf-joint-figure')}
+                      >
+                        {targets
+                          ? `${allocationShare(row.current)} → ${allocationShare(row.proposed)}`
+                          : allocationShare(row.proposed)}
+                      </span>
+                    </td>
+                    {targets && (
+                      <td className="py-3 pr-1 text-end text-caption tabular-nums">
+                        {change(row.proposed - row.current)}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <WeightNotes notes={proposal.weightNotes} allocations={proposal.allocations} />
+            {proposal.warnings.length > 0 && (
+              <div data-ui="mix-warnings" className="flex flex-col gap-2">
+                <h3 className="text-caption font-medium">{m.warnings}</h3>
+                {proposal.warnings.map((warning) => {
+                  const figure = proposal.sources.find(
+                    (source) => source.id === warning.evidenceId,
+                  );
+                  return (
+                    <p
+                      key={`${warning.code}:${warning.assetId}`}
+                      data-warning={warning.code}
+                      className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm"
+                    >
+                      <StatusMark status="watch" className="mt-1.5" />
+                      <span className="[overflow-wrap:anywhere]">
+                        {warning.code === 'over_exit_capacity'
+                          ? m.warning.overExit(nameOf(warning.assetId))
+                          : m.warning.outsideGoal(nameOf(warning.assetId))}
+                        {warning.code === 'over_exit_capacity' && figure?.value != null && (
+                          <>
+                            {' '}
+                            <ProvenancePin
+                              value={`${figure.label ?? ''}: ${sourceValue(language, figure.value, figure.unit)}`}
+                              obs={figure}
+                              labels={t.pin}
+                            />
+                          </>
+                        )}
+                      </span>
+                    </p>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           {(onDiscuss || use) && (
             <div className="flex flex-wrap gap-3">
               {use && (
@@ -345,7 +375,8 @@ export function StrategyPreview({
                   variant={use.primary ? 'primary' : 'secondary'}
                   size={use.primary ? 'default' : 'dense'}
                   data-action={use.primary ? 'deposit' : 'use-mix'}
-                  disabled={Boolean(pending)}
+                  // while a reply is on its way the action waits, and says so beside the loader
+                  {...(wait ? { busy: pending, busyLabel: wait.action, busyMark: true } : {})}
                   onClick={use.onUse}
                 >
                   {use.label}

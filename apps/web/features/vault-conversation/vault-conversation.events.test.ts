@@ -218,6 +218,77 @@ describe('a continuous conversation for one vault', () => {
     expect(calls[1]?.body).not.toHaveProperty('sheet');
   });
 
+  it('shows a pending reply under the sent message and a card that promises no draft, then the reply in place', async () => {
+    const waiting: (() => void)[] = [];
+    let fail = false;
+    let posts = 0;
+    portStore.setApi(async (url, init) => {
+      if (init?.method !== 'POST') return json({}, 404);
+      posts += 1;
+      await new Promise<void>((done) => waiting.push(done));
+      if (fail) return json({}, 500);
+      return json({
+        ...reply,
+        messageId: JSON.parse(String(init.body)).messageId,
+      });
+    });
+    const release = async () => {
+      await act(async () => waiting.shift()?.());
+      await settle();
+    };
+    const copy = en.shared.vault.conversation;
+    const host = await show();
+    const announced = () => find(host, '[data-ui="reply-announcer"]').textContent;
+    const box = find<HTMLTextAreaElement>(host, 'textarea');
+    expect(announced()).toBe('');
+    await type(box, 'More gold, please');
+    await click(find(host, '[data-ui="composer-send"]'));
+    const rows = () => [...find(host, '[data-ui="vault-transcript"]').children];
+    expect(rows()).toHaveLength(2);
+    const pending = find(host, '[data-ui="reply-pending"]');
+    expect(rows()[1]).toBe(pending);
+    expect(pending.textContent).toBe(`${copy.agent}: ${copy.pendingLines[0]}`);
+    expect(pending.closest('[aria-live], [role="status"]')).toBeNull();
+    expect(announced()).toBe(copy.reading);
+    expect(find(host, '[data-ui="composer"]').querySelector('[role="status"]')).toBeNull();
+    // the plan side: where a draft would be, a card says a reply is being worked on, with still boxes
+    // and no figure. It promises no draft: most replies here only talk.
+    const building = find(host, '[data-ui="vault-plan"] [data-ui="vault-building"]');
+    expect(find(building, 'h2').textContent).toBe(copy.building);
+    expect(building.textContent).toBe(`${copy.building}${copy.buildingLine}`);
+    expect(find(building, '[data-ui="draft-skeleton"]').getAttribute('aria-hidden')).toBe('true');
+    expect(find(host, '[data-ui="vault-plan"]').firstElementChild).toBe(building);
+    // a vault never keeps a stale draft while the next is asked for
+    expect(host.querySelector('[data-ui="vault-proposal"]')).toBeNull();
+    // the next thought can be typed; it is not sent
+    expect(box.readOnly).toBe(false);
+    await type(box, 'and less cash');
+    await click(find(host, '[data-ui="composer-send"]'));
+    expect(posts).toBe(1);
+    await release();
+    expect(host.querySelector('[data-ui="reply-pending"]')).toBeNull();
+    expect(host.querySelector('[data-ui="vault-building"]')).toBeNull();
+    expect(rows()[1]?.textContent).toBe(`${copy.agent}: ${reply.message}`);
+    expect(announced()).toBe(`${copy.agent}: ${reply.message} ${copy.draftArrived}`);
+    expect(host.querySelector('[data-ui="vault-proposal"]')).not.toBeNull();
+    expect(box.value).toBe('and less cash');
+
+    // the next send clears the draft, and a reply that does not come is said where it would have been
+    fail = true;
+    await click(find(host, '[data-ui="composer-send"]'));
+    expect(host.querySelector('[data-ui="vault-proposal"]')).toBeNull();
+    expect(find(host, '[data-ui="vault-building"]')).not.toBeNull();
+    expect(rows().at(-1)).toBe(find(host, '[data-ui="reply-pending"]'));
+    await release();
+    expect(host.querySelector('[data-ui="reply-pending"]')).toBeNull();
+    expect(host.querySelector('[data-ui="vault-building"]')).toBeNull();
+    const failed = find(host, '[data-ui="vault-transcript"] > [data-ui="vault-unanswered"]');
+    expect(rows().at(-1)).toBe(failed);
+    expect(find(failed, '[role="alert"]').textContent).toBe(copy.failed);
+    expect(host.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    expect(announced()).toBe('');
+  });
+
   it('shows measured holdings, cash, and different current/proposed targets without execution', async () => {
     portStore.setApi(async (url, init) =>
       json(

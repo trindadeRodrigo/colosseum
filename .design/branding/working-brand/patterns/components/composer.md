@@ -45,6 +45,7 @@ The one place where a person types to us in their own words. It is the roundest 
 | Send focus | its own 2px chalk ring at 2px offset (round). Only visible when focus is on the button itself |
 | Empty | send button `aria-disabled="true"`, fill `--muted`, icon `--muted-foreground`. Enter does nothing; no error |
 | Busy (parsing) | textarea `readonly`, container `aria-busy="true"`; the send button shows the 3-segment honey loader (static when reduced motion) and a live status line "Reading your goal…" (`role="status"`). Never a counting or shimmering effect |
+| Waiting for a reply (a conversation: `typeWhileBusy`) | as Busy, except the textarea is **not** `readonly`: the next message can be typed, and only sending waits (Enter and the button do nothing). The hint's place under the box says so ("Waiting for this reply. You can keep typing, and send when it arrives."), in the same cell as the resting hint so nothing moves. No status line under the box: the reply's place in the transcript carries the loader and a plain line, and the conversation announces the wait once (`role="status"`) and the reply once |
 | Error (request failed) | border `--destructive`; sentence below in `--destructive` with `role="alert"`, saying what to do ("We couldn't read that. Try an amount and a date."). The typed text is kept |
 | Disabled | whole container `opacity` is **not** used; border `--border`, text `--muted-foreground`, button removed from tab order |
 

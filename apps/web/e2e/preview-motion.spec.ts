@@ -169,7 +169,12 @@ test('a draft arrives as a joint tied to its rows, and the next one moves only w
   let release = () => {};
   await answerWith(page, SIX, new Promise<void>((done) => (release = done)));
   await say(page, 'Technology stocks, with some gold and cash');
-  await expect(strategy.locator('[data-ui="goal-working"]')).toHaveText(en.goal.explore.working);
+  await expect(strategy.locator('[data-ui="draft-building"] h2')).toHaveText(
+    en.goal.explore.building,
+  );
+  await expect(strategy.locator('[data-ui="draft-building"]')).toContainText(
+    en.goal.explore.working,
+  );
   await expect(strategy.locator('[data-ui="lattice-loader"]')).toBeVisible();
   await shot(page, 'pending-first-1440');
   release();
@@ -239,9 +244,13 @@ test('a draft arrives as a joint tied to its rows, and the next one moves only w
   await expect(strategy.locator('[data-ui="preview-pending"]')).toHaveText(
     en.shared.vault.conversation.reworking,
   );
-  await expect(strategy.getByRole('button', { name: en.mix.preview.deposit })).toHaveAttribute(
+  // the action waits in its own place, and says so (reply-waiting.spec.ts looks at this state)
+  await expect(strategy.locator('[data-action="deposit"]')).toHaveAttribute(
     'aria-disabled',
     'true',
+  );
+  await expect(strategy.locator('[data-action="deposit"]')).toContainText(
+    en.shared.vault.conversation.waitingAction,
   );
   await expect(pieces).toHaveCount(SIX.length);
   await shot(page, 'pending-next-1440');
