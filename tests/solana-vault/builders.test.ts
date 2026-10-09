@@ -5,8 +5,10 @@ import {
   COMPUTE_BUDGET_PROGRAM,
   type Composed,
   createTokenAccountInstruction,
+  DEFAULT_MAX_PRIORITY_LAMPORTS,
   MAX_TRANSACTION_BYTES,
   pricedOut,
+  SIGNATURE_FEE_LAMPORTS,
   TOKEN_PROGRAM,
   unlistedAssetId,
 } from '@colosseum/chain-solana/vault';
@@ -249,6 +251,17 @@ describe.skipIf(!PROGRAMS_BUILT)('the Solana builders, in LiteSVM with the real 
       ASSOCIATED_TOKEN_PROGRAM,
       BASKET_PROGRAM,
     ]);
+    const [limitIx, priceIx] = message.instructions.map((ix) => ix.data ?? new Uint8Array());
+    expect(limitIx?.[0]).toBe(2);
+    expect(priceIx?.[0]).toBe(3);
+    const price = new DataView(Uint8Array.from(priceIx ?? []).buffer).getBigUint64(1, true);
+    const c = composedOf(opening as BuiltTx);
+    expect(price).toBe(1n);
+    expect(price).toBe(c.microLamportsPerUnit);
+    // The fee is the one signature and the price at the limit asked for, rounded up: under the cap.
+    const priority = (price * BigInt(c.computeUnitLimit) + 999_999n) / 1_000_000n;
+    expect(c.feeLamports).toBe(SIGNATURE_FEE_LAMPORTS + priority);
+    expect(priority).toBeLessThanOrEqual(DEFAULT_MAX_PRIORITY_LAMPORTS);
   });
 
   it("quotes and swaps through a priced pair (TNET-4's kind 1) at the entry less its spread, both ways", async () => {

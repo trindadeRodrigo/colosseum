@@ -214,7 +214,9 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
         : null
       : deps.vaultAgentModel;
   const relaxedGoalAgent =
-    deps.relaxedGoalAgent === undefined ? relaxedGoalAgentFromEnv(env) : deps.relaxedGoalAgent;
+    deps.relaxedGoalAgent === undefined
+      ? relaxedGoalAgentFromEnv(env, quota)
+      : deps.relaxedGoalAgent;
 
   // The test faucet. Its key-holding file is loaded only here, only when a faucet key is set for a
   // chain on a test network (DESIGN-VAULT section 2, rule 5): otherwise it is never in the process.

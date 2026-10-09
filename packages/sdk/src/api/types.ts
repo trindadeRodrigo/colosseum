@@ -2091,6 +2091,8 @@ export type PostConversationsByChainGoalReplyResponse = {
     quote?: string;
   }[];
   chain: 'solana' | 'base' | 'robinhood';
+  /** Which agent wrote this reply: the relaxed intake (gate RELAXED-INTAKE), or the model-led conversation the server answers with when it runs with `GOAL_AGENT=model-led`. Said so that neither is ever taken for the other. */
+  agent: 'relaxed' | 'model_led';
   /** What the person said the money is for, read by the server from plain statements in their own messages; the latest one stands. Null until they have plainly said it, and after they take it back or question it. Never the model’s reading and never defaulted. */
   goal: ('grow' | 'income' | 'protect') | null;
   /** The risk the person said they accept, read the same way. Null until they have plainly said it; never defaulted. */

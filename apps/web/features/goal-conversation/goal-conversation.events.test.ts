@@ -53,7 +53,7 @@ const send = async (host: HTMLElement, words: string) => {
 };
 const show = (lang: 'en' | 'pt' = 'en') => mount(withAccount(lang, createElement(GoalHome)));
 async function mode(host: HTMLElement, value: string) {
-  const selector = find<HTMLSelectElement>(host, '[data-ui="goal-mode"]');
+  const selector = find<HTMLSelectElement>(host, '[data-ui="goal-picker"]');
   selector.value = value;
   await fire(selector, new Event('change', { bubbles: true }));
 }
@@ -156,7 +156,9 @@ describe('private strategy exploration for a new goal', () => {
     'defaults to truthful explore workbench with no fake vault or funding (%s)',
     async (lang) => {
       const host = await show(lang);
-      expect(find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').value).toBe('current');
+      // No Guided or Explore switch (#195): the conversation picker is its own control, under its own id.
+      expect(host.querySelector('[data-ui="goal-mode"]')).toBeNull();
+      expect(find<HTMLSelectElement>(host, '[data-ui="goal-picker"]').value).toBe('current');
       expect(find(host, '[data-ui="goal-empty-preview"]').textContent).toContain(
         dictionary(lang).goal.explore.empty,
       );
@@ -244,7 +246,7 @@ describe('private strategy exploration for a new goal', () => {
       find(host, '[data-ui="goal-strategy"]').querySelector('button[data-variant="primary"]'),
     ).toBeNull();
     expect(
-      [...find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').options].map((o) => o.value),
+      [...find<HTMLSelectElement>(host, '[data-ui="goal-picker"]').options].map((o) => o.value),
     ).toEqual(['current', 'new']);
     await mode(host, 'new');
     await settle();
@@ -256,7 +258,7 @@ describe('private strategy exploration for a new goal', () => {
     host = await show();
     await settle();
     expect(host.querySelector('[data-ui="mix-joint"]')).toBeNull();
-    const saved = [...find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').options].find((o) =>
+    const saved = [...find<HTMLSelectElement>(host, '[data-ui="goal-picker"]').options].find((o) =>
       o.value.startsWith('conversation:'),
     );
     expect(saved?.textContent).toBe('Consider gold');
@@ -1083,7 +1085,7 @@ describe('existing entry handoffs', () => {
     sessionStorage.setItem(GOAL_HANDOFF, words);
     portStore.setApi(async (url) => baseApi(url));
     const host = await show();
-    expect(find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').value).toBe('current');
+    expect(find<HTMLSelectElement>(host, '[data-ui="goal-picker"]').value).toBe('current');
     expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe(words);
     expect(find<HTMLTextAreaElement>(host, 'textarea').disabled).toBe(true);
     expect(calls).toHaveLength(0);
@@ -1120,7 +1122,7 @@ describe('existing entry handoffs', () => {
     const words = 'Consider gold with a small budget';
     window.history.replaceState(null, '', `/goal#goal=${encodeURIComponent(words)}`);
     const host = await show();
-    expect(find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').value).toBe('current');
+    expect(find<HTMLSelectElement>(host, '[data-ui="goal-picker"]').value).toBe('current');
     expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe(words);
     expect(sessionStorage.getItem(GOAL_HANDOFF)).toBe(words);
     expect(calls).toHaveLength(0);
@@ -1188,6 +1190,22 @@ describe('the relaxed intake’s plan on /goal (RELAXED-INTAKE)', () => {
     expect(calls.some((call) => call.path === '/v1/baskets/personalize')).toBe(false);
   });
 
+  it('shows the mix alone when the reply carries no projection, as the model-led conversation’s does', async () => {
+    answerWith({});
+    const host = await show();
+    await send(host, 'Grow $2,000');
+    expect(
+      find(host, '[data-ui="goal-strategy"]').querySelector('[data-ui="mix-joint"]'),
+    ).not.toBeNull();
+    expect(host.querySelector('[data-ui="preview-view"]')).toBeNull();
+    expect(host.querySelector('[data-ui="projection-chart"]')).toBeNull();
+    expect(
+      [...host.querySelectorAll('button[data-variant="primary"]')].map((button) =>
+        button.getAttribute('data-action'),
+      ),
+    ).toContain('deposit');
+  });
+
   it('draws the projected months in honey on a chalk baseline, once asked for', async () => {
     answerWith({ projection });
     const host = await show();
@@ -1238,7 +1256,7 @@ describe('the relaxed intake’s plan on /goal (RELAXED-INTAKE)', () => {
     await send(host, 'Consider gold');
     await mode(host, 'new');
     await settle();
-    const options = [...find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').options];
+    const options = [...find<HTMLSelectElement>(host, '[data-ui="goal-picker"]').options];
     expect(options.map((o) => o.textContent)).toEqual([
       en.goal.explore.picker.current,
       en.goal.explore.picker.fresh,

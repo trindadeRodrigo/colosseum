@@ -257,8 +257,10 @@ test('a vault’s own weights, edited by hand: reviewed, ordered, every step sig
   await go(page, en.shell.invest);
   await expect(page).toHaveURL(/\/goal$/);
   const vaultOption = `vault:solana:${address}`;
-  await expect(page.locator(`[data-ui="goal-mode"] option[value="${vaultOption}"]`)).toHaveCount(1);
-  await page.locator('[data-ui="goal-mode"]').selectOption(vaultOption);
+  await expect(page.locator(`[data-ui="goal-picker"] option[value="${vaultOption}"]`)).toHaveCount(
+    1,
+  );
+  await page.locator('[data-ui="goal-picker"]').selectOption(vaultOption);
   await expect(page).toHaveURL(new RegExp(`/vaults/solana/${address}$`));
   await page.getByRole('link', { name: en.mix.editor.edit }).click();
   await expect(page).toHaveURL(new RegExp(`/vaults/solana/${address}/targets$`));

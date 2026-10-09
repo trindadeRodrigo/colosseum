@@ -226,7 +226,8 @@ export async function compose(input: ComposeInput): Promise<Composed> {
     );
   const trial = build(MAX_COMPUTE_UNITS, priceAt(MAX_COMPUTE_UNITS));
   // A transaction that cannot be sent is refused before the node is asked to simulate it. The final
-  // one differs only in the two numbers of the budget, which keep their sizes.
+  // one is measured again below: its limit and price keep their sizes, but where the cap allows no
+  // price at this limit and one at the lower final limit, it gains the price instruction.
   const trialBytes = getTransactionEncoder().encode(trial).length;
   if (trialBytes > MAX_TRANSACTION_BYTES) throw tooLarge(trialBytes);
   const simulated = await ask('simulateTransaction', () =>

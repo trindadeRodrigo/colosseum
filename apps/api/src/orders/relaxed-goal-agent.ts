@@ -2,15 +2,30 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { BasketAsset } from '@colosseum/schemas';
 import {
   type VaultAgentSource as AgentSource,
+  type VaultAgentRepairNote,
   VaultAgentReply,
   VaultAgentRequest,
   type VaultAgentResult,
+  VaultAgentSource,
 } from '@colosseum/schemas';
 import { z } from 'zod';
+import type { ModelQuota } from '../model-quota';
+import { acceptsEffort } from '../vault-agent-model';
 import { goalFit } from './mix';
-import { catalogCap, holdingConstraints } from './relaxed-limits';
+import { ORDER_POLICY } from './prepare';
+import { catalogCap, holdingConstraints, projectionSheet } from './relaxed-limits';
 import { project, type Reading, readingsOf, series } from './relaxed-projection';
-import { type GoalAgentContext, requestedStocks, statedPurposeIn } from './vault-agent';
+import {
+  FIGURE_CUT,
+  FIGURE_REMOVED,
+  type GoalAgentContext,
+  hasFinancialFigure,
+  hasNonFiniteNumber,
+  personShares,
+  requestedStocks,
+  statedPurposeIn,
+  trimFigureSentences,
+} from './vault-agent';
 
 // The relaxed intake (gate RELAXED-INTAKE, from scripts/relaxed/intake.ts and RELAXED-1): the goal
 // agent behind /goal whenever a model key is set (`relaxedGoalAgentFromEnv`). The model is free where
@@ -34,6 +49,7 @@ export const GOAL_AGENT_MODEL_LED = 'model-led';
  */
 export function relaxedGoalAgentFromEnv(
   env: Record<string, string | undefined>,
+  quota: ModelQuota,
 ): RelaxedGoalAgent | null {
   const choice = env.GOAL_AGENT?.trim() || GOAL_AGENT_RELAXED;
   if (choice !== GOAL_AGENT_RELAXED && choice !== GOAL_AGENT_MODEL_LED)
@@ -43,7 +59,7 @@ export function relaxedGoalAgentFromEnv(
   const apiKey = env.ANTHROPIC_API_KEY?.trim();
   if (choice === GOAL_AGENT_MODEL_LED || !apiKey) return null;
   const model = env.RELAXED_MODEL?.trim();
-  return createRelaxedGoalAgent({ apiKey, ...(model ? { model } : {}) });
+  return createRelaxedGoalAgent({ apiKey, quota, ...(model ? { model } : {}) });
 }
 
 const SHAPES = ['pick', 'grow', 'income', 'protect', 'split'] as const;
@@ -170,31 +186,48 @@ const REQUIRED: Record<Shape, (keyof Reply['stated'])[]> = {
   split: ['amount'],
 };
 
-function systemPrompt(table: string, language: 'en' | 'pt', today: string) {
-  return `You are the planner at Tenonfi. A person tells you what they want to do with their money and you turn it into holdings from one table, the catalog of their chain, which you see in full below. You talk to them the way a sharp, warm friend who knows markets would: plainly, briefly, in their language, with real reasoning. You are not a form. Answer in ${language === 'pt' ? 'Portuguese' : 'English'} unless the person writes in another language.
+/**
+ * The system prompt, ordered for prompt caching as the vault conversation's is (#196): the rules and
+ * the chain's table first, the same bytes for every person on the chain and ending in a cache
+ * breakpoint; then what changes, the day and the language. The person's words are the messages.
+ */
+function systemBlocks(
+  table: string,
+  language: 'en' | 'pt',
+  today: string,
+): Anthropic.TextBlockParam[] {
+  return [
+    { type: 'text', text: systemPrompt(table), cache_control: { type: 'ephemeral' } },
+    {
+      type: 'text',
+      text: `Today is ${today}. Answer in ${language === 'pt' ? 'Portuguese' : 'English'} unless the person writes in another language.`,
+    },
+  ];
+}
 
-What you are free to do: read intent, including people, companies, themes, nicknames and half-sentences; decide which holdings on the table fit and why; notice when something they named is not on the table and say so; ask what you genuinely need, in a natural sentence, one or two things at a time; keep the whole conversation in mind; change course when they do; explain, compare, and give your view of the shape of the plan. You may repeat the person's own numbers back to them.
+function systemPrompt(table: string) {
+  return `You are the planner at Tenonfi. A person tells you what they want to do with their money and you turn it into holdings from one table, the catalog of their chain, which you see in full below. You talk to them the way a sharp, warm friend who knows markets would: plainly, briefly, in their language, with real reasoning. You are not a form. The language to answer in and today's date follow this text.
+
+What you are free to do: read intent, including people, companies, themes, nicknames and half-sentences; decide which holdings on the table fit and why; notice when something they named is not on the table and say so; ask what you genuinely need, in a natural sentence, one or two things at a time; keep the whole conversation in mind; change course when they do; explain, compare, and give your view of the shape of the plan.
 
 Four rules, which the code after you also enforces:
 1. You may only name holdings that appear on the table, by their exact id. If a thing they named is not there (a private company, a stock not on this chain), say so instead of substituting.
-2. You never choose weights yourself. When the person gives a share for a pot or for a holding ("80% in yield", "all of the income part in syrupUSDC", "20% in big tech"), you pass it on as that pot's or that line's "share" (0 to 1, of the pot for a line, of the money for a pot) and the code applies it exactly. Lines with no share stated split equally. Each holding has a cap on the table: the most of the money the vault lets it hold today. A cap never stops you: if the person asks for more, pass their share on as asked; the code applies it and shows a warning that the vault would refuse that split until the cap is lifted. Mention it in one short sentence, no more.
-3. You never compute or estimate a return, a projection, a price or how long money lasts, and you never promise a return. A yield may be named only as the table shows it, with its read date. The code computes every projection from the table's readings and prints it under your message as soon as the amount and the date or the monthly withdrawals are in the sheet; refer to it ("the projection below") instead of doing sums. A holding with no yield on the table earns nothing in that projection.
+2. You never choose weights yourself. When the person gives a share for a pot or for a holding ("80% in yield", "all of the income part in syrupUSDC", "20% in big tech"), you pass it on as that pot's or that line's "share" (0 to 1, of the pot for a line, of the money for a pot). The code applies a share only where it reads the same number in the person's own words beside the same holding or kind of holding; a share you report that it does not find there is not applied, so never describe a share as applied unless the person stated it plainly. Lines with no share stated split equally. Each holding has a cap on the table: the share above which the deposit step warns today. A cap never stops you: if the person asks for more, pass their share on as asked; the vault accepts any composition, and the deposit step shows a warning with the measured figure behind it, which the person confirms before anything is bought. Mention it in one short sentence, no more.
+3. You never compute or estimate a return, a projection, a price or how long money lasts, and you never promise a return. Write no figure in "say", in a "why" or in a pot's name: no digit, no percent or currency sign, no price, yield, return or date, not as words either ("five percent"), and never "guaranteed" or "risk-free". The code cuts every sentence that does. The person's numbers go in the sheet ("stated", "share"), where the code reads them and shows them; to repeat what they said, quote them exactly: You said “...”. A holding's yield is on the plan beside your message, with its source; point to it instead of stating it. The code computes every projection from the table's readings and prints it under your message as soon as the amount and the date or the monthly withdrawals are in the sheet; refer to it ("the projection below") instead of doing sums. A holding with no yield on the table earns nothing in that projection.
 4. Nothing is built until the person confirms. Before that, you need: the amount for any plan; when they will need the money for a plan to grow or to protect; the monthly income they want for an income plan; the shares for a split, if not stated. Ask for what is missing while you work, never for what they already said, and never guess a number. Propose lines as soon as you know enough of the intent; the person sees the plan build beside the chat.
 
 Shapes: "pick" for named things, equal split; "grow", "income" or "protect" when the words call for it; "split" when they want part of the money doing one thing and part another (for example a liquid reserve and a growth pot), one pot per bucket with its own shape (a bucket with no shape takes the plan's). A plan or pot to protect holds cash, dollar-yield rows and gold: no stock tokens, no crypto. A plan or pot to pay income holds cash and dollar-yield rows: no stock tokens, no crypto, no gold. The code holds to the asset registry on this and leaves out what does not fit. A stock token goes into a plan to protect or pay income only when the person plainly asked for that stock, or for stocks, in their own words; the code reads their words itself and warns them. Never add one on your own.
 
-Direct instructions: when the person tells you what to hold or how to split ("make all the income part syrupUSDC", "put 80% in the highest yield"), do it in this turn. Do not ask permission and do not argue. A cap does not stop it: do exactly what they asked and add one short sentence that the vault caps that holding today, so this split would need the cap lifted to be bought. Only the rule on what a plan to protect or pay income may hold still applies: if that stops part of the instruction, do the closest version and say why in one sentence. Do not offer alternatives unless they ask. Ask at most one question per turn, and only for something rule 4 still needs, at the end of your message.
+Direct instructions: when the person tells you what to hold or how to split ("make all the income part syrupUSDC", "put 80% in the highest yield"), do it in this turn. Do not ask permission and do not argue. A cap does not stop it: do exactly what they asked and add one short sentence that this holding is above its cap today, so the deposit step will warn about it and ask them to confirm. Only the rule on what a plan to protect or pay income may hold still applies: if that stops part of the instruction, do the closest version and say why in one sentence. Do not offer alternatives unless they ask. Ask at most one question per turn, and only for something rule 4 still needs, at the end of your message.
 
 Every turn you answer with the JSON object the API holds you to:
 - "say": the message the person reads. Your words, your reasoning, your questions. One short paragraph, or two when there is a lot to say. Mention holdings by name, not by id. Do not list weights; the code shows the lines beside your message.
 - "shape", "lines" (for every shape but split), "buckets" (only for split, else null; a bucket's "share" is the pot's share of the money as 0 to 1, only when the person gave the number, else null). Each line has "id", "why" and "share": that holding's share of its pot (or of the plan when there are no pots) as 0 to 1, only when the person gave it ("all of it" is 1), else null.
-- "stated": only what the person said, nothing guessed. "need_by" is the day they need the money, as YYYY-MM-DD, read from their words ("March 2027" is 2027-03-01; a term such as "for retirement in 30 years" or "in five years" is that many years from today; ask if it is unclear; null when they gave no term). "monthly" is a monthly withdrawal or income they want; "withdraw_months" how many months of it, when they said or it follows from their words (a three-month trip is 3); "withdraw_start" the day of the first withdrawal as YYYY-MM-DD, when they said it. Say back the dates you read so they can correct them.
+- "stated": only what the person said, nothing guessed. "need_by" is the day they need the money, as YYYY-MM-DD, read from their words ("March 2027" is 2027-03-01; a term such as "for retirement in 30 years" or "in five years" is that many years from today; ask if it is unclear; null when they gave no term). "monthly" is a monthly withdrawal or income they want; "withdraw_months" how many months of it, when they said or it follows from their words (a three-month trip is 3); "withdraw_start" the day of the first withdrawal as YYYY-MM-DD, when they said it. The code shows the dates it read under your message, so they can correct them.
 - "not_available": things they named that are not on the table.
 - "open": what rule 4 still needs for this shape; empty when the plan is ready to confirm.
 
-Today is ${today}.
-
-A holding's cap is the most of the money the vault lets it hold today. When you choose holdings yourself (no share stated), pick enough for each pot to stay within the caps. When the person states a share above a cap, follow them.
+A holding's cap is the share above which the deposit step warns today. When you choose holdings yourself (no share stated), pick enough for each pot to stay within the caps. When the person states a share above a cap, follow them.
 
 TABLE (id | symbol | what it is | class | tier | issuer | cap | yield | more)
 ${table}`;
@@ -364,6 +397,15 @@ function sayShares(
 const clip = (text: string, max: number) =>
   text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 
+/** For the log: which check failed and where, never the text that failed it (the model's, or the person's). */
+const whereOf = (error: z.ZodError) =>
+  error.issues.map((issue) => `${issue.code}:${issue.path.join('.')}`);
+
+const REPAIR_SHAPE =
+  'That was not the JSON object the API holds you to. Answer again with that object and nothing else: every required field, each of the kind it asks for.';
+const REPAIR_FIGURE =
+  'Your reply stated a figure, a price, a yield, a return, a date or a guarantee in "say", in a "why", in a pot\'s name, in "when" or in "not_available". Answer again with the same sheet and no digit, no percent or currency sign, no written-out amount and no "guaranteed" or "risk-free" in any of them. Numbers belong only in "stated" and "share"; to repeat what the person said, quote them exactly: You said “...”.';
+
 export type RelaxedGoalAgent = {
   id: string;
   reply(request: VaultAgentRequest, context: GoalAgentContext): Promise<VaultAgentResult>;
@@ -373,6 +415,8 @@ export function createRelaxedGoalAgent(options: {
   apiKey: string;
   model?: string;
   timeoutMs?: number;
+  /** The allowance of model calls shared with the other conversations; one is reserved before each call. */
+  quota?: ModelQuota;
   log?: (msg: string, detail?: unknown) => void;
   /** The model call; tests pass a stub so no request leaves the machine. Default: the Anthropic API. */
   create?: (
@@ -396,6 +440,17 @@ export function createRelaxedGoalAgent(options: {
       const parsed = VaultAgentRequest.safeParse(request);
       if (!parsed.success) return { kind: 'failure', reason: 'invalid' };
       const { language, messages, messageId } = parsed.data;
+      // The context is the server's own; one that holds a number that is not a number, or evidence
+      // that is not a source or repeats an id, is refused before the model is paid (as vault-agent.ts).
+      if (hasNonFiniteNumber(context))
+        return { kind: 'failure', reason: 'invalid', detail: 'context_non_finite' };
+      const seen = new Set<string>();
+      for (const raw of context.evidence) {
+        const source = VaultAgentSource.safeParse(raw);
+        if (!source.success || seen.has(source.data.id))
+          return { kind: 'failure', reason: 'invalid', detail: 'context_evidence' };
+        seen.add(source.data.id);
+      }
       const assets = context.assets.filter((asset) => asset.chain === context.chain);
       const catalog = new Map(assets.map((asset) => [asset.id, asset]));
       const caps = new Map(
@@ -408,41 +463,165 @@ export function createRelaxedGoalAgent(options: {
       const readings = readingsOf(context.evidence, (id) => catalog.get(id)?.symbol ?? id);
 
       // ---- the model: talks freely, names ids ----
-      let raw: unknown;
-      try {
-        const response = await create({
-          model,
-          max_tokens: 4000,
-          system: systemPrompt(
-            tableOf(assets, context, caps, readings),
-            language,
-            new Date().toISOString().slice(0, 10),
-          ),
-          messages: turnsOf(messages),
-          output_config: {
-            format: { type: 'json_schema', schema: REPLY_SCHEMA },
-            effort: 'medium',
-          },
-        } as unknown as Anthropic.MessageCreateParamsNonStreaming);
-        if (response.stop_reason !== 'end_turn') {
-          log('model stopped early', response.stop_reason);
-          return { kind: 'failure', reason: 'invalid' };
+      const turns = turnsOf(messages);
+      const system = systemBlocks(
+        tableOf(assets, context, caps, readings),
+        language,
+        new Date().toISOString().slice(0, 10),
+      );
+      type Asked =
+        | { kind: 'read'; data: Reply; text: string }
+        | { kind: 'miss'; text: string }
+        | { kind: 'failure'; result: Extract<VaultAgentResult, { kind: 'failure' }> };
+      /** One paid call, reserved from the shared budget first, as the model-led conversation does. */
+      const ask = async (repair?: { previous: string; problem: string }): Promise<Asked> => {
+        const denied = options.quota?.reserve(context.person) ?? null;
+        if (denied !== null)
+          return { kind: 'failure', result: { kind: 'failure', reason: 'budget', detail: denied } };
+        let text = '';
+        try {
+          const response = await create({
+            model,
+            max_tokens: 4000,
+            system,
+            messages: repair
+              ? [
+                  ...turns,
+                  { role: 'assistant', content: repair.previous },
+                  { role: 'user', content: repair.problem },
+                ]
+              : turns,
+            output_config: {
+              format: { type: 'json_schema', schema: REPLY_SCHEMA },
+              // only where the model takes it: Haiku 4.5 and Sonnet 4.5 answer 400 to it
+              ...(acceptsEffort(model) ? { effort: 'medium' } : {}),
+            },
+          } as unknown as Anthropic.MessageCreateParamsNonStreaming);
+          if (response.stop_reason !== 'end_turn') {
+            log('model stopped early', response.stop_reason);
+            return { kind: 'miss', text: '' };
+          }
+          const block = response.content.find((item) => item.type === 'text');
+          text = block?.type === 'text' ? block.text : '';
+        } catch (error) {
+          log('model call failed', error instanceof Error ? error.message : 'unknown error');
+          return {
+            kind: 'failure',
+            result: {
+              kind: 'failure',
+              reason:
+                error instanceof Anthropic.APIConnectionTimeoutError ? 'timeout' : 'unavailable',
+            },
+          };
         }
-        const block = response.content.find((item) => item.type === 'text');
-        raw = block?.type === 'text' ? JSON.parse(block.text) : null;
-      } catch (error) {
-        log('model call failed', error instanceof Error ? error.message : error);
-        return {
-          kind: 'failure',
-          reason: error instanceof Anthropic.APIConnectionTimeoutError ? 'timeout' : 'unavailable',
+        let raw: unknown;
+        try {
+          raw = JSON.parse(text);
+        } catch {
+          // `JSON.parse`'s own message quotes the text: only what kind of miss it was.
+          log('model call failed', 'reply was not JSON');
+          return { kind: 'miss', text };
+        }
+        const read = Reply.safeParse(raw);
+        if (!read.success) {
+          log('reply did not fit the sheet', whereOf(read.error));
+          return { kind: 'miss', text };
+        }
+        return { kind: 'read', data: read.data, text };
+      };
+
+      // ---- code: no figure of the model's reaches the person (CLAUDE.md, RELAXED-INTAKE) ----
+      // Every field the model writes that is served goes through the check the vault conversation
+      // uses: a sentence with a digit, a percent or currency sign, a written-out amount, "guaranteed"
+      // or "risk-free" is cut, unless it is the person's own words quoted back or a catalog name.
+      const personWords = messages.filter((m) => m.who === 'person').map((m) => m.text);
+      const catalogNames = [
+        ...assets.flatMap((asset) => [asset.symbol, asset.underlying]),
+        ...(context.stockAttributes?.stocks ?? [])
+          .filter((row) => assets.some((asset) => asset.symbol === row.symbol))
+          .map((row) => row.company),
+      ];
+      const figure = (text: string) => hasFinancialFigure(text, personWords, catalogNames);
+      /** The reply with every figure cut, and how many sentences or fields went. */
+      const clean = (data: Reply): { r: Reply; cut: number } => {
+        let cut = 0;
+        const trim = (text: string) => {
+          const trimmed = trimFigureSentences(text, figure, catalogNames);
+          cut += trimmed.cut;
+          return trimmed.text;
         };
+        const gone = <T>(is: boolean, then: T, otherwise: T) => {
+          if (is) cut += 1;
+          return is ? then : otherwise;
+        };
+        const say = trim(data.say);
+        const said = cut > 0;
+        const cleanLines = (lines: Reply['lines']) =>
+          lines.map((l) => ({ ...l, why: trim(l.why) || FIGURE_REMOVED[language] }));
+        const r: Reply = {
+          ...data,
+          // what is left of the message, then the server's line saying part of it was cut
+          say: said ? [say, FIGURE_CUT[language]].filter(Boolean).join('\n') : say,
+          lines: cleanLines(data.lines),
+          buckets: data.buckets?.map((b, i) => ({
+            ...b,
+            name: gone(figure(b.name), `Pot ${i + 1}`, b.name.trim() || `Pot ${i + 1}`),
+            lines: cleanLines(b.lines),
+          })),
+          stated: {
+            ...data.stated,
+            // the term in words: the person's own, or nothing
+            when: data.stated.when ? gone(figure(data.stated.when), null, data.stated.when) : null,
+          },
+          not_available: data.not_available
+            .filter((n) => !gone(figure(n.name), true, false))
+            .map((n) => ({ name: n.name, why: n.why ? trim(n.why) || null : null })),
+        };
+        return { r, cut };
+      };
+
+      // One repair attempt, as the vault conversation makes (`VaultAgentRepairNote`): for a reply
+      // that is not the sheet, and for one that stated a figure. A second miss on the sheet is the
+      // route's 503; a second figure is cut, and so is the first when the repair call cannot be made.
+      let repair: VaultAgentRepairNote | undefined;
+      let asked = await ask();
+      if (asked.kind === 'failure') return asked.result;
+      if (asked.kind === 'miss') {
+        const again = await ask({ previous: asked.text || '{}', problem: REPAIR_SHAPE });
+        if (again.kind === 'failure')
+          return {
+            ...again.result,
+            repair: { failed: 'reply_shape', outcome: again.result.reason },
+          };
+        if (again.kind === 'miss')
+          return {
+            kind: 'failure',
+            reason: 'invalid',
+            detail: 'reply_shape',
+            repair: { failed: 'reply_shape', outcome: 'reply_shape' },
+          };
+        asked = again;
+        repair = { failed: 'reply_shape', outcome: 'repaired' };
       }
-      const read = Reply.safeParse(raw);
-      if (!read.success) {
-        log('reply did not fit the sheet', read.error.issues);
-        return { kind: 'failure', reason: 'invalid' };
-      }
-      const r = read.data;
+      let cleaned = clean(asked.data);
+      if (cleaned.cut > 0 && !repair) {
+        const again = await ask({ previous: asked.text, problem: REPAIR_FIGURE });
+        if (again.kind === 'read') cleaned = clean(again.data);
+        repair = cleaned.cut
+          ? { failed: 'prose_figure', outcome: 'prose_figure_trimmed', sentencesCut: cleaned.cut }
+          : { failed: 'prose_figure', outcome: 'repaired' };
+      } else if (cleaned.cut > 0)
+        repair = {
+          failed: 'reply_shape',
+          outcome: 'prose_figure_trimmed',
+          sentencesCut: cleaned.cut,
+        };
+      const r = cleaned.r;
+      const served = (reply: VaultAgentReply): VaultAgentResult => ({
+        kind: 'reply',
+        reply,
+        ...(repair ? { repair } : {}),
+      });
 
       // ---- code: ids, eligibility, split, caps ----
       const notes: string[] = [];
@@ -467,19 +646,29 @@ export function createRelaxedGoalAgent(options: {
         lines: { asset: BasketAsset; why: string; share: number | null }[];
       }[] = [];
       // An id as the model wrote it, matched to the catalog: exactly, then ignoring case, then by the
-      // token's symbol or the company it tracks (Haiku writes `solana:NVDAx` for `solana:nvdax`).
+      // token's symbol, with or without its trailing "x" (Haiku writes `solana:NVDAx` for
+      // `solana:nvdax`). Only then loosely, by the company or the symbol without a leading "t", and
+      // only when one listed asset answers to it: "QQQ" is never taken for TQQQ, and a name two
+      // assets share is dropped and said rather than guessed.
+      const bare = (v: string) => v.toLowerCase().replace(/^[a-z]+:/, '');
       const plain = (v: string) =>
-        v
-          .toLowerCase()
-          .replace(/^[a-z]+:/, '')
+        bare(v)
           .replace(/^t(?=[a-z]{2,}x?$)/, '')
           .replace(/x$/, '');
+      const one = (found: BasketAsset[]) => (found.length === 1 ? found[0] : undefined);
       const resolve = (id: string) =>
         catalog.get(id) ??
         assets.find((a) => a.id.toLowerCase() === id.toLowerCase()) ??
-        assets.find((a) => a.symbol.toLowerCase() === id.toLowerCase().replace(/^[a-z]+:/, '')) ??
-        assets.find(
-          (a) => plain(a.symbol) === plain(id) || a.underlying.toLowerCase() === plain(id),
+        assets.find((a) => a.symbol.toLowerCase() === bare(id)) ??
+        one(
+          assets.filter(
+            (a) => a.symbol.toLowerCase().replace(/x$/, '') === bare(id).replace(/x$/, ''),
+          ),
+        ) ??
+        one(
+          assets.filter(
+            (a) => plain(a.symbol) === plain(id) || a.underlying.toLowerCase() === plain(id),
+          ),
         );
       const keep = (lines: { id: string; why: string; share?: number | null }[], shape: Shape) => {
         const goals = [
@@ -526,9 +715,52 @@ export function createRelaxedGoalAgent(options: {
         }
       } else
         pots.push({ name: r.shape, shape: r.shape, given: null, lines: keep(r.lines, r.shape) });
-      if (dropped.length) log('ids not on the catalog', dropped);
+      // ---- code: no weight from the model (CLAUDE.md, RELAXED-INTAKE, ANY-COMPOSITION) ----
+      // A share sets a weight only where the server reads it in the person's own messages
+      // (`personShares`, the reader the vault conversation uses): what the model reports as "share" is
+      // its reading and never applied by itself. One pot: each holding takes the exact share the person
+      // gave that holding, whatever the model wrote. Several pots: a pot's share stands only where the
+      // person gave that number for what the pot holds, and a holding's share in its pot only where the
+      // two together are the share the person gave that holding. Everything else splits equally.
+      const exact = personShares(messages, language, assets, companies).standing.filter(
+        (share) => share.kind === 'exact',
+      );
+      const ofHolding = (id: string) =>
+        exact.find((share) => share.assetIds.length === 1 && share.assetIds[0] === id);
+      const same = (bps: number, fraction: number) => Math.abs(bps - fraction * 10_000) <= 1;
+      if (pots.length === 1)
+        for (const pot of pots)
+          for (const l of pot.lines) {
+            const read = ofHolding(l.asset.id);
+            l.share = read ? read.bps / 10_000 : null;
+          }
+      else
+        for (const pot of pots) {
+          const ids = pot.lines.map((l) => l.asset.id);
+          const given = pot.given;
+          const stands =
+            given != null &&
+            ids.length > 0 &&
+            exact.some(
+              (share) => ids.every((id) => share.assetIds.includes(id)) && same(share.bps, given),
+            );
+          pot.given = stands ? given : null;
+          for (const l of pot.lines) {
+            const read = ofHolding(l.asset.id);
+            const share = l.share;
+            l.share =
+              stands && given != null && share != null && read && same(read.bps, given * share)
+                ? share
+                : null;
+          }
+        }
+      if (dropped.length) log('ids not on the catalog', dropped.length);
       if (dropped.length)
-        notes.push(`Dropped, not on this chain's catalog: ${dropped.join(', ')}.`);
+        notes.push(
+          dropped.every((id) => /^[\w:.-]{1,40}$/.test(id) && !figure(id.replace(/\p{N}/gu, '')))
+            ? `Dropped, not on this chain's catalog: ${dropped.join(', ')}.`
+            : `Dropped ${dropped.length} that ${dropped.length === 1 ? 'is' : 'are'} not on this chain's catalog.`,
+        );
       for (const n of r.not_available)
         notes.push(
           `${n.name} is not on this chain's catalog${n.why ? `: ${n.why.replace(/[.\s]+$/, '')}` : ''}.`,
@@ -613,16 +845,34 @@ export function createRelaxedGoalAgent(options: {
         return { kind: 'failure', reason: 'invalid' };
       }
       const lines = [...weights.values()].filter((w) => w.bps > 0);
-      // Lines above the cap the vault holds them to today: kept as asked, and said plainly.
+      // A vault holds at most sixteen lines besides cash and `goal/accept` refuses more
+      // (`TOO_MANY_LINES`), so no preview shows a mix the deposit step would turn down.
+      const invested = lines.filter((l) => l.asset.id !== cashAsset?.id).length;
+      if (invested > ORDER_POLICY.maxLines) {
+        const tooMany = VaultAgentReply.safeParse({
+          version: 1,
+          messageId,
+          message: `That names ${invested} holdings, and a vault holds at most ${ORDER_POLICY.maxLines} besides cash. Tell me which to keep, or ask for a shorter list.`,
+          question: null,
+          warnings: [],
+          weightNotes: [],
+          proposal: null,
+        });
+        if (!tooMany.success) return { kind: 'failure', reason: 'invalid' };
+        return served(tooMany.data);
+      }
+      // Lines above their cap today: kept as asked and said plainly. The vault contract accepts any
+      // composition (ANY-COMPOSITION, as amended): `goal/accept` warns (`OVER_LISTED_CAP`, the exit
+      // ceiling with its measured figure) and the person confirms; nothing is refused for it.
       const overCap = lines.filter((l) => l.bps > (caps.get(l.asset.id) ?? 0));
       const capWarning = overCap.length
-        ? `Above the vault's cap today: ${overCap
+        ? `Above the cap listed today: ${overCap
             .map(
               (l) => `${l.asset.symbol} at ${pct(l.bps)} (cap ${pct(caps.get(l.asset.id) ?? 0)})`,
             )
             .join(
               ', ',
-            )}. The vault would refuse this split as it stands; it can be bought only once the cap is lifted.`
+            )}. The vault accepts any composition: the deposit step shows this as a warning, with the measured figure behind it, and asks you to confirm it before anything is bought.`
         : null;
       if (capWarning) notes.unshift(capWarning);
       // A stock outside the goal that the person asked for: kept, and warned (ANY-COMPOSITION).
@@ -668,40 +918,52 @@ export function createRelaxedGoalAgent(options: {
         };
       });
       const stated = r.stated;
-      // The arithmetic, by code from the sourced readings, under the model's words.
-      const projection = project({
+      // The arithmetic, by code from the sourced readings, under the model's words. It starts only
+      // from what the server finds in the person's own messages (`projectionSheet`): the amount and
+      // the monthly figure in digits beside a dollar currency and inside the deposit step's limits,
+      // the dates real, ahead and within reach of the term the person gave. A figure the model
+      // reported that is not there makes no projection.
+      const today = new Date();
+      const sheet = projectionSheet(stated, messages, today);
+      const inputs = {
         lines: allocations,
         readings,
-        today: new Date(),
-        currency: stated.currency ?? null,
-        amount: stated.amount ?? null,
-        needBy: stated.need_by ?? null,
-        monthly: stated.monthly ?? null,
-        months: stated.withdraw_months ?? null,
-        withdrawStart: stated.withdraw_start ?? null,
-      });
+        today,
+        currency: 'USD',
+        amount: sheet.amount,
+        needBy: sheet.needBy,
+        monthly: sheet.monthly,
+        months: sheet.months,
+        withdrawStart: sheet.withdrawStart,
+      };
+      const text = project(inputs);
+      // never a figure that is not a number ("$∞", "NaN")
+      const projection = text && !/∞|NaN|Infinity/.test(text.text) ? text : null;
       for (const id of projection?.sourceIds ?? []) if (sourceById.has(id)) used.add(id);
       // The same arithmetic month by month, for the chart beside the plan; none for stocks only.
-      const monthly = series({
-        lines: allocations,
-        readings,
-        today: new Date(),
-        currency: stated.currency ?? null,
-        amount: stated.amount ?? null,
-        needBy: stated.need_by ?? null,
-        monthly: stated.monthly ?? null,
-        months: stated.withdraw_months ?? null,
-        withdrawStart: stated.withdraw_start ?? null,
-      });
+      const chart = projection ? series(inputs) : null;
+      const monthly =
+        chart &&
+        Number.isFinite(chart.rate) &&
+        chart.months.every((m) =>
+          [m.balance, m.earned, m.withdrawn].every((n) => Number.isFinite(n)),
+        )
+          ? chart
+          : null;
       for (const id of monthly?.sourceIds ?? []) if (sourceById.has(id)) used.add(id);
+      if (sheet.otherCurrency)
+        notes.push(
+          'No projection here: the yields it would use are dollar yields, so it is made only from an amount in dollars.',
+        );
       const message = projection
         ? `${clip(r.say, 2400 - projection.text.length - 2)}\n\n${projection.text}`
         : clip(r.say, 2400);
       const objective = [
         r.shape === 'split' ? 'Split' : r.shape[0]?.toUpperCase() + r.shape.slice(1),
-        stated.amount != null ? `${stated.amount} ${stated.currency ?? 'USD'}` : null,
+        // only the figures the server found in the person's words, never the model's reading alone
+        sheet.amount != null ? `${sheet.amount} USD` : null,
         stated.when ?? null,
-        stated.monthly != null ? `${stated.monthly} a month` : null,
+        sheet.monthly != null ? `${sheet.monthly} a month` : null,
       ]
         .filter(Boolean)
         .join(' · ');
@@ -757,10 +1019,10 @@ export function createRelaxedGoalAgent(options: {
           : null,
       });
       if (!reply.success) {
-        log('final reply did not validate', reply.error.issues);
+        log('final reply did not validate', whereOf(reply.error));
         return { kind: 'failure', reason: 'invalid' };
       }
-      return { kind: 'reply', reply: reply.data };
+      return served(reply.data);
     },
   };
 }
