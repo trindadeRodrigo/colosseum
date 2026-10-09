@@ -250,6 +250,8 @@ export const en = {
       empty:
         'Your proposed allocation and its sources will appear here after a reply. No vault has been created.',
       previewOnly: 'Preview only. This draft cannot be invested here yet.',
+      /** In the empty preview while the first reply is on its way. */
+      working: 'Working on a draft from what you said. It will appear here with its sources.',
       /** On a proposal, over "Use this mix": the way from the draft to a buy. */
       draftNote:
         'A draft from this conversation. Nothing is bought until you review the mix and sign.',
@@ -1380,6 +1382,12 @@ export const en = {
       title: 'A vault, as its chain holds it',
       conversation: {
         proposedShare: 'Proposed share',
+        /** The drawing of a proposed mix, for a reader who cannot see it; each piece then says its own. */
+        jointLabel:
+          'The proposed strategy drawn as one joint: a piece for each asset, as wide as its share.',
+        jointHint: 'One piece per asset, as wide as its share.',
+        /** On the last draft while a reply is on its way. */
+        reworking: 'Working on a new draft. This is the one before it.',
         resume: 'Resume conversation',
         holdings: 'Holdings',
         explain: 'Explain my holdings',

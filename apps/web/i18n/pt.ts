@@ -211,6 +211,8 @@ export const pt: Dictionary = {
       empty:
         'A alocação proposta e suas fontes aparecerão aqui após uma resposta. Nenhum cofre foi criado.',
       previewOnly: 'Apenas uma prévia. Este rascunho ainda não pode ser investido aqui.',
+      working:
+        'Preparando um rascunho a partir do que você disse. Ele aparece aqui com suas fontes.',
       draftNote:
         'Um rascunho desta conversa. Nada é comprado antes de você revisar a mistura e assinar.',
       retry: 'Tentar de novo',
@@ -1262,6 +1264,10 @@ export const pt: Dictionary = {
       title: 'Um cofre, como a rede o tem',
       conversation: {
         proposedShare: 'Fatia proposta',
+        jointLabel:
+          'A estratégia proposta desenhada como um encaixe: uma peça para cada ativo, com a largura da sua fatia.',
+        jointHint: 'Uma peça por ativo, com a largura da sua fatia.',
+        reworking: 'Preparando um novo rascunho. Este é o anterior.',
         resume: 'Retomar conversa',
         holdings: 'Ativos',
         explain: 'Explique meus ativos',

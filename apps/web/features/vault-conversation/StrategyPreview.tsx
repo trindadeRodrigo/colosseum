@@ -1,17 +1,19 @@
 'use client';
-import { useId } from 'react';
+import { type CSSProperties, useId, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
+import { cn } from '../../components/ui/cn';
 import { Disclaimer } from '../../components/ui/Disclaimer';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
+import { LatticeLoader } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { AssetMark } from '../order/PlanView';
 import { displayName } from '../order/plain';
 import { dollars } from '../portfolio/figures';
-import { HoldingsBar } from '../shared/HoldingsBar';
 import type { VaultStrategyPreview } from './agent';
+import { fillOf, type JointMotion, jointMotion, MixJoint, staggerMs } from './MixJoint';
 
 export function sourceValue(lang: Lang, value: number | null | undefined, unit?: string): string {
   if (value == null) return '—';
@@ -25,28 +27,67 @@ export function sourceValue(lang: Lang, value: number | null | undefined, unit?:
   return `${new Intl.NumberFormat(LOCALE[lang], { maximumFractionDigits: 6 }).format(value)}${unit ? ` ${unit}` : ''}`;
 }
 
-/** A sourced visual preview; this component has no order, signing or execution capability. */
+const sharesOf = (proposal: VaultStrategyPreview) =>
+  proposal.allocations.map((line) => ({ key: line.assetId, bps: line.weightBps }));
+/** Whether the person asked their system for less motion: then a mix is simply there. */
+const stillAsked = () =>
+  typeof window !== 'undefined' &&
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+const STILL: JointMotion = { kind: 'still' };
+
+/**
+ * A sourced visual preview; this component has no order, signing or execution capability.
+ *
+ * The mix is drawn as a joint (MixJoint.tsx) tied to the rows under it: pointing at a piece lights its
+ * row and pointing at a row lights its piece. A mix that has just come assembles, and one that
+ * follows another moves only what changed. Every figure on the card is the proposal's own from the
+ * first frame: motion slides and fades a final figure in, and never counts up to it.
+ */
 export function StrategyPreview({
   proposal,
   targets,
   previewOnly,
+  pending,
   onDiscuss,
   use,
 }: {
   proposal: VaultStrategyPreview;
   targets?: { asset: string; targetBps: number }[];
   previewOnly?: string;
+  /**
+   * A reply is on its way and this is the draft before it: the words that say so. The card stays, dimmed,
+   * and its action waits, so the new draft can show what changed.
+   */
+  pending?: string;
   onDiscuss?: () => void;
   /** The one action this preview leads to: buying it for a new goal, or applying it to the vault. */
   use?: { label: string; onUse: () => void };
 }) {
   const id = useId();
+  const [lit, setLit] = useState<string | null>(null);
+  // The mix on the card and how it came to be there: a first one arrives, a next one changes it.
+  const [seen, setSeen] = useState(() => ({
+    proposal,
+    run: 0,
+    motion: stillAsked() ? STILL : ({ kind: 'arrive' } as JointMotion),
+  }));
+  let shown = seen;
+  if (seen.proposal !== proposal) {
+    shown = {
+      proposal,
+      run: seen.run + 1,
+      motion: stillAsked() ? STILL : jointMotion(sharesOf(seen.proposal), sharesOf(proposal)),
+    };
+    setSeen(shown);
+  }
+  const { motion, run } = shown;
   const t = useT();
   const copy = t.shared.vault.conversation;
   const language = useLang();
   const rows = [
-    ...proposal.allocations.map((line) => ({
+    ...proposal.allocations.map((line, piece) => ({
       asset: line.assetId,
+      piece: piece as number | null,
       symbol: line.symbol,
       proposed: line.weightBps,
       current: targets?.find((row) => row.asset === line.assetId)?.targetBps ?? 0,
@@ -56,6 +97,7 @@ export function StrategyPreview({
       .filter((row) => !proposal.allocations.some((line) => line.assetId === row.asset))
       .map((row) => ({
         asset: row.asset,
+        piece: null,
         symbol: undefined,
         proposed: 0,
         current: row.targetBps,
@@ -69,6 +111,18 @@ export function StrategyPreview({
     displayName(asset, t.plan);
   const change = (bps: number) =>
     `${new Intl.NumberFormat(LOCALE[language], { maximumFractionDigits: 2, signDisplay: 'exceptZero' }).format(bps / 100).replace('-', '−')} ${copy.points}`;
+  const stagger = staggerMs(proposal.allocations.length);
+  /** When a row follows its piece in: as the piece starts to slide home, on arrival and on a change. */
+  const rowDelay = (row: (typeof rows)[number]): CSSProperties | undefined => {
+    if (motion.kind === 'still' || row.piece === null) return undefined;
+    const ms = (motion.kind === 'arrive' ? Math.round(row.piece * stagger) : 0) + 160;
+    return { '--tf-joint-delay': `${ms}ms` } as CSSProperties;
+  };
+  const enters = (row: (typeof rows)[number]) =>
+    row.piece !== null &&
+    (motion.kind === 'arrive' || (motion.kind === 'change' && !motion.from.has(row.asset)));
+  const figureMoves = (row: (typeof rows)[number]) =>
+    enters(row) || (motion.kind === 'change' && motion.from.get(row.asset)?.bps !== row.proposed);
   return (
     <>
       <Card
@@ -85,63 +139,145 @@ export function StrategyPreview({
         <CardBody className="flex min-w-0 flex-col gap-4">
           <p className="text-body font-medium [overflow-wrap:anywhere]">{proposal.objective}</p>
           <p className="text-body-sm [overflow-wrap:anywhere]">{proposal.summary}</p>
-          <p className="text-caption text-muted-foreground">{previewOnly ?? copy.previewOnly}</p>
-          <div className="rounded-xs border border-dashed border-border p-2">
-            <HoldingsBar
-              shares={proposal.allocations.map((line) => ({
-                key: line.assetId,
-                shareBps: line.weightBps,
-              }))}
-            />
+          {/* One line's place for two: the note on the draft, or that a new one is being worked on. */}
+          <div className="grid">
+            <p
+              aria-hidden={pending ? true : undefined}
+              className={cn(
+                'col-start-1 row-start-1 text-caption text-muted-foreground',
+                pending && 'invisible',
+              )}
+            >
+              {previewOnly ?? copy.previewOnly}
+            </p>
+            {pending && (
+              <p
+                role="status"
+                data-ui="preview-pending"
+                className="col-start-1 row-start-1 flex items-start gap-2 text-caption text-muted-foreground"
+              >
+                <span className="flex h-5 items-center">
+                  <LatticeLoader size={16} />
+                </span>
+                {pending}
+              </p>
+            )}
           </div>
-          <table className="w-full table-fixed border-collapse text-body-sm">
-            <caption className="sr-only">{targets ? copy.comparison : copy.proposed}</caption>
-            <thead className="text-caption text-muted-foreground">
-              <tr className="border-b border-border">
-                <th scope="col" className="py-2 text-start font-normal">
-                  {t.shared.vault.columns.asset}
-                </th>
-                <th
-                  scope="col"
-                  className={`py-2 text-end font-normal ${targets ? 'w-[6.5rem] sm:w-[8.5rem]' : 'w-20'}`}
-                >
-                  {targets ? copy.comparison : copy.proposedShare}
-                </th>
-                {targets && (
-                  <th scope="col" className="w-14 py-2 text-end font-normal">
-                    {copy.change}
+          <div
+            data-ui="preview-mix"
+            data-pending={pending ? true : undefined}
+            className={cn(
+              'flex min-w-0 flex-col gap-4 motion-safe:transition-opacity motion-safe:duration-(--tf-dur-fade)',
+              pending && 'opacity-50',
+            )}
+          >
+            <MixJoint
+              pieces={rows.flatMap((row) =>
+                row.piece === null
+                  ? []
+                  : [
+                      {
+                        key: row.asset,
+                        bps: row.proposed,
+                        name: row.symbol ?? displayName(row.asset, t.plan),
+                        share: allocationShare(row.proposed),
+                      },
+                    ],
+              )}
+              label={copy.jointLabel}
+              hint={copy.jointHint}
+              lit={lit}
+              onLit={setLit}
+              motion={motion}
+              run={run}
+            />
+            <table className="w-full table-fixed border-collapse text-body-sm">
+              <caption className="sr-only">{targets ? copy.comparison : copy.proposed}</caption>
+              <thead className="text-caption text-muted-foreground">
+                <tr className="border-b border-border">
+                  <th scope="col" className="py-2 text-start font-normal">
+                    {t.shared.vault.columns.asset}
                   </th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.asset} className="border-b border-border align-top">
-                  <th scope="row" className="py-3 pr-2 text-start font-normal">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <AssetMark asset={row.asset} />
-                      <span className="min-w-0 [overflow-wrap:anywhere]">
-                        {row.symbol ?? displayName(row.asset, t.plan)}
-                      </span>
-                    </span>
-                    <span className="mt-2 block text-caption text-muted-foreground [overflow-wrap:anywhere]">
-                      {row.why}
-                    </span>
+                  <th
+                    scope="col"
+                    className={`py-2 text-end font-normal ${targets ? 'w-[6.5rem] sm:w-[8.5rem]' : 'w-20'}`}
+                  >
+                    {targets ? copy.comparison : copy.proposedShare}
                   </th>
-                  <td className="py-3 text-end tabular-nums">
-                    {targets
-                      ? `${allocationShare(row.current)} → ${allocationShare(row.proposed)}`
-                      : allocationShare(row.proposed)}
-                  </td>
                   {targets && (
-                    <td className="py-3 text-end text-caption tabular-nums">
-                      {change(row.proposed - row.current)}
-                    </td>
+                    <th scope="col" className="w-14 py-2 text-end font-normal">
+                      {copy.change}
+                    </th>
                   )}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr
+                    key={row.asset}
+                    data-row={row.asset}
+                    data-lit={row.piece !== null ? lit === row.asset : undefined}
+                    {...(row.piece !== null
+                      ? {
+                          // the row answers as its piece does: a mouse over it, or a finger's tap
+                          onPointerEnter: (e) => e.pointerType === 'mouse' && setLit(row.asset),
+                          onPointerLeave: (e) => e.pointerType === 'mouse' && setLit(null),
+                          onPointerUp: (e) => {
+                            if (e.pointerType !== 'mouse')
+                              setLit((now) => (now === row.asset ? null : row.asset));
+                          },
+                        }
+                      : {})}
+                    style={enters(row) ? rowDelay(row) : undefined}
+                    className={cn(
+                      'border-b border-border align-top motion-safe:transition-colors motion-safe:duration-(--tf-dur-fade)',
+                      lit === row.asset && 'bg-muted',
+                      enters(row) && 'tf-joint-row',
+                    )}
+                  >
+                    <th scope="row" className="py-3 pr-2 pl-1 text-start font-normal">
+                      <span className="flex min-w-0 items-center gap-2">
+                        {/* the piece's own colour, so the row and the piece are one thing to the eye */}
+                        <span
+                          aria-hidden="true"
+                          data-part="swatch"
+                          className={cn(
+                            'size-2.5 shrink-0',
+                            row.piece === null ? 'border border-border' : fillOf(row.piece),
+                          )}
+                        />
+                        <AssetMark asset={row.asset} />
+                        <span className="min-w-0 [overflow-wrap:anywhere]">
+                          {row.symbol ?? displayName(row.asset, t.plan)}
+                        </span>
+                      </span>
+                      <span className="mt-2 block text-caption text-muted-foreground [overflow-wrap:anywhere]">
+                        {row.why}
+                      </span>
+                    </th>
+                    <td className="py-3 pr-1 text-end tabular-nums">
+                      {/* the final figure, whole, from the first frame: it drops in, it never counts */}
+                      <span
+                        key={`${row.current}:${row.proposed}`}
+                        data-part="share"
+                        style={figureMoves(row) ? rowDelay(row) : undefined}
+                        className={cn('inline-block', figureMoves(row) && 'tf-joint-figure')}
+                      >
+                        {targets
+                          ? `${allocationShare(row.current)} → ${allocationShare(row.proposed)}`
+                          : allocationShare(row.proposed)}
+                      </span>
+                    </td>
+                    {targets && (
+                      <td className="py-3 pr-1 text-end text-caption tabular-nums">
+                        {change(row.proposed - row.current)}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <WeightNotes notes={proposal.weightNotes} allocations={proposal.allocations} />
           {proposal.warnings.length > 0 && (
             <div data-ui="mix-warnings" className="flex flex-col gap-2">
@@ -178,7 +314,13 @@ export function StrategyPreview({
           {(onDiscuss || use) && (
             <div className="flex flex-wrap gap-3">
               {use && (
-                <Button variant="secondary" size="dense" data-action="use-mix" onClick={use.onUse}>
+                <Button
+                  variant="secondary"
+                  size="dense"
+                  data-action="use-mix"
+                  disabled={Boolean(pending)}
+                  onClick={use.onUse}
+                >
                   {use.label}
                 </Button>
               )}

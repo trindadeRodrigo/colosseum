@@ -93,6 +93,16 @@ const text = (value: unknown, max: number): value is string =>
 const texts = (value: unknown, max: number): value is string[] =>
   Array.isArray(value) && value.length <= 20 && value.every((v) => text(v, max));
 
+/**
+ * What a reply says, as one text: its message, then its question. A model often ends its message with
+ * the very question it also sends on its own, and then the question is said once.
+ */
+export function replyText(message: string, question?: string | null): string {
+  if (!question) return message;
+  const plain = (words: string) => words.replace(/\s+/g, ' ').trim().toLowerCase();
+  return plain(message).endsWith(plain(question)) ? message : `${message}\n\n${question}`;
+}
+
 /** A provider reply is plain data. A preview grants no signing or funded-vault update capability. */
 export function strategyReplyOf(value: unknown, chain: ChainId): VaultAgentReply | null {
   const row = record(value);

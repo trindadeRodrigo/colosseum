@@ -30,6 +30,17 @@ Cash buffer · 20% · — · reachable today
 | "Why this plan?" | part-and-close: segments part 12–24px, callout rows fade in, then close |
 | Stress case selected | bar unchanged (it's the allocation); the schedule chart shows the stress |
 
+## The mix joint
+
+A mix proposed in a conversation (`<MixJoint>`, in the strategy preview) holds up to sixteen assets and cash, so it is not a four-leg bar. It is drawn as one joint lying flat: a 44px beam of pieces end to end, one per asset and as wide as its share, in the wood ramp in turn, each seated in the piece before it by a tenon (a sliver under 7% of the beam carries none). The landing's standing post is drawn for four parts; at this width its layers and labels would collide.
+
+- Each piece is a button named "asset, share", the share being the figure its row shows. The beam is one tab stop; the arrows walk the pieces and Escape lets go.
+- The row under the beam carries the piece's swatch. Pointing at a piece (mouse, focus, tap) lifts it 4px, dims the others and lights its row; pointing at a row lights its piece. A line under the beam names the lit piece and its share, for a phone whose row is far down.
+- A new mix is the plan-lock: each piece fades in 14px apart (160ms) and slides its tenon home (320ms), 60ms after the one before (less for many pieces, so all are seated within 0.9s); each row fades in as its piece starts to slide, and its share drops in like a pin. Under 1.2s in all.
+- A mix that follows another moves only the difference: a piece slides to its place and its face grows or shrinks, a new piece seats, a dropped one fades where it lay, and only a share that changed drops in again.
+- While the next reply is on its way the draft stays, dimmed, with one status line beside the loader ("Working on a new draft. This is the one before it.") and its action waits.
+- Every figure is the proposal's own from the first frame. A share is never counted up to. Only transform and opacity move, so nothing shifts. With reduced motion nothing moves and each mix is simply there.
+
 ## Rules
 
 - Direct labels always. Never a legend-only bar or a colour key away from the bar.
