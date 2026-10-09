@@ -125,4 +125,14 @@ export type OrderEmbed = {
   onProgress?: (progress: InvestProgress) => void;
   onDone?: (done: { orderId: string }) => void;
   onStopped?: (stopped: { orderId: string }) => void;
+  /**
+   * The host says where to go once every step is confirmed (the vault's own page, from /goal): the
+   * order's screen then draws no link of its own under the steps.
+   */
+  hostEnds?: boolean;
+  /**
+   * The order that finishes this one was made, or is already in this browser: the host shows it in the
+   * same card, where it is reviewed and signed. Left out, the order's own page is opened.
+   */
+  onFinish?: (orderId: string) => void;
 };

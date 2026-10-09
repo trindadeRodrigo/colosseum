@@ -256,6 +256,26 @@ export const pt: Dictionary = {
       elsewhere: 'Ver portfólios compartilhados',
       unavailable:
         'O serviço de conversa de estratégia está indisponível. Suas palavras foram mantidas; nenhum rascunho foi produzido.',
+      deposit: {
+        signing: 'A conversa espera enquanto as etapas do seu depósito são assinadas.',
+        open: 'A conversa espera enquanto este depósito está aberto. Conclua as etapas ou volte para a proposta.',
+        leave:
+          'Sair deste depósito? O que as etapas confirmadas moveram fica no seu cofre como caixa, e as outras ficam sem assinar. Você pode voltar a ele.',
+        leaveSigning:
+          'Uma etapa está sendo assinada. Sair deste depósito? A etapa em andamento ainda é enviada, o que foi confirmado fica no seu cofre como caixa, e as outras ficam sem assinar.',
+        stay: 'Ficar',
+        leaveYes: 'Sair',
+        unfinished: {
+          landed: (amount: string) =>
+            `Seu depósito de ${amount} desta conversa não terminou: o dinheiro está no seu cofre como caixa, e as etapas seguintes não foram assinadas.`,
+          none: (amount: string) =>
+            `Seu depósito de ${amount} desta conversa não terminou: nenhuma etapa foi confirmada ainda.`,
+          unread: (amount: string) =>
+            `Seu depósito de ${amount} desta conversa não terminou. O que as etapas confirmadas moveram está no seu cofre como caixa.`,
+          again: 'Um novo depósito adiciona dinheiro novo; ele não conclui este.',
+          back: 'Voltar a ele',
+        },
+      },
       timeout:
         'A resposta demorou demais. Suas palavras foram mantidas; tente novamente em instantes.',
       budget:
@@ -1727,6 +1747,8 @@ export const pt: Dictionary = {
         `Seus ${amount} estão seguros no seu cofre, em caixa. A etapa de compra não foi concluída.`,
       forSupport: 'Detalhes para o suporte',
       finish: 'Terminar a compra com o caixa do seu cofre',
+      /** The press of an order that finishes another, in the card: it deposits nothing. */
+      finishSign: 'Assinar as etapas que faltaram',
       finishing: 'Criando a ordem…',
       finishNote:
         'Uma nova ordem para os passos que ficaram, ao preço de agora. Ela não deposita nada: você revisa e assina como antes.',
@@ -1922,7 +1944,6 @@ export const pt: Dictionary = {
       choose: 'Escolha um',
       confirm: 'Confirmar e ir para a compra',
       confirming: 'Conferindo e salvando…',
-      opening: 'Abrindo o próximo passo…',
     },
     deposit: {
       title: 'Depositar nesta mistura',
@@ -1972,6 +1993,21 @@ export const pt: Dictionary = {
       brokenMix:
         'Os pesos no editor ainda não fecham, então não há mistura para mostrar. Corrija abaixo, ou volte aos pesos propostos.',
       balance: 'O saldo da sua carteira é conferido na tela de compra.',
+      signing: {
+        title: 'Assine o seu depósito',
+        doneTitle: 'Seu depósito está concluído',
+        amount: 'Valor do depósito',
+        change: 'Alterar',
+        changeLabel: 'Alterar o valor na etapa do depósito',
+        lead: 'O valor inteiro vai para um cofre de onde só você pode sacar e depois para cada ativo dele, uma etapa por vez. Você assina cada etapa aqui.',
+        resumed:
+          'Você aprovou este depósito antes de esta página ser aberta de novo. As etapas estão onde estavam.',
+        done: 'Seu depósito está no seu cofre.',
+        openVault: 'Abrir o seu cofre',
+        leaveNote:
+          'Este depósito parou. O que as etapas confirmadas moveram está no seu cofre como caixa, e a ordem dele está guardada.',
+        orderPage: 'Abrir a página dele',
+      },
       editByHand: 'Editar os pesos à mão',
       editorLead:
         'Digite um peso para cada ativo, em porcentagem. O que você deixar sem atribuir fica em caixa. Os pesos daqui são os que eu confiro.',

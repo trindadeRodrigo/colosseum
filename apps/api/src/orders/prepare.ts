@@ -117,7 +117,7 @@ export function basketIdOfBuy(proposalId: string, linked: boolean, userId: strin
   if (!userId)
     throw new Refusal(
       403,
-      'a plan made from a link is bought by a signed-in person, as themselves',
+      'a plan made from a link takes a deposit from a signed-in person, as themselves',
     );
   return basketIdOfLinked(proposalId, userId);
 }
@@ -252,7 +252,7 @@ export type BuyPlan = {
 /** An add to a vault with auto-follow on only deposits: said on the order's review. */
 export const KEEPER_INVESTS = {
   code: 'KEEPER_INVESTS',
-  text: 'This vault has auto-follow on, so this order only deposits the cash. The keeper buys the vault’s assets with it when it next rebalances this vault.',
+  text: 'This vault has auto-follow on, so this order only deposits the cash. The keeper puts it into the vault’s assets when it next rebalances this vault.',
 } as const;
 
 /**
@@ -287,7 +287,10 @@ export async function planBuy(
     throw new Refusal(403, 'the owner in the request is not a wallet of the signed-in person');
   const named = [req.proposalId, req.family, req.vault].filter((x) => x !== undefined).length;
   if (named > 1)
-    throw new Refusal(400, 'a buy names one thing: a plan, a shared portfolio or a vault of yours');
+    throw new Refusal(
+      400,
+      'a deposit names one thing: a plan, a shared portfolio or a vault of yours',
+    );
   // A plan is bought on its own chain and a vault added to on its own: only a shared portfolio,
   // which may have a recipe on more than one, is told which (gate CHAIN-AT-THE-PLAN).
   if (req.chain !== undefined && req.family === undefined)
@@ -306,7 +309,7 @@ export async function planBuy(
   if (req.family !== undefined) return planFamilyBuy(req, req.family, ctx);
   if (req.version !== undefined)
     throw new Refusal(400, '`version` is the version of a shared portfolio: send it with `family`');
-  if (!req.proposalId) throw new Refusal(400, 'a buy names the plan it buys: send proposalId');
+  if (!req.proposalId) throw new Refusal(400, 'a deposit names its plan: send proposalId');
   const proposal = UUID.test(req.proposalId) ? await ctx.loadProposal(req.proposalId) : null;
   if (!proposal) throw new Refusal(404, 'no plan with that id');
 
@@ -327,8 +330,8 @@ export async function planBuy(
   if (proposal.engineVersion === MIX_VERSION && cents > centsOf(proposal.sheet.amountUsd))
     throw new Refusal(
       422,
-      `this mix was reviewed at ${usd(centsOf(proposal.sheet.amountUsd))}: it is bought at no more than that`,
-      { code: 'AMOUNT_OVER_REVIEW', fix: 'Review the mix again at the new amount, then buy it.' },
+      `this vault was reviewed at ${usd(centsOf(proposal.sheet.amountUsd))}: a deposit into it is no more than that`,
+      { code: 'AMOUNT_OVER_REVIEW', fix: 'Review the deposit again at the new amount.' },
     );
 
   return refusing(async () => {
@@ -388,7 +391,7 @@ function eligible(entry: ChainEntry, assets: BasketAsset[], targets: Target[]) {
   for (const t of targets) {
     const listed = byId.get(t.asset);
     if (!listed || listed.cls === 'cash')
-      throw new Refusal(422, `${t.asset} cannot be bought on ${entry.config.name}`, {
+      throw new Refusal(422, `${t.asset} is not available on ${entry.config.name}`, {
         code: 'ASSET_NOT_ELIGIBLE',
       });
   }
@@ -409,7 +412,8 @@ async function planFamilyBuy(
   ctx: Omit<PrepareContext, 'now'>,
 ): Promise<BuyPlan> {
   const shared = ctx.shared;
-  if (!shared) throw new Refusal(501, 'buying a shared portfolio is not served here: name a plan');
+  if (!shared)
+    throw new Refusal(501, 'a deposit into a shared portfolio is not served here: name a plan');
   const chain = req.chain ?? (await ctx.homeChain());
   // A chain the request names is held to the person's wallets, as a switch of the current chain is.
   if (req.chain !== undefined && !chainsHeld(ctx.principal).includes(chain))
@@ -521,7 +525,7 @@ async function buySteps(
   const cashRaw = cashRawOf(cents, cash.decimals);
   const trades = tradesFor(targets, cashRaw, cash.id);
   if (trades.some((t) => t.amountInRaw === '0'))
-    throw new Refusal(422, `the amount is too small to buy every asset on ${entry.config.name}`);
+    throw new Refusal(422, `the amount is too small to reach every asset on ${entry.config.name}`);
 
   const existing = (await adapter.getVaults(owner)).find((v) => v.basketId === basketId);
   const caps = adapter.capabilities;
@@ -537,7 +541,7 @@ async function buySteps(
       cashRaw: deposit,
       trades: [],
     });
-  const andBuy = riding.length ? ` and buy ${symbols(riding)}` : '';
+  const andBuy = riding.length ? ` and swap into ${symbols(riding)}` : '';
   steps.push(
     existing
       ? {
@@ -554,7 +558,7 @@ async function buySteps(
         },
   );
   for (const group of groups)
-    steps.push({ kind: 'swap', description: `Buy ${symbols(group)}`, trades: group });
+    steps.push({ kind: 'swap', description: `Swap cash into ${symbols(group)}`, trades: group });
 
   // On a chain with rent, each token account a step opens locks some: the vault's cash account when
   // the vault is new, and one for each asset the vault does not hold yet.
@@ -599,8 +603,8 @@ export async function expectedOf(
     if (out <= 0n || lessBps(out, slippageBps) <= 0n)
       throw new Refusal(
         422,
-        `${trade.amountInRaw} raw ${trade.sell} buys no ${trade.buy} that can be held to a minimum: the amount is too small`,
-        { fix: 'Buy a larger amount.' },
+        `${trade.amountInRaw} raw ${trade.sell} swaps into no ${trade.buy} that can be held to a minimum: the amount is too small`,
+        { fix: 'Deposit a larger amount.' },
       );
     expected.push({
       inRaw: trade.amountInRaw,
@@ -786,8 +790,8 @@ async function prepareBuy(
     type: 'buy',
     owner: req.owner,
     summary: req.family
-      ? `Buy ${usd(cents)} of a shared portfolio on ${entry.config.name}, following it`
-      : `Buy ${usd(cents)} of your plan on ${entry.config.name}`,
+      ? `Deposit ${usd(cents)} into a vault on ${entry.config.name} that follows a shared portfolio`
+      : `Deposit ${usd(cents)} into your plan’s vault on ${entry.config.name}`,
     // Once, whatever the steps repeat: the approval and the deposit both carry it.
     depositRaw: plan.need.cashRaw,
     // The vault it is for, kept with it: a step is built for this number whatever becomes of the plan.
@@ -798,7 +802,7 @@ async function prepareBuy(
         ? [
             {
               code: 'MARKET_CLOSED',
-              text: 'The US stock market is closed now. You can still buy; stock tokens may trade at a wider price.',
+              text: 'The US stock market is closed now. You can still deposit; stock tokens may trade at a wider price.',
             },
           ]
         : []),

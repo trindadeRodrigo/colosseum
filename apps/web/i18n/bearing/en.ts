@@ -214,10 +214,10 @@ export const bearingEn = {
     capacity: {
       title: 'Exit capacity at ≤ 1% cost',
       note: (from: string) =>
-        `sell and buy side, summed over the selected assets, one point per UTC hour since ${from}, when the routed curves began`,
+        `exit and entry side, summed over the selected assets, one point per UTC hour since ${from}, when the routed curves began`,
       firstCurve: 'the first routed curve',
-      sell: 'sell (exit)',
-      buy: 'buy (entry)',
+      sell: 'exit (the asset sold)',
+      buy: 'entry (dollars in)',
       aria: 'Exit and entry capacity over time for the selected assets',
       src: 'capacity chart',
       partial: (k: number, n: number) => `(${k} of ${n} assets)`,
@@ -271,7 +271,7 @@ export const bearingEn = {
       recordedAt: (at: string) => `from the pool’s newest recording, ${at}`,
       liveAt: (at: string) => `from a live read at ${at} UTC`,
       note: (when: string) =>
-        `held within ±30% of the price, ${when}; the asset waits above the price (sold into as it rises), the quote below (bought with as it falls); + and − zoom`,
+        `held within ±30% of the price, ${when}; the asset waits above the price (sold into as it rises), the quote below (spent on the asset as it falls); + and − zoom`,
       aria: (pool: string) => `Liquidity of pool ${pool} by price band around the pool price`,
       src: 'distribution chart',
       pool: 'Pool',
@@ -342,7 +342,7 @@ export const bearingEn = {
     table: {
       title: 'Lending pools',
       note: (tol: string, regime: string) =>
-        `Covered is the share of a pool’s collateral the swap pools could buy at a cost of at most ${tol} in the current time of week (${regime}); the rest would sell at a deeper loss. The loss if all is sold is the routed sale of every collateral asset at its full size, at once. In a row, each lending pool is counted on its own; in the counters and the chart, every position in one stock is added up first and sold into that stock’s pools once, since they draw on the same depth. Kamino reports collateral per market, so reserves of one market show the same collateral; the counters and the chart count it once.`,
+        `Covered is the share of a pool’s collateral the swap pools could absorb at a cost of at most ${tol} in the current time of week (${regime}); the rest would sell at a deeper loss. The loss if all is sold is the routed sale of every collateral asset at its full size, at once. In a row, each lending pool is counted on its own; in the counters and the chart, every position in one stock is added up first and sold into that stock’s pools once, since they draw on the same depth. Kamino reports collateral per market, so reserves of one market show the same collateral; the counters and the chart count it once.`,
       caption: 'Lending pools with coverage of their collateral',
       pool: 'Pool',
       explorer: (pool: string) => `View ${pool} on Solscan`,
@@ -543,7 +543,7 @@ export const bearingEn = {
   methodology: {
     measured: 'What is measured',
     measuredText:
-      'Every 5 minutes we read the on-chain state of each DEX pool that trades a tokenized stock (Raydium CLMM, Orca Whirlpool, Meteora DLMM, Raydium CPMM) and simulate selling and buying the stock for dollars at sizes from $100 to $5M. The simulation reproduces each venue’s swap math from the pool’s own accounts: liquidity at every price level, fees, and Token-2022 transfer fees. It is checked against Jupiter quotes routed through the same pool; the tolerance per venue is part of the test suite.',
+      'Every 5 minutes we read the on-chain state of each DEX pool that trades a tokenized stock (Raydium CLMM, Orca Whirlpool, Meteora DLMM, Raydium CPMM) and simulate swapping the stock for dollars, and dollars for the stock, at sizes from $100 to $5M. The simulation reproduces each venue’s swap math from the pool’s own accounts: liquidity at every price level, fees, and Token-2022 transfer fees. It is checked against Jupiter quotes routed through the same pool; the tolerance per venue is part of the test suite.',
     means: 'What a number means',
     meansItems: [
       [

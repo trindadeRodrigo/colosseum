@@ -234,9 +234,9 @@ describe('the words of the product, in each language', () => {
     ]);
   });
 
-  it('calls a part of a plan a part, and says nothing was bought', () => {
+  it('calls a part of a plan a part, and says nothing was deposited', () => {
     expect(en.goal.built.done.body(3, 'Solana')).toBe(
-      'It has 3 parts on Solana. Nothing was bought.',
+      'It has 3 parts on Solana. Nothing was deposited.',
     );
     expect(en.goal.built.done.body(1, 'Solana')).toContain('1 part on');
     expect(pt.goal.built.done.body(3, 'Solana')).toContain('3 partes');

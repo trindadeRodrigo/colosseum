@@ -37,7 +37,7 @@ export async function continueBuy(
 ): Promise<Prepared> {
   const { order, request } = stored;
   if (order.type !== 'buy' || request.type !== 'buy')
-    throw new Refusal(409, 'only a buy is finished with the cash in its vault', {
+    throw new Refusal(409, 'only a deposit is finished with the cash in its vault', {
       code: 'CONTINUE_NOT_SUPPORTED',
     });
   const first = order.legs[0]?.chain;
@@ -47,8 +47,8 @@ export async function continueBuy(
     // there is no cash in a vault to finish with, and a swap left over is not this route's to remake.
     throw new Refusal(
       409,
-      `a buy on ${entry.config.name} trades in the same step that deposits: nothing is left in a vault to finish`,
-      { code: 'CONTINUE_NOT_SUPPORTED', fix: 'Make the buy again.' },
+      `a deposit on ${entry.config.name} swaps in the same step that deposits: nothing is left in a vault to finish`,
+      { code: 'CONTINUE_NOT_SUPPORTED', fix: 'Make the deposit again.' },
     );
   }
   const funding = order.legs.filter((leg) => leg.kind !== 'swap');
@@ -59,12 +59,12 @@ export async function continueBuy(
     });
   const left = leftOf(order);
   if (left.length === 0)
-    throw new Refusal(409, 'this order has nothing left to buy', { code: 'NOTHING_LEFT' });
+    throw new Refusal(409, 'this order has nothing left to do', { code: 'NOTHING_LEFT' });
   const basketId = order.basketId;
   if (!basketId)
     throw new Refusal(409, 'this order was made before it kept its vault’s number', {
       code: 'CONTINUE_NOT_SUPPORTED',
-      fix: 'Make a new buy.',
+      fix: 'Make a new deposit.',
     });
   const chain = left[0]?.chain;
   if (!chain || left.some((leg) => leg.chain !== chain))
@@ -103,7 +103,7 @@ export async function continueBuy(
         `the vault holds ${vault.cash.raw} raw ${cash.symbol} in cash, less than the ${spend} the steps left would spend`,
         {
           code: 'VAULT_CASH_SHORT',
-          fix: 'The cash was spent or withdrawn since. Make a new buy for what you want to add.',
+          fix: 'The cash was spent or withdrawn since. Make a new deposit for what you want to add.',
         },
       );
     const made: Leg[] = [];
@@ -135,7 +135,7 @@ export async function continueBuy(
     id,
     type: 'buy',
     owner: order.owner,
-    summary: `Finish buying your plan on ${entry.config.name} with the cash in your vault`,
+    summary: `Finish the deposit into your plan on ${entry.config.name} with the cash in your vault`,
     // No deposit: `depositRaw` is absent for an order that moves nothing from the wallet.
     basketId,
     continues: order.id,

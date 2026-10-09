@@ -112,7 +112,10 @@ export function registerMixRoutes(
       const principal = signedIn(req);
       const entry = deps.chains.get(req.params.chain);
       if (!principal.userId || !signsOn(principal, entry.config.family))
-        throw new Refusal(403, 'Sign in with a wallet for this chain before choosing a mix.');
+        throw new Refusal(
+          403,
+          'Sign in with a wallet for this chain before choosing what your vault holds.',
+        );
       const body = req.body;
       const now = deps.now().toISOString();
       const ctx = await refusing(() => mixContext(entry, read, now));

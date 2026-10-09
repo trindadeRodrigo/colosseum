@@ -62,7 +62,7 @@ test.describe('the lists of the portfolio section on the stub', () => {
     await expect(own.locator('[data-ui="step-by"]')).toHaveText(w.rebalancing.by.owner);
     await expect(own.locator('[data-ui="step-when"]')).toContainText(w.rebalancing.when.built);
     await expect(own.locator('[data-ui="trade-sentence"]').first()).toHaveText(
-      'Bought USDY (Ondo) with cash (USDC).',
+      'Swapped cash (USDC) into USDY (Ondo).',
     );
     await expect(own.locator('dd[data-row="quoted"]').first()).toContainText('4 bps');
     await expect(own.locator('[data-ui="step-quote-note"]')).toHaveText(w.rebalancing.quoteNote);
