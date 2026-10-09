@@ -226,6 +226,63 @@ describe('what a vault is called', () => {
   });
 });
 
+describe('a direct load of the page', () => {
+  it('as the owner: the title waits for their portfolio, then is the name, with no other title between', async () => {
+    // the portfolio's answer is held back, as it is while the sign-in is still arriving
+    let answer: (response: Response) => void = () => {};
+    const waiting = new Promise<Response>((done) => {
+      answer = done;
+    });
+    const vault = { ...held(), provenance: 'sandbox' };
+    portStore.setApi(async (path) => {
+      if (path === '/v1/me') return json(person);
+      if (path === PORTFOLIO_PATH) return waiting;
+      if (path === `/v1/vaults/solana/${MY_VAULT}`)
+        return json({
+          chain: 'solana',
+          name: 'Solana',
+          mode: 'live',
+          provenance: 'sandbox',
+          vault,
+          prices: [],
+          disclaimer: 'd',
+        });
+      return json({ error: 'not found' }, 404);
+    });
+    const host = await show();
+    expect(find(host, 'h1').dataset.ui).toBe('vault-name-wait');
+    expect(find(host, 'h1').getAttribute('aria-busy')).toBe('true');
+    // neither the visitor's title nor the unnamed one stands in for it
+    expect(find(host, 'h1').textContent).toBe(en.shared.vault.loading);
+    expect(host.textContent).not.toContain(en.shared.vault.title);
+    answer(
+      json({
+        chains: [
+          {
+            chain: 'solana',
+            name: 'Solana',
+            mode: 'live',
+            provenance: 'sandbox',
+            prices: [],
+            vaults: [{ ...vault, name: 'Rent' }],
+          },
+        ],
+        disclaimer: 'd',
+      }),
+    );
+    for (let i = 0; i < 4; i += 1) await settle(30);
+    expect(find(host, 'h1').textContent).toBe('Rent');
+    expect(host.querySelector('[data-ui="vault-name-wait"]')).toBeNull();
+  });
+  it('as a visitor: the page’s own title at once, and nothing waits for a portfolio', async () => {
+    api({ vault: held({ owner: CREATOR }) });
+    const host = await show();
+    expect(find(host, 'h1').textContent).toBe(en.shared.vault.title);
+    expect(host.querySelector('[data-ui="vault-name-wait"]')).toBeNull();
+    expect(host.querySelector('[data-ui="vault-name"]')).toBeNull();
+  });
+});
+
 describe('the owner’s page at rest', () => {
   it('says what the person has: the value on its pin and the chain once, with no badge', async () => {
     api();

@@ -351,6 +351,19 @@ function OwnVault({
                   {v.title}
                 </h1>
               }
+              // The name (the person's own, or "Vault #N") comes with their portfolio, read once the
+              // sign-in is here: until then the title waits, so no other one flashes by before it.
+              pending={
+                <h1
+                  id={titleId}
+                  className={WORKSPACE_TITLE}
+                  data-ui="vault-name-wait"
+                  aria-busy="true"
+                >
+                  <span className="sr-only">{v.loading}</span>
+                  <span aria-hidden="true" className="inline-block h-6 w-40 rounded-md bg-muted" />
+                </h1>
+              }
             />
             <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
               {value}

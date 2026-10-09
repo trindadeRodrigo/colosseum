@@ -218,14 +218,19 @@ export function OwnVaultActions({
   headingLevel = 2,
   page = false,
   fallback = null,
+  pending,
 }: {
   chain: string;
   address: string;
   headingLevel?: 1 | 2;
   page?: boolean;
   fallback?: ReactNode;
+  /** While the person's portfolio is still being read: in the name's place, so no other title flashes by. */
+  pending?: ReactNode;
 }) {
   const { state, again } = usePortfolio();
+  if (pending !== undefined && (state.kind === 'loading' || state.kind === 'reading'))
+    return pending;
   if (state.kind !== 'answered' || state.outcome.kind !== 'read') return fallback;
   const own = ownVault(state.outcome.chains, chain, address);
   return own ? (
