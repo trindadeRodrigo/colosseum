@@ -27,7 +27,7 @@ export const LiquidityEntry = z.object({
   dataFrom: z.string().nullable(),
   dataTo: z.string().nullable(),
   methodVersion: z.string(),
-  provenance: z.enum(['live', 'fixture', 'mock']),
+  provenance: z.enum(['live', 'fixture', 'mock', 'sandbox']),
 });
 export type LiquidityEntry = z.infer<typeof LiquidityEntry>;
 
@@ -77,7 +77,7 @@ export type LiquidityAssessInput = {
 /** Implemented by packages/risk (measured curves) and by a fixture provider in tests. */
 export interface LiquidityProvider {
   readonly methodVersion: string;
-  readonly provenance: 'live' | 'fixture' | 'mock';
+  readonly provenance: 'live' | 'fixture' | 'mock' | 'sandbox';
   /** Whether the provider has measured curves for this asset (registry id). */
   covers(assetId: string): boolean;
   /** Exit capacity at cost ≤ tau in the worst regime a window of `windowDays` can contain. */

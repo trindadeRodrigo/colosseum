@@ -7,7 +7,7 @@ import { buttonClass } from '../../components/ui/button-class';
 import { Composer } from '../../components/ui/Composer';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { GOAL_HANDOFF } from '../goal/draft';
+import { GOAL_HANDOFF, GOAL_HANDOFF_OWNER } from '../goal/draft';
 import { GOAL_TEXT } from '../goal/read-goal';
 
 // "Tell us what your money needs to do." (hero-3d.html, `#simulate`): the goal composer of the app, as
@@ -30,6 +30,7 @@ export function Simulate({ signedIn = false }: { signedIn?: boolean }) {
     setBusy(true);
     try {
       window.sessionStorage.setItem(GOAL_HANDOFF, typed);
+      window.sessionStorage.removeItem(GOAL_HANDOFF_OWNER);
     } catch {
       // No storage in this browser: the goal screen opens empty, and the text is still in this box.
     }
@@ -47,7 +48,7 @@ export function Simulate({ signedIn = false }: { signedIn?: boolean }) {
           <p className="font-mono text-[12px] font-medium tracking-[0.06em] text-primary">
             {t.eyebrow}
           </p>
-          <h2 className="mt-2.5 mb-3 font-display text-[clamp(1.8rem,1.3rem+1.6vw,2.6rem)]/[1.15] font-normal">
+          <h2 className="mt-2.5 mb-3 font-display text-[clamp(1.8rem,1.3rem+1.6vw,2.6rem)]/[round(1.15em,4px)] font-normal">
             {t.title}
           </h2>
           <p className="text-muted-foreground">{t.lead}</p>
@@ -83,8 +84,8 @@ export function Simulate({ signedIn = false }: { signedIn?: boolean }) {
               </li>
             ))}
           </ul>
-          <div className="flex flex-wrap justify-between gap-x-6 gap-y-2 text-[13px] text-muted-foreground">
-            <p id={hintId} className="pt-0.5 font-mono text-[11px]">
+          <div className="flex flex-wrap justify-between gap-x-6 gap-y-2 text-[13px]/5 text-muted-foreground">
+            <p id={hintId} className="pt-0.5 font-mono text-[12px]/5">
               {d.goal.composer.hint}
             </p>
             {!signedIn && (

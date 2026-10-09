@@ -1,8 +1,15 @@
-import { OrderError, PersonResponse, PickChainRequest } from '@colosseum/schemas';
+import {
+  OrderError,
+  PersonResponse,
+  PersonWithdrawalsQuery,
+  PersonWithdrawalsResponse,
+  PickChainRequest,
+} from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { OrderDeps } from '../../orders/legs';
 import { personChain, switchChain } from '../../orders/person';
+import { listPersonWithdrawals } from '../../orders/store';
 import { signedIn } from './orders';
 
 // Who is signed in, and their current chain, where new plans are made (gates ONE-CHAIN and CHAIN-SWITCH).
@@ -30,6 +37,28 @@ export function registerMeRoutes(scope: FastifyInstance, deps: OrderDeps) {
         wallets: principal.wallets,
         ...(await personChain(deps.db, principal)),
       };
+    },
+  );
+
+  f.get(
+    '/v1/me/withdrawals',
+    {
+      config: { auth: 'user', limit: 'standard' },
+      schema: {
+        tags,
+        summary: 'What the signed-in person took out of their vaults',
+        description:
+          'The person’s withdrawals, newest first, a page at a time: at most `limit` (50 by default and at most), ordered before `before` when that is sent; `next` is the `before` of the following page, and null on the last. Each comes with its vault and chain, and each step that takes tokens out with where it stands (`confirmed` once it landed, `skipped` when its token could not move), its transaction, and what it took. Each token carries `valued`: its dollar value at the reference price when the withdrawal was ordered, with where that price came from; a token with no price carries none. Only the withdrawals of the wallets of the verified identity token are listed. A portfolio counts what was taken out from these, so it reads the same on every device.',
+        querystring: PersonWithdrawalsQuery,
+        response: { 200: PersonWithdrawalsResponse, default: OrderError },
+      },
+    },
+    async (req, reply): Promise<PersonWithdrawalsResponse> => {
+      reply.header('cache-control', 'private, no-store');
+      return listPersonWithdrawals(deps.db, signedIn(req), {
+        limit: req.query.limit,
+        ...(req.query.before ? { before: new Date(req.query.before) } : {}),
+      });
     },
   );
 

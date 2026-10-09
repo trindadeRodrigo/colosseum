@@ -19,8 +19,8 @@ import { deploymentsFor } from '../order/readiness';
 // unverified:
 //
 //   mock         the chain runs on the mock: there is no chain to read
-//   no-node      no node of this chain is set for this app (NEXT_PUBLIC_CHAIN_READ_RPC_<CHAIN>), or
-//                the chain is an EVM chain, whose registry read is not built (it waits for ADE-2)
+//   no-node      no node of this chain is set for this app (NEXT_PUBLIC_CHAIN_READ_RPC_<CHAIN>)
+//   no-reader    the chain is an EVM chain: this app does not read its registry yet, node or no node
 //   no-deployment  no deployment is committed for the chain's network: no mints to read lines with
 //   family-id    the portfolio's id is not the one its slug gives: it was not published through the
 //                app, and the slug-to-id link is our server's word
@@ -53,7 +53,7 @@ export type ChainCheck =
    * lies can cause any of these, so nothing is offered: no buy and no follow, as for `missing`.
    */
   | { state: 'failed' }
-  | { state: 'unverified'; why: 'mock' | 'no-node' | 'no-deployment' | 'family-id' };
+  | { state: 'unverified'; why: 'mock' | 'no-node' | 'no-reader' | 'no-deployment' | 'family-id' };
 
 const sameTargets = (a: readonly Target[], b: readonly Target[]) =>
   a.length === b.length &&
@@ -96,8 +96,8 @@ export function useChainRecipe(
       const deployment = deploymentsFor(chain, false)?.[chain];
       const node = chainNode(chain);
       if (!deployment) say({ state: 'unverified', why: 'no-deployment' });
-      else if (deployment.family !== 'solana' || !node)
-        say({ state: 'unverified', why: 'no-node' });
+      else if (deployment.family !== 'solana') say({ state: 'unverified', why: 'no-reader' });
+      else if (!node) say({ state: 'unverified', why: 'no-node' });
       // From here this app can read the chain: whatever stops the read stops the follow.
       else if (!creator) say({ state: 'failed' });
       else {

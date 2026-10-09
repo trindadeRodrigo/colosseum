@@ -96,6 +96,9 @@ describe('the routes sign-in knows', () => {
       '/shelf',
       '/sign-in',
       '/vaults/[chain]/[address]',
+      '/vaults/[chain]/[address]/add',
+      '/vaults/[chain]/[address]/targets',
+      '/vaults/[chain]/[address]/withdraw',
     ]);
     expect([...APP_ROUTES].sort()).toEqual(pages);
   });

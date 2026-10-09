@@ -11,3 +11,7 @@
 
 # The genesis hash of Solana's public testnet cluster, in a test that the set-up refuses it (Oct 4).
 33165e9cf7b3c00a7142358ac4186bd96e5676b0:programs/tests/testnet-setup.test.ts:generic-api-key:322
+
+# The public mint address of the JupUSD token on Solana, written after the words "spl-token" in the
+# research note on the yield shelf (Oct 6). A mint is public chain data, read from the issuer's own API.
+db40ae2ccd48e69b0feea91fe2cae88ff7a37441:docs/vault/research/yield-shelf/solana.md:generic-api-key:149

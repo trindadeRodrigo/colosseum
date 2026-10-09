@@ -24,19 +24,24 @@ export function PlanGate({
   const t = useT();
   const titleId = useId();
   const link = buttonClass({ variant: 'secondary' });
+  const primary = buttonClass({ variant: 'primary' });
   if (state.kind === 'loading')
     return (
       <Card>
         <CardWait label={t.chain.reading} skeleton={<SkeletonPlan />} />
       </Card>
     );
-  const say = (title: string, body: string, action: { href: string; label: string }) => (
+  const say = (
+    title: string,
+    body: string,
+    action: { href: string; label: string; primary?: boolean },
+  ) => (
     <section aria-labelledby={titleId} className="flex flex-col items-start gap-4">
       <h1 id={titleId} className={PAGE_TITLE}>
         {title}
       </h1>
       <p className="max-w-(--tf-measure-body) text-body">{body}</p>
-      <Link href={action.href} className={link}>
+      <Link href={action.href} className={action.primary ? primary : link}>
         {action.label}
       </Link>
     </section>
@@ -52,7 +57,13 @@ export function PlanGate({
       href: `/sign-in?next=${next}`,
       label: t.goal.chain.choose,
     });
-  if (state.kind === 'missing') return say(t.plan.missing.title, t.plan.missing.body, goal);
+  // The one thing to do about a plan that is not here is to build it again: the page's main button.
+  if (state.kind === 'missing')
+    return say(t.plan.missing.title, t.plan.missing.body, {
+      href: '/goal',
+      label: t.plan.missing.again,
+      primary: true,
+    });
   if (state.kind === 'split') return say(t.plan.title, t.plan.split, goal);
   return say(t.plan.title, t.plan.unsignable(t.chain.names[state.planChain]), goal);
 }

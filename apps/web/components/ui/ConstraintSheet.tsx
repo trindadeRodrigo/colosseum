@@ -109,6 +109,16 @@ export type ConstraintSheetProps<Sheet> = Common &
         binding?: string;
         /** The last field and the button share a row: the capital to plan with. */
         capital?: SheetField;
+        /**
+         * The fields a first plan seldom needs, folded under one line ("More limits"). They are still
+         * the sheet's: checked with the rest, and the fold opens by itself when one does not fit.
+         */
+        more?: { label: string; groups: readonly SheetGroup[] };
+        /**
+         * The next step, when it is not building: a link in the button's place ("Sign in to build my
+         * plan"). It is what the person does next, so it is not said as something that does not fit.
+         */
+        next?: { label: string; href: string };
       }
     | {
         /** The plan view: the same labels and values, with no wells. */
@@ -201,7 +211,17 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
       </section>
     );
 
-  const { state = 'idle', onChange, valid, onBuild, otherIssues = [], binding, capital } = props;
+  const {
+    state = 'idle',
+    onChange,
+    valid,
+    onBuild,
+    otherIssues = [],
+    binding,
+    capital,
+    more,
+    next,
+  } = props;
 
   if (state === 'parsing')
     return (
@@ -211,7 +231,8 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
       </section>
     );
 
-  const every = [...groups.flatMap((g) => g.fields), ...(capital ? [capital] : [])];
+  const folded = (more?.groups ?? []).flatMap((g) => g.fields);
+  const every = [...groups.flatMap((g) => g.fields), ...folded, ...(capital ? [capital] : [])];
   const wrong = every.filter((field) => field.error);
   const count = wrong.length + otherIssues.length;
   // A field with nothing in it yet is missing: it has not been found not to fit. Right after a goal
@@ -340,29 +361,53 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
           </fieldset>
         ))}
 
+        {more && more.groups.length > 0 && (
+          <details data-ui="sheet-more" open={folded.some((f) => f.error) || undefined}>
+            <summary className="cursor-pointer text-caption font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+              {more.label}
+            </summary>
+            <div className="mt-4 flex flex-col gap-6">
+              {more.groups.map((group) => (
+                <fieldset key={group.legend} className="min-w-0">
+                  <legend className={RULE}>{group.legend}</legend>
+                  <div className="flex flex-wrap items-start gap-x-6 gap-y-4">
+                    {group.fields.map(control)}
+                  </div>
+                </fieldset>
+              ))}
+            </div>
+          </details>
+        )}
+
         <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4 border-t border-border pt-4">
           {capital ? control(capital) : <span />}
           <div className="flex flex-col items-end gap-1.5">
-            <Button
-              variant="primary"
-              busy={solving}
-              busyLabel={text.building}
-              disabled={blocked && !solving}
-              // What blocks the build is said where the button can point to it: the line under
-              // it while fields are wrong, the list above when what blocks is not a field.
-              aria-describedby={
-                blocked && count > 0 ? (wrong.length > 0 ? fixId : summaryId) : undefined
-              }
-              onDisabledClick={() => summary.current?.focus()}
-              onClick={() => {
-                // The button refuses a click while it is disabled or busy. This is the sheet's own
-                // check, and it holds without the button's: only a parsed sheet with nothing left to
-                // fix is handed on, and never while a plan is already being built.
-                if (!solving && valid !== null && count === 0) onBuild(valid);
-              }}
-            >
-              {text.build}
-            </Button>
+            {next ? (
+              <Button variant="primary" href={next.href}>
+                {next.label}
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                busy={solving}
+                busyLabel={text.building}
+                disabled={blocked && !solving}
+                // What blocks the build is said where the button can point to it: the line under
+                // it while fields are wrong, the list above when what blocks is not a field.
+                aria-describedby={
+                  blocked && count > 0 ? (wrong.length > 0 ? fixId : summaryId) : undefined
+                }
+                onDisabledClick={() => summary.current?.focus()}
+                onClick={() => {
+                  // The button refuses a click while it is disabled or busy. This is the sheet's own
+                  // check, and it holds without the button's: only a parsed sheet with nothing left to
+                  // fix is handed on, and never while a plan is already being built.
+                  if (!solving && valid !== null && count === 0) onBuild(valid);
+                }}
+              >
+                {text.build}
+              </Button>
+            )}
             {blocked && wrong.length > 0 && (
               <p id={fixId} className="text-caption text-muted-foreground">
                 {missing === wrong.length

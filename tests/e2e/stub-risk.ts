@@ -26,8 +26,21 @@ function load(): Manifest | null {
 /** When the snapshot was captured: the spec sets the browser's clock against it. */
 export const riskCapturedAt = () => load()?.captured_at ?? null;
 
+// Robinhood Chain, which the recording predates: fixture answers in the API's shapes
+// (fixtures/risk/bearing-robinhood.json), each figure labelled `fixture`, so the page shows it with the
+// MOCK plate. Only Robinhood Chain's routes are served from it; the chains side by side is not, and
+// answers 404 as a route the recorded API did not have.
+const ROBINHOOD = join(import.meta.dirname, '../../fixtures/risk/bearing-robinhood.json');
+let robinhood: Record<string, { status: number; body: unknown }> | null = null;
+const robinhoodAnswer = (path: string) => {
+  robinhood ??= (JSON.parse(readFileSync(ROBINHOOD, 'utf8')) as { files: typeof robinhood }).files;
+  return /chain=robinhood|\/0x[0-9a-fA-F]{40}/.test(path) ? (robinhood?.[path] ?? null) : null;
+};
+
 /** The recorded answer to a GET under /risk, or a 404 like the API's for a route it does not have. */
 export function riskAnswer(pathAndQuery: string): { status: number; body: unknown } {
+  const fixed = robinhoodAnswer(pathAndQuery);
+  if (fixed) return fixed;
   const m = load();
   const name = m?.files[pathAndQuery];
   if (!name)

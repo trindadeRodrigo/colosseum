@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PAGE_TITLE } from './heading';
+import { PAGE_TITLE, WORKSPACE_TITLE } from './heading';
 import { read, sourceFiles } from './test/css';
 
 // One register per level across the product (STYLE.md, "The serif is spent once per screen"): a page's
@@ -13,11 +13,14 @@ const OWN = new Set([
   'features/wallet/dev/DevWallet.tsx',
 ]);
 
+const WORKSPACES = new Set(['features/goal-conversation/GoalConversation.tsx']);
+
 /** Every <h1 …> in a file whose class is not the page title's. */
-export function otherTitles(text: string): string[] {
+export function otherTitles(text: string, file?: string): string[] {
   return [...text.matchAll(/<h1\b[^>]*>/gs)]
     .map((m) => m[0])
-    .filter((tag) => !/className=\{(`\$\{)?PAGE_TITLE/.test(tag) && !/vaults\.length/.test(tag));
+    .filter((tag) => !/className=\{(`\$\{)?PAGE_TITLE/.test(tag) && !/vaults\.length/.test(tag))
+    .filter((tag) => !(file && WORKSPACES.has(file) && /className=\{WORKSPACE_TITLE\}/.test(tag)));
 }
 
 describe('a page’s title', () => {
@@ -25,11 +28,28 @@ describe('a page’s title', () => {
     const files = [...sourceFiles()].filter(
       (f) => /^features\/.+\.tsx$/.test(f) && !f.includes('.test.') && !OWN.has(f),
     );
-    const found = files.flatMap((f) => otherTitles(read(f)).map((tag) => `${f}: ${tag}`));
+    const found = files.flatMap((f) => otherTitles(read(f), f).map((tag) => `${f}: ${tag}`));
     expect(found).toEqual([]);
     expect(PAGE_TITLE.split(' ')).toEqual(
       expect.arrayContaining(['font-display', 'text-h1', 'font-normal']),
     );
+  });
+
+  it('permits only the exact shared workspace title in the Invest workspace', () => {
+    expect(WORKSPACE_TITLE).toBe('text-body-lg font-semibold');
+    const title = '<h1 className={WORKSPACE_TITLE}>Invest</h1>';
+    for (const file of WORKSPACES) {
+      expect(otherTitles(title, file)).toEqual([]);
+      expect(
+        otherTitles('<h1 className="text-body-lg font-semibold">Invest</h1>', file),
+      ).toHaveLength(1);
+      expect(
+        otherTitles('<h1 className={WORKSPACE_TITLE + " text-h1"}>Invest</h1>', file),
+      ).toHaveLength(1);
+      expect(otherTitles('<h1 className="text-h2">Another title</h1>', file)).toHaveLength(1);
+    }
+    expect(otherTitles(title, 'features/shared/VaultScreen.tsx')).toHaveLength(1);
+    expect(otherTitles(title)).toHaveLength(1);
   });
 
   it('bites: a gated state titled in another register is found', () => {

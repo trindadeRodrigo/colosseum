@@ -10,12 +10,12 @@ import {
   sheet,
   violations,
 } from './testing';
-import { PersonalInputError, type PersonalProposal, type PersonalSheet, SLEEVES } from './types';
+import { type PersonalProposal, type PersonalSheet, SLEEVES } from './types';
 
 // Slice 2 of docs/vault/PROMPT-BUILD-SOLVER.md, step 1: the person's split of a plan (gate SLEEVES).
 // A goal sleeve keeps the table and the floors, scaled to its share; a safe-yield sleeve holds rate
-// legs only, by the banded fill, and what no rate leg takes stays in cash. A theme sleeve waits for
-// slice 4 and is refused.
+// legs only, by the banded fill, and what no rate leg takes stays in cash. The theme sleeve is
+// slice 4's: themes.test.ts.
 
 const shelf = launchShelf();
 const ctx = fixtureContext();
@@ -130,21 +130,17 @@ describe('the safe-yield sleeve: rate legs only, then cash', () => {
   });
 });
 
-describe('a theme sleeve waits for slice 4', () => {
-  it('is refused, never ignored', () => {
+describe('a theme sleeve (slice 4, themes.test.ts)', () => {
+  it('with no theme list given, holds no name and says so, never ignored', () => {
     const s = on('solana', {
       sleeves: [
         { kind: 'goal', shareBps: 5000 },
         { kind: 'theme', shareBps: 5000, theme: 'ai' },
       ],
     });
-    expect(() => compose(s, shelf, ctx)).toThrow(PersonalInputError);
-    try {
-      compose(s, shelf, ctx);
-    } catch (e) {
-      expect((e as PersonalInputError).issues).toEqual([
-        { path: 'sleeves', message: 'a theme sleeve is not built yet' },
-      ]);
-    }
+    const plan = run(s);
+    expect(plan.flags).toContain('theme_no_list:ai');
+    expect(plan.split?.find((x) => x.kind === 'theme')?.amountUsd).toBe(5000);
+    expect(rules(plan)).toContain('OVERFLOW_THEME_NO_LIST');
   });
 });

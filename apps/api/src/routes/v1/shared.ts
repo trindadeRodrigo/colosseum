@@ -25,7 +25,9 @@ import {
   syncVersions,
   versionView,
 } from '../../orders/families';
+import { figuresOf } from '../../orders/figures';
 import type { OrderDeps } from '../../orders/legs';
+import type { PlanInputs } from '../../orders/personalize';
 import { autoFollowOffer, readRecipe } from '../../orders/shared';
 
 // The shared-portfolio reads (API-3, DESIGN-VAULT sections 6 and 11): the shelf, a shared portfolio's
@@ -89,11 +91,40 @@ async function onChain(
   };
 }
 
+/**
+ * The plan inputs of a chain (the stored yields, Bearing's sell depth), read once for an answer
+ * however many recipes it has on that chain. A read that fails is no figures, never a failed answer.
+ */
+type Figures = (entry: ChainEntry) => Promise<Awaited<ReturnType<PlanInputs>> | null>;
+function figuresReader(deps: OrderDeps, planInputs: PlanInputs): Figures {
+  const byChain = new Map<string, ReturnType<Figures>>();
+  return (entry) => {
+    const kept = byChain.get(entry.chain);
+    if (kept) return kept;
+    const read = (async () => {
+      try {
+        const assets = await entry.adapter.listAssets();
+        return await planInputs({
+          db: deps.db,
+          chain: entry.chain,
+          assets,
+          provenance: entry.provenance,
+        });
+      } catch {
+        return null;
+      }
+    })();
+    byChain.set(entry.chain, read);
+    return read;
+  };
+}
+
 async function recipeOf(
   deps: OrderDeps,
   family: StoredFamily,
   recipe: StoredRecipe,
   read: boolean,
+  figures: Figures,
 ): Promise<SharedRecipe | null> {
   const entry = entryOf(deps, recipe);
   if (!entry) return null;
@@ -101,6 +132,7 @@ async function recipeOf(
   if (!versions) return null;
   const { active, pending } = versions;
   const assets = await refusing(() => entry.adapter.listAssets());
+  const inputs = await figures(entry);
   const hash = metaHash({
     familyId: family.familyId,
     slug: family.slug,
@@ -125,6 +157,9 @@ async function recipeOf(
     source: versions.source,
     observedAt: versions.observedAt,
     provenance: entry.provenance,
+    ...(inputs
+      ? { figures: figuresOf(active.components, assets, inputs, deps.now().toISOString()) }
+      : {}),
   };
 }
 
@@ -133,11 +168,12 @@ async function familyOf(
   family: StoredFamily,
   chain: SharedChainQuery['chain'],
   read: boolean,
+  figures: Figures,
 ): Promise<SharedFamily> {
   const recipes: SharedRecipe[] = [];
   for (const r of family.recipes) {
     if (chain && r.chain !== chain) continue;
-    const view = await recipeOf(deps, family, r, read);
+    const view = await recipeOf(deps, family, r, read, figures);
     if (view) recipes.push(view);
   }
   return {
@@ -159,7 +195,11 @@ async function familyNamed(deps: OrderDeps, slug: string): Promise<StoredFamily>
   return family;
 }
 
-export function registerSharedRoutes(scope: FastifyInstance, deps: OrderDeps) {
+export function registerSharedRoutes(
+  scope: FastifyInstance,
+  deps: OrderDeps,
+  planInputs: PlanInputs = async () => ({}),
+) {
   const f = scope.withTypeProvider<ZodTypeProvider>();
   const tags = ['shared portfolios'];
 
@@ -171,7 +211,7 @@ export function registerSharedRoutes(scope: FastifyInstance, deps: OrderDeps) {
         tags,
         summary: 'Every shared portfolio, or those with a recipe on one chain',
         description:
-          "From the server's store, not the chains: each recipe's versions are the last the server read (`source: 'cache'`). A signed-in person is offered only the portfolios with a recipe on their own chain: pass `chain`. A recipe on a chain this server has switched off is left out. `autoFollow` says whether the auto-follow switch is offered: not on a portfolio that holds an asset with no price oracle on that chain, whose followers get the one-tap prompt instead. `name` and `copy` are the creator's words: `textMatches` says which version's hash they match, if any.",
+          "From the server's store, not the chains: each recipe's versions are the last the server read (`source: 'cache'`). A signed-in person is offered only the portfolios with a recipe on their own chain: pass `chain`. A recipe on a chain this server has switched off is left out. `autoFollow` says whether the auto-follow switch is offered: not on a portfolio that holds an asset with no price oracle on that chain, whose followers get the one-tap prompt instead. `name` and `copy` are the creator's words: `textMatches` says which version's hash they match, if any. `figures` is what the server has measured about the version in effect, the readings a plan is made from: each holding's stored yield and the most of it that can be sold within the exit window (each null where the server has none, never zero). Nothing is added up across the holdings.",
         querystring: SharedChainQuery,
         response: { 200: ShelfResponse, default: OrderError },
       },
@@ -179,8 +219,9 @@ export function registerSharedRoutes(scope: FastifyInstance, deps: OrderDeps) {
     async (req) => {
       const { chain } = req.query;
       const families: SharedFamily[] = [];
+      const figures = figuresReader(deps, planInputs);
       for (const stored of await allFamilies(deps.db)) {
-        const family = await familyOf(deps, stored, chain, false);
+        const family = await familyOf(deps, stored, chain, false, figures);
         if (chain && !family.recipes.length) continue;
         families.push(family);
       }
@@ -203,7 +244,13 @@ export function registerSharedRoutes(scope: FastifyInstance, deps: OrderDeps) {
       },
     },
     async (req) => ({
-      family: await familyOf(deps, await familyNamed(deps, req.params.slug), req.query.chain, true),
+      family: await familyOf(
+        deps,
+        await familyNamed(deps, req.params.slug),
+        req.query.chain,
+        true,
+        figuresReader(deps, planInputs),
+      ),
       disclaimer: DISCLAIMER.en,
     }),
   );

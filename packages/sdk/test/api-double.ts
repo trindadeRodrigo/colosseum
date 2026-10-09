@@ -50,7 +50,7 @@ export type Placed = {
   summary: string;
   depositRaw?: string;
   needsConsent: OrderDetail['needsConsent'];
-  steps: Pick<Leg, 'kind' | 'description' | 'trades' | 'cashRaw'>[];
+  steps: Pick<Leg, 'kind' | 'description' | 'trades' | 'cashRaw' | 'withdrawals'>[];
   /** Builds a step of this order: one transaction, as the adapter builds it. */
   build(leg: Leg, nonce: number | undefined): Promise<BuiltTx>;
 };
@@ -157,13 +157,24 @@ export function apiDouble(
     const own = builders.get(order.id);
     if (own) return own(leg, nonce);
     const cashRaw = order.depositRaw ?? '0';
-    const shared = nonce === undefined ? {} : { nonce };
     const trades = leg.trades.length ? leg.trades : undefined;
+    // As the API builds a step (apps/api/src/orders/legs.ts): with the minimums the order stated when
+    // it was made, never ones worked out from the price at the moment of the build.
+    const minimums =
+      trades && leg.expected.length === trades.length
+        ? leg.expected.map((figure) => figure.minOutRaw)
+        : undefined;
+    const shared = { ...(nonce === undefined ? {} : { nonce }), ...(minimums ? { minimums } : {}) };
     const vault = async () =>
       (await vaultOf()) ?? refuse(409, 'the vault for this plan is not open yet');
     switch (leg.kind) {
       case 'approve':
-        return adapter.buildApprove({ owner, basketId, amountRaw: cashRaw, ...shared });
+        return adapter.buildApprove({
+          owner,
+          basketId,
+          amountRaw: cashRaw,
+          ...(nonce === undefined ? {} : { nonce }),
+        });
       case 'create_vault':
         return adapter.buildCreateVault({
           owner,

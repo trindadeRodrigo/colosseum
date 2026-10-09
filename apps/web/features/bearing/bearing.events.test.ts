@@ -118,9 +118,9 @@ describe('the commodities page on the recording', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(toggle.textContent).toBe('Hide menu');
     // the methodology is reached from here: the bar has no Resources item (Thom, Oct 6)
-    expect(find(host, '#bearing-nav a[href="/analytics/methodology"]').textContent).toBe(
-      'Methodology',
-    );
+    expect(
+      find(host, '#bearing-nav a[href="/analytics/methodology?chain=solana"]').textContent,
+    ).toBe('Methodology');
     await click(toggle);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(toggle.textContent).toBe('Show menu');
@@ -391,6 +391,8 @@ describe('the banner: live, stale with time, or the API down', () => {
     const region = find(host, '[data-ui="waiting"]');
     expect(region.getAttribute('aria-busy')).toBe('true');
     const kpis = [...region.querySelectorAll('[data-ui="bearing-kpi"]')];
+    // no counter names the chain: the page's switch does, once
+    for (const k of kpis) expect(k.querySelector('[data-ui="chain-badge"]')).toBeNull();
     expect(kpis.map((k) => k.firstElementChild?.textContent)).toEqual([
       'Pool TVL',
       'Pools',

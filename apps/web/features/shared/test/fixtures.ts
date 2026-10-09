@@ -187,3 +187,50 @@ export const FUNDED = {
   newVault: true,
   ok: true,
 };
+
+/**
+ * A withdrawal, as POST /v1/orders answers it: one `withdraw` step per list, each naming what it takes
+ * out (`amountRaw` null: all the vault holds of the token).
+ */
+export const withdrawOrder = (
+  steps: { asset: string; amountRaw: string | null; heldRaw: string }[][],
+  over: Record<string, unknown> = {},
+  /** The vault had auto-follow on: the first step switches it off. */
+  autoFollowOff = false,
+) => {
+  const first = autoFollowOff ? [{ ...leg, id: LEG_C, seq: 0, kind: 'set_auto_follow' }] : [];
+  return order({
+    type: 'withdraw',
+    legs: [
+      ...first,
+      ...steps.map((withdrawals, i) => ({
+        ...leg,
+        id: [LEG_A, LEG_B, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'][i],
+        seq: i + first.length,
+        kind: 'withdraw',
+        withdrawals,
+      })),
+    ],
+    ...over,
+  });
+};
+
+/**
+ * New targets for a vault, as POST /v1/vaults/{chain}/{address}/targets answers a confirm (#191): the
+ * step that sets them, then a swap into them.
+ */
+export const retargetOrder = (buy = 'solana:gldx') =>
+  order({
+    type: 'rebalance',
+    legs: [
+      { ...leg, id: LEG_A, seq: 0, kind: 'set_targets' },
+      {
+        ...leg,
+        id: LEG_B,
+        seq: 1,
+        kind: 'swap',
+        trades: [{ sell: 'solana:usdc', buy, amountInRaw: '20000000' }],
+        expected: [{ inRaw: '20000000', outRaw: '100', minOutRaw: '99', costBps: 10 }],
+      },
+    ],
+  });

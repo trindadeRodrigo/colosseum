@@ -1,11 +1,9 @@
 import { goalMetadata } from '../../../components/shell/metadata';
-import { GoalScreen } from '../../../features/goal/GoalScreen';
+import { GoalEntry } from '../../../features/goal-conversation/GoalEntry';
 import { PortfolioSummary } from '../../../features/portfolio/PortfolioSummary';
 
-// The product's first screen. The goal comes first (DESIGN-VAULT section 11): the question, the typing
-// box and the limits. Under it, for a person who already holds a vault, one line on where their money
-// is, and the way to the monitor. `/` is his landing page for a visitor, and leads a person signed in
-// on this browser here (app/(marketing)/page.tsx).
+// Strategy exploration opens as a private, browser-scoped conversation and sourced preview.
+// Existing vaults stay in a collapsed switcher below; `/monitor` retains the full portfolio.
 
 export function generateMetadata() {
   return goalMetadata();
@@ -13,8 +11,8 @@ export function generateMetadata() {
 
 export default function GoalPage() {
   return (
-    <div className="flex flex-col gap-12">
-      <GoalScreen />
+    <div className="flex min-w-0 flex-col gap-8">
+      <GoalEntry />
       <PortfolioSummary />
     </div>
   );

@@ -13,7 +13,18 @@ type Manifest = { captured_at: string; files: Record<string, string> };
 export const manifest = JSON.parse(readFileSync(join(DIR, 'manifest.json'), 'utf8')) as Manifest;
 export const CAPTURED = Date.parse(manifest.captured_at);
 
+// Robinhood Chain and the chains side by side, which the recording predates: the fixture the e2e stub
+// serves too (fixtures/risk/bearing-robinhood.json). Not measurements; each source says so.
+const ROBINHOOD = JSON.parse(
+  readFileSync(
+    join(import.meta.dirname, '../../../../../fixtures/risk/bearing-robinhood.json'),
+    'utf8',
+  ),
+) as { files: Record<string, { status: number; body: unknown }> };
+
 export function answer<T>(path: string): Res<T> {
+  const fixed = ROBINHOOD.files[path];
+  if (fixed) return { ok: true, status: fixed.status, body: fixed.body as T, reason: null };
   const name = manifest.files[path];
   if (!name || !existsSync(join(DIR, 'snapshot', name)))
     return {
