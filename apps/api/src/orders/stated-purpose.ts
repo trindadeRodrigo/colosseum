@@ -10,9 +10,11 @@ import type { VaultAgentRequest, VaultAgentStatedPurpose } from '@colosseum/sche
 // message is everyday filler or part of one statement of risk; and nowhere in it is there a refusal, a
 // correction, a comparison, a hedge, a question, a digit or any character that is not a letter, a space
 // or plain punctuation. The same for risk. The latest message wins, strictly: from the newest to the
-// oldest, a message that states the value cleanly sets it; one that does not, but names any value of
-// that kind or holds any refusal or correction, withdraws it; only a message with neither is passed
-// over for an older one.
+// oldest, a message that states the value cleanly sets it, and any other message withdraws it, unless
+// it is plainly about something else. That is an allow-list too: a message made only of listed asset
+// and company names, figures and a few words for changing a mix ("add more Tesla"), a clean statement
+// of the other kind, or a courtesy alone. A courtesy in answer to a question of the app's that names
+// the kind withdraws it: the server does not read a value from "yes".
 
 type Goal = NonNullable<VaultAgentStatedPurpose['goal']>;
 type Risk = NonNullable<VaultAgentStatedPurpose['risk']>;
@@ -109,13 +111,55 @@ const FILLER = new Set(
 
 type Read<T> = { state: 'none' } | { state: 'withdrawn' } | { state: 'said'; value: T };
 
+/** What a later message may be made of and leave an earlier goal or risk standing: changes to the mix. */
+const MIX_WORDS = new Set(
+  `add remove drop swap replace put include buy sell more less some half rest split equally equal percent
+  with and for in of to the a an i i'd want would like can could you me also too into my please thanks
+  thank ok okay
+  adicione adiciona adicionar coloque coloca colocar inclua inclui incluir compre comprar venda vender
+  tire tira tirar remova remove remover troque troca trocar mais menos pouco metade resto por cento
+  com e de em o os as um uma eu quero queria gostaria pode também tambem favor obrigado obrigada`
+    .split(/\s+/)
+    .filter(Boolean),
+);
+/** Kinds of asset a person names without a ticker. */
+const ASSET_KINDS = new Set(
+  'stock stocks shares bonds gold cash crypto fund funds etf etfs treasuries ações acoes títulos titulos ouro caixa fundo fundos cripto'.split(
+    ' ',
+  ),
+);
+/** A message of nothing but these is a courtesy. */
+const COURTESY_ALONE = new Set(
+  'thanks thank you ok okay yes yeah yep sure great good perfect nice cool fine please obrigado obrigada sim claro certo beleza valeu ótimo otimo perfeito bom legal'.split(
+    ' ',
+  ),
+);
+/** Words of a company's or a token's name that are everyday words: they do not make a message about an asset. */
+const NOT_A_NAME = new Set(
+  'meta strategy circle oracle target block inc corp corporation company co group holdings holding trust platforms global technologies markets the and of class series limited ltd plc fund etf token tokenized'.split(
+    ' ',
+  ),
+);
+const tokensOf = (text: string) =>
+  text
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}']+/u)
+    .filter(Boolean);
+
 /** The values of one kind whose words are in the message. */
 function found<T extends string>(text: string, words: Record<T, string>): T[] {
   return (Object.keys(words) as T[]).filter((value) => word(words[value]).test(text));
 }
 
+type MessageRead = {
+  goal: Read<Goal>;
+  risk: Read<Risk>;
+  text: string;
+  mentions: { goal: boolean; risk: boolean };
+};
+
 /** One message, read whole. */
-function readMessage(message: string): { goal: Read<Goal>; risk: Read<Risk> } {
+function readMessage(message: string): MessageRead {
   // The same letters however they were typed; a line break, like a colon, is a space.
   const text = message
     .normalize('NFC')
@@ -131,10 +175,7 @@ function readMessage(message: string): { goal: Read<Goal>; risk: Read<Risk> } {
   let rest = text;
   for (const words of [...Object.values(RISK_WORDS), ...Object.values(GOAL_WORDS)])
     rest = rest.replace(word(words, 'giu'), ' ');
-  const tokens = rest
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}']+/u)
-    .filter(Boolean);
+  const tokens = tokensOf(rest);
   const plain =
     readable &&
     !refuses &&
@@ -152,30 +193,79 @@ function readMessage(message: string): { goal: Read<Goal>; risk: Read<Risk> } {
       : mentioned || refuses
         ? { state: 'withdrawn' }
         : { state: 'none' };
+  const mentions = { goal: GOAL_MENTION.test(text), risk: RISK_MENTION.test(text) };
   return {
-    goal: read(goals, meant, GOAL_MENTION.test(text)),
-    risk: read(risks, meant || OWN_LEVEL.test(text), RISK_MENTION.test(text)),
+    goal: read(goals, meant, mentions.goal),
+    risk: read(risks, meant || OWN_LEVEL.test(text), mentions.risk),
+    text,
+    mentions,
   };
 }
 
 /**
- * The goal and risk as the person's messages state them now, each null when they do not. Only the
- * person's messages are read, the newest first, for the goal and for the risk separately: the first
- * that states the value or withdraws it settles it. So an earlier statement stands only through
- * messages that have nothing to do with it, and "yes" to a question of the app's states nothing.
+ * The words that name a listed asset: each word of a symbol, an underlying or a company name, and a
+ * token's symbol without the letters a token adds ("tSPYx" is SPY). Everyday words are left out.
  */
-export function statedPurpose(messages: VaultAgentRequest['messages']): VaultAgentStatedPurpose {
-  const reads = messages
-    .filter((message) => message.who === 'person')
-    .map((message) => readMessage(message.text))
-    .reverse();
-  const settled = <T>(of: (read: (typeof reads)[number]) => Read<T>): T | null => {
-    for (const read of reads) {
-      const kind = of(read);
-      if (kind.state === 'said') return kind.value;
-      if (kind.state === 'withdrawn') return null;
+function nameWords(names: readonly string[]): Set<string> {
+  const words = new Set<string>();
+  for (const token of names.flatMap((name) => tokensOf(name.normalize('NFC')))) {
+    for (const form of [token, token.replace(/x$/, ''), token.replace(/^t/, '').replace(/x$/, '')])
+      if (form.length >= 2 && !NOT_A_NAME.has(form)) words.add(form);
+  }
+  return words;
+}
+
+/**
+ * The goal and risk as the person's messages state them now, each null when they do not. Only the
+ * person's messages are read, the newest first, for the goal and for the risk separately. A message
+ * that states the value cleanly settles it. Any other message withdraws it and ends the walk, unless
+ * it is plainly about something else: a change to the mix in listed names, figures and mix words, a
+ * clean statement of the other kind alone, or a courtesy that does not answer a question about this
+ * kind. `names` are the catalog's symbols, underlyings and company names.
+ */
+export function statedPurpose(
+  messages: VaultAgentRequest['messages'],
+  names: readonly string[] = [],
+): VaultAgentStatedPurpose {
+  const listed = nameWords(names);
+  const turns = messages.flatMap((message, index) => {
+    if (message.who !== 'person') return [];
+    const before = messages[index - 1];
+    const read = readMessage(message.text);
+    const tokens = tokensOf(read.text);
+    // Readable as a change to the mix: letters, figures, spaces and plain punctuation with % and $.
+    const readable = !/[^\p{L}\p{N} .,!?;:'"()%$/-]/u.test(read.text);
+    const figure = (token: string) => /^\d+$/.test(token);
+    const names = (token: string) => listed.has(token) || ASSET_KINDS.has(token) || figure(token);
+    const aboutTheMix =
+      readable &&
+      !read.mentions.goal &&
+      !read.mentions.risk &&
+      tokens.some(names) &&
+      tokens.every((token) => names(token) || MIX_WORDS.has(token));
+    const courtesy =
+      readable && tokens.length > 0 && tokens.every((token) => COURTESY_ALONE.has(token));
+    // The question the courtesy answers, where the app's message just before it is one.
+    const asked =
+      before?.who === 'app' && before.text.includes('?')
+        ? { goal: GOAL_MENTION.test(before.text), risk: RISK_MENTION.test(before.text) }
+        : { goal: false, risk: false };
+    return [{ read, aboutTheMix, courtesy, asked }];
+  });
+  const settled = <K extends 'goal' | 'risk'>(
+    kind: K,
+    other: 'goal' | 'risk',
+  ): VaultAgentStatedPurpose[K] => {
+    for (const turn of [...turns].reverse()) {
+      const mine = turn.read[kind];
+      if (mine.state === 'said') return mine.value as VaultAgentStatedPurpose[K];
+      const elsewhere =
+        turn.aboutTheMix ||
+        (turn.courtesy && !turn.asked[kind]) ||
+        (turn.read[other].state === 'said' && !turn.read.mentions[kind]);
+      if (!elsewhere) return null;
     }
     return null;
   };
-  return { goal: settled((read) => read.goal), risk: settled((read) => read.risk) };
+  return { goal: settled('goal', 'risk'), risk: settled('risk', 'goal') };
 }

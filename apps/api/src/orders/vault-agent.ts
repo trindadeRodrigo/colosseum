@@ -634,6 +634,20 @@ function eligibilityGoal(context: ConversationAgentContext): 'grow' | 'income' |
   return null;
 }
 
+/**
+ * The goal and risk the person's messages state (stated-purpose.ts), read with the catalog's names so a
+ * later message about the mix ("add more Tesla") is known for what it is.
+ */
+export function statedPurposeIn(
+  messages: VaultAgentRequest['messages'],
+  context: Pick<ConversationAgentContext, 'assets' | 'stockAttributes'>,
+): VaultAgentStatedPurpose {
+  return statedPurpose(messages, [
+    ...context.assets.flatMap((asset) => [asset.symbol, asset.underlying]),
+    ...(context.stockAttributes?.stocks ?? []).flatMap((row) => [row.symbol, row.company]),
+  ]);
+}
+
 function hasNonFiniteNumber(value: unknown): boolean {
   if (typeof value === 'number') return !Number.isFinite(value);
   if (Array.isArray(value)) return value.some(hasNonFiniteNumber);
@@ -1657,7 +1671,8 @@ export async function replyToVaultConversation(
     exitCostTolerance: PERSONAL_PARAMS.tau,
     exitCapacityBps: caps,
     eligibilityGoal: goal,
-    statedPurpose: context.kind === 'new_goal' ? statedPurpose(parsed.data.messages) : null,
+    statedPurpose:
+      context.kind === 'new_goal' ? statedPurposeIn(parsed.data.messages, context) : null,
     outsideGoal: [...outside],
     requestedOutsideGoal: [...outside].filter((id) => requested.has(id)),
     allocationConstraints: person.standing.map((share) => ({
