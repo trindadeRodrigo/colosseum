@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { DISCLAIMER, type EnvLike, parseFlags } from '@colosseum/schemas';
 import cors from '@fastify/cors';
 import swagger from '@fastify/swagger';
@@ -9,11 +10,14 @@ import {
   type ZodTypeProvider,
 } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { bearingAgentAnalytics } from './agent-analytics';
 import { DEPLOYMENTS_DIR, evmDeployment, solanaDeployment } from './deployments';
 import { V1_SECURITY_SCHEMES, v1Transform } from './openapi';
 import { bearingPlanInputs } from './plan-inputs';
 import { corsAllowlist, corsByPath } from './plugins/cors';
-import { requireDeclared } from './plugins/limits';
+import { hideServerErrors } from './plugins/errors';
+import { registerOpenWriteLimit, requireDeclared } from './plugins/limits';
+import { logForwardedHops, proxyTrust } from './plugins/proxy';
 import { loggerOptions } from './redact';
 import { registerMonitorRoutes } from './routes/monitor';
 import { registerPlanRoutes } from './routes/plans';
@@ -35,7 +39,13 @@ import { registerV1Routes, type V1Deps } from './routes/v1';
  * repo's own for the server, none for a test that passes its own environment unless it names one.
  */
 export async function buildApp(
-  deps: { v1?: V1Deps; env?: EnvLike; deployments?: string | null } = {},
+  deps: {
+    v1?: V1Deps;
+    env?: EnvLike;
+    deployments?: string | null;
+    /** Where the log's lines go, for a test that reads them. Default: the process's own output. */
+    logTo?: { write(line: string): void };
+  } = {},
 ) {
   const deployments =
     deps.deployments === undefined ? (deps.env ? null : DEPLOYMENTS_DIR) : deps.deployments;
@@ -56,15 +66,30 @@ export async function buildApp(
   const flags = parseFlags(env);
   const app = Fastify({
     // No node's URL in a log line (redact.ts): the configured ones, and any a library's error names.
-    logger: process.env.NODE_ENV !== 'test' ? loggerOptions({ ...process.env, ...env }) : false,
+    logger: deps.logTo
+      ? { ...loggerOptions({ ...process.env, ...env }), stream: deps.logTo }
+      : process.env.NODE_ENV !== 'test'
+        ? loggerOptions({ ...process.env, ...env })
+        : false,
+    // Whose address a request is counted against, behind a host's proxy (plugins/proxy.ts).
+    trustProxy: proxyTrust(env),
+    // Not a counter: a request's id is in the answer to a failed request, and says nothing of how
+    // many requests the server has taken.
+    genReqId: () => randomUUID(),
   }).withTypeProvider<ZodTypeProvider>();
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
+  // Before any route: one that throws outside /v1 answers the request id, not the error's message.
+  hideServerErrors(app);
   // Before any route: a path under /v1 is held to default deny wherever it is registered.
   const inScope = requireDeclared(app);
   // /v1 answers a browser only from the allowlist (CORS_ORIGINS). Every other route, the risk layer's
   // /risk/* included, reflects any origin as it always has.
   await app.register(cors, { delegator: corsByPath(corsAllowlist(env)) });
+  // After CORS, so a refusal still carries its headers and a browser can read it. The structurer's
+  // open writes share the anonymous budget, by address (plugins/limits.ts).
+  registerOpenWriteLimit(app, { limits: deps.v1?.limits, now: deps.v1?.now });
+  logForwardedHops(app);
   await app.register(swagger, {
     openapi: {
       openapi: '3.1.0',
@@ -111,6 +136,11 @@ export async function buildApp(
     solanaRecord: deps.v1?.solanaRecord ?? solana.record,
     robinhoodRecord: deps.v1?.robinhoodRecord ?? robinhood.record,
     planInputs: deps.v1?.planInputs ?? bearingPlanInputs,
+    agentAnalytics: deps.v1?.agentAnalytics ?? bearingAgentAnalytics,
+    // The server's own reader is warmed from the start; a test's, or a test of the server's, is not.
+    warmAgentAnalytics:
+      deps.v1?.warmAgentAnalytics ??
+      (deps.v1?.agentAnalytics === undefined && process.env.NODE_ENV !== 'test'),
     inScope,
   });
 

@@ -137,8 +137,10 @@ describe('loadOracleInput', () => {
       await tx.insert(riskAssetSnapshots).values([
         snap(NVDA, at(15), 100.5),
         snap(NVDA, at(16), 101.5),
-        // another stock's mid, and mids more than an hour outside the window
+        // another stock's mid, a mid a minute after `now` (a sheet for a past time never sees later
+        // snapshots), and mids more than an hour outside the window
         snap(NVDAX, at(15), 900),
+        snap(NVDA, new Date(NOW.getTime() + 60_000), 904),
         snap(NVDA, at(19, 30), 901),
         snap(NVDA, new Date('2020-01-01T00:00:00Z'), 902),
       ]);

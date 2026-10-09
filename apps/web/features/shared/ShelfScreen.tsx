@@ -8,23 +8,28 @@ import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardEmpty, CardHeader } from '../../components/ui/Card';
 import { ChainBadges } from '../../components/ui/ChainBadge';
 import { PAGE_TITLE } from '../../components/ui/heading';
+import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { SkeletonCards } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { chainInAddress } from '../account/chain-choice';
-import { assetTicker, formatBps } from '../order/amounts';
+import { formatBps, tokenName } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
+import { AssetMark } from '../order/PlanView';
 import { networkFor } from '../order/readiness';
 import { useApiFetch } from '../wallet/WalletProvider';
+import { HoldingsBar } from './HoldingsBar';
 import { isPlatformCreator } from './platform';
+import { holdingsOf, rate } from './product-figures';
 import { readShelf } from './shared-api';
 import { shortAddress, useSharedPerson } from './use-person';
 
-// The shelf (DESIGN-VAULT section 11): a card per shared portfolio, with its name, its creator's
-// address, the platform badge, the version in effect and its weights, and whether auto-follow is
-// offered on it (gate GOLD-ONE-TAP). It shows the portfolios with a recipe on one chain: a signed-in
+// The shelf (DESIGN-VAULT section 11; gate PRODUCTS-PLAN-PANE): a card per shared portfolio, the
+// figures first: one bar of what it holds with each share under it, each holding's yield with its pin, what it
+// is for in one line of its creator's, its chain and who published it. Whether auto-follow is offered
+// and a version that waits are on its page. It shows the portfolios with a recipe on one chain: a signed-in
 // person's current chain, or the chain someone signed out picked in the bar (gate CHAIN-SWITCH). The
 // address names it (`?chain=robinhood`), so a link opens the same shelf. What a card says is the
 // server's store: the portfolio's page reads the chain. A creator's name and description are text,
@@ -81,6 +86,15 @@ export function ShelfScreen() {
   }, [apiFetch, chain, settled, round]);
 
   const chainName = chain ? t.chain.names[chain] : null;
+  // Signed in when the page was read, signed out now: the person left while looking at it.
+  const wasIn = useRef(false);
+  const [left, setLeft] = useState(false);
+  useEffect(() => {
+    if (person.kind === 'ready') {
+      wasIn.current = true;
+      setLeft(false);
+    } else if (person.kind === 'signed-out' && wasIn.current) setLeft(true);
+  }, [person.kind]);
   return (
     <div data-ui="shelf-screen" className="flex flex-col gap-8">
       <header className="flex flex-col gap-3">
@@ -94,6 +108,21 @@ export function ShelfScreen() {
           <Link href="/publish" className={`${buttonClass({ variant: 'link' })} self-start`}>
             {t.shared.shelf.publish}
           </Link>
+        )}
+        {/* where a portfolio cannot be published yet, the shelf says so: no silent gap */}
+        {person.kind === 'ready' && !person.publishable && chainName && (
+          <p
+            data-ui="shelf-publish-soon"
+            className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground"
+          >
+            {t.shared.shelf.publishSoon(chainName)}
+          </p>
+        )}
+        {/* the bar says "signed out" to a screen reader; the page says it to the eye, with what it still shows */}
+        {left && person.kind === 'signed-out' && chainName && (
+          <p data-ui="shelf-signed-out" className="max-w-(--tf-measure-body) text-body-sm">
+            {t.shared.shelf.signedOut(chainName)}
+          </p>
         )}
       </header>
 
@@ -142,9 +171,16 @@ function FamilyCard({ family }: { family: SharedFamily }) {
   const t = useT();
   const lang = useLang();
   const c = t.shared.shelf.card;
+  const p = t.shared.product;
+  const locale = LOCALE[lang];
   const [recipe] = family.recipes;
   const href = `/indexes/${encodeURIComponent(family.slug)}`;
   const notLive = family.recipes.some((r) => r.provenance !== 'live');
+  const paying = recipe
+    ? holdingsOf(recipe, recipe.active.components, t).flatMap((h) =>
+        h.yield ? [{ asset: h.asset, yield: h.yield }] : [],
+      )
+    : [];
   return (
     <Card
       as="article"
@@ -152,10 +188,9 @@ function FamilyCard({ family }: { family: SharedFamily }) {
       className="h-full"
       mock={notLive}
       mockLabels={{
-        announce: t.shell.mockAnnounce,
-        note: family.recipes.some((r) => r.provenance === 'sandbox')
-          ? t.shell.testNetwork
-          : undefined,
+        announce: family.recipes.some((r) => r.provenance === 'sandbox')
+          ? t.shell.testNetworkLine
+          : t.shell.mockAnnounce,
       }}
     >
       <CardHeader
@@ -168,9 +203,64 @@ function FamilyCard({ family }: { family: SharedFamily }) {
             {family.name}
           </Link>
         }
-        meta={recipe ? c.version(recipe.active.version) : undefined}
+        // The list mixes chains, so each card names its own.
+        meta={<ChainBadges chains={family.chains} />}
       />
       <CardBody className="flex flex-col gap-3">
+        {/* The figures first: what it holds, as one bar with each share said under it, then its yield. */}
+        {recipe && (
+          <div className="flex flex-col gap-2">
+            <HoldingsBar
+              shares={recipe.active.components.map((x) => ({
+                key: x.asset,
+                shareBps: x.weightBps,
+              }))}
+            />
+            <ul className="grid gap-x-5 gap-y-2 sm:grid-cols-2">
+              {recipe.active.components.map((component) => (
+                <li key={component.asset} className="flex min-w-0 items-center gap-2 text-body-sm">
+                  <AssetMark asset={component.asset} />
+                  <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                    {tokenName(component.asset)}
+                  </span>{' '}
+                  <span className="shrink-0 tabular-nums">
+                    {formatBps(component.weightBps, locale)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {recipe && (
+          // Each holding that has a reading, with its own yield and pin: nothing is added up across
+          // them. Above the card's stretched link, so a pin can be opened.
+          <p
+            data-ui="product-yield"
+            className="relative z-10 flex w-fit flex-wrap items-baseline gap-x-3 gap-y-1 text-body-sm"
+          >
+            <span className="text-muted-foreground">{p.yield}:</span>
+            {paying.length > 0 ? (
+              paying.map((h) => (
+                <span key={h.asset} className="inline-flex items-baseline gap-1.5">
+                  <span className="font-mono">{tokenName(h.asset)}</span>
+                  <ProvenancePin
+                    value={rate(h.yield.afterHaircut, locale)}
+                    obs={h.yield.obs}
+                    labels={t.pin}
+                  />
+                </span>
+              ))
+            ) : (
+              <span>{p.noYieldReading}</span>
+            )}
+          </p>
+        )}
+        {/* What it is for, in the creator's own words: one line, as text. */}
+        {family.copy && (
+          <p className="line-clamp-2 max-w-(--tf-measure-body) text-body-sm [overflow-wrap:anywhere]">
+            {family.copy}
+          </p>
+        )}
         <p className="flex flex-wrap items-baseline gap-x-2 text-body-sm text-muted-foreground">
           {recipe && (
             <span className="font-mono text-source" title={recipe.creator}>
@@ -183,25 +273,13 @@ function FamilyCard({ family }: { family: SharedFamily }) {
               recipe.chain,
               recipe.creator,
             ) && <span className="font-medium text-foreground">{c.platform}</span>}
-          <span className="inline-flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
-            {c.on} <ChainBadges chains={family.chains} />
-          </span>
+          {recipe && <span>{c.version(recipe.active.version)}</span>}
         </p>
-        {family.copy && (
-          <p className="line-clamp-3 max-w-(--tf-measure-body) text-body-sm [overflow-wrap:anywhere]">
-            {family.copy}
-          </p>
-        )}
-        {recipe && <Weights recipe={recipe} locale={LOCALE[lang]} />}
-        {recipe && <Offer recipe={recipe} />}
         {recipe && recipe.textMatches === null && (
           <p className="flex items-start gap-1.5 text-body-sm">
             <StatusMark status="watch" className="mt-1.5" />
             <span>{t.shared.text.unverified}</span>
           </p>
-        )}
-        {recipe?.pending && (
-          <p className="text-body-sm text-muted-foreground">{c.waiting(recipe.pending.version)}</p>
         )}
       </CardBody>
     </Card>
@@ -213,7 +291,7 @@ export function Weights({ recipe, locale }: { recipe: SharedRecipe; locale: stri
   return (
     <p className="font-mono text-source [overflow-wrap:anywhere]">
       {recipe.active.components
-        .map((c) => `${assetTicker(c.asset)} ${formatBps(c.weightBps, locale)}`)
+        .map((c) => `${tokenName(c.asset)} ${formatBps(c.weightBps, locale)}`)
         .join(' · ')}
     </p>
   );
@@ -228,7 +306,7 @@ export function Offer({ recipe }: { recipe: SharedRecipe }) {
   const sentence = offer.offered
     ? o.offered
     : offer.reason === 'no_oracle'
-      ? o.noOracle(offer.assets.map((a) => assetTicker(a)).join(', '), name)
+      ? o.noOracle(offer.assets.map((a) => tokenName(a)).join(', '), name)
       : o.switchedOff(name);
   return (
     <p

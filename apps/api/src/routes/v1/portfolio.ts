@@ -5,7 +5,7 @@ import {
   DISCLAIMER,
   OrderError,
   PortfolioResponse,
-  type WalletAccount,
+  type Principal,
 } from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -13,11 +13,20 @@ import type { ChainEntry } from '../../orders/chains';
 import { Refusal, refusalFromChainError } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { chainsHeld } from '../../orders/person';
-import { cacheVault } from '../../orders/store';
+import { type JoinLog, joinMissed } from '../../orders/plan-join';
+import { cacheVault, everyPersonPlan, vaultNames } from '../../orders/store';
+import { loggable } from '../../plugins/loggable';
 import { signedIn } from './orders';
 
-async function chainPortfolio(deps: OrderDeps, entry: ChainEntry, wallets: WalletAccount[]) {
-  const owners = wallets.filter((w) => w.family === entry.config.family).map((w) => w.address);
+async function chainPortfolio(
+  deps: OrderDeps,
+  entry: ChainEntry,
+  principal: Principal,
+  log: JoinLog,
+) {
+  const owners = principal.wallets
+    .filter((w) => w.family === entry.config.family)
+    .map((w) => w.address);
   const states = (await Promise.all(owners.map((o) => entry.adapter.getVaults(o)))).flat();
   // Value, weight and drift come from the one place that computes them (packages/basket). It takes the
   // chain's asset list for each token's decimals.
@@ -36,6 +45,9 @@ async function chainPortfolio(deps: OrderDeps, entry: ChainEntry, wallets: Walle
   }));
   // The cache follows what was just read from the chain.
   for (const v of vaults) await cacheVault(deps.db, v, entry.provenance);
+  // A vault whose order confirmed without its plan being joined to it is joined now that it is in the
+  // cache (orders/plan-join.ts). The join is kept in the database and changes nothing in this answer.
+  await joinMissed(deps.db, entry.chain, vaults, principal, log);
   return {
     chain: entry.chain,
     name: entry.config.name,
@@ -77,7 +89,7 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
           retryable: false,
         }));
       const settled = await Promise.allSettled(
-        entries.map((entry) => chainPortfolio(deps, entry, principal.wallets)),
+        entries.map((entry) => chainPortfolio(deps, entry, principal, req.log)),
       );
       const chains = [];
       for (const [i, result] of settled.entries()) {
@@ -85,7 +97,10 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
         if (result.status === 'fulfilled') chains.push(result.value);
         else {
           if (!(result.reason instanceof ChainError) && !(result.reason instanceof Refusal))
-            req.log.error({ err: result.reason, chain: entry.chain }, 'portfolio read failed');
+            req.log.error(
+              { err: loggable(result.reason), chain: entry.chain },
+              'portfolio read failed',
+            );
           unavailable.push(unavailableOf(entry.chain, entry.config.name, result.reason));
         }
       }
@@ -102,7 +117,35 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
             details: { retryable: unavailable.some((u) => u.retryable) },
           },
         );
-      return { chains, unavailable, disclaimer: DISCLAIMER.en };
+      // Each vault with the name its owner gave it, and the plan of theirs it was opened from: a plan's
+      // buys kept its vault's number (`listPersonPlans`), so the join is by chain and number. Every
+      // page of the list is read: a vault's plan may be older than the fifty newest.
+      const anyVault = chains.some((c) => c.vaults.length > 0);
+      const plans = anyVault ? await everyPersonPlan(deps.db, principal) : [];
+      const planOf = new Map(
+        plans.flatMap((p) => {
+          const chain = p.proposal.sheet.chains[0] ?? p.proposal.recipes[0]?.chain;
+          return p.basketId !== null && chain ? [[`${chain}:${p.basketId}`, p.id] as const] : [];
+        }),
+      );
+      const named = await Promise.all(
+        chains.map(async (c) => {
+          const names = await vaultNames(
+            deps.db,
+            c.chain,
+            c.vaults.map((v) => v.address),
+          );
+          return {
+            ...c,
+            vaults: c.vaults.map((v) => ({
+              ...v,
+              name: names.get(v.address) ?? null,
+              planId: planOf.get(`${c.chain}:${v.basketId}`) ?? null,
+            })),
+          };
+        }),
+      );
+      return { chains: named, unavailable, disclaimer: DISCLAIMER.en };
     },
   );
 }

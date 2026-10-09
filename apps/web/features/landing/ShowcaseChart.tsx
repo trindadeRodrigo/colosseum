@@ -41,10 +41,11 @@ export const BAND = 20;
 const TOP = BAND + 6;
 /** The baseline of a word in the band. */
 const BAND_Y = 13;
-/** About how wide a character of the 10px mono face is: for keeping a word on the chart. */
-const CHAR = 6.2;
+/** About how wide a character of the 12px mono face is: for keeping a word on the chart. */
+const CHAR = 7.4;
 const BOTTOM = 26;
-const MONO = { fontFamily: 'var(--font-mono)', fontSize: 10 } as const;
+/** The charts' type: the mono face at 12px, the least the landing sets (the design pass, Oct 6). */
+const MONO = { fontFamily: 'var(--font-mono)', fontSize: 12 } as const;
 
 const monthName = (lang: Lang, ym: string) =>
   new Intl.DateTimeFormat(LOCALE[lang], {
@@ -151,6 +152,7 @@ export function TripChart({
   const left = axisLeft(
     grid.map((g) => thousands(lang, g)),
     44,
+    MONO.fontSize,
   );
   const right = 10;
   const width = W - left - right;
@@ -313,6 +315,7 @@ export function GrowthChart({
   const left = axisLeft(
     grid.map((g) => thousands(lang, g)),
     48,
+    MONO.fontSize,
   );
   const right = 10;
   const width = W - left - right;

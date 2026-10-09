@@ -2,7 +2,6 @@ import { asAddress, buildRevokeUnsigned, createRpc, readPositions } from '@colos
 import {
   assets as assetsTable,
   constraintSheets,
-  createDb,
   executions,
   planLegs,
   plans,
@@ -11,6 +10,7 @@ import {
   rebalances,
   recordBuilt,
   schedules,
+  sharedDb,
 } from '@colosseum/db';
 import { computeDrift, proposeRebalance } from '@colosseum/engine';
 import {
@@ -53,7 +53,8 @@ export type MonitorContext = Awaited<ReturnType<typeof registerMonitorRoutes>>;
 
 /** Monitoring: live positions vs the policy, proposal, next withdrawal, projected vs actual. */
 export async function registerMonitorRoutes(app: FastifyInstance) {
-  const { db } = createDb();
+  // The process's one pool (packages/db: `sharedDb`).
+  const { db } = sharedDb();
   let rpcInstance: ReturnType<typeof createRpc> | undefined;
   const rpc = () => (rpcInstance ??= createRpc());
   const f = app.withTypeProvider<ZodTypeProvider>();

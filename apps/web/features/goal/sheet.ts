@@ -70,12 +70,20 @@ const grouped = (text: string, mark: string) =>
  * as anything: "10 20" is two numbers, and neither language sets off thousands with a space.
  * Null when nothing was typed, NaN when it is not a number that can be read one way only.
  */
-export function parseNumber(text: string): number | null {
+export function parseNumber(text: string, lang?: Lang): number | null {
   const bare = text.trim().replace(/^(US\$|\$)\s*/, '');
   if (bare === '') return null;
   if (!/^\d[\d.,]*$/.test(bare)) return Number.NaN;
   const marks = [...new Set(bare.replace(/\d/g, ''))];
   if (marks.length === 0) return Number(bare);
+  // In the language of the page a lone mark means one thing: "10.555" in English is ten dollars and
+  // three decimals, which no amount of money has, not ten thousand (the flow audit, finding 18).
+  if (lang && marks.length === 1) {
+    const decimal = lang === 'pt' ? ',' : '.';
+    if (marks[0] !== decimal)
+      return grouped(bare, marks[0] as string) ? Number(bare.replace(/[.,]/g, '')) : Number.NaN;
+    return /^\d+[.,]\d{1,2}$/.test(bare) ? Number(bare.replace(',', '.')) : Number.NaN;
+  }
   const number = (whole: string, cents = '') =>
     Number(`${whole.replace(/[.,]/g, '')}${cents ? `.${cents}` : ''}`);
   if (marks.length === 2) {
@@ -128,7 +136,8 @@ export function checkSheet(fields: SheetFields, chain: ChainId | null): SheetChe
     risk: fields.risk === '' ? undefined : fields.risk,
     // The shelf is not served yet, so no shared portfolio can be named on the sheet.
     themes: [],
-    country: fields.country,
+    // Optional since gate COUNTRY-REMOVED (Oct 6): the picker stays, and an empty one sends none.
+    ...(fields.country === '' ? {} : { country: fields.country }),
     // A placeholder while there is no chain: the fields are checked, and no sheet comes out.
     chains: [chain ?? 'solana'],
     ...(income === null ? {} : { incomeTargetUsdMonthly: income }),
@@ -163,13 +172,17 @@ export function dollars(amount: number, lang: Lang): string {
   return new Intl.NumberFormat(LOCALE[lang], {
     style: 'currency',
     currency: 'USD',
-    minimumFractionDigits: 0,
+    // whole dollars as they are, and cents in full: "$152.80", never "$152.8"
+    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
     maximumFractionDigits: 2,
   }).format(amount);
 }
 
-/** The fields a plan cannot be built without. The monthly income may be left empty. */
-const NEEDED: readonly FieldKey[] = ['goal', 'amount', 'horizon', 'risk', 'country'];
+/**
+ * The fields a plan cannot be built without. The monthly income may be left empty, and so may the
+ * country: no plan is shaped by it (gate COUNTRY-REMOVED, Oct 6), so it is never named as missing.
+ */
+const NEEDED: readonly FieldKey[] = ['goal', 'amount', 'horizon', 'risk'];
 
 /** The fields a plan needs that the reader left empty and the person has not filled yet, in sheet order. */
 export function notFound(fields: SheetFields, read: SheetFields): FieldKey[] {
@@ -183,7 +196,16 @@ export function notFound(fields: SheetFields, read: SheetFields): FieldKey[] {
 export function goalSentence(fields: SheetFields, t: Dictionary, lang: Lang): string | null {
   const amount = parseNumber(fields.amount);
   const months = /^\d+$/.test(fields.horizon.trim()) ? Number(fields.horizon.trim()) : null;
-  if (fields.goal === '' || amount === null || Number.isNaN(amount) || months === null) return null;
+  // a time frame still being typed ("0") is not one yet
+  if (fields.goal === '' || amount === null || Number.isNaN(amount) || !months) return null;
+  // an income goal that names what it wants a month says so
+  const income = fields.goal === 'income' ? parseNumber(fields.income) : null;
+  if (income !== null && !Number.isNaN(income) && income > 0)
+    return t.goal.card.sentenceIncome(
+      dollars(income, lang),
+      dollars(amount, lang),
+      t.goal.card.months(months),
+    );
   return t.goal.card.sentence[fields.goal](dollars(amount, lang), t.goal.card.months(months));
 }
 
@@ -200,15 +222,20 @@ export function sheetGroups(
   lang: Lang,
   /** The country is the one the browser's language names, as yet unchanged by the person. */
   countryFromBrowser = false,
-): { groups: SheetGroup[]; amount: SheetField } {
+  /** The fields the goal did not say and the reader filled with a start of its own. */
+  assumed: readonly FieldKey[] = [],
+): { groups: SheetGroup[]; more: SheetGroup[]; amount: SheetField } {
   const g = t.goal;
   const empty = new Set(notFound(fields, read));
   const field = (key: FieldKey, rest: Omit<SheetField, 'id' | 'label' | 'value'>): SheetField => {
     const error = errors[key];
     // What the reader did not find says so, before what the field takes.
+    // What the goal did not say and the reader assumed says so too, until the person changes it.
     const hint = empty.has(key)
       ? [g.hints.notFound, rest.hint].filter(Boolean).join(' ')
-      : rest.hint;
+      : assumed.includes(key) && fields[key] === read[key]
+        ? [g.hints.assumed, rest.hint].filter(Boolean).join(' ')
+        : rest.hint;
     return {
       id: FIELD_ID[key],
       label: g.fields[key],
@@ -274,19 +301,12 @@ export function sheetGroups(
         }),
       ],
     },
+  ];
+  // What a first plan seldom changes, folded under "More limits" (the flow audit, finding 6).
+  const more: SheetGroup[] = [
     {
       legend: g.groups.shape,
       fields: [
-        field('country', {
-          kind: 'select',
-          schemaKey: 'country',
-          width: '22ch',
-          options: [choose, ...countryOptions(LOCALE[lang])],
-          hint:
-            countryFromBrowser && fields.country === read.country
-              ? g.hints.countryFromBrowser
-              : g.hints.country,
-        }),
         field('holdings', {
           kind: 'select',
           schemaKey: 'rules.useHoldings',
@@ -316,9 +336,26 @@ export function sheetGroups(
         }),
       ],
     },
+    // The country shapes no plan (gate COUNTRY-REMOVED, Oct 6): it is not among what shapes the plan,
+    // it may be left empty, and its hint says the plan does not use it.
+    {
+      legend: g.groups.optional,
+      fields: [
+        field('country', {
+          kind: 'select',
+          schemaKey: 'country',
+          width: '22ch',
+          options: [choose, ...countryOptions(LOCALE[lang])],
+          hint:
+            countryFromBrowser && fields.country === read.country
+              ? g.hints.countryFromBrowser
+              : g.hints.country,
+        }),
+      ],
+    },
   ];
   const amount = field('amount', { kind: 'amount', schemaKey: 'amountUsd', hint: g.hints.amount });
-  return { groups, amount };
+  return { groups, more, amount };
 }
 
 /** A goal that has been read: the text, how it was read, what was read and what the person made of it. */
@@ -331,6 +368,8 @@ export type ReadSheet = {
   fields: SheetFields;
   /** The country was taken from the browser's language, not from the person (pre-read.ts). */
   countryFromBrowser?: boolean;
+  /** The fields the goal did not say, which the reader filled with a start of its own. */
+  assumed?: FieldKey[];
 };
 
 /** What the goal screen keeps in the tab, so a trip to sign in and back loses nothing typed. */
@@ -353,6 +392,35 @@ function isFields(value: unknown): value is SheetFields {
     oneOf(f.glide, 'yes', 'no') &&
     oneOf(f.language, 'en', 'pt')
   );
+}
+
+/**
+ * A plan's own limits as the goal screen keeps them, so "Change my limits" on a plan opens the sheet
+ * the plan was built from, in any tab.
+ */
+export function goalFromSheet(sheet: BasketSheet, goalText: string, now = new Date()): StoredGoal {
+  const fields: SheetFields = {
+    goal: sheet.goal,
+    amount: String(sheet.amountUsd),
+    income: sheet.incomeTargetUsdMonthly === undefined ? '' : String(sheet.incomeTargetUsdMonthly),
+    horizon: String(sheet.horizonMonths),
+    risk: sheet.risk,
+    // The country is optional and shapes no plan (gate COUNTRY-REMOVED): empty when the sheet has none.
+    country: sheet.country ?? '',
+    holdings: sheet.rules.useHoldings ? 'yes' : 'no',
+    glide: sheet.rules.glide ? 'yes' : 'no',
+    language: sheet.language,
+  };
+  return {
+    text: goalText,
+    sheet: {
+      goalText,
+      source: { method: 'plan', fetchedAt: now.toISOString(), provenance: 'live' },
+      firstReader: false,
+      read: fields,
+      fields,
+    },
+  };
 }
 
 /**
@@ -405,6 +473,13 @@ export function restoreGoal(raw: string | null): StoredGoal | null {
       read: s.read,
       fields: s.fields,
       ...(s.countryFromBrowser === true ? { countryFromBrowser: true } : {}),
+      ...(Array.isArray(s.assumed)
+        ? {
+            assumed: s.assumed.filter((key): key is FieldKey =>
+              oneOf(key, ...Object.keys(FIELD_ID)),
+            ),
+          }
+        : {}),
     },
   };
 }

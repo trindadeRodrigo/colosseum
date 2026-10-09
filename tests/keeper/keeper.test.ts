@@ -344,6 +344,43 @@ describe.skipIf(!PROGRAMS_BUILT)('the keeper, in LiteSVM with the real program',
     expect(built).toBe(0);
   });
 
+  it('a withdrawal that lands between the plan and the leg: the real builder refuses the leg, and nothing is sent', async () => {
+    const s = await world();
+    const f = s.w.fixture;
+    const real = s.w.adapter as SolanaVaultAdapter;
+    let emptied: string | null = null;
+    // The round has read the vault and planned a leg. Before the leg is built, the owner takes out
+    // all of the token it would sell, with the real withdraw builder, and it lands.
+    const adapter = {
+      ...real,
+      buildKeeperLeg: async (...args: Parameters<SolanaVaultAdapter['buildKeeperLeg']>) => {
+        const [vault, trade] = args;
+        if (vault === f.vault && emptied === null) {
+          for (const tx of await real.buildWithdrawInKind({ vault, assets: [trade.sell] }))
+            await s.w.must(tx);
+          emptied = trade.sell;
+        }
+        return real.buildKeeperLeg(...args);
+      },
+    } as SolanaVaultAdapter;
+    const lines = await runRound({
+      adapter,
+      sign: keeperSign(s),
+      shuffle: (items) => [...items].sort(),
+      settleMs: 5_000,
+    });
+    const line = of(lines, f.vault);
+    expect(emptied).not.toBeNull();
+    // The builder simulates the leg against the vault as it is now, and the program would refuse it.
+    expect(line?.outcome).toBe('skipped');
+    expect(line?.reason).toMatch(/would be refused: /);
+    expect(line?.txIds).toEqual([]);
+    // What the owner took out is out, and nothing came back in.
+    const after = await real.getVault(f.vault);
+    const left = [after?.cash, ...(after?.positions ?? [])].find((h) => h?.asset === emptied);
+    expect(BigInt(left?.raw ?? '0')).toBe(0n);
+  });
+
   it('plans and builds in a dry run, and sends nothing', async () => {
     const s = await world();
     const f = s.w.fixture;

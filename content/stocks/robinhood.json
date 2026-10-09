@@ -1,0 +1,1929 @@
+{
+  "chain": "robinhood",
+  "version": 2,
+  "readOn": "2026-10-08",
+  "note": "One row per tracked stock on Robinhood Chain: the tokens of listed securities on the launch shelf and the stocks of the 80% cut of RU.3 (docs/risk/PLAN-UNIVERSE.md section 6). Sector, industry and sub-industry are GICS-style names. A field listed under a row's \"unverified\" was not read on a source.",
+  "stocks": [
+    {
+      "symbol": "AAPL",
+      "underlying": "AAPL",
+      "kind": "common",
+      "company": "Apple Inc.",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Technology Hardware, Storage & Peripherals",
+      "subIndustry": "Technology Hardware, Storage & Peripherals",
+      "keywords": [
+        "smartphones",
+        "personal computers",
+        "tablets",
+        "wearables",
+        "digital content",
+        "payment services"
+      ],
+      "tracks": null,
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Apple, ISIN US0378331005",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+          "title": "Apple Inc. Form 10-K for the fiscal year ended September 27, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": []
+    },
+    {
+      "symbol": "AMC",
+      "underlying": "AMC",
+      "kind": "common",
+      "company": "AMC Entertainment Holdings, Inc.",
+      "headquarters": "United States",
+      "sector": "Communication Services",
+      "industry": "Entertainment",
+      "subIndustry": "Movies & Entertainment",
+      "keywords": [
+        "movie theatres",
+        "theatrical exhibition",
+        "box office admissions",
+        "food and beverage"
+      ],
+      "tracks": null,
+      "sets": ["cut"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1411579/000141157926000016/amc-20251231x10k.htm",
+          "title": "AMC Entertainment Holdings, Inc. Form 10-K for the year ended December 31, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/945908/000119312526397475/d134311dncsr.htm",
+          "title": "Fidelity Covington Trust Form N-CSR, period ended July 31, 2026: Fidelity MSCI sector index ETFs, schedules of investments grouped by GICS industry and sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://digital.fidelity.com/prgw/digital/research/quote/dashboard/summary?symbol=AMC",
+          "title": "Fidelity quote page for AMC: company profile with GICS sector and industry group",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Meme_stock",
+          "title": "Wikipedia: Meme stock",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Class A common stock on the NYSE; theatres in the United States and Europe."
+    },
+    {
+      "symbol": "AMD",
+      "underlying": "AMD",
+      "kind": "common",
+      "company": "Advanced Micro Devices, Inc.",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Semiconductors & Semiconductor Equipment",
+      "subIndustry": "Semiconductors",
+      "keywords": [
+        "cpus",
+        "gpus",
+        "ai accelerators",
+        "data centers",
+        "fpgas",
+        "gaming",
+        "embedded"
+      ],
+      "tracks": null,
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000018/amd-20251227.htm",
+          "title": "Advanced Micro Devices, Inc. Form 10-K for the fiscal year ended December 27, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "Wikipedia: List of S&P 500 companies (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/945908/000119312526397475/d134311dncsr.htm",
+          "title": "Fidelity Covington Trust Form N-CSR, period ended July 31, 2026: Fidelity MSCI sector index ETFs, schedules of investments grouped by GICS industry and sub-industry",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Has its chips made by outside foundries, including TSMC."
+    },
+    {
+      "symbol": "AMZN",
+      "underlying": "AMZN",
+      "kind": "common",
+      "company": "Amazon.com, Inc.",
+      "headquarters": "United States",
+      "sector": "Consumer Discretionary",
+      "industry": "Broadline Retail",
+      "subIndustry": "Broadline Retail",
+      "keywords": [
+        "online stores",
+        "e-commerce",
+        "cloud",
+        "advertising",
+        "third-party sellers",
+        "subscription services",
+        "devices"
+      ],
+      "tracks": null,
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Amazon, ISIN US0231351067",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1018724/000101872426000004/amzn-20251231.htm",
+          "title": "Amazon.com, Inc. Form 10-K for the fiscal year ended December 31, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": []
+    },
+    {
+      "symbol": "ASML",
+      "underlying": "ASML",
+      "kind": "common",
+      "company": "ASML Holding N.V.",
+      "headquarters": "Netherlands",
+      "sector": "Information Technology",
+      "industry": "Semiconductors & Semiconductor Equipment",
+      "subIndustry": "Semiconductor Materials & Equipment",
+      "keywords": [
+        "lithography",
+        "euv lithography",
+        "duv lithography",
+        "computational lithography",
+        "metrology and inspection"
+      ],
+      "tracks": null,
+      "sets": ["thin"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+          "title": "ASML Holding N.V. Form 20-F for the year ended December 31, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://digital.fidelity.com/prgw/digital/research/quote/dashboard/summary?symbol=ASML",
+          "title": "Fidelity quote page for ASML: company profile with GICS sector and industry group",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/746687/000119312526381590/d128467dncsrs.htm",
+          "title": "State Street Variable Insurance Series Funds Form N-CSRS, period ended June 30, 2026: schedule of investments grouped by sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/832566/000113322826011681/ap-efp27157_ncsrs.htm",
+          "title": "Alger Portfolios Form N-CSRS, period ended June 30, 2026: schedules of investments grouped by sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Wikipedia: Global Industry Classification Standard (structure table, citing MSCI's GICS structure effective March 2023)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "New York registry shares of a Dutch company, listed on Nasdaq; shares also listed on Euronext Amsterdam; headquartered in Veldhoven, the Netherlands."
+    },
+    {
+      "symbol": "BABA",
+      "underlying": "BABA",
+      "kind": "adr",
+      "company": "Alibaba Group Holding Limited",
+      "headquarters": "China",
+      "sector": "Consumer Discretionary",
+      "industry": "Broadline Retail",
+      "subIndustry": "Broadline Retail",
+      "keywords": [
+        "china",
+        "e-commerce",
+        "online marketplaces",
+        "cloud",
+        "international e-commerce"
+      ],
+      "tracks": null,
+      "sets": ["shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1577552/000119312526231755/baba-20260331.htm",
+          "title": "Alibaba Group Holding Limited Form 20-F for the fiscal year ended March 31, 2026 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.msci.com/documents/10199/c0db0a48-01f2-4ba9-ad01-226fd5678111",
+          "title": "MSCI Emerging Markets Index (USD) factsheet, September 30, 2026: list of emerging market countries, top constituents with sector",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://digital.fidelity.com/prgw/digital/research/quote/dashboard/summary?symbol=BABA",
+          "title": "Fidelity quote page for BABA: company profile with GICS sector and industry group",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/746687/000119312526381590/d128467dncsrs.htm",
+          "title": "State Street Variable Insurance Series Funds Form N-CSRS, period ended June 30, 2026: schedule of investments grouped by sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/832566/000113322826011681/ap-efp27157_ncsrs.htm",
+          "title": "Alger Portfolios Form N-CSRS, period ended June 30, 2026: schedules of investments grouped by sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Wikipedia: Global Industry Classification Standard (structure table, citing MSCI's GICS structure effective March 2023)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Each ADS represents eight ordinary shares; Cayman Islands holding company whose cover page gives its principal executive offices in Hong Kong S.A.R., People's Republic of China; its main businesses are run from Hangzhou."
+    },
+    {
+      "symbol": "CLSK",
+      "underlying": "CLSK",
+      "kind": "common",
+      "company": "CleanSpark, Inc.",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Software",
+      "subIndustry": "Application Software",
+      "keywords": ["bitcoin mining", "data centers", "power assets"],
+      "tracks": null,
+      "sets": ["thin"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/827876/000119312525297510/clsk-20250930.htm",
+          "title": "CleanSpark, Inc. Form 10-K for the fiscal year ended September 30, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/945908/000119312526397475/d134311dncsr.htm",
+          "title": "Fidelity Covington Trust Form N-CSR, period ended July 31, 2026: Fidelity MSCI sector index ETFs, schedules of investments grouped by GICS industry and sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/etfs/spdr-sp-software-services-etf-xsw",
+          "title": "State Street SPDR S&P Software & Services ETF (XSW): index sub-industries (Application Software, Systems Software, IT Consulting & Other Services, Interactive Home Entertainment)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xsw.xlsx",
+          "title": "State Street SPDR S&P Software & Services ETF (XSW) daily holdings as of 05-Oct-2026",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://digital.fidelity.com/prgw/digital/research/quote/dashboard/summary?symbol=CLSK",
+          "title": "Fidelity quote page for CLSK: company profile with GICS sector and industry group",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_600_companies",
+          "title": "Wikipedia: List of S&P 600 companies (shows CleanSpark as Information Technology, Internet Services & Infrastructure; see note)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": ["industry", "subIndustry"],
+      "note": "Fidelity's fund report files CleanSpark under Application Software, alongside other bitcoin miners, while Wikipedia's S&P 600 list shows Internet Services & Infrastructure; the filing calls CleanSpark a data center developer that is pursuing AI and HPC hosting."
+    },
+    {
+      "symbol": "COIN",
+      "underlying": "COIN",
+      "kind": "common",
+      "company": "Coinbase Global, Inc.",
+      "headquarters": "United States",
+      "sector": "Financials",
+      "industry": "Capital Markets",
+      "subIndustry": "Financial Exchanges & Data",
+      "keywords": [
+        "crypto exchange",
+        "crypto trading",
+        "custody",
+        "stablecoins",
+        "derivatives",
+        "prime brokerage",
+        "staking"
+      ],
+      "tracks": null,
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Coinbase, ISIN US19260Q1076",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1679788/000167978826000015/coin-20251231.htm",
+          "title": "Coinbase Global, Inc. Form 10-K for the fiscal year ended December 31, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Class A common stock. The filing says the company is remote-first and maintains no headquarters; the cover-page address (New York, NY) is given at the SEC's request. Incorporated in Texas."
+    },
+    {
+      "symbol": "COST",
+      "underlying": "COST",
+      "kind": "common",
+      "company": "Costco Wholesale Corporation",
+      "headquarters": "United States",
+      "sector": "Consumer Staples",
+      "industry": "Consumer Staples Distribution & Retail",
+      "subIndustry": "Consumer Staples Merchandise Retail",
+      "keywords": [
+        "membership warehouses",
+        "warehouse clubs",
+        "foods and sundries",
+        "fresh foods",
+        "gasoline",
+        "e-commerce",
+        "private label"
+      ],
+      "tracks": null,
+      "sets": ["cut"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/909832/000090983225000101/cost-20250831.htm",
+          "title": "Costco Wholesale Corporation Form 10-K for the fiscal year ended August 31, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "Wikipedia: List of S&P 500 companies (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/945908/000119312526397475/d134311dncsr.htm",
+          "title": "Fidelity Covington Trust Form N-CSR, period ended July 31, 2026: Fidelity MSCI sector index ETFs, schedules of investments grouped by GICS industry and sub-industry",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": []
+    },
+    {
+      "symbol": "CRCL",
+      "underlying": "CRCL",
+      "kind": "common",
+      "company": "Circle Internet Group, Inc.",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Software",
+      "subIndustry": "Application Software",
+      "keywords": ["stablecoins", "reserve income", "payments network", "developer infrastructure"],
+      "tracks": null,
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Circle Internet Group, ISIN US1725731079",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1876042/000187604226000062/crcl-20251231.htm",
+          "title": "Circle Internet Group, Inc. Form 10-K for the fiscal year ended December 31, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ishares.com/us/products/239771/ishares-expanded-tech-software-sector-etf/latest-holdings.csv",
+          "title": "iShares Expanded Tech-Software Sector ETF (IGV) holdings as of Oct 05, 2026 (lists CRCL with Sector: Information Technology)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ishares.com/us/products/239771/ishares-north-american-techsoftware-etf",
+          "title": "iShares Expanded Tech-Software Sector ETF | IGV (fund page: tracks an index of North American companies in the software industry; exposure breakdown by sub-industry as of Oct 05, 2026)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/etfs/state-street-spdr-sp-software-services-etf-xsw",
+          "title": "XSW: State Street SPDR S&P Software & Services ETF (fund page: the GICS sub-industries its index draws from)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xsw.xlsx",
+          "title": "State Street SPDR S&P Software & Services ETF daily holdings as of 05-Oct-2026 (lists CIRCLE INTERNET GROUP INC, CRCL)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": ["subIndustry"],
+      "note": "Class A common stock on the NYSE. Not in the S&P 500. Sector read on iShares' IGV holdings list (Information Technology, not Financials); industry Software follows from that fund's published breakdown, where every Information Technology holding is Application Software or Systems Software; which of the two was not read on a published page, so the sub-industry is an assignment, not a reading."
+    },
+    {
+      "symbol": "CRWV",
+      "underlying": "CRWV",
+      "kind": "common",
+      "company": "CoreWeave, Inc.",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "IT Services",
+      "subIndustry": "Internet Services & Infrastructure",
+      "keywords": ["ai cloud", "gpu compute", "data centers", "ai model training", "ai inference"],
+      "tracks": null,
+      "sets": ["thin"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1769628/000176962826000104/crwv-20251231.htm",
+          "title": "CoreWeave, Inc. Form 10-K for the year ended December 31, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/945908/000119312526397475/d134311dncsr.htm",
+          "title": "Fidelity Covington Trust Form N-CSR, period ended July 31, 2026: Fidelity MSCI sector index ETFs, schedules of investments grouped by GICS industry and sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://digital.fidelity.com/prgw/digital/research/quote/dashboard/summary?symbol=CRWV",
+          "title": "Fidelity quote page for CRWV: company profile with GICS sector and industry group",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Class A common stock on Nasdaq."
+    },
+    {
+      "symbol": "DELL",
+      "underlying": "DELL",
+      "kind": "common",
+      "company": "Dell Technologies Inc.",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Technology Hardware, Storage & Peripherals",
+      "subIndustry": "Technology Hardware, Storage & Peripherals",
+      "keywords": [
+        "servers",
+        "ai-optimized servers",
+        "storage",
+        "networking",
+        "personal computers",
+        "workstations"
+      ],
+      "tracks": null,
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1571996/000157199626000008/dell-20260130.htm",
+          "title": "Dell Technologies Inc. Form 10-K for the fiscal year ended January 30, 2026 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "Wikipedia: List of S&P 500 companies (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/945908/000119312526397475/d134311dncsr.htm",
+          "title": "Fidelity Covington Trust Form N-CSR, period ended July 31, 2026: Fidelity MSCI sector index ETFs, schedules of investments grouped by GICS industry and sub-industry",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Class C common stock on the NYSE."
+    },
+    {
+      "symbol": "DJT",
+      "underlying": "DJT",
+      "kind": "common",
+      "company": "Trump Media & Technology Group Corp.",
+      "headquarters": "United States",
+      "sector": "Communication Services",
+      "industry": "Interactive Media & Services",
+      "subIndustry": "Interactive Media & Services",
+      "keywords": [
+        "social media",
+        "tv streaming",
+        "financial services",
+        "fintech",
+        "bitcoin treasury"
+      ],
+      "tracks": null,
+      "sets": ["cut"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1849635/000114036126007174/ef20062365_10k.htm",
+          "title": "Trump Media & Technology Group Corp. Form 10-K for the year ended December 31, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=trump+media&type=10-K&dateb=&owner=include&count=40",
+          "title": "SEC EDGAR company page for Trump Media & Technology Group Corp.: current and former names, business address, list of annual reports",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/0001849635/000143774926031534/djt20260922_s4.htm",
+          "title": "Trump Media & Technology Group Corp. Form S-4 filed September 30, 2026 (proposed merger with TAE Technologies) (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/945908/000119312526397475/d134311dncsr.htm",
+          "title": "Fidelity Covington Trust Form N-CSR, period ended July 31, 2026: Fidelity MSCI sector index ETFs, schedules of investments grouped by GICS industry and sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://digital.fidelity.com/prgw/digital/research/quote/dashboard/summary?symbol=DJT",
+          "title": "Fidelity quote page for DJT: company profile with GICS sector and industry group",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Formerly Digital World Acquisition Corp.; a merger with fusion company TAE Technologies was still pending when the Form S-4 was filed on 2026-09-30."
+    },
+    {
+      "symbol": "EWY",
+      "underlying": "EWY",
+      "kind": "fund",
+      "company": "iShares MSCI South Korea ETF",
+      "headquarters": null,
+      "sector": null,
+      "industry": null,
+      "subIndustry": null,
+      "keywords": ["south korea", "south korean equities", "emerging markets"],
+      "tracks": "MSCI Korea 25/50 Index",
+      "sets": ["thin"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ishares.com/us/products/239681/ishares-msci-south-korea-etf",
+          "title": "iShares MSCI South Korea ETF (EWY) product page",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.msci.com/documents/10199/c0db0a48-01f2-4ba9-ad01-226fd5678111",
+          "title": "MSCI Emerging Markets Index (USD) factsheet, September 30, 2026: list of emerging market countries, top constituents with sector",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Single-country equity index fund listed on NYSE Arca."
+    },
+    {
+      "symbol": "GLD",
+      "underlying": "GLD",
+      "kind": "fund",
+      "company": "SPDR Gold Trust",
+      "headquarters": null,
+      "sector": null,
+      "industry": null,
+      "subIndustry": null,
+      "keywords": ["gold bullion", "gold", "allocated gold", "investment trust"],
+      "tracks": "the price of gold bullion, less the trust's expenses",
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): SPDR Gold Trust, ISIN US78463V1070",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1222333/000143774925036305/gld20250930_10k.htm",
+          "title": "SPDR Gold Trust Form 10-K for the fiscal year ended September 30, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1222333/000143774926025680/gld20260630_10q.htm",
+          "title": "SPDR Gold Trust Form 10-Q for the quarter ended June 30, 2026 (cover page; investment objective)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/etfs/spdr-gold-shares-gld",
+          "title": "GLD: SPDR Gold Shares (State Street fund page: investment objective, sponsor, marketing agent)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "An investment trust that holds gold, not an index fund; its shares are named SPDR Gold Shares; the sponsor is World Gold Trust Services, LLC."
+    },
+    {
+      "symbol": "GME",
+      "underlying": "GME",
+      "kind": "common",
+      "company": "GameStop Corp.",
+      "headquarters": "United States",
+      "sector": "Consumer Discretionary",
+      "industry": "Specialty Retail",
+      "subIndustry": "Computer & Electronics Retail",
+      "keywords": [
+        "video games",
+        "gaming consoles",
+        "pre-owned games",
+        "collectibles",
+        "trading cards",
+        "retail stores",
+        "e-commerce"
+      ],
+      "tracks": null,
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): GameStop, ISIN US36467W1099",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1326380/000132638026000013/gme-20260131.htm",
+          "title": "GameStop Corp. Form 10-K for the fiscal year ended January 31, 2026 (cover page, Item 1. Business, risk factors, Item 7)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_400_companies",
+          "title": "List of S&P 400 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ishares.com/us/products/239724/ishares-core-sp-total-us-stock-market-etf/latest-holdings.csv",
+          "title": "iShares Core S&P Total U.S. Stock Market ETF (ITOT) holdings as of Oct 05, 2026 (lists GME with Sector: Consumer Discretionary)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Class A common stock. The filing says the business model is expanding beyond retail into capital allocation, and that the company holds bitcoin as a treasury reserve asset."
+    },
+    {
+      "symbol": "GOOGL",
+      "underlying": "GOOGL",
+      "kind": "common",
+      "company": "Alphabet Inc.",
+      "headquarters": "United States",
+      "sector": "Communication Services",
+      "industry": "Interactive Media & Services",
+      "subIndustry": "Interactive Media & Services",
+      "keywords": [
+        "search",
+        "advertising",
+        "cloud",
+        "ai models",
+        "autonomous driving",
+        "consumer subscriptions"
+      ],
+      "tracks": null,
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Alphabet Class A, ISIN US02079K3059",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000018/goog-20251231.htm",
+          "title": "Alphabet Inc. Form 10-K for the fiscal year ended December 31, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Class A common stock (GOOGL); the Class C capital stock (GOOG) is a separate listing."
+    },
+    {
+      "symbol": "HIMS",
+      "underlying": "HIMS",
+      "kind": "common",
+      "company": "Hims & Hers Health, Inc.",
+      "headquarters": "United States",
+      "sector": "Health Care",
+      "industry": "Health Care Providers & Services",
+      "subIndustry": "Health Care Services",
+      "keywords": [
+        "telehealth",
+        "weight loss",
+        "glp-1",
+        "sexual health",
+        "hair loss",
+        "dermatology",
+        "mental health",
+        "compounded medications"
+      ],
+      "tracks": null,
+      "sets": ["cut"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1773751/000177375126000022/hims-20251231.htm",
+          "title": "Hims & Hers Health, Inc. Form 10-K for the year ended December 31, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_400_companies",
+          "title": "Wikipedia: List of S&P 400 companies (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/945908/000119312526397475/d134311dncsr.htm",
+          "title": "Fidelity Covington Trust Form N-CSR, period ended July 31, 2026: Fidelity MSCI sector index ETFs, schedules of investments grouped by GICS industry and sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Wikipedia: Global Industry Classification Standard (structure table, citing MSCI's GICS structure effective March 2023)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Class A common stock on the NYSE; the FDA sent it warning letters about its compounded semaglutide products in September 2025 and named it in a February 2026 statement on compounded GLP-1 drugs."
+    },
+    {
+      "symbol": "INTC",
+      "underlying": "INTC",
+      "kind": "common",
+      "company": "Intel Corporation",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Semiconductors & Semiconductor Equipment",
+      "subIndustry": "Semiconductors",
+      "keywords": [
+        "cpus",
+        "x86 processors",
+        "foundry",
+        "data centers",
+        "ai accelerators",
+        "client computing"
+      ],
+      "tracks": null,
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/50863/000005086326000011/intc-20251227.htm",
+          "title": "Intel Corporation Form 10-K for the fiscal year ended December 27, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "Wikipedia: List of S&P 500 companies (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/945908/000119312526397475/d134311dncsr.htm",
+          "title": "Fidelity Covington Trust Form N-CSR, period ended July 31, 2026: Fidelity MSCI sector index ETFs, schedules of investments grouped by GICS industry and sub-industry",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": []
+    },
+    {
+      "symbol": "IONQ",
+      "underlying": "IONQ",
+      "kind": "common",
+      "company": "IonQ, Inc.",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Semiconductors & Semiconductor Equipment",
+      "subIndustry": "Semiconductors",
+      "keywords": [
+        "quantum computers",
+        "quantum networking",
+        "quantum sensing",
+        "quantum security",
+        "trapped ion",
+        "semiconductor foundry"
+      ],
+      "tracks": null,
+      "sets": ["thin"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1824920/000119312526071562/ionq-20251231.htm",
+          "title": "IonQ, Inc. Form 10-K for the year ended December 31, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/0001824920/000119312526327127/ionq-ex99_1.htm",
+          "title": "IonQ, Inc. Form 8-K exhibit 99.1, July 31, 2026: IonQ completes acquisition of SkyWater Technology (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/etfs/spdr-sp-semiconductor-etf-xsd",
+          "title": "State Street SPDR S&P Semiconductor ETF (XSD): index is the Semiconductors sub-industry of the S&P Total Market Index",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xsd.xlsx",
+          "title": "State Street SPDR S&P Semiconductor ETF (XSD) daily holdings as of 05-Oct-2026",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://digital.fidelity.com/prgw/digital/research/quote/dashboard/summary?symbol=IONQ",
+          "title": "Fidelity quote page for IONQ: company profile with GICS sector and industry group",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/945908/000119312526397475/d134311dncsr.htm",
+          "title": "Fidelity Covington Trust Form N-CSR, period ended July 31, 2026: Fidelity MSCI sector index ETFs, schedules of investments grouped by GICS industry and sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Wikipedia: Global Industry Classification Standard (structure table, citing MSCI's GICS structure effective March 2023)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Completed its acquisition of SkyWater Technology, a U.S. semiconductor foundry, on 2026-07-31; held on 2026-10-05 by State Street's XSD, the fund that tracks the S&P Semiconductor Select Industry Index, while Fidelity's 2026-07-31 report still listed it under Technology Hardware, Storage & Peripherals."
+    },
+    {
+      "symbol": "LLY",
+      "underlying": "LLY",
+      "kind": "common",
+      "company": "Eli Lilly and Company",
+      "headquarters": "United States",
+      "sector": "Health Care",
+      "industry": "Pharmaceuticals",
+      "subIndustry": "Pharmaceuticals",
+      "keywords": [
+        "pharmaceuticals",
+        "glp-1",
+        "obesity",
+        "diabetes",
+        "oncology",
+        "immunology",
+        "neuroscience"
+      ],
+      "tracks": null,
+      "sets": ["cut"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/59478/000005947826000013/lly-20251231.htm",
+          "title": "Eli Lilly and Company Form 10-K for the year ended December 31, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "Wikipedia: List of S&P 500 companies (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/945908/000119312526397475/d134311dncsr.htm",
+          "title": "Fidelity Covington Trust Form N-CSR, period ended July 31, 2026: Fidelity MSCI sector index ETFs, schedules of investments grouped by GICS industry and sub-industry",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": []
+    },
+    {
+      "symbol": "META",
+      "underlying": "META",
+      "kind": "common",
+      "company": "Meta Platforms, Inc.",
+      "headquarters": "United States",
+      "sector": "Communication Services",
+      "industry": "Interactive Media & Services",
+      "subIndustry": "Interactive Media & Services",
+      "keywords": [
+        "social media",
+        "advertising",
+        "messaging",
+        "virtual reality",
+        "ai glasses",
+        "ai assistant"
+      ],
+      "tracks": null,
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Meta Platforms, ISIN US30303M1027",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1326801/000162828026003942/meta-20251231.htm",
+          "title": "Meta Platforms, Inc. Form 10-K for the fiscal year ended December 31, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Class A common stock."
+    },
+    {
+      "symbol": "MSFT",
+      "underlying": "MSFT",
+      "kind": "common",
+      "company": "Microsoft Corporation",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Software",
+      "subIndustry": "Systems Software",
+      "keywords": [
+        "cloud",
+        "productivity software",
+        "operating systems",
+        "server products",
+        "video games",
+        "search advertising"
+      ],
+      "tracks": null,
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Microsoft, ISIN US5949181045",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+          "title": "Microsoft Corporation Form 10-K for the fiscal year ended June 30, 2026 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": []
+    },
+    {
+      "symbol": "MSTR",
+      "underlying": "MSTR",
+      "kind": "common",
+      "company": "Strategy Inc",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Software",
+      "subIndustry": "Application Software",
+      "keywords": [
+        "bitcoin treasury",
+        "bitcoin",
+        "digital credit",
+        "enterprise analytics software",
+        "business intelligence"
+      ],
+      "tracks": null,
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Strategy Inc., ISIN US5949724083",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1050446/000105044626000020/mstr-20251231.htm",
+          "title": "Strategy Inc Form 10-K for the fiscal year ended December 31, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ishares.com/us/products/239771/ishares-expanded-tech-software-sector-etf/latest-holdings.csv",
+          "title": "iShares Expanded Tech-Software Sector ETF (IGV) holdings as of Oct 05, 2026 (lists MSTR with Sector: Information Technology)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ishares.com/us/products/239771/ishares-north-american-techsoftware-etf",
+          "title": "iShares Expanded Tech-Software Sector ETF | IGV (fund page: tracks an index of North American companies in the software industry; exposure breakdown by sub-industry as of Oct 05, 2026)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/etfs/state-street-spdr-sp-software-services-etf-xsw",
+          "title": "XSW: State Street SPDR S&P Software & Services ETF (fund page: the GICS sub-industries its index draws from; Strategy Inc among top holdings)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xsw.xlsx",
+          "title": "State Street SPDR S&P Software & Services ETF daily holdings as of 05-Oct-2026 (lists STRATEGY INC, MSTR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": ["subIndustry"],
+      "note": "Class A common stock. Renamed from MicroStrategy Incorporated to Strategy Inc on August 11, 2025. Not in the S&P 500: sector read on iShares' IGV holdings list; industry Software follows from that fund's published breakdown, where every Information Technology holding is Application Software or Systems Software; which of the two was not read on a published page, so the sub-industry is an assignment, not a reading."
+    },
+    {
+      "symbol": "MU",
+      "underlying": "MU",
+      "kind": "common",
+      "company": "Micron Technology, Inc.",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Semiconductors & Semiconductor Equipment",
+      "subIndustry": "Semiconductors",
+      "keywords": [
+        "memory chips",
+        "dram",
+        "nand",
+        "high-bandwidth memory",
+        "data center memory",
+        "storage"
+      ],
+      "tracks": null,
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312525000028/mu-20250828.htm",
+          "title": "Micron Technology, Inc. Form 10-K for the fiscal year ended August 28, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "Wikipedia: List of S&P 500 companies (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/945908/000119312526397475/d134311dncsr.htm",
+          "title": "Fidelity Covington Trust Form N-CSR, period ended July 31, 2026: Fidelity MSCI sector index ETFs, schedules of investments grouped by GICS industry and sub-industry",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": []
+    },
+    {
+      "symbol": "NBIS",
+      "underlying": "NBIS",
+      "kind": "common",
+      "company": "Nebius Group N.V.",
+      "headquarters": "Netherlands",
+      "sector": "Information Technology",
+      "industry": "Software",
+      "subIndustry": "Systems Software",
+      "keywords": ["ai cloud", "gpu compute", "data centers", "ai infrastructure"],
+      "tracks": null,
+      "sets": ["thin"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1513845/000110465926052948/nbis-20251231x20f.htm",
+          "title": "Nebius Group N.V. Form 20-F for the year ended December 31, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://digital.fidelity.com/prgw/digital/research/quote/dashboard/summary?symbol=NBIS",
+          "title": "Fidelity quote page for NBIS: company profile with GICS sector and industry group",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/746687/000119312526381590/d128467dncsrs.htm",
+          "title": "State Street Variable Insurance Series Funds Form N-CSRS, period ended June 30, 2026: schedule of investments grouped by sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/832566/000113322826011681/ap-efp27157_ncsrs.htm",
+          "title": "Alger Portfolios Form N-CSRS, period ended June 30, 2026: schedules of investments grouped by sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Wikipedia: Global Industry Classification Standard (structure table, citing MSCI's GICS structure effective March 2023)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Formerly Yandex N.V.; Class A ordinary shares listed directly on Nasdaq; divested its Russian businesses in July 2024; also owns Avride (autonomous vehicles and delivery robots) and TripleTen (edtech)."
+    },
+    {
+      "symbol": "NVDA",
+      "underlying": "NVDA",
+      "kind": "common",
+      "company": "NVIDIA Corporation",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Semiconductors & Semiconductor Equipment",
+      "subIndustry": "Semiconductors",
+      "keywords": [
+        "gpus",
+        "data centers",
+        "ai infrastructure",
+        "accelerated computing",
+        "networking",
+        "gaming",
+        "automotive",
+        "robotics"
+      ],
+      "tracks": null,
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): NVIDIA, ISIN US67066G1040",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+          "title": "NVIDIA Corporation Form 10-K for the fiscal year ended January 25, 2026 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": []
+    },
+    {
+      "symbol": "ORCL",
+      "underlying": "ORCL",
+      "kind": "common",
+      "company": "Oracle Corporation",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Software",
+      "subIndustry": "Systems Software",
+      "keywords": [
+        "cloud",
+        "cloud applications",
+        "cloud infrastructure",
+        "database",
+        "enterprise applications",
+        "ai infrastructure",
+        "engineered systems"
+      ],
+      "tracks": null,
+      "sets": ["thin"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1341439/000119312526277521/orcl-20260531.htm",
+          "title": "Oracle Corporation Form 10-K for the fiscal year ended May 31, 2026 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/945908/000119312526397475/d134311dncsr.htm",
+          "title": "Fidelity Covington Trust Form N-CSR, period ended July 31, 2026: Fidelity MSCI sector index ETFs, schedules of investments grouped by GICS industry and sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/832566/000113322826011681/ap-efp27157_ncsrs.htm",
+          "title": "Alger Portfolios Form N-CSRS, period ended June 30, 2026: schedules of investments grouped by sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/etfs/spdr-sp-software-services-etf-xsw",
+          "title": "State Street SPDR S&P Software & Services ETF (XSW): index sub-industries (Application Software, Systems Software, IT Consulting & Other Services, Interactive Home Entertainment)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xsw.xlsx",
+          "title": "State Street SPDR S&P Software & Services ETF (XSW) daily holdings as of 05-Oct-2026",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "Wikipedia: List of S&P 500 companies (shows Oracle as Information Technology, Application Software; see note)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": ["subIndustry"],
+      "note": "Fund reports (Fidelity MSCI Information Technology Index ETF, Alger) list Oracle under Systems Software; Wikipedia's S&P 500 list shows Application Software."
+    },
+    {
+      "symbol": "PLTR",
+      "underlying": "PLTR",
+      "kind": "common",
+      "company": "Palantir Technologies Inc.",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Software",
+      "subIndustry": "Application Software",
+      "keywords": [
+        "software platforms",
+        "data analytics",
+        "ai platform",
+        "defense",
+        "intelligence agencies",
+        "government agencies",
+        "commercial enterprises"
+      ],
+      "tracks": null,
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Palantir Technologies, ISIN US69608A1088",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1321655/000132165526000011/pltr-20251231.htm",
+          "title": "Palantir Technologies Inc. Form 10-K for the fiscal year ended December 31, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Class A common stock. The 10-K cover gives the principal executive offices as Aventura, Florida, with Denver, Colorado as the former address."
+    },
+    {
+      "symbol": "QQQ",
+      "underlying": "QQQ",
+      "kind": "fund",
+      "company": "Invesco QQQ Trust, Series 1",
+      "headquarters": null,
+      "sector": null,
+      "industry": null,
+      "subIndustry": null,
+      "keywords": [
+        "nasdaq-100",
+        "index fund",
+        "nasdaq-listed stocks",
+        "non-financial companies",
+        "large-cap stocks"
+      ],
+      "tracks": "Nasdaq-100 Index",
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Invesco QQQ, ISIN US46090E1038",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1067839/000110465925123275/tm2529177d5_497k.htm",
+          "title": "Invesco QQQ Trust, Series 1 Summary Prospectus dated December 22, 2025 (investment objective and principal investment strategies)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.invesco.com/qqq-etf/en/home.html",
+          "title": "Invesco QQQ ETF (sponsor's page: tracks the Nasdaq-100 index)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "The token references this fund, not the index itself; the Nasdaq-100 leaves out companies classified as financials."
+    },
+    {
+      "symbol": "RDDT",
+      "underlying": "RDDT",
+      "kind": "common",
+      "company": "Reddit, Inc.",
+      "headquarters": "United States",
+      "sector": "Communication Services",
+      "industry": "Interactive Media & Services",
+      "subIndustry": "Interactive Media & Services",
+      "keywords": ["online communities", "advertising", "content licensing"],
+      "tracks": null,
+      "sets": ["cut"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1713445/000171344526000022/rddt-20251231.htm",
+          "title": "Reddit, Inc. Form 10-K for the year ended December 31, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "Wikipedia: List of S&P 500 companies (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/945908/000119312526397475/d134311dncsr.htm",
+          "title": "Fidelity Covington Trust Form N-CSR, period ended July 31, 2026: Fidelity MSCI sector index ETFs, schedules of investments grouped by GICS industry and sub-industry",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Class A common stock on the NYSE."
+    },
+    {
+      "symbol": "RGTI",
+      "underlying": "RGTI",
+      "kind": "common",
+      "company": "Rigetti Computing, Inc.",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Semiconductors & Semiconductor Equipment",
+      "subIndustry": "Semiconductors",
+      "keywords": [
+        "quantum computers",
+        "superconducting qubits",
+        "quantum processors",
+        "quantum cloud services"
+      ],
+      "tracks": null,
+      "sets": ["thin"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1838359/000110465926023454/rgti-20251231x10k.htm",
+          "title": "Rigetti Computing, Inc. Form 10-K for the year ended December 31, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/945908/000119312526397475/d134311dncsr.htm",
+          "title": "Fidelity Covington Trust Form N-CSR, period ended July 31, 2026: Fidelity MSCI sector index ETFs, schedules of investments grouped by GICS industry and sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/etfs/spdr-sp-semiconductor-etf-xsd",
+          "title": "State Street SPDR S&P Semiconductor ETF (XSD): index is the Semiconductors sub-industry of the S&P Total Market Index",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xsd.xlsx",
+          "title": "State Street SPDR S&P Semiconductor ETF (XSD) daily holdings as of 05-Oct-2026",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "GICS files it under Semiconductors; its chips are quantum processors made in its own fab for its own computers."
+    },
+    {
+      "symbol": "RKLB",
+      "underlying": "RKLB",
+      "kind": "common",
+      "company": "Rocket Lab Corporation",
+      "headquarters": "United States",
+      "sector": "Industrials",
+      "industry": "Aerospace & Defense",
+      "subIndustry": "Aerospace & Defense",
+      "keywords": [
+        "launch services",
+        "launch vehicles",
+        "spacecraft manufacturing",
+        "spacecraft components",
+        "space systems"
+      ],
+      "tracks": null,
+      "sets": ["thin"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1819994/000181999426000013/rklb-20251231.htm",
+          "title": "Rocket Lab Corporation Form 10-K for the year ended December 31, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=RKLB&type=10-K&dateb=&owner=include&count=10",
+          "title": "SEC EDGAR company page for Rocket Lab Corp: current and former names, business address, list of annual reports",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/945908/000119312526397475/d134311dncsr.htm",
+          "title": "Fidelity Covington Trust Form N-CSR, period ended July 31, 2026: Fidelity MSCI sector index ETFs, schedules of investments grouped by GICS industry and sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/etfs/spdr-sp-aerospace-defense-etf-xar",
+          "title": "State Street SPDR S&P Aerospace & Defense ETF (XAR): index description and holdings as of 05-Oct-2026",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Formerly Rocket Lab USA, Inc.; the name changed in 2025."
+    },
+    {
+      "symbol": "SGOV",
+      "underlying": "SGOV",
+      "kind": "fund",
+      "company": "iShares 0-3 Month Treasury Bond ETF",
+      "headquarters": null,
+      "sector": null,
+      "industry": null,
+      "subIndustry": null,
+      "keywords": ["treasury bills", "u.s. treasuries", "u.s. treasury securities"],
+      "tracks": "ICE 0-3 Month US Treasury Securities Index",
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ishares.com/us/products/314116/ishares-0-3-month-treasury-bond-etf",
+          "title": "iShares 0-3 Month Treasury Bond ETF (SGOV) product page",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Bond index fund that holds U.S. Treasury bills with maturities of 0-3 months."
+    },
+    {
+      "symbol": "SLV",
+      "underlying": "SLV",
+      "kind": "fund",
+      "company": "iShares Silver Trust",
+      "headquarters": null,
+      "sector": null,
+      "industry": null,
+      "subIndustry": null,
+      "keywords": ["silver bullion", "silver", "physical silver"],
+      "tracks": "the price of silver bullion (reference benchmark: LBMA Silver Price)",
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ishares.com/us/products/239855/ishares-silver-trust-fund",
+          "title": "iShares Silver Trust (SLV) product page",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1330568/000143774926006059/slv20251231_10k.htm",
+          "title": "iShares Silver Trust Form 10-K for the year ended December 31, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Grantor trust that holds silver; not an investment company registered under the Investment Company Act of 1940."
+    },
+    {
+      "symbol": "SNDK",
+      "underlying": "SNDK",
+      "kind": "common",
+      "company": "Sandisk Corporation",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Technology Hardware, Storage & Peripherals",
+      "subIndustry": "Technology Hardware, Storage & Peripherals",
+      "keywords": [
+        "nand flash",
+        "semiconductor memory",
+        "solid-state drives",
+        "removable cards",
+        "usb drives",
+        "data center storage"
+      ],
+      "tracks": null,
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/2023554/000162828026057406/sndk-20260703.htm",
+          "title": "Sandisk Corporation Form 10-K for the fiscal year ended July 3, 2026 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "Wikipedia: List of S&P 500 companies (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/945908/000119312526397475/d134311dncsr.htm",
+          "title": "Fidelity Covington Trust Form N-CSR, period ended July 31, 2026: Fidelity MSCI sector index ETFs, schedules of investments grouped by GICS industry and sub-industry",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Separated from Western Digital on 2025-02-21; GICS files it under Technology Hardware, Storage & Peripherals, while the filing calls it a semiconductor memory company."
+    },
+    {
+      "symbol": "SPCX",
+      "underlying": "SPCX",
+      "kind": "common",
+      "company": "Space Exploration Technologies Corp.",
+      "headquarters": "United States",
+      "sector": "Communication Services",
+      "industry": "Diversified Telecommunication Services",
+      "subIndustry": "Alternative Carriers",
+      "keywords": [
+        "rockets",
+        "launch services",
+        "spacecraft",
+        "satellite broadband",
+        "satellite-to-mobile",
+        "ai models",
+        "ai compute infrastructure"
+      ],
+      "tracks": null,
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Space Exploration Technologies Corp. Class A Common Stock, ISIN US84615Q1031",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1181412/000162828026042639/spaceexplorationtechnologi.htm",
+          "title": "Space Exploration Technologies Corp. prospectus filed under Rule 424(b)(4) on June 12, 2026 (cover page, Prospectus Summary, segments)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1181412/000162828026052535/spcx-20260630.htm",
+          "title": "Space Exploration Technologies Corp. Form 10-Q for the quarter ended June 30, 2026 (cover page)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.msci.com/downloads/web/msci-com/indexes/markets-in-motion/megacap-ipos/large-ipos-and-index-inclusion-faq.pdf",
+          "title": "MSCI, Large IPOs and Index Inclusion: Key facts (FAQ, May 2026), section What is SpaceX's GICS classification?",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ishares.com/us/products/239724/ishares-core-sp-total-us-stock-market-etf/latest-holdings.csv",
+          "title": "iShares Core S&P Total U.S. Stock Market ETF (ITOT) holdings as of Oct 05, 2026 (lists SPCX with Sector: Communication)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Class A common stock listed on Nasdaq and Nasdaq Texas since the June 2026 IPO. MSCI classifies it under Alternative Carriers (telecom) because Starlink connectivity is the majority of revenue, not under Aerospace & Defense. It acquired xAI in early 2026 and reports three segments: Space, Connectivity and AI."
+    },
+    {
+      "symbol": "SPY",
+      "underlying": "SPY",
+      "kind": "fund",
+      "company": "State Street SPDR S&P 500 ETF Trust",
+      "headquarters": null,
+      "sector": null,
+      "industry": null,
+      "subIndustry": null,
+      "keywords": ["s&p 500", "us large cap", "index fund", "us equities"],
+      "tracks": "S&P 500 Index",
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): SPDR S&P 500 ETF Trust, ISIN US78462F1030",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/884394/000119312526023648/d935960d497.htm",
+          "title": "State Street SPDR S&P 500 ETF Trust prospectus filed under Rule 497 (U.S. prospectus dated January 26, 2026: name, investment objective)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/etfs/state-street-spdr-sp-500-etf-trust-spy",
+          "title": "SPY: State Street SPDR S&P 500 ETF Trust (State Street fund page: objective and benchmark)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "The token references this fund, not the index itself. A unit investment trust; its prospectus dated January 26, 2026 names it State Street SPDR S&P 500 ETF Trust, formerly SPDR S&P 500 ETF Trust."
+    },
+    {
+      "symbol": "TSLA",
+      "underlying": "TSLA",
+      "kind": "common",
+      "company": "Tesla, Inc.",
+      "headquarters": "United States",
+      "sector": "Consumer Discretionary",
+      "industry": "Automobiles",
+      "subIndustry": "Automobile Manufacturers",
+      "keywords": [
+        "electric vehicles",
+        "self-driving",
+        "robotaxi",
+        "energy storage",
+        "energy generation",
+        "vehicle charging",
+        "humanoid robots"
+      ],
+      "tracks": null,
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Tesla, ISIN US88160R1014",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828026003952/tsla-20251231.htm",
+          "title": "Tesla, Inc. Form 10-K for the fiscal year ended December 31, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.tesla.com/elon-musk",
+          "title": "Tesla: Elon Musk (co-founder and CEO of Tesla)",
+          "readOn": "2026-10-08"
+        },
+        {
+          "url": "https://ir.tesla.com/corporate",
+          "title": "Tesla Investor Relations: Corporate Governance (Elon Musk listed in leadership)",
+          "readOn": "2026-10-08"
+        }
+      ],
+      "unverified": [],
+      "note": "The filing also reports bitcoin held as digital assets; that is a balance-sheet holding, not a business line, so no crypto label. Tesla identifies Elon Musk as its co-founder and CEO and lists him in leadership. This affiliation does not establish future investment benefit."
+    },
+    {
+      "symbol": "TSM",
+      "underlying": "TSM",
+      "kind": "adr",
+      "company": "Taiwan Semiconductor Manufacturing Company Limited",
+      "headquarters": "Taiwan",
+      "sector": "Information Technology",
+      "industry": "Semiconductors & Semiconductor Equipment",
+      "subIndustry": "Semiconductors",
+      "keywords": [
+        "foundry",
+        "wafer fabrication",
+        "advanced packaging",
+        "high performance computing",
+        "taiwan"
+      ],
+      "tracks": null,
+      "sets": ["shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1046179/000162828026025362/tsm-20251231.htm",
+          "title": "Taiwan Semiconductor Manufacturing Company Limited Form 20-F for the year ended December 31, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.msci.com/documents/10199/c0db0a48-01f2-4ba9-ad01-226fd5678111",
+          "title": "MSCI Emerging Markets Index (USD) factsheet, September 30, 2026: list of emerging market countries, top constituents with sector",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://digital.fidelity.com/prgw/digital/research/quote/dashboard/summary?symbol=TSM",
+          "title": "Fidelity quote page for TSM: company profile with GICS sector and industry group",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/746687/000119312526381590/d128467dncsrs.htm",
+          "title": "State Street Variable Insurance Series Funds Form N-CSRS, period ended June 30, 2026: schedule of investments grouped by sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/832566/000113322826011681/ap-efp27157_ncsrs.htm",
+          "title": "Alger Portfolios Form N-CSRS, period ended June 30, 2026: schedules of investments grouped by sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Wikipedia: Global Industry Classification Standard (structure table, citing MSCI's GICS structure effective March 2023)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Each ADS represents five common shares; ADSs are listed on the NYSE and the common shares on the Taiwan Stock Exchange; the cover page gives the address as Hsinchu, Taiwan, Republic of China."
+    },
+    {
+      "symbol": "USAR",
+      "underlying": "USAR",
+      "kind": "common",
+      "company": "USA Rare Earth, Inc.",
+      "headquarters": "United States",
+      "sector": "Materials",
+      "industry": "Metals & Mining",
+      "subIndustry": "Diversified Metals & Mining",
+      "keywords": [
+        "rare earths",
+        "rare earth magnets",
+        "neo magnets",
+        "critical minerals",
+        "rare earth metals and alloys",
+        "mining"
+      ],
+      "tracks": null,
+      "sets": ["thin"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1970622/000197062226000021/usar-20251231.htm",
+          "title": "USA Rare Earth, Inc. Form 10-K for the year ended December 31, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=usa+rare+earth&type=10-K&dateb=&owner=include&count=40",
+          "title": "SEC EDGAR company page for USA Rare Earth, Inc.: current and former names, business address, list of annual reports",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/945908/000119312526397475/d134311dncsr.htm",
+          "title": "Fidelity Covington Trust Form N-CSR, period ended July 31, 2026: Fidelity MSCI sector index ETFs, schedules of investments grouped by GICS industry and sub-industry",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/etfs/spdr-sp-metals-mining-etf-xme",
+          "title": "State Street SPDR S&P Metals & Mining ETF (XME): index sub-industries; USA Rare Earth in the daily holdings as of 05-Oct-2026",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://digital.fidelity.com/prgw/digital/research/quote/dashboard/summary?symbol=USAR",
+          "title": "Fidelity quote page for USAR: company profile with GICS sector and industry group",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Formerly Inflection Point Acquisition Corp. II; holds a majority interest in the Round Top deposit in Texas, bought Less Common Metals in November 2025 and runs a magnet plant in Stillwater, Oklahoma."
+    },
+    {
+      "symbol": "USO",
+      "underlying": "USO",
+      "kind": "fund",
+      "company": "United States Oil Fund, LP",
+      "headquarters": null,
+      "sector": null,
+      "industry": null,
+      "subIndustry": null,
+      "keywords": ["crude oil futures", "crude oil", "oil", "commodity pool"],
+      "tracks": "the daily changes in the spot price of light, sweet crude oil delivered to Cushing, Oklahoma, as measured by the Benchmark Oil Futures Contract",
+      "sets": ["cut", "shelf"],
+      "sources": [
+        {
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): token name and ISIN per symbol",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1327068/000110465926021501/uso-20251231x10k.htm",
+          "title": "United States Oil Fund, LP Form 10-K for the year ended December 31, 2025 (SEC EDGAR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.uscfinvestments.com/uso",
+          "title": "USCF Investments: United States Oil Fund, LP (USO) fund page",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Commodity pool organized as a Delaware limited partnership; shares trade on NYSE Arca; not an investment company under the Investment Company Act of 1940."
+    }
+  ]
+}

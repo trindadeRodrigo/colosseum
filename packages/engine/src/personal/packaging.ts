@@ -1,6 +1,7 @@
 import { FlattenError, flattenReport } from '@colosseum/basket';
 import type { BasketAsset, BasketLine, Component, Reason, Recipe } from '@colosseum/schemas';
 import { BPS, byName, largestFirst, shareOf, shareOfUp, split, sum, toUsd } from './money';
+import { linesInAll } from './params';
 import { type Book, once } from './placement';
 import { reason } from './templates';
 import { type PersonalProposal, SLEEVES, type Sleeve } from './types';
@@ -53,8 +54,9 @@ const limitOf = (w: World, asset: BasketAsset) => Math.floor((w.ceilingOf(asset)
 
 /**
  * The lines as components, with the shared portfolios in `whole` kept as one component each, and the
- * targets `flatten` opens them into. Null when it would not give back exactly these lines, or would
- * put a target over its token's ceiling: the caller then holds those portfolios part by part.
+ * targets `flatten` opens them into. Null when it would not give back exactly these lines, would put
+ * a target over its token's ceiling, or would give a line another target than its dollars come to:
+ * the caller then holds those portfolios part by part.
  */
 function componentsOf(
   w: World,
@@ -83,7 +85,7 @@ function componentsOf(
   try {
     const report = flattenReport(asRecipe(w, components), w.shelf, {
       minLineBps: w.P.minLineBps,
-      maxLines: w.P.maxLinesPerChain,
+      maxLines: linesInAll(w.sheet, w.P),
     });
     if (report.dropped.length > 0) return null;
     for (const t of report.targets) targets.set(t.asset, t.weightBps);
@@ -93,7 +95,17 @@ function componentsOf(
   }
   const same = rows.length === targets.size && rows.every((row) => targets.has(row.asset.id));
   const within = rows.every((row) => (targets.get(row.asset.id) ?? 0) <= limitOf(w, row.asset));
-  if (!same || !within) return null;
+  // A portfolio held whole is opened by the weights it publishes. Its lines are in those weights as
+  // placed, to the rounding of whole basis points: two, and two more for each portfolio held whole
+  // that feeds the line. Money that then left one of its lines alone (the coverage check moves the
+  // largest line to cash) takes that line out of them, and the portfolio is no longer held whole.
+  const oneBp = w.amount / BPS;
+  const inItsWeights = rows.every((row) => {
+    const feeding = whole.filter((slug) => row.via.has(slug)).length;
+    const off = Math.abs(row.cents - (targets.get(row.asset.id) ?? 0) * oneBp);
+    return feeding === 0 || off <= (2 + 2 * feeding) * oneBp + 1;
+  });
+  if (!same || !within || !inItsWeights) return null;
   return { components: largestFirst(components, (c) => c.weightBps, keyOf), targets };
 }
 
@@ -177,7 +189,15 @@ export function packageUp(w: World, book: Book): Packaged {
   const lines: BasketLine[] = [];
   for (const sleeve of SLEEVES)
     for (const row of largestFirst(
-      all.filter((r) => r.sleeve === sleeve && (r.cents > 0 || r.bps > 0)),
+      // The cash line stays, empty, where it is the only place a plan says its withdrawals fall
+      // short (a plan whose every dollar another sleeve holds).
+      all.filter(
+        (r) =>
+          r.sleeve === sleeve &&
+          (r.cents > 0 ||
+            r.bps > 0 ||
+            (r === cash && r.reasons.some((x) => x.rule === 'COVERAGE_SHORT'))),
+      ),
       (r) => r.bps,
       (r) => r.asset.id,
     )) {

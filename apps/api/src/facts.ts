@@ -41,6 +41,20 @@ import { curveVersionOf, RISK_METHOD_VERSION } from './curve-version';
 import { capacityAtTau } from './history';
 import { loadOracleInput } from './oracle-facts';
 
+/**
+ * The pool mid against an oracle, (mid − oracle) ÷ oracle, from the oracle's stored gap to the mid,
+ * (oracle − mid) ÷ mid. Null where there is none to give: no gap, or an oracle that answered zero
+ * or less (a gap of −1 or under), which is no price to measure against. That one divided by zero,
+ * and the fact went out as Infinity, which the answer's schema refuses for the whole asset.
+ */
+export function midAgainst(gapToAnswer: number | null | undefined): number | null {
+  if (gapToAnswer === null || gapToAnswer === undefined || !Number.isFinite(gapToAnswer))
+    return null;
+  if (1 + gapToAnswer <= 0) return null;
+  const gap = 1 / (1 + gapToAnswer) - 1;
+  return Number.isFinite(gap) ? gap : null;
+}
+
 const ROOT = process.env.REPO_ROOT ?? join(import.meta.dirname, '..', '..', '..');
 const CURVE_METHOD_VERSION = RISK_METHOD_VERSION;
 const fixture = (name: string) =>
@@ -485,10 +499,12 @@ export async function loadAssetFacts(
       live?: boolean;
       stale?: boolean;
     }>) {
-      if (o.live === false || o.stale || !Number.isFinite(o.gapToAnswer)) continue;
+      if (o.live === false || o.stale) continue;
+      const gap = midAgainst(o.gapToAnswer);
+      if (gap === null) continue;
       const k = `${o.priceSource}|${r.regime}`;
       const g = gaps.get(k) ?? { xs: [], from: r.observedAt, to: r.observedAt };
-      g.xs.push(1 / (1 + o.gapToAnswer) - 1);
+      g.xs.push(gap);
       if (r.observedAt < g.from) g.from = r.observedAt;
       if (r.observedAt > g.to) g.to = r.observedAt;
       gaps.set(k, g);

@@ -1,5 +1,6 @@
 import { mockAssets } from '@colosseum/chain-mock';
 import { proposals, users } from '@colosseum/db';
+import { parseStockAttributes } from '@colosseum/engine/personal';
 import {
   type BasketSheet,
   type ChainId,
@@ -14,6 +15,7 @@ import type { ChainRegistry } from '../../orders/chains';
 import type { PlanInputs } from '../../orders/personalize';
 import { loadProposal } from '../../orders/store';
 import { bearingPlanInputs } from '../../plan-inputs';
+import mockStocks from '../../testing/fixtures/mock-stocks.json';
 import mockYields from '../../testing/fixtures/mock-yields.json';
 import { orderFlow } from '../../testing/flow';
 import {
@@ -43,12 +45,17 @@ beforeAll(async () => {
   data = await testDb();
   undo.push(() => data.cleanUp());
   // The mock chain's dollar-yield token has no stored reading, and the engine never counts a missing
-  // yield as zero: the test hands it one, from a fixture labelled mock.
+  // yield as zero: the test hands it one, from a fixture labelled mock. And the attributes of the
+  // mock's stand-in stocks on Solana, from a fixture labelled mock too (gate THEME-MATCHED): a plan
+  // reads them only where its sheet names a filter.
   const withMockYield: PlanInputs = async (q) => ({
     ...(await bearingPlanInputs(q)),
     yields: YieldObservation.array()
       .parse(mockYields)
       .filter((y) => q.assets.some((a) => a.id === y.assetId)),
+    ...(q.chain === 'solana'
+      ? { stocks: parseStockAttributes(mockStocks, 'mock-stocks.json') }
+      : {}),
   });
   ({ app, registry } = await testApp({
     issuer: issuer.issuer,
@@ -94,6 +101,88 @@ const plansOf = async (sub: string) => {
 };
 
 describe('POST /v1/baskets/personalize', () => {
+  it('makes a theme sleeve from the curated list of the person’s chain (gates SLEEVES, THEMES)', async () => {
+    const who = await someone('solana');
+    const asked = sheet({
+      goal: 'grow',
+      risk: 'high',
+      amountUsd: 10_000,
+      sleeves: [
+        { kind: 'goal', shareBps: 5000 },
+        { kind: 'theme', shareBps: 5000, theme: 'ai' },
+      ],
+    });
+    const res = await post(who, PATH, { sheet: asked });
+    expect(res.statusCode, res.body).toBe(200);
+    const { proposal } = PersonalizeResponse.parse(res.json());
+    // The mock lists two of the seven names on Solana: both are held for the theme, and the five it
+    // does not list are left out with why.
+    const themed = proposal.lines.filter((l) =>
+      l.reasons.some((r) => r.rule === 'THEME_SLEEVE' && r.params.theme === 'AI'),
+    );
+    expect(themed.map((l) => l.assetId).sort()).toEqual(
+      mockAssets('solana')
+        .filter((a) => a.symbol === 'NVDAx' || a.symbol === 'TSLAx')
+        .map((a) => a.id)
+        .sort(),
+    );
+    const out = new Map(proposal.removed.map((r) => [r.ref, r.reasons.map((x) => x.rule)]));
+    for (const symbol of ['AAPLx', 'AMZNx', 'GOOGLx', 'METAx', 'MSFTx'])
+      expect(out.get(symbol), symbol).toEqual(['NOT_ON_CHAIN']);
+  });
+
+  it('fills a theme sleeve by a filter over the stock attributes of the person’s chain (gate THEME-MATCHED)', async () => {
+    const who = await someone('solana');
+    const semis = 'matched-industry-semiconductors-semiconductor-equipment';
+    const utilities = 'matched-sector-utilities';
+    const asked = sheet({
+      goal: 'grow',
+      risk: 'high',
+      amountUsd: 10_000,
+      sleeves: [
+        { kind: 'goal', shareBps: 4000 },
+        { kind: 'theme', shareBps: 3000, theme: semis },
+        { kind: 'theme', shareBps: 3000, theme: utilities },
+      ],
+    });
+    const res = await post(who, PATH, { sheet: asked });
+    expect(res.statusCode, res.body).toBe(200);
+    const { id, proposal } = PersonalizeResponse.parse(res.json());
+    expect(proposal.sheet.sleeves).toEqual(asked.sleeves);
+    // Two stocks carry the industry and the mock lists one of them on Solana: it is held, and its
+    // line says it is matched, by what and from which attributes, never that it is on a curated list.
+    // The fixture writes the industry two ways, which the filter holds equal: the sleeve is said by
+    // the value as the first stock by symbol writes it (AVGOx, with "and"), and each stock's own
+    // fact as its own row does.
+    const nvda = mockAssets('solana').find((a) => a.symbol === 'NVDAx');
+    const matched = proposal.lines.filter((l) =>
+      l.reasons.some((r) => r.rule === 'THEME_MATCHED_SLEEVE'),
+    );
+    expect(matched.map((l) => l.assetId)).toEqual([nvda?.id]);
+    expect(matched[0]?.reasons.map((r) => r.text)).toEqual(
+      expect.arrayContaining([
+        'You set 30% of the plan for names matched by industry: Semiconductors and Semiconductor Equipment. Matched from the sourced attributes of each, not a curated theme: equal shares of the ones you can hold on Solana and that can be sold at this size, each up to its limit.',
+        'NVDAx is matched by industry: Semiconductors and Semiconductor Equipment (attributes version 1, read 2026-10-06), not from a curated theme: NVIDIA Corporation: its industry is Semiconductors & Semiconductor Equipment.',
+      ]),
+    );
+    const said = [
+      ...proposal.lines.flatMap((l) => l.reasons),
+      ...proposal.removed.flatMap((r) => r.reasons),
+    ];
+    expect(said.some((r) => r.rule === 'THEME_SLEEVE' || r.rule === 'THEME_MEMBER')).toBe(false);
+    const out = new Map(proposal.removed.map((r) => [r.ref, r.reasons.map((x) => x.text)]));
+    expect(out.get('AVGOx')).toEqual(['AVGOx is left out: Solana does not list it.']);
+    // No stock carries the other value: that sleeve holds no name, flagged, and the plan says so.
+    expect(proposal.flags).toContain(`theme_no_match:${utilities}`);
+    expect(proposal.flags).not.toContain(`theme_no_match:${semis}`);
+    expect(out.get(utilities)).toEqual([
+      'There is no stock for utilities on Solana at the moment. We will be adding more soon.',
+    ]);
+    expect(said.some((r) => r.rule === 'OVERFLOW_THEME_NO_MATCH')).toBe(true);
+    // Stored as it was answered, so a buy names it.
+    expect(await loadProposal(data.db, id)).toEqual(proposal);
+  });
+
   it('keeps the currency, the sleeves and the restore choice, as sent and as stored', async () => {
     const who = await someone('solana');
     const asked = sheet({
@@ -122,6 +211,14 @@ describe('POST /v1/baskets/personalize', () => {
       },
     });
     expect(split.statusCode, split.body).toBe(200);
+    // The split is in the shared shape since slice 4, answered and stored, so each sleeve of a stored
+    // plan can be rebalanced against its own targets.
+    const made = PersonalizeResponse.parse(split.json());
+    expect(made.proposal.split?.map((x) => [x.kind, x.shareBps])).toEqual([
+      ['goal', 6000],
+      ['safe_yield', 4000],
+    ]);
+    expect((await loadProposal(data.db, made.id))?.split).toEqual(made.proposal.split);
     // Plans are in US dollars for now (gate USD-ONLY): a goal in reais is refused with its own code,
     // and nothing is stored.
     const reais = await post(who, PATH, { sheet: { ...asked, currency: 'BRL' } });
@@ -143,16 +240,21 @@ describe('POST /v1/baskets/personalize', () => {
     });
     expect(inReais.statusCode, inReais.body).toBe(422);
     expect(OrderError.parse(inReais.json()).code).toBe('CURRENCY_UNSUPPORTED');
-    // A theme sleeve is refused until the engine applies it, never ignored.
+    // A theme sleeve is built (ENG-3 slice 4). This plan is to protect, so it holds no stock: the
+    // theme's names are left out with why, and its share is held in dollar yield and cash.
     const theme = {
       sleeves: [
-        { kind: 'theme', shareBps: 5000, theme: 'ai' },
-        { kind: 'safe_yield', shareBps: 5000 },
+        { kind: 'theme' as const, shareBps: 5000, theme: 'ai' },
+        { kind: 'safe_yield' as const, shareBps: 5000 },
       ],
     };
-    const refused = await post(who, PATH, { sheet: { ...asked, ...theme } });
-    expect(refused.statusCode).toBeGreaterThanOrEqual(400);
-    expect(refused.statusCode).toBeLessThan(500);
+    const themed = await post(who, PATH, { sheet: { ...asked, ...theme } });
+    expect(themed.statusCode, themed.body).toBe(200);
+    const plan = PersonalizeResponse.parse(themed.json()).proposal;
+    expect(plan.sheet.sleeves).toEqual(theme.sleeves);
+    expect(plan.flags).toContain('theme_empty:ai');
+    const cls = classOf('solana');
+    expect(plan.lines.every((l) => cls.get(l.assetId) !== 'stock')).toBe(true);
   });
 
   it('makes a plan to protect with no stock token, stores it, and a buy buys it on the same chain', async () => {
@@ -225,6 +327,42 @@ describe('POST /v1/baskets/personalize', () => {
       String(20_000 * 10 ** 6),
       String(5_000 * 10 ** 6),
     ]);
+  });
+
+  it('answers the candidates of gate THREE-PLANS, each stored with its id, none marked, and a buy buys one', async () => {
+    const who = await someone('solana');
+    const months = Array.from({ length: 24 }, (_, m) => {
+      const at = new Date(Date.UTC(2027, m, 1)).toISOString().slice(0, 7);
+      return { month: at, amount: 1_500, currency: 'USD' };
+    });
+    const asked = sheet({ goal: 'income', horizonMonths: 36, obligations: months });
+    const res = await post(who, PATH, { sheet: asked });
+    expect(res.statusCode, res.body).toBe(200);
+    const answer = PersonalizeResponse.parse(res.json());
+    const shown = answer.candidates.map((c) => c.candidate);
+    // In the fixed order, each once, with what is not shown said; nothing selects one.
+    expect(shown).toEqual(['cover', 'spread', 'carry'].filter((id) => shown.some((s) => s === id)));
+    expect(shown.length + answer.candidatesNotShown.length).toBe(3);
+    expect(res.body).not.toMatch(/"(selected|recommended|isDefault|default)"/);
+    // No odds, no percentile, no chance.
+    expect(res.body).not.toMatch(/probab|percentil|\bchances?\b|\bodds\b|likel(y|ihood)/i);
+    // Each candidate its own stored plan; Carry, the plan the table makes, shares the plan's row.
+    const ids = answer.candidates.map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const carry = answer.candidates.find((c) => c.candidate === 'carry');
+    if (carry) expect(carry.id).toBe(answer.id);
+    for (const c of answer.candidates) {
+      expect(c.proposal.sheet).toEqual(asked);
+      expect(await loadProposal(data.db, c.id)).toEqual(c.proposal);
+      expect(c.status?.base.monthsWithWithdrawal).toBe(24);
+      expect(c.scorecard.openFxUsd).toBeUndefined();
+    }
+    // Each is a plan a buy can name.
+    const first = answer.candidates[0];
+    if (!first) throw new Error('no candidate');
+    await fund(who, undefined, 60_000);
+    const bought = await order(who, { proposalId: first.id, amountUsd: 50_000 });
+    expect(bought.legs.length).toBeGreaterThan(0);
   });
 
   it('holds PAXG for gold on Solana and GLD on Robinhood Chain when nothing chosen fills it (gate GOLD-PAXG)', async () => {
@@ -344,7 +482,19 @@ describe('POST /v1/baskets/personalize', () => {
     const made = await post(picked, PATH, { sheet: sheet() });
     expect(made.statusCode, made.body).toBe(200);
     expect(made.json().proposal.recipes.map((r: { chain: string }) => r.chain)).toEqual(['solana']);
-    expect(await plansOf(picked.sub)).toHaveLength(1);
+    // The plan, and beside it its other candidates (gate THREE-PLANS), each a stored row.
+    expect((await plansOf(picked.sub)).length).toBeGreaterThanOrEqual(1);
+  });
+
+  // Gate COUNTRY-REMOVED (Rodrigo, Oct 6): this test held that ZZ, QQ, EU, SU and UK were refused
+  // with 422. The plan reads no country: a sheet with none, or any two capitals, is answered.
+  it('answers a sheet with no country, or any two capitals, with a plan', async () => {
+    const who = await someone('solana');
+    const { country: _, ...none } = sheet();
+    for (const body of [none, sheet({ country: 'ZZ' }), sheet({ country: 'UK' })]) {
+      const res = await post(who, PATH, { sheet: body });
+      expect(res.statusCode, res.body).toBe(200);
+    }
   });
 
   it('answers 409 to a person with no chain yet, and 401 to nobody', async () => {

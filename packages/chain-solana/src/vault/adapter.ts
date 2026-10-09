@@ -14,6 +14,7 @@ import {
   SetAutoFollowArgs,
   SetTargetsArgs,
   SolanaAddress,
+  statedMinimum,
   Targets,
   Trade,
   type TradeMinimum,
@@ -644,7 +645,10 @@ export function createSolanaVaultAdapter(options: SolanaVaultAdapterOptions): So
         if (amount > (have?.amount ?? 0n))
           refuse('SpentTooMuch', `the vault holds less ${t.sell} than the ${amount} to sell`);
         const { routed, tables } = await routeFor(vault, sides, amount, a.slippageBps);
-        const minOut = (routed.outRaw * BigInt(10_000 - a.slippageBps)) / 10_000n;
+        // The least the order stated, where it stated one: the route is today's, the terms are not.
+        const minOut =
+          statedMinimum(a.minimums, a.trades, 0, routed.outRaw) ??
+          (routed.outRaw * BigInt(10_000 - a.slippageBps)) / 10_000n;
         const p = await programAccounts();
         const head = out?.exists
           ? []
@@ -1100,6 +1104,14 @@ export function createSolanaVaultAdapter(options: SolanaVaultAdapterOptions): So
         continue;
       }
       const t = refs.get(mint) as TokenRef;
+      // Some of it where an amount is named, never more than the vault holds; all of it otherwise.
+      const named = a.amounts?.[id];
+      const amount = named === undefined ? held.amount : BigInt(named);
+      if (amount > held.amount)
+        throw new ChainError(
+          'BadInput',
+          `the vault holds ${held.amount} raw ${id}, less than the ${amount} to withdraw`,
+        );
       try {
         txs.push(
           await built({
@@ -1122,14 +1134,14 @@ export function createSolanaVaultAdapter(options: SolanaVaultAdapterOptions): So
                 token: t,
                 vaultAccount: held.address,
                 destination: wallet.address,
-                amount: held.amount,
+                amount,
               }),
             ],
             watch: [
               { holder: 'vault', asset: id, account: held.address },
               { holder: 'wallet', asset: id, account: wallet.address },
             ],
-            summary: `Withdraw ${held.amount} raw ${id} from vault ${vault} to the owner`,
+            summary: `Withdraw ${amount} raw ${id} from vault ${vault} to the owner`,
             minimums: [],
           }),
         );

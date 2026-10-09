@@ -51,7 +51,12 @@ describe('amounts', () => {
 
   it('says how far under the quote a minimum is, rounded up', () => {
     expect(shortfallBps('1000000', '990000')).toBe(100);
-    expect(shortfallBps('3', '2')).toBe(3334);
+    // a 1% minimum cut down to a raw unit is a hair over 1%: it is the 1% the order states
+    expect(shortfallBps('1000001', '990000')).toBe(100);
+    expect(shortfallBps('3', '2')).toBe(3333);
+    // a gap that is no tolerance's rounding is rounded up, never down: 1.005% is said as 1.01%
+    expect(shortfallBps('1000000', '989950')).toBe(101);
+    expect(shortfallBps('1000001', '989990')).toBe(101);
     expect(shortfallBps('100', '100')).toBe(0);
     expect(shortfallBps('0', '0')).toBeNull();
     expect(formatBps(75, 'en')).toBe('0.75%');
@@ -236,6 +241,15 @@ describe('the calls before anything is signed', () => {
     const said = (status: number, body: object = {}) =>
       placeOrder(async () => json({ error: 'e', ...body }, status), ask);
     expect(await said(409, { code: 'NOT_FUNDED' })).toEqual({ kind: 'code', code: 'NOT_FUNDED' });
+    // a mix bought above the amount it was reviewed at has its own sentence (gate ANY-COMPOSITION)
+    expect(await said(422, { code: 'AMOUNT_OVER_REVIEW' })).toEqual({
+      kind: 'code',
+      code: 'AMOUNT_OVER_REVIEW',
+    });
+    for (const lang of ['en', 'pt'] as const)
+      expect(dictionary(lang).buy.failure.AMOUNT_OVER_REVIEW).not.toBe(
+        dictionary(lang).buy.failure.refused,
+      );
     expect(await said(409, { code: 'VERSION_CHANGED' })).toEqual({
       kind: 'code',
       code: 'VERSION_CHANGED',
@@ -342,15 +356,15 @@ describe('an order holds the amount the person typed, in committed units', () =>
 
   it('reads the cash token from the deploy record, the same one the guard derives from', () => {
     expect(units?.cash).toBe(deploymentsOf('testnet').solana?.cash);
-    expect(units?.tokens[units.cash]).toEqual({ symbol: 'tUSDC', decimals: 6 });
-    expect(units?.tokens['solana:spyx']).toEqual({ symbol: 'tSPYx', decimals: 8 });
+    expect(units?.tokens[units.cash]).toEqual({ symbol: 'USDC', decimals: 6 });
+    expect(units?.tokens['solana:spyx']).toEqual({ symbol: 'SPYx', decimals: 8 });
     expect(unitsFor('solana', true)?.cash).toBe(deploymentsOf('mock').solana?.cash);
     expect(unitsFor('robinhood', true)?.cash).toBe(deploymentsOf('mock').robinhood?.cash);
     // Robinhood Chain's test network: the units of its committed deployment, the names of its record
     const robinhood = unitsFor('robinhood', false);
     expect(robinhood?.cash).toBe(deploymentsOf('testnet').robinhood?.cash);
     expect(robinhood?.tokens[robinhood.cash]).toEqual({ symbol: 'tUSDG', decimals: 6 });
-    expect(robinhood?.tokens['robinhood:tspy']).toEqual({ symbol: 'tSPY', decimals: 18 });
+    expect(robinhood?.tokens['robinhood:tspy']).toEqual({ symbol: 'SPY', decimals: 18 });
     expect(unitsFor('base', false)).toBeNull();
     // the mock's dollar goes by the name of the chain it stands in for: never USDC on Robinhood Chain
     const mock = unitsFor('robinhood', true);
@@ -448,7 +462,24 @@ describe('what reached the chain, line by line', () => {
     const detail = activityOf(mocked, en, true)
       .map((line) => line.detail)
       .join(' ');
-    expect(detail).toContain('tUSDG → tspy');
+    expect(detail).toContain('tUSDG → SPY');
     expect(detail).not.toMatch(/usdc/i);
+  });
+
+  it('names each token as the review does: by its committed symbol, else by its ticker', () => {
+    const detail = (order: ReturnType<typeof doneOrder>, mock: boolean) =>
+      activityOf(order, en, mock)
+        .map((line) => line.detail)
+        .join(' ');
+    expect(detail(doneOrder('solana'), false)).toContain('USDC → SPYx');
+    const order = doneOrder('solana');
+    const onMock = {
+      ...order,
+      legs: order.legs.map((leg) => ({
+        ...leg,
+        trades: leg.trades.map((t) => ({ ...t, buy: 'solana:spy' })),
+      })),
+    };
+    expect(detail(onMock, true)).toContain('USDC → SPY');
   });
 });

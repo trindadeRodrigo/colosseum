@@ -30,7 +30,7 @@ import {
 
 // The shared-portfolio routes (API-3) through HTTP on the mock chain and the real database: the shelf,
 // a portfolio's page and its versions, a creator's publish, a buy that follows a portfolio, and a
-// follow by a vault the person has. Solana only: publishing on Robinhood Chain waits for EVM-3. On
+// follow by a vault the person has, on Solana and on Robinhood Chain. On
 // this mock, gold has no price oracle, as on Solana's test network (TNET-5), so a portfolio that holds
 // it offers no auto-follow (gate GOLD-ONE-TAP).
 
@@ -72,6 +72,21 @@ beforeAll(async () => {
     issuer: issuer.issuer,
     db: data.db,
     wrap: goldWithoutOracle,
+    // One stored reading, for the first asset the portfolios here hold: the shelf's figures stand on it.
+    planInputs: async () => ({
+      yields: [
+        {
+          assetId: WITHOUT_GOLD[0]?.asset ?? '',
+          quotedYield: 0.04,
+          haircutYield: 0.03,
+          haircutRule: 'a test rule',
+          source: 'a test reading',
+          method: 'written for this test',
+          fetchedAt: '2026-10-05T00:00:00.000Z',
+          provenance: 'mock',
+        },
+      ],
+    }),
   }));
   undo.push(() => app.close());
 });
@@ -199,9 +214,29 @@ describe('a creator publishes a shared portfolio', () => {
     const onchain = await registry.get('solana').adapter.getRecipe(recipe?.onchainId ?? '');
     expect(onchain.active.creator).toBe(creator.solana);
 
+    // What the server has measured of the version in effect: a holding at a time, null where it has
+    // no reading.
+    expect(recipe?.figures?.holdings.map((h) => h.asset)).toEqual(
+      WITHOUT_GOLD.map(({ asset }) => asset),
+    );
+    expect(recipe?.figures?.holdings[0]?.yield).toMatchObject({
+      quoted: 0.04,
+      afterHaircut: 0.03,
+      source: 'a test reading',
+      provenance: 'mock',
+    });
+    expect(recipe?.figures?.holdings.slice(1).map((h) => h.yield)).toEqual(
+      WITHOUT_GOLD.slice(1).map(() => null),
+    );
+    expect(recipe?.figures?.holdings.map((h) => h.exit)).toEqual(WITHOUT_GOLD.map(() => null));
+    // nothing is added up across the holdings: a range of the whole is the engine's to work out
+    expect(Object.keys(recipe?.figures ?? {})).toEqual(['holdings']);
+
     const shelf = ShelfResponse.parse((await get(null, '/v1/shelf?chain=solana')).json());
     const card = shelf.families.find((f) => f.slug === text.slug);
     expect(card?.recipes[0]).toMatchObject({ source: 'cache', textMatches: 'active' });
+    // the card carries the same figures as the page
+    expect(card?.recipes[0]?.figures).toEqual(recipe?.figures);
     const elsewhere = ShelfResponse.parse((await get(null, '/v1/shelf?chain=robinhood')).json());
     expect(elsewhere.families.some((f) => f.slug === text.slug)).toBe(false);
   });
@@ -368,6 +403,35 @@ describe('a creator publishes a shared portfolio', () => {
     ]);
   });
 
+  it('on Robinhood Chain too, from the creator’s EVM wallet, onto that chain’s shelf', async () => {
+    const creator = await someone('robinhood');
+    const text = fresh();
+    const components = WITHOUT_GOLD.map((c) => ({
+      ...c,
+      asset: c.asset.replace('solana', 'robinhood'),
+    }));
+    const res = await post(creator, '/v1/orders', {
+      ...publishBody(creator, text, components),
+      creator: { evm: creator.evm },
+      recipes: [{ chain: 'robinhood', components }],
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const placed = OrderDetail.parse(res.json());
+    expect(placed.needsConsent).toEqual(['publish']);
+    expect(placed.legs.map((l) => [l.chain, l.kind])).toEqual([['robinhood', 'publish']]);
+    await fund(creator);
+    expect((await settleAll(creator, placed)).status).toBe('done');
+    const family = await page(text.slug);
+    expect(family.chains).toEqual(['robinhood']);
+    expect(family.recipes[0]).toMatchObject({
+      chain: 'robinhood',
+      creator: creator.evm,
+      textMatches: 'active',
+    });
+    const shelf = ShelfResponse.parse((await get(null, '/v1/shelf?chain=robinhood')).json());
+    expect(shelf.families.some((f) => f.slug === text.slug)).toBe(true);
+  });
+
   it('refuses a publish it cannot plan, and says why', async () => {
     const creator = await someone();
     const text = fresh();
@@ -396,8 +460,8 @@ describe('a creator publishes a shared portfolio', () => {
             },
           ],
         },
-        501,
-        /Robinhood Chain is not built yet/,
+        422,
+        /the creator has no evm address/,
       ],
       [
         {

@@ -1,8 +1,9 @@
-import { FundingResponse, TestFundsResponse } from '@colosseum/schemas';
+import { FundingResponse, PortfolioResponse, TestFundsResponse } from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { TestFundsSend, TestFundsSender } from '../../faucet/test-funds';
 import type { ChainRegistry } from '../../orders/chains';
+import { NO_SUCH_VAULT } from '../../orders/prepare';
 import { orderFlow } from '../../testing/flow';
 import {
   type HomeChain,
@@ -39,10 +40,14 @@ const sender: TestFundsSender = {
 };
 const undo: (() => Promise<unknown>)[] = [];
 
+/** Off while a test opens a vault through the mock's own routes, on the same chain state. */
+let dressed = true;
 /** The registry, with Solana's entry dressed as a test network's real adapter. */
 const onTestnet = (inner: ChainRegistry): ChainRegistry => {
   const dress = <T extends ReturnType<ChainRegistry['get']>>(e: T): T =>
-    e.chain === 'solana' ? { ...e, mode: 'live', provenance: 'sandbox', mock: undefined } : e;
+    dressed && e.chain === 'solana'
+      ? { ...e, mode: 'live', provenance: 'sandbox', mock: undefined }
+      : e;
   return { ...inner, get: (c) => dress(inner.get(c)), active: () => inner.active().map(dress) };
 };
 
@@ -70,7 +75,7 @@ afterAll(async () => {
   for (const step of undo.reverse()) await step();
 });
 
-const { post, get } = orderFlow({
+const { post, get, fund, order, settleAll } = orderFlow({
   app: () => faucetApp,
   registry: () => registry,
   plans: () => plans,
@@ -129,5 +134,69 @@ describe('POST /v1/testnet/fund', () => {
     expect(theirs.statusCode).toBe(403);
     const extra = await post(a, '/v1/testnet/fund', { ...ask(), cashRaw: '1000000000000' });
     expect(extra.statusCode).toBe(400);
+  });
+});
+
+// An add to a vault (API-ADD-MONEY): the faucet reads the need as GET /v1/funding does, so the vault is
+// one of the caller's own, the funds go to the caller's wallet, and the person's daily sends count.
+describe('POST /v1/testnet/fund for an add to a vault', () => {
+  /** A person with one vault on Solana, opened through the mock's routes, and $500 of cash left. */
+  async function withVault() {
+    const who = await someone();
+    dressed = false;
+    try {
+      await fund(who, undefined, 1_500);
+      await settleAll(who, await order(who, { amountUsd: 1_000 }));
+    } finally {
+      dressed = true;
+    }
+    const read = await get(who, '/v1/portfolio');
+    expect(read.statusCode, read.body).toBe(200);
+    const [vault] = PortfolioResponse.parse(read.json()).chains.flatMap((c) => c.vaults);
+    if (!vault) throw new Error('the buy opened no vault');
+    return { who, add: { amountUsd: 2_000, vault: vault.address, vaultChain: 'solana' } };
+  }
+
+  it('sends what the add is missing to the caller’s own wallet, three times a day and no more', async () => {
+    const { who, add } = await withVault();
+    const read = FundingResponse.parse(
+      (await get(who, `/v1/funding?amountUsd=2000&vault=${add.vault}&vaultChain=solana`)).json(),
+    );
+    expect(read.testFunds).toBe(true);
+    expect(read.newVault).toBe(false);
+    const before = sent.length;
+    const res = await post(who, '/v1/testnet/fund', add);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(TestFundsResponse.parse(res.json()).wallet).toBe(who.solana);
+    expect(sent).toHaveLength(before + 1);
+    expect(sent.at(-1)?.to).toBe(who.solana);
+    const cash = BigInt(read.cash.missingRaw);
+    expect(cash).toBeGreaterThan(0n);
+    expect(sent.at(-1)?.cashRaw).toBe(cash + (cash + 99n) / 100n);
+    // The person's daily sends count for an add as for a buy: the sender here moves nothing, so the
+    // need stands, and the fourth ask of the day is refused.
+    expect((await post(who, '/v1/testnet/fund', add)).statusCode).toBe(200);
+    expect((await post(who, '/v1/testnet/fund', add)).statusCode).toBe(200);
+    const fourth = await post(who, '/v1/testnet/fund', add);
+    expect(fourth.statusCode, fourth.body).toBe(429);
+    expect(sent).toHaveLength(before + 3);
+  });
+
+  it('answers another person’s vault as unknown, and sends nothing', async () => {
+    const { who, add } = await withVault();
+    const other = await someone();
+    const before = sent.length;
+    const theirs = await post(other, '/v1/testnet/fund', add);
+    expect(theirs.statusCode, theirs.body).toBe(404);
+    expect(theirs.json().error).toBe(NO_SUCH_VAULT);
+    // the same answer as for a vault that does not exist
+    const none = await post(other, '/v1/testnet/fund', { ...add, vault: other.solana });
+    expect([none.statusCode, none.json().error]).toEqual([404, NO_SUCH_VAULT]);
+    // nor to the owner's wallet when another person names it, nor to another wallet for the owner
+    const forOwner = await post(other, '/v1/testnet/fund', { ...add, wallet: who.solana });
+    expect(forOwner.statusCode).toBe(403);
+    const elsewhere = await post(who, '/v1/testnet/fund', { ...add, wallet: other.solana });
+    expect(elsewhere.statusCode).toBe(403);
+    expect(sent).toHaveLength(before);
   });
 });

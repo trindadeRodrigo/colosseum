@@ -113,6 +113,34 @@
       "when": 1791302405547,
       "tag": "0015_link_orders",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1791330642913,
+      "tag": "0016_vault_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791335096314,
+      "tag": "0017_leg_withdrawals",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791393277643,
+      "tag": "0018_vault_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791470581329,
+      "tag": "0019_private_conversation_history",
+      "breakpoints": true
     }
   ]
 }

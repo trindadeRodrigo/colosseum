@@ -17,11 +17,13 @@ import {
 import { assertBuilds, type ChainEntry, type ChainRegistry } from './chains';
 import { legErrorFromRevert, Refusal, refusing } from './errors';
 import { familyBySlug } from './families';
+import { buildRetarget } from './mix';
 import {
   basketIdOf,
   basketIdOfBuy,
   expectedOf,
   ORDER_POLICY,
+  sameVaultAddress,
   slippageOf,
   targetsOf,
   tradesFor,
@@ -29,6 +31,7 @@ import {
 import { autoFollowOffer, familyText, followedOn, recipeTargets, refuseAutoFollow } from './shared';
 import {
   blockedBy,
+  continuationsOf,
   isLinkedProposal,
   liveElsewhere,
   loadFamilies,
@@ -41,9 +44,12 @@ import {
   recordOrderState,
   recordOutcome,
   recordRefusal,
+  recordSkipped,
   type StoredOrder,
   TakenElsewhere,
 } from './store';
+import { noteOrder } from './thread';
+import { buildWithdraw, SkippedStep } from './withdraw';
 
 // Building a leg and settling it (DESIGN-VAULT 3.3). The API builds unsigned transactions and relays
 // signed ones. It holds no key and signs nothing.
@@ -52,7 +58,27 @@ export type OrderDeps = {
   db: Db;
   chains: ChainRegistry;
   now: () => Date;
+  /**
+   * Told when the record beside an order (a plan's thread, thread.ts) could not be written. It is
+   * handed the kind of failure and never the error itself, which can carry what was being written.
+   */
+  onRecordError?: (what: { name: string; code?: string }) => void;
 };
+
+/** What a failure is called, with nothing of what it was about. */
+export const failureOf = (e: unknown): { name: string; code?: string } => {
+  const name =
+    e instanceof Error && /^[A-Za-z][A-Za-z0-9]{0,60}$/.test(e.name) ? e.name : 'unknown';
+  const code = (e as { code?: unknown } | null)?.code;
+  return {
+    name,
+    ...(typeof code === 'string' && /^[A-Za-z0-9_]{1,32}$/.test(code) ? { code } : {}),
+  };
+};
+
+/** Tells the thread of the order's plan where the order stands now (thread.ts). Never throws. */
+const tellThread = (deps: OrderDeps, stored: StoredOrder) =>
+  noteOrder(deps.db, stored, { onError: (e) => deps.onRecordError?.(failureOf(e)) });
 
 const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
 const settled = (leg: Leg) => leg.status === 'confirmed' || leg.status === 'skipped';
@@ -81,7 +107,10 @@ async function reload(deps: OrderDeps, id: string, expiresAt?: number): Promise<
   const status = orderStatus(stored.order.legs, until, seconds(deps.now()));
   if (status !== stored.order.status || until !== stored.order.expiresAt)
     await recordOrderState(deps.db, id, { status, expiresAt: until });
-  return { ...stored, order: { ...stored.order, status, expiresAt: until } };
+  const now = { ...stored, order: { ...stored.order, status, expiresAt: until } };
+  // The plan's thread is told when the order's status moved: done, failed, expired.
+  if (status !== stored.order.status) await tellThread(deps, now);
+  return now;
 }
 
 const ownerOn = (order: Order, leg: Leg): Address => {
@@ -106,7 +135,7 @@ function legOf(stored: StoredOrder, legId: string): Leg {
 }
 
 /** The owner's vault for the plan this order buys, or null before it is opened. */
-async function planVault(entry: ChainEntry, owner: Address, basketId: string) {
+export async function planVault(entry: ChainEntry, owner: Address, basketId: string) {
   return (await entry.adapter.getVaults(owner)).find((v) => v.basketId === basketId) ?? null;
 }
 
@@ -142,7 +171,10 @@ async function buildFor(
   const { request, order } = stored;
   if (request.type === 'publish' || request.type === 'follow')
     return buildShared(deps, stored, leg, entry, owner, nonce);
-  if (request.type !== 'buy' || !(request.proposalId || request.family))
+  if (request.type === 'withdraw') return buildWithdraw(request, leg, entry, owner, nonce);
+  // A vault's own targets, from a mix the person confirmed (orders/mix.ts).
+  if (request.type === 'rebalance') return buildRetarget(request, leg, entry, owner, nonce);
+  if (request.type !== 'buy' || !(request.proposalId || request.family || request.vault))
     throw new Refusal(501, `a ${request.type} order cannot be built yet`);
   const { adapter } = entry;
   // A buy of a shared portfolio reaches the vault numbered from the family's id.
@@ -158,6 +190,10 @@ async function buildFor(
     });
   // The vault the order was made for, as it was stored with it. An order made before the number was
   // stored works it out as it was worked out then.
+  // An order that adds to a vault the person named is that vault's and no plan's: its number was
+  // stored with it, and it is never worked out again from anything else.
+  if (request.vault && !stored.order.basketId)
+    throw new Refusal(409, 'this order names a vault and kept no number for it: make it again');
   const basketId =
     stored.order.basketId ??
     (family
@@ -169,17 +205,40 @@ async function buildFor(
         ));
   const slippageBps = slippageOf(request);
   const trades = leg.trades.length ? leg.trades : undefined;
-  const shared = nonce === undefined ? {} : { nonce };
+  // The terms the order stated when it was made, and the person approved: every build of the step
+  // carries these minimums, however the price has moved since. A builder that can no longer meet one
+  // refuses (`PriceMoved`); it never writes another. A step stored before each trade had its figure
+  // states none, and is built from the quote as it was.
+  const minimums =
+    trades && leg.expected.length === trades.length
+      ? leg.expected.map((figure) => figure.minOutRaw)
+      : undefined;
+  const shared = { ...(nonce === undefined ? {} : { nonce }), ...(minimums ? { minimums } : {}) };
   const vault = async () => {
     const found = await planVault(entry, owner, basketId);
     if (!found) throw new ChainError('VaultNotFound', 'the vault for this plan is not open yet');
+    // The vault the person named and the vault of the stored number are one: a step is never built
+    // for another, whatever the order row says.
+    if (request.vault && !sameVaultAddress(leg.chain, found.address, request.vault.address))
+      throw new Refusal(
+        409,
+        'this order adds to another vault than the one it named: make it again',
+      );
     return found.address;
   };
   switch (leg.kind) {
     // The adapter works out who may take the cash from the plan: nobody here names a spender.
     case 'approve':
-      return adapter.buildApprove({ owner, basketId, amountRaw: cashOf(leg), ...shared });
+      return adapter.buildApprove({
+        owner,
+        basketId,
+        amountRaw: cashOf(leg),
+        ...(nonce === undefined ? {} : { nonce }),
+      });
     case 'create_vault': {
+      // Adding to a vault opens none: a step that would is not this order's.
+      if (request.vault)
+        throw new Refusal(409, 'an order that adds to a vault opens no vault: make it again');
       if (request.family) {
         // A vault that follows the version the order holds to: it copies that version's weights, and
         // the trades are the ones planned for them. Once it is open the order's swaps buy what it
@@ -395,16 +454,20 @@ async function settle(
  * Reads the order again after an outcome. The first transaction the chain has seen keeps an order open
  * for a day; a transaction that is only claimed, or one that lands after the order expired, does not.
  */
-function afterOutcome(deps: OrderDeps, stored: StoredOrder, status: Outcome['status']) {
+async function afterOutcome(deps: OrderDeps, stored: StoredOrder, status: Outcome['status']) {
   const now = seconds(deps.now());
   const seen = status === 'confirmed' || status === 'failed';
   const first = !stored.attempts.some(final);
   const open = now <= stored.order.expiresAt;
-  return reload(
+  const after = await reload(
     deps,
     stored.order.id,
     seen && first && open ? now + ORDER_POLICY.signedSeconds : undefined,
   );
+  // A step settled: the thread is told what that makes true (the deposit landed), whether or not
+  // the order's own status moved.
+  await tellThread(deps, after);
+  return after;
 }
 
 /**
@@ -465,10 +528,12 @@ async function assertNothingInFlight(
     throw new Refusal(
       409,
       'the transaction built earlier for this step has landed: read the order again',
+      { code: 'STEP_LANDED' },
     );
   }
   if (fate.state === 'open' && live(latest))
     throw new Refusal(409, 'the transaction built earlier for this step can still land', {
+      code: 'STEP_IN_FLIGHT',
       fix:
         latest.validUntil === null
           ? 'Report it, or cancel it, before building this step again.'
@@ -476,6 +541,19 @@ async function assertNothingInFlight(
       details: { retryable: true },
     });
   return fate.state === 'open' && latest.nonce !== null ? latest.nonce : undefined;
+}
+
+/**
+ * The same for several steps of one order: none of them has a transaction that can still land. For a
+ * continuation (continue.ts), which makes the steps again in another order: a transaction built for
+ * one of them and signed later would spend the vault's cash a second time.
+ */
+export async function assertNoneInFlight(
+  deps: OrderDeps,
+  stored: StoredOrder,
+  steps: readonly Leg[],
+): Promise<void> {
+  for (const leg of steps) await assertNothingInFlight(deps, stored, leg);
 }
 
 /**
@@ -531,6 +609,17 @@ export async function buildLeg(
     });
   if (leg.status === 'confirmed' || leg.status === 'skipped')
     throw new Refusal(409, 'this step is already done');
+  // An order that another finishes (continue.ts) builds nothing more: what it left is that order's,
+  // at the terms that one states, and the vault's cash is spent once. Asked here before any work is
+  // done, and again under the order's lock when the build is recorded (`recordBuild`), which is the
+  // one that holds against a continuation made in between.
+  const [finishedBy] = await continuationsOf(deps.db, order.id);
+  if (finishedBy)
+    throw new Refusal(409, 'another order finishes this one: its steps left are that order’s', {
+      code: 'ORDER_CONTINUED',
+      fix: `Open order ${finishedBy.id}.`,
+      details: { continuedBy: finishedBy.id },
+    });
   const waiting = order.legs.find((l) => l.chain === leg.chain && l.seq < leg.seq && !settled(l));
   if (waiting) throw new Refusal(409, 'an earlier step on this chain has not settled yet');
 
@@ -550,6 +639,15 @@ export async function buildLeg(
       await expectedOf(entry, leg.trades, owner, slippageOf(stored.request)),
     ]);
   } catch (e) {
+    // A step whose one token cannot move: skipped with its reason, so the rest can be signed.
+    if (e instanceof SkippedStep) {
+      await recordSkipped(deps.db, leg, {
+        code: e.code,
+        message: e.reason,
+        retryable: false,
+      });
+      throw e;
+    }
     const chain = e instanceof Refusal ? e.extra.details : undefined;
     if (e instanceof Refusal && chain?.chainCode)
       await recordRefusal(deps.db, leg.id, {
@@ -595,7 +693,8 @@ export async function buildLeg(
       ? { exclusive: { owner, orderId: order.id, chainName: entry.config.name, clear } }
       : {}),
   });
-  await reload(deps, order.id);
+  // A step was built: the thread is told the order was made, the first time (thread.ts).
+  await tellThread(deps, await reload(deps, order.id));
   return { tx: stampTx(built, { legId: leg.id, attemptId: attempt.id }), attempt };
 }
 
@@ -800,7 +899,9 @@ export async function cancelLeg(
     // Another step's transaction took the nonce: the attempt is closed, which is what was asked.
     if (status === null) return reload(deps, stored.order.id);
     await afterOutcome(deps, stored, status);
-    throw new Refusal(409, 'the transaction of this step has landed: read the order again');
+    throw new Refusal(409, 'the transaction of this step has landed: read the order again', {
+      code: 'STEP_LANDED',
+    });
   }
   if (fate.state === 'open' && attempt.validUntil !== null)
     throw new Refusal(409, 'the transaction of this step can still land until it expires', {

@@ -79,7 +79,7 @@ describe('the API client', () => {
   });
 
   it('throws a refusal with the API’s words, and its status when it sent none', async () => {
-    const said = { error: 'no plan made from a link has that id', code: undefined };
+    const said = { error: 'no plan with that id that you can read', code: undefined };
     const refused = double({ status: 404, body: said });
     await expect(
       refused.client.call('GET /v1/baskets/{id}', { params: { id: 'x' } }),

@@ -10,6 +10,8 @@ import {
   OrderDetail as Order,
   type OrderDetail,
   type TRUST_STATUS,
+  type Trade,
+  Trade as TradeSchema,
   Verdict,
 } from '@colosseum/schemas';
 import { readTerms, type SharedTerms } from '../shared/terms';
@@ -18,8 +20,9 @@ import { readTerms, type SharedTerms } from '../shared/terms';
 //
 //   placed     the plan it buys, as the plan screen showed it: its id and its lines, which the vault's
 //              targets are worked out from. Written when the order is made. For an order about a
-//              shared portfolio (a buy that follows one, a follow, a publish: WEB-4) the terms its
-//              screen showed take the plan's place (features/shared/terms.ts).
+//              shared portfolio (a buy that follows one, a follow, a publish: WEB-4), and for more
+//              money into a vault (add money), the terms its screen showed take the plan's place
+//              (features/shared/terms.ts).
 //   approved   the order exactly as the review screen showed it when the person pressed the button,
 //              with the consents they ticked. From then on it is what every run of the order is handed:
 //              it is never read again from the API to decide what a step may do.
@@ -65,6 +68,25 @@ export type OrderRecord = {
    * too (`basketIdOfLinkedPlan`), so the link alone does not lead to the vault.
    */
   linked?: true;
+  /**
+   * For an order that finishes another with the cash already in its vault (`POST
+   * /v1/orders/{id}/continue`): that order's id, and the trades it left undone, as this browser's
+   * record of it had them. The order is held to these, and deposits nothing (order-check.ts).
+   */
+  continues?: {
+    orderId: string;
+    trades: Trade[];
+    /**
+     * This browser never reviewed the first order: the trades are the ones the server lists as left,
+     * held to the plan's lines read from the server, and the review says so.
+     */
+    unseen?: true;
+  };
+  /**
+   * The vault's number on chain as the server's list of plans gave it (`GET /v1/me/plans`), for a
+   * record made from that list and not kept in this browser (features/portfolio/server-plans.ts).
+   */
+  basketId?: string;
 };
 
 function readGoal(value: unknown): PlacedGoal | null {
@@ -83,9 +105,9 @@ function readGoal(value: unknown): PlacedGoal | null {
   };
 }
 
-/** True when the order deposits cash: a buy of a plan or of a shared portfolio. */
+/** True when the order deposits cash: a buy of a plan or of a shared portfolio, or an add to a vault. */
 export const isBuy = (record: Pick<OrderRecord, 'terms'>): boolean =>
-  !record.terms || record.terms.kind === 'family';
+  !record.terms || record.terms.kind === 'family' || record.terms.kind === 'vault';
 
 const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 
@@ -97,8 +119,9 @@ function readRecord(value: unknown): OrderRecord | null {
   const lines = Line.array().safeParse(r.lines);
   const terms = r.terms === undefined ? undefined : readTerms(r.terms);
   if (terms === null) return null;
-  // A buy names its plan and an amount, or its portfolio and an amount; a follow and a publish neither.
-  const buy = !terms || terms.kind === 'family';
+  // A buy names its plan and an amount, or its portfolio or its vault and an amount; a follow and a
+  // publish neither.
+  const buy = isBuy({ terms });
   if (
     !text(r.orderId) ||
     !text(r.userId) ||
@@ -110,6 +133,21 @@ function readRecord(value: unknown): OrderRecord | null {
     (buy ? !(r.amountUsd > 0) : r.amountUsd !== 0)
   )
     return null;
+  let continues: OrderRecord['continues'];
+  if (r.continues !== undefined) {
+    const c = (typeof r.continues === 'object' ? r.continues : null) as Record<
+      string,
+      unknown
+    > | null;
+    const trades = TradeSchema.array().min(1).safeParse(c?.trades);
+    // A record that says it finishes an order and does not say which, or with what, is not read.
+    if (!c || !text(c.orderId) || !trades.success) return null;
+    continues = {
+      orderId: c.orderId,
+      trades: trades.data,
+      ...(c.unseen === true ? { unseen: true as const } : {}),
+    };
+  }
   let approved: ApprovedOrder | null = null;
   if (r.approved !== null) {
     const a = (typeof r.approved === 'object' ? r.approved : null) as Record<
@@ -132,6 +170,7 @@ function readRecord(value: unknown): OrderRecord | null {
     approved,
     goal: readGoal(r.goal),
     ...(r.linked === true ? { linked: true as const } : {}),
+    ...(continues ? { continues } : {}),
   };
 }
 
@@ -144,6 +183,21 @@ export function keepOrder(record: OrderRecord): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Forgets the record of an order nobody approved: the invest card made it to show its prices, and
+ * the person changed the amount or left before pressing. Nothing was signed for it, and our server's
+ * copy runs out by itself. An order that was approved is never forgotten here: it is what its page
+ * runs from.
+ */
+export function forgetUnapproved(orderId: string, userId: string | null): void {
+  try {
+    const record = recallOrder(orderId, userId);
+    if (record && record.approved === null) window.localStorage.removeItem(KEY(orderId));
+  } catch {
+    // Not removed: it is one more record with nothing approved, which signs nothing.
   }
 }
 
@@ -181,28 +235,84 @@ export function recallOrders(userId: string | null): OrderRecord[] {
   return found.sort((a, b) => at(b).localeCompare(at(a)));
 }
 
+/**
+ * Forgets every order record in this browser, whoever it was kept for: "Sign out" pressed while the
+ * sign-in service could not say who is signed in (AccountProvider, `leave`). The orders stay on the
+ * server; what was signed for a step is kept apart, as below.
+ */
+export function forgetEveryOrder(): void {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (key?.startsWith('tf-order:')) keys.push(key);
+    }
+    for (const key of keys) window.localStorage.removeItem(key);
+  } catch {
+    // Nothing kept, nothing to forget.
+  }
+}
+
+/**
+ * Forgets the order records this browser kept for a person: they signed out, or another person signed
+ * in. The orders stay on the server. What was signed for a step is kept apart (run-order.ts) and is
+ * not touched: it is what stops a step being signed twice. The trust acceptance stays too: it holds
+ * no figure, and is read only for the person it names.
+ */
+export function forgetOrders(userId: string): void {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (key?.startsWith('tf-order:') && recallOrder(key.slice('tf-order:'.length), userId))
+        keys.push(key);
+    }
+    for (const key of keys) window.localStorage.removeItem(key);
+  } catch {
+    // Nothing kept, nothing to forget.
+  }
+}
+
 // The trust notice (TRUST_STATUS), accepted once per person and version of its text, before the first
 // deposit. The API's consent route is not built (apps/api/src/orders/README.md, item 12), so the
-// acceptance is kept in this browser, with the version of the text and the time.
+// acceptance is kept in this browser, with the version of the text and the time, and whether the
+// keeper's limits were among the short points shown (a plan's own vault leaves them out): a buy that
+// the keeper may trade asks again of someone who accepted without them.
 
 const TRUST_KEY = (userId: string) => `tf-trust:${userId}`;
 
-export function trustAccepted(userId: string | null, version: string): boolean {
+export function trustAccepted(
+  userId: string | null,
+  version: string,
+  /** This buy's vault may be traded by the keeper: the acceptance must have shown its limits. */
+  keeper = true,
+): boolean {
   if (!userId) return false;
   try {
     const raw = window.localStorage.getItem(TRUST_KEY(userId));
-    const read = raw ? (JSON.parse(raw) as { textVersion?: unknown }) : null;
-    return read?.textVersion === version;
+    const read = raw ? (JSON.parse(raw) as { textVersion?: unknown; keeperShown?: unknown }) : null;
+    // An acceptance kept before this was recorded was of the notice with every point.
+    return read?.textVersion === version && (!keeper || read.keeperShown !== false);
   } catch {
     return false;
   }
 }
 
-export function acceptTrust(userId: string, version: (typeof TRUST_STATUS)['textVersion']): void {
+export function acceptTrust(
+  userId: string,
+  version: (typeof TRUST_STATUS)['textVersion'],
+  keeperShown = true,
+): void {
   try {
+    // An acceptance that showed the keeper's limits is not written over by one that did not.
+    const before = keeperShown ? false : trustAccepted(userId, version, true);
     window.localStorage.setItem(
       TRUST_KEY(userId),
-      JSON.stringify({ textVersion: version, acceptedAt: new Date().toISOString() }),
+      JSON.stringify({
+        textVersion: version,
+        acceptedAt: new Date().toISOString(),
+        keeperShown: keeperShown || before,
+      }),
     );
   } catch {
     // Not kept: the notice is asked again next time.

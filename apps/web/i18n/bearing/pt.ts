@@ -50,6 +50,21 @@ export const bearingPt: BearingDictionary = {
     down: (api: string) => `A API de risco em ${api} não respondeu.`,
     downAll: 'Cada número desta página espera por ela; nenhum é inventado no lugar.',
   },
+  chain: {
+    label: 'Rede',
+    pageNotCollected: (chain: string) =>
+      `Ainda não coletado na ${chain}: por enquanto o Bearing mede esta página só na Solana.`,
+    sideBySide: {
+      title: 'As redes lado a lado',
+      note: 'Cada rede como o Bearing a mede agora. A capacidade de saída é lida no horário da semana de agora.',
+      caption: 'Ativos acompanhados, TVL dos pools, capacidade de saída e volume em 24 h por rede',
+      chain: 'Rede',
+      assets: 'Ativos acompanhados',
+      tvl: 'TVL dos pools',
+      capacity: 'Capacidade de saída com custo ≤ 1%',
+      volume: 'Volume 24 h',
+    },
+  },
   regimes: {
     us_market_hours: 'pregão',
     us_offhours_weekday: 'fora do pregão',
@@ -140,6 +155,8 @@ export const bearingPt: BearingDictionary = {
       capacityNote: (regime: string) => `venda com custo ≤ 1%, ${regime}`,
       volume: 'Volume 24 h',
       volumeNote: (to: string) => `até ${to}, o histórico de swaps mais recente`,
+      volumeDexNote:
+        'Número da DexScreener: o histórico de swaps do Bearing ainda não é coletado aqui.',
       lp: 'Fatia dos 3 maiores LPs',
       lpNote: 'maior pool, por posição',
     },

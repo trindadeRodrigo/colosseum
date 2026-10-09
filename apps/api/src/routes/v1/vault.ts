@@ -5,6 +5,8 @@ import {
   DISCLAIMER,
   isAddressOf,
   OrderError,
+  VaultNameRequest,
+  VaultNameResponse,
   VaultResponse,
   VaultRouteParams,
 } from '@colosseum/schemas';
@@ -12,6 +14,9 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { Refusal, refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
+import { sameVaultAddress } from '../../orders/prepare';
+import { cacheVault, nameVault } from '../../orders/store';
+import { signedIn } from './orders';
 
 // The public vault page's read (WEB-4, DESIGN-VAULT section 11): any vault, by its chain and address,
 // read from the chain for the answer, so a visitor with no funds sees real state. Nothing is written.
@@ -79,6 +84,51 @@ export function registerVaultRoute(scope: FastifyInstance, deps: OrderDeps) {
         if (kept.size > VAULT_KEPT_MAX || now - v.at >= VAULT_KEPT_MS) kept.delete(k);
         else break;
       return answer;
+    },
+  );
+  // The name a person gives a vault of theirs (several vaults, each with its own name). The vault is
+  // found among the vaults of the person's wallets on that chain, read from the chain: one that is not
+  // among them is answered like one that does not exist, whoever it belongs to. The name is text.
+  scope.withTypeProvider<ZodTypeProvider>().put(
+    '/v1/vaults/:chain/:address/name',
+    {
+      config: { auth: 'user', limit: 'standard' },
+      schema: {
+        tags: ['portfolio'],
+        summary: 'Name a vault of yours, or clear its name',
+        description:
+          'Owner only: a vault that is not the signed-in person’s answers 404, as one that does not exist. The name is plain text, trimmed, one to sixty characters, with no control character; `null` clears it, and the vault is shown by its plan’s goal again.',
+        params: VaultRouteParams,
+        body: VaultNameRequest,
+        response: { 200: VaultNameResponse, default: OrderError },
+      },
+    },
+    async (req): Promise<VaultNameResponse> => {
+      const principal = signedIn(req);
+      const { chain, address } = req.params;
+      const missing = () => new Refusal(404, 'no vault with that address that is yours');
+      const family = chainFamily(chain);
+      if (!isAddressOf(family, address)) throw missing();
+      const entry = deps.chains.get(chain);
+      const owners = principal.wallets.filter((w) => w.family === family).map((w) => w.address);
+      const mine = await refusing(async () =>
+        (await Promise.all(owners.map((o) => entry.adapter.getVaults(o)))).flat(),
+      );
+      const state = mine.find((v) => sameVaultAddress(chain, v.address, address));
+      if (!state) throw missing();
+      // The row the name is kept on is the cache's, written from this read of the chain.
+      const seen = await refusing(async () => {
+        const listed = await entry.adapter.listAssets();
+        const known = new Set(listed.map((a) => a.id));
+        const assets = [state.cash.asset, ...state.positions.map((p) => p.asset)].filter((id) =>
+          known.has(id),
+        );
+        const prices = assets.length ? await entry.adapter.getPrices([...new Set(assets)]) : [];
+        return view(state, prices, listed);
+      });
+      await cacheVault(deps.db, seen, entry.provenance);
+      await nameVault(deps.db, chain, state.address, req.body.name);
+      return { chain, address: state.address, name: req.body.name };
     },
   );
 }

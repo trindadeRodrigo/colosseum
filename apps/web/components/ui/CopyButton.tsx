@@ -16,10 +16,12 @@ export type CopyButtonProps = {
   /** What is copied, for the accessible name: "signature". */
   what?: string;
   labels?: Partial<CopyButtonLabels>;
+  /** The tooltip, where it says more than the name: the whole value beside a shortened one. */
+  title?: string;
   className?: string;
 };
 
-export function CopyButton({ value, what, labels, className }: CopyButtonProps) {
+export function CopyButton({ value, what, labels, title, className }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
@@ -48,7 +50,7 @@ export function CopyButton({ value, what, labels, className }: CopyButtonProps) 
         type="button"
         data-ui="copy-button"
         aria-label={name}
-        title={name}
+        title={title ?? name}
         onClick={copy}
         className={cn(buttonClass({ variant: 'icon', size: 'dense' }), className)}
       >
