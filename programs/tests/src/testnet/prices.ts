@@ -5,6 +5,7 @@ import { decodeAssets } from '../basket';
 import { REPO_ROOT } from '../env';
 import { decodeRouter, routerAddress, writePriceInstruction } from '../mock-router';
 import type { AccountView, Chain } from './chain';
+import { decide, HOLD_AVERAGE_AFTER_S, HOLD_PRICE_AFTER_S, written } from './hold';
 import type { Deployment } from './setup';
 
 // The job that copies real prices onto a test network (TNET-5). It reads mainnet read only and
@@ -164,11 +165,16 @@ export type CopyOptions = {
    * stamped (at least one hour's worth, at most `MAX_GAP_JUMP_BPS`), so a token that moved while
    * the copier was stopped is copied when it starts again. */
   maxJumpBps: number;
+  /** `--hold-last`: an entry whose source has stopped is written again with the cluster's time and
+   * the value the source still holds, so a closed market does not leave the test network stale. */
+  holdLast?: boolean;
   log: (line: string) => void;
 };
 
 export type RoundResult = {
   written: string[];
+  /** Assets whose entries were only stamped again (`holdLast`). */
+  held: string[];
   unchanged: string[];
   refused: { id: string; why: string }[];
   signatures: string[];
@@ -219,6 +225,7 @@ function refusal(
  * One round on Solana: reads what the price account holds, writes the entries whose source time is
  * newer, six assets a transaction, signed by the price writer the exchange names. The deploy key
  * (the exchange's admin) is refused: the copier holds the one key that can do nothing but this.
+ * With `holdLast`, what each entry gets is `decide` in hold.ts.
  */
 export async function copyRound(
   chain: Chain,
@@ -249,12 +256,22 @@ export async function copyRound(
   const entries = listed ? decodeAssets(listed.data).assets : [];
   const now = await chain.now();
 
-  const result: RoundResult = { written: [], unchanged: [], refused: [], signatures: [] };
+  const result: RoundResult = {
+    written: [],
+    held: [],
+    unchanged: [],
+    refused: [],
+    signatures: [],
+  };
   const writes: {
     id: string;
     symbol: string;
     args: { priceIndex: number; twapIndex: number; price: Entry; twap: Entry };
+    /** A line per entry stamped again, and whether that is all this write does. */
+    holds: string[];
+    onlyHeld: boolean;
   }[] = [];
+  const posted = (entry: Entry) => new Date(Number(entry.unixTimestamp) * 1000).toISOString();
   for (const reading of readings) {
     const asset = deployment.assets.find((a) => a.id === reading.id);
     if (!asset) {
@@ -276,29 +293,69 @@ export async function copyRound(
     }
     const heldPrice = entryAt(held.data, asset.priceIndex);
     const heldTwap = entryAt(held.data, asset.twapIndex);
-    const newerPrice = reading.price.unixTimestamp > heldPrice.unixTimestamp;
-    const newerTwap = reading.twap.unixTimestamp > heldTwap.unixTimestamp;
-    if (!newerPrice && !newerTwap) {
+    const price = decide(
+      reading.price,
+      heldPrice,
+      now,
+      options.holdLast ? HOLD_PRICE_AFTER_S : null,
+    );
+    const twap = decide(
+      reading.twap,
+      heldTwap,
+      now,
+      options.holdLast ? HOLD_AVERAGE_AFTER_S : null,
+    );
+    if (price === 'unchanged' && twap === 'unchanged') {
       result.unchanged.push(asset.symbol);
       continue;
     }
     const why =
-      (newerPrice && refusal('price', reading.price, range, heldPrice, now, options.maxJumpBps)) ||
-      (newerTwap && refusal('average', reading.twap, range, heldTwap, now, options.maxJumpBps));
+      (price === 'copy' &&
+        refusal('price', reading.price, range, heldPrice, now, options.maxJumpBps)) ||
+      (twap === 'copy' &&
+        refusal('average', reading.twap, range, heldTwap, now, options.maxJumpBps));
     if (why) {
       result.refused.push({ id: asset.symbol, why });
       continue;
     }
-    // An entry whose source is not newer is written back as the account holds it.
+    // A held entry keeps its value and takes the cluster's time; one left alone is written back as
+    // the account holds it (`written` in hold.ts).
+    const nextPrice = written(
+      price,
+      reading.price,
+      heldPrice,
+      now,
+      options.holdLast ? HOLD_PRICE_AFTER_S : null,
+    );
+    const nextTwap = written(
+      twap,
+      reading.twap,
+      heldTwap,
+      now,
+      options.holdLast ? HOLD_AVERAGE_AFTER_S : null,
+    );
     writes.push({
       id: asset.id,
       symbol: asset.symbol,
       args: {
         priceIndex: asset.priceIndex,
         twapIndex: asset.twapIndex,
-        price: newerPrice ? reading.price : heldPrice,
-        twap: newerTwap ? reading.twap : heldTwap,
+        price: nextPrice.entry,
+        twap: nextTwap.entry,
       },
+      holds: [
+        ...(nextPrice.held
+          ? [
+              `${asset.symbol} at ${dollars(nextPrice.entry)} (source last posted ${posted(reading.price)})`,
+            ]
+          : []),
+        ...(nextTwap.held
+          ? [
+              `${asset.symbol} average at ${dollars(nextTwap.entry)} (source last posted ${posted(reading.twap)})`,
+            ]
+          : []),
+      ],
+      onlyHeld: price !== 'copy' && twap !== 'copy',
     });
   }
 
@@ -308,7 +365,7 @@ export async function copyRound(
       batch.map((w) => writePriceInstruction(writer, prices, w.args)),
     );
     if (options.dryRun) {
-      for (const w of batch)
+      for (const w of batch.filter((w) => !w.onlyHeld))
         options.log(
           `    would write ${w.symbol}: entry ${w.args.priceIndex} ${dollars(w.args.price)} at ${w.args.price.unixTimestamp}, entry ${w.args.twapIndex} ${dollars(w.args.twap)} at ${w.args.twap.unixTimestamp}`,
         );
@@ -316,7 +373,11 @@ export async function copyRound(
       const sent = await chain.send(writer, instructions);
       result.signatures.push(sent.signature);
     }
-    for (const w of batch) result.written.push(w.symbol);
+    for (const w of batch) {
+      (w.onlyHeld ? result.held : result.written).push(w.symbol);
+      for (const line of w.holds)
+        options.log(`${options.dryRun ? '    would hold' : 'held'} ${line}`);
+    }
   }
   return result;
 }
@@ -327,6 +388,9 @@ export function roundLine(at: Date, round: number, result: RoundResult, dryRun: 
   const refused = result.refused.map((r) => `${r.id}: ${r.why}`);
   return `${at.toISOString()} round ${round}${dryRun ? ' (dry run)' : ''}: ${[
     `${dryRun ? 'would write' : 'wrote'} ${result.written.length}${list(result.written)}`,
+    ...(result.held.length
+      ? [`${dryRun ? 'would hold' : 'held'} ${result.held.length}${list(result.held)}`]
+      : []),
     `unchanged ${result.unchanged.length}${list(result.unchanged)}`,
     `refused ${result.refused.length}${list(refused)}`,
     ...(result.signatures.length ? [`tx ${result.signatures.join(' ')}`] : []),

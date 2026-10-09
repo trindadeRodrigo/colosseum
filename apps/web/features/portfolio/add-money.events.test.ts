@@ -702,6 +702,28 @@ describe('the monitor, with the vaults’ actions', () => {
   });
 });
 
+describe('what a vault with no name is called on the list', () => {
+  it('is "Vault #N" where the server numbers it, and its own name where it has one', async () => {
+    api({
+      vaults: [
+        vault({ number: 2 } as Parameters<typeof vault>[0]),
+        vault({
+          address: SECOND_VAULT,
+          basketId: '8',
+          name: 'Rent',
+          number: 1,
+        } as Parameters<typeof vault>[0]),
+      ],
+    });
+    const host = await mount(withAccount('en', createElement(MonitorScreen)));
+    for (let i = 0; i < 4; i += 1) await settle(50);
+    const names = [...host.querySelectorAll('[data-ui="vault-name"]')].map((n) => n.textContent);
+    expect(names).toContain('Vault #2');
+    expect(names).toContain('Rent');
+    expect(names).not.toContain('Vault #1');
+  });
+});
+
 describe('a vault’s own page, which anybody can open', () => {
   const page = async () => {
     const host = await mount(
@@ -722,8 +744,12 @@ describe('a vault’s own page, which anybody can open', () => {
     expect(find(host, '#vault-conversation').getAttribute('data-workbench')).not.toBeNull();
     expect(host.querySelector('a[href="#vault-conversation"]')).toBeNull();
     expect(find(host, '[data-ui="vault-name"]').textContent).toBe('Rent');
-    expect(find(host, '[data-ui="vault-add-money"]').getAttribute('href')).toBe(
-      `/vaults/solana/${VAULT}/add`,
+    // the page's own Deposit, which opens in its pane, in place of the link to the add-money page
+    // (gate VAULT-PAGE-ACTIONS); the name's own section keeps "Rename" alone
+    expect(host.querySelectorAll('[data-action="vault-deposit"]')).toHaveLength(1);
+    expect(host.querySelector('[data-ui="vault-add-money"]')).toBeNull();
+    expect(find(host, '[data-ui="vault-actions"] [data-action="rename"]').textContent).toBe(
+      en.portfolio.actions.rename,
     );
   });
 

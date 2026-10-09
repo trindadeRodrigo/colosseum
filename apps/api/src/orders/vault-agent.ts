@@ -639,8 +639,8 @@ function buildAgentContext(
   if (!input.currentGoals?.length && !input.confirmedGoal)
     unknowns.push(
       state
-        ? 'The current investment goal is unavailable; this preview has not been checked against income or protection eligibility.'
-        : 'A new investment goal has not been confirmed; this preview has not been checked against income or protection eligibility. Funding requires fresh confirmation of the goal and amount.',
+        ? 'The goal of this vault is unavailable; this draft has not been checked against income or protection eligibility.'
+        : 'A new goal has not been confirmed; this draft has not been checked against income or protection eligibility. A deposit needs the goal and amount confirmed again.',
     );
   return {
     person: input.person,

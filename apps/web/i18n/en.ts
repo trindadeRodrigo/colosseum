@@ -44,7 +44,7 @@ export const en = {
       wallets:
         'Your wallets haven’t come through yet. Our server may be waking up, which can take up to a minute. Nothing is lost.',
       server:
-        'Our server hasn’t said yet which chain your plan lives on. It may be waking up, which can take up to a minute. Nothing is lost.',
+        'Our server hasn’t said yet which chain your vault lives on. It may be waking up, which can take up to a minute. Nothing is lost.',
       /** Nobody is known to be signed in: the sign-in service has not loaded at all. */
       service:
         'The sign-in service hasn’t answered yet, so I can’t tell whether you’re signed in. You can still look around.',
@@ -68,6 +68,10 @@ export const en = {
     testNetwork: 'test network',
     /** A card whose figures are read from a test network says only that: they are not samples. */
     testNetworkLine: 'Test network',
+    /** Under a stock or fund price while its market is closed (components/ui/MarketNote.tsx). */
+    marketClosed: 'Market closed · last price',
+    /** The same, as a sentence in the price's own popover. */
+    marketClosedWhy: 'The market for this asset is closed. This is its last price.',
     /**
      * Beside a chain's name where no figure stands with it (the account menu's wallets; Thom, Oct 9):
      * how the chain is run, in words alone, with no glyph. `shown` is what is read on the screen,
@@ -81,6 +85,8 @@ export const en = {
     slowDown: 'Our server asked me to slow down. Wait a minute, then try again.',
     /** A sample card's one quiet line (MOCK-QUIET). */
     mockAnnounce: 'Sample figures',
+    /** Under a chain's name where it is the sample chain and no figure is beside it (ChainChoice). */
+    sample: 'Sample',
     /** A sample glyph's name for a screen reader. */
     sampleFigure: 'sample figure',
     /** A wait for data (components/ui/Skeleton.tsx). */
@@ -89,10 +95,16 @@ export const en = {
       over: 'Our server didn’t answer in time, so nothing is shown here yet.',
       retry: 'Try again',
     },
+    /** An address no page answers (app/(app)/not-found.tsx). */
+    missing: {
+      title: 'There is no page at this address',
+      body: 'The link may be old, or the address mistyped. Nothing of yours is affected.',
+      action: 'Go to Invest',
+    },
   },
 
   signIn: {
-    title: 'Sign in with a wallet that is yours.',
+    title: 'Sign in with a wallet that is yours',
     /** One sentence, then the choices (Thom, Oct 9). */
     lead: 'Use a passkey, or a wallet you already have.',
     loading: 'Loading sign-in…',
@@ -127,8 +139,8 @@ export const en = {
       found: 'Wallets found in this browser',
       waiting: 'Waiting for your wallet…',
       /** Under a wallet's name: where a plan made with it lives. Nothing is switched by the person. */
-      lives: (chain: string) => `Your plan lives on ${chain}`,
-      livesEither: (a: string, b: string) => `Your plan lives on ${a} or ${b}`,
+      lives: (chain: string) => `Your vault lives on ${chain}`,
+      livesEither: (a: string, b: string) => `Your vault lives on ${a} or ${b}`,
       none: 'No wallet was found in this browser.',
       /** Under the list, a quiet disclosure: a wallet that is not in it. It connects nothing. */
       other: 'Wallet not listed?',
@@ -136,7 +148,7 @@ export const en = {
         'Only wallets in this browser are listed. Install yours, or open this page inside your wallet’s own browser. Or use a passkey: it needs nothing installed.',
       /** A wallet that signs on both families: the chain is asked before it signs. */
       both: (wallet: string) =>
-        `${wallet} works on Solana and on Robinhood Chain. Choose the chain your plan lives on: it can’t be changed later.`,
+        `${wallet} works on Solana and on Robinhood Chain. Choose the chain your vault lives on: it can’t be changed later.`,
       /** After `both`: someone who signed in before chooses again what they chose then. */
       before: 'Signed in before? Choose the chain you chose then.',
       /** From the chain question back to the list. */
@@ -145,7 +157,7 @@ export const en = {
       off: (wallet: string) =>
         `${wallet} works only on chains switched off on our server for now, so it can’t be used to sign in. Use another wallet, or a passkey.`,
       /** The name of the group of the two chains to choose from. */
-      chains: 'The chain of your plan',
+      chains: 'The chain of your vault',
     },
     /** The sign-in screen when the sign-in service has not loaded after a few seconds. */
     silent: {
@@ -212,7 +224,7 @@ export const en = {
         'That didn’t work, and I can’t tell why. Try again. If it keeps happening, tell us what you were doing.',
     },
     done: {
-      title: 'You’re signed in.',
+      title: 'You’re signed in',
       noWallet: 'No wallet of yours is connected in this browser.',
       next: 'Go to your goal',
       retryWallet: 'Make my wallet',
@@ -231,9 +243,9 @@ export const en = {
     },
     is: {
       picked: (chain: string) =>
-        `New plans are built on ${chain}. You choose the chain where you start a plan, on Invest.`,
+        `New vaults are built on ${chain}. You choose the chain where you start a vault, on Invest.`,
       wallet: (chain: string) =>
-        `New plans are built on ${chain}, the chain of the wallet you connected.`,
+        `New vaults are built on ${chain}, the chain of the wallet you connected.`,
     },
     /** Why a switch was not saved. */
     failure: {
@@ -253,44 +265,44 @@ export const en = {
       /** The API would not start them on the chain asked for (409, 422). */
       refused:
         'Our server didn’t take a chain for the wallets you signed in with, so I can’t build for you yet. Sign out, then sign in again.',
-      body: 'I can’t tell yet which chain your plan lives on: our server didn’t answer. Nothing is wrong with your wallet.',
+      body: 'I can’t tell yet which chain your vault lives on: our server didn’t answer. Nothing is wrong with your wallet.',
       retry: 'Ask again',
       asking: 'Asking…',
       /** The API answered 401: it does not know this sign-in any more. */
       signedOut:
-        'Our server doesn’t recognise your sign-in any more, so I can’t tell which chain your plan lives on. Sign out, then sign in again.',
+        'Our server doesn’t recognise your sign-in any more, so I can’t tell which chain your vault lives on. Sign out, then sign in again.',
       /** The API answered 401 because the identity token was not sent, even after asking for a new one. */
       noIdentity:
-        'I can’t tell yet which chain your plan lives on: the sign-in service didn’t give me the part of your sign-in that lists your wallets, so our server can’t check them. Nothing is wrong with your wallet. Wait a minute, then ask again.',
+        'I can’t tell yet which chain your vault lives on: the sign-in service didn’t give me the part of your sign-in that lists your wallets, so our server can’t check them. Nothing is wrong with your wallet. Wait a minute, then ask again.',
     },
     noWallet:
-      'You’re signed in, but no wallet is linked to this sign-in yet, so there is no chain for your plan.',
-    reading: 'Reading where your plan lives…',
+      'You’re signed in, but no wallet is linked to this sign-in yet, so there is no chain for your vault.',
+    reading: 'Reading where your vault lives…',
     /** The chain of a new plan, chosen on the page where it starts (gate CHAIN-AT-THE-PLAN). */
     choice: {
-      legend: 'Chain for this plan',
-      hint: 'A plan lives on one chain. Choose it before your first message.',
+      legend: 'Chain for this vault',
+      hint: 'A vault lives on one chain. Choose it before your first message.',
       /** A wallet's whole address, for a screen reader. */
       wallet: (address: string) => `wallet ${address}`,
       /** One chain to start on, because the person's wallet signs on no other. */
       onlyWallet: (chain: string) =>
-        `This plan will live on ${chain}: the wallet you signed in with signs only there.`,
+        `This vault will live on ${chain}: the wallet you signed in with signs only there.`,
       /** One chain to start on, because the other is switched off on our server. */
       onlyOn: (chain: string) =>
-        `This plan will live on ${chain}: it is the only chain our server runs for now.`,
+        `This vault will live on ${chain}: it is the only chain our server runs for now.`,
       /**
-       * The chain new plans start on cannot take one: our server has it switched off. Said with the
+       * The chain new vaults start on cannot take one: our server has it switched off. Said with the
        * way to the chain that runs, where there is one.
        */
       off: (chain: string) =>
-        `${chain} is switched off on our server for now, so a plan can’t start there.`,
-      /** No wallet of the person's signs on the chain new plans start on. */
+        `${chain} is switched off on our server for now, so a vault can’t start there.`,
+      /** No wallet of the person's signs on the chain new vaults start on. */
       notYours: (chain: string) =>
-        `The wallet you signed in with doesn’t sign on ${chain}, so a plan can’t start there.`,
+        `The wallet you signed in with doesn’t sign on ${chain}, so a vault can’t start there.`,
       /** Before the chain's badge, once the conversation has words. */
-      on: 'This plan is on',
+      on: 'This vault is on',
       change: 'Change',
-      changeLabel: 'Change the chain of this plan',
+      changeLabel: 'Change the chain of this vault',
       confirm: (chain: string) =>
         `Each chain has its own assets, so this draft can’t move to ${chain}. It stays in your saved conversations.`,
       start: (chain: string) => `Start a new conversation on ${chain}`,
@@ -299,9 +311,9 @@ export const en = {
       fixed: 'The chain stays as it is while a reply or a deposit is in progress.',
       /** A saved conversation of another chain was opened: where new plans start moved with it. */
       opened: (chain: string) =>
-        `This conversation is on ${chain}, so new plans start on ${chain} now.`,
+        `This conversation is on ${chain}, so new vaults start on ${chain} now.`,
       /** Said to a screen reader once the chain is stored. */
-      done: (chain: string) => `New plans start on ${chain} now.`,
+      done: (chain: string) => `New vaults start on ${chain} now.`,
     },
   },
 
@@ -320,18 +332,17 @@ export const en = {
         saved: 'Saved conversations',
         untitled: 'Earlier conversation',
       },
-      invitation: 'What would you like your strategy to do?',
-      lead: 'Tell me your ideas, needs and limits. I can discuss an allocation with its sources and tradeoffs.',
+      invitation: 'What should your vault do?',
+      lead: 'Tell me your ideas, needs and limits. I’ll draft a vault with its sources and tradeoffs.',
       placeholder: 'Describe what you want to explore…',
-      starters: ['Explore technology stocks', 'Build an income strategy', 'Protect my savings'],
-      local: 'This browser · private draft conversation',
-      signIn: 'Sign in to explore a private strategy.',
+      starters: ['Explore technology stocks', 'Earn a monthly income', 'Protect my savings'],
+      local: 'A private draft, kept in this browser.',
+      signIn: 'Sign in to start a vault.',
       readingAccount: 'Your account and chain must be ready before I can get a reply.',
       /** While it is not known yet whether anyone is signed in: the page waits, as the bar does. */
       loadingAccount: 'Loading your account…',
-      empty:
-        'Your proposed allocation and its sources will appear here after a reply. No vault has been created.',
-      previewOnly: 'Preview only. This draft cannot be invested here yet.',
+      empty: 'The draft and its sources appear here after a reply.',
+      previewOnly: 'A draft only. Nothing is created or deposited until you review and sign.',
       /** The preview card while the first reply is on its way: its heading, and the line under it. */
       building: 'Working on your first draft',
       working:
@@ -353,7 +364,7 @@ export const en = {
       retry: 'Try again',
       elsewhere: 'See shared portfolios',
       unavailable:
-        'The strategy conversation service is unavailable. Your words are kept; no draft was produced.',
+        'The conversation isn’t answering right now. Your words are kept; no draft was produced.',
       /** The box while a deposit is open on the pane (gate DEPOSIT-IN-PLACE), and the ask before it is left. */
       deposit: {
         signing: 'The conversation waits while your deposit’s steps are signed.',
@@ -504,7 +515,7 @@ export const en = {
       chainNotChosen:
         'I couldn’t read your account, so I can’t tell which chain to use. Try again in a moment, or sign out and in again.',
       chainUnknown:
-        'I can’t tell yet which chain your plan lives on, so I can’t build for it. Ask again, above.',
+        'I can’t tell yet which chain your vault lives on, so I can’t build for it. Ask again, above.',
       refused: 'Our server didn’t accept these limits. Check each field, then try again.',
       chainOff: (chain: string) =>
         `${chain} is switched off on our server for now, so I can’t build a plan there. Your limits are kept.`,
@@ -642,7 +653,7 @@ export const en = {
       partial:
         'This overview includes only the chains that answered. Unavailable chains are not counted.',
       open: 'Open vault',
-      details: 'Holdings and plan details',
+      details: 'Holdings and target details',
       actions: 'Vault actions',
     },
     /** A chain of the person's that could not be read this time; the others are shown all the same. */
@@ -650,15 +661,15 @@ export const en = {
     /** A chain of the person's that this server has switched off: asking again will not help. */
     chainOff: (chain: string) => `${chain} is switched off on our server for now.`,
     title: (vaults: number): string =>
-      vaults > 1 ? 'What your vaults hold.' : 'What your vault holds.',
-    planDetails: 'Goal and strategy details',
+      vaults > 1 ? 'What your vaults hold' : 'What your vault holds',
+    planDetails: 'Goal and target details',
     /** The page's description in its metadata; the screen itself does not show it. */
-    lead: 'Your vaults, their holdings and the strategies they follow. Open a vault to continue its conversation or add money.',
+    lead: 'Your vaults, their holdings and their targets. Open a vault to continue its conversation or deposit.',
     chain: 'Chain',
     reading: 'Reading your vault…',
     signedOut:
       'Sign in to see your portfolio. It sits in a vault on the chain of your wallet, and only you can withdraw from it.',
-    noChain: 'Choose the chain your plan lives on first: your vault is on that chain.',
+    noChain: 'Choose the chain your vault lives on first.',
     chooseChain: 'Choose the chain',
     throwaway:
       'The throwaway wallet has no account on our server, so there is no vault of it to read.',
@@ -698,7 +709,7 @@ export const en = {
       title: 'Your vault',
       /** Over a vault left with cash by a buy that stopped after its deposit. */
       unfinished:
-        'A deposit stopped after the cash reached the vault, so more of this vault is cash than its plan holds. The cash is safe here.',
+        'A deposit stopped after the cash reached the vault, so more of this vault is cash than its targets hold. The cash is safe here.',
       address: 'Vault address',
       /** The link from a vault's panel to its own page. */
       page: (address: string) => `Open the page of vault ${address}`,
@@ -720,7 +731,7 @@ export const en = {
       openPage: 'Open this vault’s page',
       parts: 'Its parts, by weight',
       planTitle: (parts: number) =>
-        parts === 1 ? 'Your plan · 1 part' : `Your plan · ${parts} parts`,
+        parts === 1 ? 'Its targets · 1 part' : `Its targets · ${parts} parts`,
       tooMany: 'More parts than a bar can show: each one is in the table below.',
       target: (share: string) => `planned ${share}`,
       onlyCash: 'Only cash so far: none of it is in the vault’s assets yet.',
@@ -785,9 +796,11 @@ export const en = {
       label: 'This vault',
       /** A vault with no name and no goal to name it by. */
       unnamed: (chain: string) => `Your vault on ${chain}`,
-      addMoney: 'Add money',
+      /** A vault with no name, by its number among the person's vaults, where the server gives one. */
+      numbered: (number: number) => `Vault #${number}`,
+      addMoney: 'Deposit',
       rename: 'Rename',
-      newPlan: 'New plan',
+      newPlan: 'New vault',
       nameLabel: 'Name of this vault',
       nameHint: 'Up to 60 characters. Only you see it.',
       save: 'Save the name',
@@ -808,38 +821,38 @@ export const en = {
     /** More money into a vault the person has (/vaults/{chain}/{address}/add). */
     add: {
       strategy: 'Where this deposit goes',
-      title: 'Add money to your vault',
+      title: 'Deposit into your vault',
       lead: (chain: string) =>
-        `Add to this vault on ${chain} using its current strategy. Review the deposit and its steps before your wallet signs.`,
+        `Deposit into this vault on ${chain} at its current targets. Review the deposit and its steps before your wallet signs.`,
       amountHint: 'From $10 to $1,000,000.',
       missing:
         'I can’t find this vault among yours. Open your portfolio, then choose the vault there.',
       back: 'Back to your portfolio',
       otherWallet: (address: string) =>
-        `This vault belongs to another wallet of yours (${address}). Sign in with that wallet to add money to it.`,
+        `This vault belongs to another wallet of yours (${address}). Sign in with that wallet to deposit into it.`,
       noVault:
         'Our server doesn’t list this vault as yours any more. Read your portfolio again, then try again.',
       /** Auto-follow is on: the add is the deposit alone. */
       keeper:
-        'Auto-follow is on for this vault, so this add only deposits the cash. Our keeper puts it into the vault’s assets when it next rebalances this vault.',
+        'Auto-follow is on for this vault, so this only deposits the cash. Our keeper puts it into the vault’s assets when it next rebalances this vault.',
       /** The portfolio the vault follows has a version the owner has not accepted. */
       newerVersion: (version: number) =>
-        `The portfolio this vault follows has a newer version, version ${version}. This add goes into the vault’s current targets; accepting the new version is a separate step.`,
+        `The portfolio this vault follows has a newer version, version ${version}. This deposit goes into the vault’s current targets; accepting the new version is a separate step.`,
       /** Where the targets an add is held to come from. */
       source: {
         read: (chain: string) =>
-          `Read from ${chain} by this app, not from our server: the targets this add goes into are the chain’s.`,
+          `Read from ${chain} by this app, not from our server: the targets this deposit goes into are the chain’s.`,
         mock: 'Sample chain: there is no chain to read, so the targets are our server’s words, not checked.',
         notRead: (chain: string) =>
           `Not checked against ${chain}: this app has no node of its own to read it from. The targets are our server’s words.`,
         failed: (chain: string) =>
-          `I couldn’t read this vault on ${chain}: the node this app reads from didn’t answer, or what our server named isn’t the vault the chain holds. I won’t offer to add money until I can.`,
+          `I couldn’t read this vault on ${chain}: the node this app reads from didn’t answer, or what our server named isn’t the vault the chain holds. I won’t offer a deposit until I can.`,
         missing: (chain: string) =>
-          `I read ${chain}, and it holds no such vault for your wallet, so I won’t offer to add money to it.`,
+          `I read ${chain}, and it holds no such vault for your wallet, so I won’t offer a deposit into it.`,
         differs: (chain: string) =>
-          `Our server’s answer differs from the targets ${chain} holds for this vault, so I won’t offer to add money now. Read your portfolio again in a moment.`,
+          `Our server’s answer differs from the targets ${chain} holds for this vault, so I won’t offer a deposit now. Read your portfolio again in a moment.`,
         unlisted:
-          'This vault has a target on a token this app doesn’t list, so I can’t hold an add to it and won’t offer one.',
+          'This vault has a target on a token this app doesn’t list, so I can’t hold a deposit to it and won’t offer one.',
       },
     },
     /** On the home page, under the goal. */
@@ -851,7 +864,7 @@ export const en = {
       manyChains: (vaults: number, chains: string) => `You have ${vaults} vaults, on ${chains}.`,
       see: 'See your portfolio',
       /** The way to the portfolio section: the same plans, over time. */
-      overTime: 'See your plans over time',
+      overTime: 'See your vaults over time',
     },
   },
 
@@ -859,7 +872,7 @@ export const en = {
   talk: {
     workbench: {
       title: 'Invest',
-      strategy: 'Strategy preview',
+      strategy: 'Your vault’s draft',
     },
     startOver: 'Start over',
     hideChat: 'Hide chat',
@@ -870,6 +883,8 @@ export const en = {
 
   plan: {
     title: 'Your plan',
+    /** The page's description in its metadata; the screen itself does not show it. */
+    description: 'A plan built from your limits: what it holds, and its exit plan.',
     signedOut: 'Sign in to see this plan. A plan is one person’s, on the chain of their wallet.',
     fromLink:
       'This plan came from a link: our engine made it from the limits the link carried, which someone else may have set. Check the goal, the amount and the limits above before you deposit.',
@@ -1200,8 +1215,7 @@ export const en = {
       short: (chain: string) =>
         `Your wallet is short of what this deposit needs. Add what is missing to your wallet on ${chain}, then read it again.`,
       address: (address: string) => `Your address there: ${address}`,
-      newVault:
-        'This deposit opens your vault for this plan, which costs a little more in fees the first time.',
+      newVault: 'This deposit opens your vault, which costs a little more in fees the first time.',
       readAgain: 'Read my wallet again',
       mockFund: 'Add sample cash and fees',
       mockFunding: 'Adding…',
@@ -1238,7 +1252,7 @@ export const en = {
       refused: 'Our server didn’t accept this order. Check the amount, then try again.',
       signedOut:
         'Our server doesn’t recognise your sign-in any more. Sign out, then sign in again.',
-      noChain: 'Choose the chain your plan lives on first.',
+      noChain: 'Choose the chain your vault lives on first.',
       noStore:
         'This browser keeps nothing between pages, so I can’t keep your order. Allow this site to store data, then try again.',
     },
@@ -1254,8 +1268,8 @@ export const en = {
       vault: 'Vault',
     },
     shelf: {
-      title: 'Portfolios people have shared.',
-      lead: 'Explore published strategies on every chain we run. Each names the chain it is on. Open one to review its assets, sources and options for investing or following.',
+      title: 'Shared portfolios',
+      lead: 'Explore shared portfolios on every chain we run. Each names the chain it is on. Open one to see its assets and sources, then deposit or follow.',
       loading: 'Reading the shared portfolios…',
       empty: 'No portfolio is shared yet.',
       publish: 'Publish a portfolio',
@@ -1330,7 +1344,7 @@ export const en = {
         'One asset of this portfolio isn’t available on this chain now, so the portfolio can’t take a deposit as it stands.',
     },
     family: {
-      nextStep: 'Review the strategy, then choose how much to invest.',
+      nextStep: 'Review the portfolio, then choose how much to deposit.',
       loading: 'Reading this portfolio…',
       missing: 'I can’t find a shared portfolio with that name.',
       backToShelf: 'Back to the shared portfolios',
@@ -1338,9 +1352,9 @@ export const en = {
         `A list of assets and weights its creator published on ${chain}. Following it means a vault of yours takes its weights; a new version takes effect after a delay, and you see it before it does.`,
       /** Signed in, and no wallet of theirs signs on a chain the portfolio is on. */
       noWalletFor: (chains: string) =>
-        `This portfolio is on ${chains}, and the wallet you signed in with doesn’t sign there. It can’t be invested in or followed from this sign-in.`,
+        `This portfolio is on ${chains}, and the wallet you signed in with doesn’t sign there. It can’t take a deposit or be followed from this sign-in.`,
       /** A portfolio with a recipe on more than one chain the person can use: which to invest on. */
-      which: 'Chain to invest on',
+      which: 'Chain to deposit on',
       whichHint: 'The vault you open follows this portfolio on the chain you choose.',
       /** In place of the hint while a deposit runs: the choice is locked until it ends. */
       whichLocked: 'The chain is fixed while this deposit runs.',
@@ -1364,7 +1378,7 @@ export const en = {
         superseded: 'Replaced',
         cancelled: 'Taken back',
       },
-      buy: 'Invest in this portfolio',
+      buy: 'Deposit and follow',
       signIn: 'Sign in to follow',
       chainNotReady: (chain: string) =>
         `${chain} isn’t ready for following yet: its vaults aren’t deployed on this network.`,
@@ -1428,7 +1442,7 @@ export const en = {
       following: 'Follows this portfolio',
       notFollowing: 'Follows another portfolio',
       /** A vault bought from a goal: it follows no shared portfolio. */
-      ownPlan: 'Holds your own plan',
+      ownPlan: 'Holds your own targets',
       followWith: 'Follow with this vault',
       noFollowers: 'None of your vaults on this chain follows this portfolio yet.',
       noHoldings: 'No holdings yet.',
@@ -1460,30 +1474,30 @@ export const en = {
       accept: (n: number) => `Accept version ${n}`,
     },
     publish: {
-      title: 'Share your vault strategy.',
+      title: 'Publish your vault as a portfolio',
       lead: (chain: string) =>
-        `Share the strategy recorded in your own vault on ${chain}. Review its exact assets and target weights, give it a public name and description, then sign the publication.`,
+        `Publish the targets recorded in your own vault on ${chain} as a shared portfolio. Review its exact assets and target weights, give it a public name and description, then sign the publication.`,
       signIn: 'Sign in to publish a portfolio.',
-      shareStrategy: 'Share strategy',
+      shareStrategy: 'Publish as a portfolio',
       sourceVault: 'Your source vault',
       sourceHint: 'Choose a vault you own on the active chain.',
       chooseVault: 'Choose your vault',
-      noVaults: 'Choose an owned vault on this chain before sharing a strategy.',
+      noVaults: 'Choose an owned vault on this chain before publishing a portfolio.',
       readingVaults: 'Reading your vaults…',
-      readingStrategy: 'Reading the vault’s strategy…',
-      sourceUnavailable: 'Your vaults could not be read. Open the vault and try sharing again.',
+      readingStrategy: 'Reading the vault’s targets…',
+      sourceUnavailable: 'Your vaults could not be read. Open the vault and try publishing again.',
       editStrategy: 'Return to the vault conversation',
       privacy:
-        'Only this reviewed strategy, name and description become public. Your vault conversation stays private.',
+        'Only these reviewed targets, the name and the description become public. Your vault conversation stays private.',
       holdings: 'Tokens held now · separate from target weights',
-      strategySource: (source: string) => `Strategy read from ${source}.`,
+      strategySource: (source: string) => `Targets read from ${source}.`,
       strategyChanged:
-        'The vault strategy changed. The latest targets are now shown. Review them before sharing again.',
+        'The vault’s targets changed. The latest are now shown. Review them before publishing again.',
       sourceProblems: {
         unsupported:
-          'This vault’s full strategy cannot be shared under the current registry rules. Missing, nested, unknown or cash targets are not replaced. Return to the vault conversation to refine the strategy.',
+          'This vault’s targets cannot be published as they are under the current registry rules. Missing, nested, unknown or cash targets are not replaced. Return to the vault conversation to change them.',
         unverified:
-          'I could not verify the strategy and owner from this chain. Sharing is paused. Return to the vault and try again.',
+          'I could not verify the targets and owner from this chain. Publishing is paused. Return to the vault and try again.',
         missing: 'This vault could not be found on chain. Choose a current vault you own.',
         owner:
           'This vault does not match the connected owner, chain, address and plan number. Choose a vault you own.',
@@ -1499,7 +1513,7 @@ export const en = {
       familyId: 'Its id, worked out from the address',
       assets: 'Assets and weights',
       assetsHint:
-        'These are the vault’s target weights. Sharing requires 3 to 12 listed assets, each from 2% to 50% in 0.5% steps, with no cash target. Change the strategy in your vault before sharing if it does not fit.',
+        'These are the vault’s target weights. Publishing requires 3 to 12 listed assets, each from 2% to 50% in 0.5% steps, with no cash target. Change your vault’s targets before publishing if they do not fit.',
       asset: 'Asset',
       weight: 'Weight, in %',
       /** The labels of a row's two fields. */
@@ -1578,15 +1592,15 @@ export const en = {
         resume: 'Resume conversation',
         holdings: 'Holdings',
         explain: 'Explain my holdings',
-        explainPrompt: 'Explain what my vault holds and how it relates to its current strategy.',
+        explainPrompt: 'Explain what my vault holds and how it relates to its current targets.',
         considerChange: 'Consider a change',
-        changePrompt: 'I want to consider a change to my vault’s strategy.',
+        changePrompt: 'I want to consider a change to my vault’s targets.',
         discuss: 'Discuss this proposal',
         discussPrompt:
-          'Help me review the proposed strategy, its tradeoffs and what remains unknown.',
+          'Help me review the proposed targets, their tradeoffs and what remains unknown.',
         change: 'Change',
         points: 'pp',
-        removed: 'Removed from the proposed strategy',
+        removed: 'Removed from the proposed targets',
         details: 'Vault details and price sources',
         draftIntro: 'Draft proposal, not applied:',
         /** A figure stated in a reply, named for screen readers: the value, what it is, how old. */
@@ -1608,31 +1622,114 @@ export const en = {
         notSaved: 'This browser could not save these messages. Keep this page open.',
         capacity: 'This conversation has reached its limit. Your earlier messages are kept.',
         unavailable:
-          'Your message is saved. The vault conversation service is not available yet; no reply or strategy change was produced.',
-        failed: 'I could not get a reply. Your words are kept; no strategy change was produced.',
+          'Your message is saved. The conversation isn’t answering right now; no reply or change was produced.',
+        failed: 'I could not get a reply. Your words are kept; no change was produced.',
         reread:
           'The vault was read again while I was answering, so I set that answer aside. Your words are kept; ask again for a reply on what it holds now.',
         pending:
-          'A conversation about this vault, with its current holdings as context. The conversation service is being connected.',
-        empty: 'Ask about what this vault holds, its strategy, or a change you want to consider.',
+          'A conversation about this vault, with its current holdings as context. It isn’t answering right now.',
+        empty: 'Ask about what this vault holds, its targets, or a change you want to consider.',
         history: 'Saved conversation',
         you: 'You',
-        agent: 'Tenonfi',
+        agent: 'tenonfi',
         placeholder: 'Ask about this vault or describe a change…',
         submitMessage: 'Send message',
         /** Read out once when a message is sent; nothing on the screen carries it. */
         reading: 'Getting a reply',
         current: 'What it holds now',
         noHoldings: 'This vault holds no tokens now.',
-        targets: 'Current strategy targets',
+        targets: 'Current targets',
         targetsNote: 'Targets recorded on chain, separate from the shares held now.',
-        proposed: 'Proposed strategy',
+        proposed: 'Proposed targets',
         previewOnly:
-          'Preview only. Your vault has not changed. Applying a strategy update is not available here yet.',
+          'A draft. Your vault has not changed, and nothing changes until you review and sign.',
+      },
+      /** The owner's page (gate VAULT-PAGE-ACTIONS): the head, the pair of actions, and the pane they take. */
+      page: {
+        /** A vault with no name, until the server numbers it ("Vault #2"): the chain is said beside the value. */
+        yourVault: 'Your vault',
+        deposit: 'Deposit',
+        more: 'More',
+        editWeights: 'Edit weights by hand',
+        holdings: 'What it holds',
+        /** The bar's leg for the smaller holdings, past the three largest. */
+        others: (count: number) => `${count} others`,
+        /** Under a share: how far it is from the planned share, for a reader who cannot see the colour. */
+        against: (difference: string) => `${difference} against its target`,
+        onPlan: 'on target',
+        change:
+          'To change what this vault holds, say it in the conversation: more of one asset, less of another.',
+        details: 'Details',
+        priceSources: 'Price sources',
+        read: 'Read from the chain',
+        copyVault: 'vault address',
+        copyOwner: 'owner address',
+        /** A vault that holds nothing: said once, with the one thing to do next. */
+        empty: {
+          title: 'This vault is empty',
+          withTargets:
+            'Nothing is held in it now. A deposit goes into these assets, at these planned shares.',
+          noTargets:
+            'Nothing is held in it now, and it has no targets yet. Deposit to fund it, and tell the conversation what it should hold.',
+          targets: 'What a deposit goes into',
+          choose: 'Choose what it holds',
+          choosePrompt: 'Help me choose what this vault should hold.',
+          explain: 'Explain its targets',
+          explainPrompt: 'Explain this vault’s targets and what a deposit would go into.',
+        },
+        backToHoldings: 'Back to your holdings',
+        backToVault: 'Back to your vault',
+        amount: 'Deposit amount',
+        /** The pane of each action: its heading before the press, while signing, and once done. */
+        /** Over the steps once the order is done: how it ended is the order's own sentence. */
+        /** Over an order that finishes a deposit that stopped: it adds no money. */
+        finish: {
+          title: 'Finish your deposit',
+          lead: 'These steps swap the cash already in your vault. No new money is deposited.',
+        },
+        ended: 'The steps have ended',
+        endedLead: 'How each step ended is said under the steps below.',
+        panes: {
+          deposit: {
+            title: 'Deposit into your vault',
+            signTitle: 'Sign your deposit',
+            lead: 'The whole amount goes into this vault. You sign each step here.',
+            resumed:
+              'You approved this deposit before this page was opened again. Its steps are where they were.',
+            stopped: 'This deposit stopped, and its order is kept.',
+          },
+          withdraw: {
+            title: 'Withdraw from your vault',
+            signTitle: 'Sign your withdrawal',
+            lead: 'You sign each step here. The tokens go to your own wallet and nowhere else.',
+            resumed:
+              'You approved this withdrawal before this page was opened again. Its steps are where they were.',
+            stopped: 'This withdrawal stopped, and its order is kept.',
+          },
+          change: {
+            title: 'Edit weights by hand',
+            signTitle: 'Sign the change to your vault',
+            lead: 'The first step sets the new targets on chain; the steps after it swap to reach them. You sign each step here.',
+            resumed:
+              'You approved this change before this page was opened again. Its steps are where they were.',
+            stopped: 'This change stopped, and its order is kept.',
+          },
+        },
+        /** Over the conversation's box while an action has the pane. */
+        waits: {
+          deposit:
+            'The conversation waits while this deposit is open. Finish it, or go back to your holdings.',
+          withdraw:
+            'The conversation waits while this withdrawal is open. Finish it, or go back to your holdings.',
+          change:
+            'The conversation waits while this change is open. Finish it, or go back to your holdings.',
+          signing: 'The conversation waits while the steps are signed.',
+          done: 'Go back to your vault to carry on the conversation.',
+        },
       },
       address: 'Vault address',
       workspaceLead: (chain: string) =>
-        `Your holdings and strategy on ${chain}. Keep the conversation here as your plans change.`,
+        `Your holdings and targets on ${chain}. Keep the conversation here as your plans change.`,
       lead: (chain: string) =>
         `Read from ${chain} for this page. Anyone can see a vault: what it holds is public on its chain.`,
       loading: 'Reading the vault…',
@@ -1816,7 +1913,7 @@ export const en = {
       fromVault: 'From your vault’s cash',
       /** The first order was reviewed in another browser. */
       unseen:
-        'This device didn’t see the first order’s review. What is left to swap into is as our server lists it, and I hold it to the assets of your plan.',
+        'This device didn’t see the first order’s review. What is left to swap into is as our server lists it, and I hold it to the assets of your vault.',
       deposit: 'Deposit',
       steps: 'Steps',
       expires: 'Sign before',
@@ -1973,7 +2070,7 @@ export const en = {
       finishWorking: 'Another request is working on this order. Try again in a moment.',
       finishNothing: 'Nothing is left to do in this order: every step it had is done.',
       finishShort:
-        'Your vault now holds less cash than the steps left would spend: some was spent or withdrawn since. Nothing was made. Add money to the vault for what you still want it to hold.',
+        'Your vault now holds less cash than the steps left would spend: some was spent or withdrawn since. Nothing was made. Deposit into the vault for what you still want it to hold.',
       finishUnsupported: 'This order isn’t one that can be finished this way. Make a new order.',
       /** A stopped add into a vault whose auto-follow is on now: no order is made for the cash. */
       keeperBuys:
@@ -2054,15 +2151,15 @@ export const en = {
       menu: 'Menu',
       skip: 'Skip to content',
       /** The landing's static bar: the product, Bearing, and the API's documents. */
-      plans: 'Plans',
+      plans: 'Invest',
       bearing: 'Bearing',
       docs: 'Docs',
     },
     hero: {
       title: 'No product fits everyone. So we make the products fit your goals.',
-      lead: 'A plan made to measure, with an exit plan before it invests, in your own vault. Every number carries its source.',
-      start: 'Start a plan',
-      see: 'See a plan',
+      lead: 'A vault made to measure, with its exit checked before you deposit. Every number carries its source.',
+      start: 'Start your vault',
+      see: 'See shared portfolios',
     },
     stats: {
       label: 'The platform in numbers',
@@ -2315,7 +2412,7 @@ export const en = {
         case 'NO_PRICE':
           return `${asset} has no usable price just now.`;
         case 'NOT_FOR_GOAL':
-          return `${asset} can’t go in a plan for monthly income or for keeping money safe: it can fall in value. Take it out, or choose another goal.`;
+          return `${asset} can’t go in a vault for monthly income or for keeping money safe: it can fall in value. Take it out, or choose another goal.`;
         case 'ALL_CASH':
           return 'An open vault keeps at least one asset of its own.';
         case 'OVER_ORDER_LIMIT':

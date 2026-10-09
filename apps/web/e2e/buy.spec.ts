@@ -56,7 +56,7 @@ async function go(page: Page, name: string) {
 }
 
 /** From a signed-out page to the buy screen of a plan, with the wallet funded and the notice ticked. */
-test('his landing page: the hero alone, its faces, its numbers, and "Start a plan" into the goal', async ({
+test('his landing page: the hero alone, its faces, its numbers, and "Start your vault" into the goal', async ({
   page,
 }) => {
   await page.goto('/');

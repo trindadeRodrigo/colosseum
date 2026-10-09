@@ -50,7 +50,7 @@ export const FundingQuery = z
     amountUsd: z.coerce
       .number()
       .positive()
-      .max(ORDER_LIMITS.maxAmountUsd, 'one order buys at most $1,000,000')
+      .max(ORDER_LIMITS.maxAmountUsd, 'one deposit is at most $1,000,000')
       .optional(),
     proposalId: z.uuid().optional(),
     /** A shared portfolio's slug, in place of `proposalId`: a buy that follows it (WEB-4). */
@@ -139,7 +139,7 @@ export const TestFundsRequest = z
     amountUsd: z
       .number()
       .positive()
-      .max(ORDER_LIMITS.maxAmountUsd, 'one order buys at most $1,000,000'),
+      .max(ORDER_LIMITS.maxAmountUsd, 'one deposit is at most $1,000,000'),
     proposalId: z.uuid().optional(),
     family: FundingQuery.shape.family,
     /** With `family` only: the chain of the recipe the buy follows (as GET /v1/funding). */

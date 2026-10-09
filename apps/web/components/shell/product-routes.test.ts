@@ -96,6 +96,8 @@ const older = routes.filter((file) => file.startsWith('app/(structurer)/'));
 describe('the routes of the app', () => {
   it('are the product’s, under one layout, and the pages not yet rebuilt, under theirs', () => {
     expect(product.sort()).toEqual([
+      // an address no route answers: 404 in the product's shell (not-found.tsx, below)
+      'app/(app)/[...missing]/page.tsx',
       'app/(app)/analytics/[page]/loading.tsx',
       'app/(app)/analytics/[page]/page.tsx',
       'app/(app)/analytics/layout.tsx',
@@ -108,6 +110,7 @@ describe('the routes of the app', () => {
       'app/(app)/indexes/[slug]/page.tsx',
       'app/(app)/layout.tsx',
       'app/(app)/monitor/page.tsx',
+      'app/(app)/not-found.tsx',
       'app/(app)/orders/[id]/loading.tsx',
       'app/(app)/orders/[id]/page.tsx',
       'app/(app)/plan/[id]/buy/loading.tsx',
@@ -141,8 +144,6 @@ describe('the routes of the app', () => {
       'app/(marketing)/page.tsx',
     ]);
     expect(older.sort()).toEqual([
-      // an address no route answers: 404 inside this group's layout, as before there were two
-      'app/(structurer)/[...missing]/page.tsx',
       'app/(structurer)/layout.tsx',
       'app/(structurer)/plans/[id]/page.tsx',
     ]);
@@ -364,6 +365,9 @@ describe('rule 3: no screen can reach a key', () => {
    */
   const SIGNING_ROUTES: readonly string[] = [
     ORDER_ROUTE,
+    // a vault's own page shows its owner the steps of a deposit, a withdrawal or new weights in its
+    // right pane (gate VAULT-PAGE-ACTIONS, Thom, Oct 9): the order screen is drawn there
+    'app/(app)/vaults/[chain]/[address]/page.tsx',
     'app/(app)/plan/[id]/buy/page.tsx',
     'app/(app)/indexes/[slug]/buy/page.tsx',
     // a shared portfolio's own page mounts the invest card under its holdings (gate PRODUCTS-PLAN-PANE)

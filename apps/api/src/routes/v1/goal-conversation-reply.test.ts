@@ -348,7 +348,7 @@ describe('new-goal model preview route', () => {
       { code: 'equal_split', assetIds: [s.cash.id] },
     ]);
     expect(second.json().proposal.unknowns.join(' ')).toContain(
-      'Funding requires fresh confirmation',
+      'A deposit needs the goal and amount confirmed again',
     );
     expect(second.json()).not.toHaveProperty('id');
     expect(second.json().proposal).not.toHaveProperty('recipes');

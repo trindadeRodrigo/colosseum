@@ -779,10 +779,10 @@ describe('the throwaway wallet of development', () => {
     expect(host.textContent).not.toContain('Sample figures');
   });
 
-  it('marks a chain on a test network, and one the API runs on the mock, beside its name', async () => {
+  it('says in words beside its name that a chain is a test network, or the sample chain, with no hatched glyph', async () => {
     for (const [provenance, words] of [
-      ['sandbox', true],
-      ['mock', false],
+      ['sandbox', en.shell.testNetworkLine],
+      ['mock', en.shell.sample],
     ] as const) {
       api(connected());
       portStore.set(signedInPort(PHANTOM, {}, provenance));
@@ -790,9 +790,11 @@ describe('the throwaway wallet of development', () => {
       await settle();
       const name = find(host, '[data-ui="chain-name"]');
       expect(name.textContent).toContain('Solana');
-      expect(name.querySelectorAll('[data-ui="sample-glyph"]')).toHaveLength(1);
+      // the chain is named and no figure is beside it: words, and the chain's own logo (Thom, Oct 9)
+      expect(name.querySelectorAll('[data-ui="sample-glyph"]')).toHaveLength(0);
+      expect(find(name, '[data-ui="chain-how"]').textContent).toBe(words);
+      expect(find(name, '[data-ui="chain-logo"]').getAttribute('alt')).toBe('');
       expect(name.textContent).not.toContain('MOCK');
-      expect(name.textContent?.includes(en.shell.testNetwork)).toBe(words);
       expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
       await unmountAll();
     }
@@ -802,5 +804,6 @@ describe('the throwaway wallet of development', () => {
     const live = await screen();
     await settle();
     expect(live.querySelectorAll('.tf-mock-plate, .tf-hatch')).toHaveLength(0);
+    expect(live.querySelector('[data-ui="chain-how"]')).toBeNull();
   });
 });

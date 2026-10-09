@@ -4,7 +4,7 @@ import { type ReactNode, useId, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Field, Input } from '../../components/ui/Field';
-import { PAGE_TITLE } from '../../components/ui/heading';
+import { WORKSPACE_TITLE } from '../../components/ui/heading';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars as whole } from '../goal/sheet';
 import { addMoneyPath } from '../order/order-api';
@@ -14,12 +14,13 @@ import type { PortfolioChain, Vault } from './portfolio';
 import { usePortfolio } from './use-portfolio';
 import { useVaultHistory } from './use-vault-history';
 import { goalOfVault, type VaultGoal } from './vault-goal';
-import { ownVault, type RenameOutcome, readName, renameVault } from './vault-name';
+import { ownVault, type RenameOutcome, readName, renameVault, vaultTitle } from './vault-name';
 
 // What a person can do with a vault of theirs, on its card and on its page: add money to it, and name
 // it. The name is theirs alone and is shown as text. A vault with no name is called by the goal its
 // plan was built for, and with neither by its chain. Adding money is a page of its own (AddMoneyScreen):
-// nothing here signs.
+// nothing here signs. On the vault's own page (`page`) this is the name alone, with "Rename" a quiet
+// control beside it: the page has its own Deposit and Withdraw (VaultScreen, gate VAULT-PAGE-ACTIONS).
 
 const NAME_MAX = 60;
 
@@ -29,7 +30,7 @@ export function VaultActions({
   joined,
   onRenamed,
   level = 3,
-  primaryAddMoney = false,
+  page = false,
 }: {
   chain: PortfolioChain;
   vault: Vault;
@@ -39,8 +40,8 @@ export function VaultActions({
   onRenamed?: () => void;
   /** The heading level of the name: under a chain's heading it is one lower than under the page's. */
   level?: 1 | 2 | 3;
-  /** The owned vault workspace has one primary deposit action; portfolio lists keep it secondary. */
-  primaryAddMoney?: boolean;
+  /** The vault's own page: the name in the workbench's title, no link to add money. */
+  page?: boolean;
 }) {
   const t = useT();
   const lang = useLang();
@@ -57,11 +58,24 @@ export function VaultActions({
 
   const name = saved ? saved.name : (vault.name ?? null);
   const chainName = port.network(chain.chain)?.name ?? t.chain.names[chain.chain];
-  const fallback = joined
+  const goal = joined
     ? goalLine(joined.goal.sheet, t, whole(joined.goal.sheet.amountUsd, lang), (usd) =>
         whole(usd, lang),
       )
-    : words.unnamed(chainName);
+    : null;
+  // On the vault's own page the goal is a line under the name, never the title (Thom, Oct 9).
+  const fallback = page
+    ? // the page says its chain once, beside the value: the name does not repeat it
+      vaultTitle(
+        { ...vault, name: null },
+        { ...words, unnamed: () => t.shared.vault.page.yourVault },
+        chainName,
+      )
+    : // on a list: "Vault #N" where the server numbers it, with its goal under it; a server that
+      // gives no number leaves the goal as the name, as before
+      typeof vault.number === 'number'
+      ? words.numbered(vault.number)
+      : (goal ?? words.unnamed(chainName));
   const typed = readName(text);
   const Name = level === 1 ? 'h1' : level === 2 ? 'h2' : 'h3';
 
@@ -99,33 +113,39 @@ export function VaultActions({
     <section
       data-ui="vault-actions"
       aria-labelledby={heading}
-      className="flex w-full min-w-0 flex-col items-start gap-3"
+      className={`flex w-full min-w-0 flex-col items-start ${page ? 'gap-1' : 'gap-3'}`}
     >
-      <div className="flex w-full flex-wrap items-center justify-between gap-x-6 gap-y-2">
+      <div
+        className={
+          page
+            ? 'flex w-full flex-wrap items-baseline gap-x-4 gap-y-1'
+            : 'flex w-full flex-wrap items-center justify-between gap-x-6 gap-y-2'
+        }
+      >
         {/* The person's own words, as text: never markup, never a link. */}
         <Name
           id={heading}
           data-ui="vault-name"
           data-named={name !== null}
           className={
-            level === 1
-              ? `${PAGE_TITLE} min-w-0 [overflow-wrap:anywhere]`
+            page
+              ? // in full, on as many lines as it takes: never cut off
+                `${WORKSPACE_TITLE} min-w-0 [overflow-wrap:anywhere]`
               : 'min-w-0 text-h4 font-semibold [overflow-wrap:anywhere]'
           }
         >
           {name ?? fallback}
         </Name>
         <p className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <Link
-            data-ui="vault-add-money"
-            href={addMoneyPath(vault.chain, vault.address)}
-            className={buttonClass({
-              variant: primaryAddMoney && !editing ? 'primary' : 'secondary',
-              size: primaryAddMoney ? 'default' : 'dense',
-            })}
-          >
-            {words.addMoney}
-          </Link>
+          {!page && (
+            <Link
+              data-ui="vault-add-money"
+              href={addMoneyPath(vault.chain, vault.address)}
+              className={buttonClass({ variant: 'secondary', size: 'dense' })}
+            >
+              {words.addMoney}
+            </Link>
+          )}
           {!editing && (
             <Button variant="link" data-action="rename" onClick={open}>
               {words.rename}
@@ -133,6 +153,11 @@ export function VaultActions({
           )}
         </p>
       </div>
+      {(page || typeof vault.number === 'number') && goal && name !== goal && (
+        <p data-ui="vault-goal" className="max-w-(--tf-measure-body) text-body-sm">
+          {goal}
+        </p>
+      )}
       {editing && (
         <form
           data-ui="vault-rename-form"
@@ -195,16 +220,21 @@ export function OwnVaultActions({
   chain,
   address,
   headingLevel = 2,
-  primaryAddMoney = false,
+  page = false,
   fallback = null,
+  pending,
 }: {
   chain: string;
   address: string;
   headingLevel?: 1 | 2;
-  primaryAddMoney?: boolean;
+  page?: boolean;
   fallback?: ReactNode;
+  /** While the person's portfolio is still being read: in the name's place, so no other title flashes by. */
+  pending?: ReactNode;
 }) {
   const { state, again } = usePortfolio();
+  if (pending !== undefined && (state.kind === 'loading' || state.kind === 'reading'))
+    return pending;
   if (state.kind !== 'answered' || state.outcome.kind !== 'read') return fallback;
   const own = ownVault(state.outcome.chains, chain, address);
   return own ? (
@@ -213,7 +243,7 @@ export function OwnVaultActions({
       vault={own.vault}
       onRenamed={again}
       headingLevel={headingLevel}
-      primaryAddMoney={primaryAddMoney}
+      page={page}
     />
   ) : (
     fallback
@@ -229,7 +259,7 @@ function OwnActions({
   vault: Vault;
   onRenamed: () => void;
   headingLevel: 1 | 2;
-  primaryAddMoney: boolean;
+  page: boolean;
 }) {
   const history = useVaultHistory();
   return (

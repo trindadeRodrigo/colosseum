@@ -68,3 +68,17 @@ export function ownVault(
   }
   return null;
 }
+
+/**
+ * What a vault is called (Thom, Oct 9): the name its owner gave it; else "Vault #N", its number among
+ * the person's vaults, where the server gives one; else, until it does, by its chain. One rule, so a
+ * vault goes by one name wherever this is asked.
+ */
+export function vaultTitle(
+  vault: { name?: string | null; number?: number | null },
+  words: { unnamed: (chain: string) => string; numbered: (number: number) => string },
+  chainName: string,
+): string {
+  if (vault.name) return vault.name;
+  return typeof vault.number === 'number' ? words.numbered(vault.number) : words.unnamed(chainName);
+}

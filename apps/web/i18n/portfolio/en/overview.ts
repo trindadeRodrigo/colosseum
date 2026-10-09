@@ -130,7 +130,7 @@ export const overview = {
     period: (period: string) => `PnL ${period}`,
     status: 'Status',
     open: (vault: string) => `Open ${vault}`,
-    newPlan: 'New plan',
+    newPlan: 'New vault',
     neverRead: 'Not read yet',
   },
   /** At the foot of the page, beside "Read again". */

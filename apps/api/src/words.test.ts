@@ -28,10 +28,6 @@ const KEPT: { has: string; why: string }[] = [
     why: 'the prompts’ own rule, which has to name the words it forbids',
   },
   {
-    has: 'one order buys at most',
-    why: 'the request schema’s sentence (packages/schemas), repeated so both refusals read the same',
-  },
-  {
     has: 'add remove drop swap replace put include buy sell',
     why: 'the words the server reads in the person’s own messages (stated-purpose.ts), never shown',
   },

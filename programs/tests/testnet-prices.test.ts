@@ -499,4 +499,81 @@ describe('the price copier', () => {
     });
     expect(readings).toHaveLength(Object.keys(sources.assets).length);
   });
+
+  it('with --hold-last, stamps a stopped source again, and still takes its next real price', async () => {
+    // After every other test: none of them moves tGOOGLx, and none runs after this clock.
+    const t = svm.getClock().unixTimestamp + 100n;
+    setClock(svm, t + 5n);
+    const googl = asset('solana:googlx');
+    const quote = (price: string, when: bigint): Reading => ({
+      id: 'solana:googlx',
+      price: p15(price, when),
+      twap: p15(price, when),
+      method: 'scope_entry',
+    });
+    const printed: string[] = [];
+    const holding: CopyOptions = {
+      ...options(false, (line) => printed.push(line)),
+      holdLast: true,
+    };
+    const round = (reading: Reading, with_ = holding) =>
+      copyRound(liteChain(svm), writer, deployment, [reading], with_);
+    // tGOOGLx's range is 267.96 to 432.2.
+    const last = '350';
+    const first = await round(quote(last, t));
+    expect(first.refused).toEqual([]);
+    expect(first.written).toEqual(['tGOOGLx']);
+
+    // The source posts nothing more. Without the flag the entry is left to go stale.
+    setClock(svm, t + 100n);
+    expect((await round(quote(last, t), options())).unchanged).toEqual(['tGOOGLx']);
+    expect(read(googl.priceIndex).unixTimestamp).toBe(t);
+    // With it the price takes the cluster's time and keeps its value; the average is young enough.
+    const held = await round(quote(last, t));
+    expect(held.held).toEqual(['tGOOGLx']);
+    expect(held.written).toEqual([]);
+    expect(read(googl.priceIndex)).toEqual({ ...p15(last, t), unixTimestamp: t + 100n });
+    expect(read(googl.twapIndex)).toEqual(p15(last, t));
+    expect(printed).toEqual([
+      `held tGOOGLx at ${last} (source last posted ${new Date(Number(t) * 1000).toISOString()})`,
+    ]);
+    // Thirty seconds on, the held entry is young: nothing is sent.
+    setClock(svm, t + 130n);
+    expect((await round(quote(last, t))).unchanged).toEqual(['tGOOGLx']);
+    // The average is held once it is half an hour old.
+    setClock(svm, t + 1_900n);
+    await round(quote(last, t));
+    expect(read(googl.twapIndex)).toEqual({ ...p15(last, t), unixTimestamp: t + 1_900n });
+
+    // The source's next price is stamped before the held entry: it is copied all the same.
+    const next = '351.75';
+    setClock(svm, t + 1_930n);
+    expect((await round(quote(next, t + 1_890n))).written).toEqual(['tGOOGLx']);
+    expect(read(googl.priceIndex)).toEqual(p15(next, t + 1_890n));
+
+    // A value that differs is a copy, held to the jump limit like any other: 12% away is refused,
+    // nothing is written, and the entry is not stamped again, so it ages until the limit allows it.
+    setClock(svm, t + 2_000n);
+    const far = await round(quote('394', t + 1_990n));
+    expect(far.refused).toEqual([
+      {
+        id: 'tGOOGLx',
+        why: `price 394 is more than 1000 bps from the 351.75 devnet holds; ${HINT.jump}`,
+      },
+    ]);
+    expect(far.held).toEqual([]);
+    expect(read(googl.priceIndex)).toEqual(p15(next, t + 1_890n));
+    // Two hours on the allowance is two hours' worth, and the same price is copied. Its own time is
+    // two hours old by now, past the hold limit, so it takes the cluster's at once.
+    setClock(svm, t + 1_890n + 7_300n);
+    expect((await round(quote('394', t + 1_990n))).written).toEqual(['tGOOGLx']);
+    expect(read(googl.priceIndex)).toEqual(p15('394', t + 1_890n + 7_300n));
+
+    // A source that cannot be read is not held, however old the entry.
+    setClock(svm, t + 20_000n);
+    const unread = await round({ id: 'solana:googlx', none: 'the node timed out' });
+    expect(unread.held).toEqual([]);
+    expect(unread.unchanged).toEqual(['tGOOGLx (no source: the node timed out)']);
+    expect(read(googl.priceIndex)).toEqual(p15('394', t + 1_890n + 7_300n));
+  });
 });

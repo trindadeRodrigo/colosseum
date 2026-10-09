@@ -373,7 +373,7 @@ function amountOf(req: Extract<IntentRequest, { type: 'buy' }>): bigint {
   if (!(req.amountUsd <= ORDER_LIMITS.maxAmountUsd))
     throw new Refusal(
       422,
-      `one order buys at most $${ORDER_LIMITS.maxAmountUsd.toLocaleString('en-US')}`,
+      `one deposit is at most $${ORDER_LIMITS.maxAmountUsd.toLocaleString('en-US')}`,
     );
   const slippageBps = slippageOf(req);
   if (!(slippageBps >= 0 && slippageBps <= ORDER_LIMITS.maxSlippageBps))
