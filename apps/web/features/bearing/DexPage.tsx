@@ -21,11 +21,12 @@ import {
   type DexAsset,
   dexCounters,
   dexIds,
+  liquidityTotal,
   poolLabel,
   poolsOf,
   tvlSeries,
 } from './dex';
-import { type Fact, mk, none } from './fact';
+import type { Fact } from './fact';
 import { type Fmt, iso } from './format';
 import { HeatTile } from './HeatTile';
 import {
@@ -573,14 +574,7 @@ function LiquidityChart({
     );
   else {
     const d = res.body;
-    const meta = {
-      source: d.source,
-      fetchedAt: d.fetchedAt,
-      method: d.method,
-      methodVersion: d.methodVersion,
-      provenance: d.provenance,
-    };
-    const total: Fact = mk((d.totalAssetUsd || 0) + (d.totalQuoteUsd || 0), meta);
+    const total: Fact = liquidityTotal(d);
     const when =
       d.basis === 'recorded'
         ? t.recordedAt(fm.minute(d.fetchedAt))

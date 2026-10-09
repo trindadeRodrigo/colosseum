@@ -6,6 +6,7 @@ import type {
   AssetsBody,
   HistBody,
   LiqHistBody,
+  LiquidityBody,
   Pool,
   PoolsBody,
   SheetBody,
@@ -311,6 +312,24 @@ export function tvlSeries(
   }));
   const held: TPoint[] = pts.map((q) => ({ t: q.t, v: q.k ? q.a : null }));
   return { fact, value, held };
+}
+
+/**
+ * The dollars in a pool's liquidity chart: both sides, or no figure. A side with no dollar figure
+ * (the quote token has no dollar price) is never a zero, and half a pool is not shown as the pool.
+ */
+export function liquidityTotal(d: LiquidityBody): Fact {
+  const a = d.totalAssetUsd;
+  const q = d.totalQuoteUsd;
+  if (a == null || q == null)
+    return none('no_reference_price', "the pool's quote token has no dollar price");
+  return mk(a + q, {
+    source: d.source,
+    fetchedAt: d.fetchedAt,
+    method: d.method,
+    methodVersion: d.methodVersion,
+    provenance: d.provenance,
+  });
 }
 
 export const countW = (n: number, one: string) => `${num(n)} ${one}${n === 1 ? '' : 's'}`;

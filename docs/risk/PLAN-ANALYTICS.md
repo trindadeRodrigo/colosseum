@@ -50,7 +50,7 @@ Nothing here blocks an item. It decides which facts are `null` on day one.
 ### Phase 1 — what the agent reads
 
 **1. The contract.** `packages/schemas/src/facts.ts` (zod; the package still imports nothing).
-- `Fact`: `{ value, unit, fetchedAt, regime?, sizeUsd?, source, method, methodVersion, provenance, quality }` or `{ value: null, reason, … }`. `quality` is one of `measured`, `lower_bound`, `assumption`. `reason` is a closed list (§2's reasons plus `beyond_measured_size`, `insufficient_samples`).
+- `Fact`: `{ value, unit, fetchedAt, regime?, sizeUsd?, source, method, methodVersion, provenance, quality }` or `{ value: null, reason, … }`. `quality` is one of `measured`, `lower_bound`, `assumption`. `reason` is a closed list (§2's reasons plus `beyond_measured_size`, `insufficient_samples`, and `not_a_number` for a computed figure that came out non-finite; `FactNullReason` in `packages/schemas/src/facts.ts` is the list).
 - `AssetFacts`, `LendingPoolFacts`, `PlanFacts` as in §4.
 - A fixture provider for tests.
 - **Check:** a test fails if any builder returns a numeric fact without `source`, `asOf` and `method`, or returns `0` where the input was missing.

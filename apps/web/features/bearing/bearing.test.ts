@@ -11,6 +11,7 @@ import {
   dexCounters,
   dexIds,
   dexVolume,
+  liquidityTotal,
   poolsOf,
   vol24,
 } from './dex';
@@ -406,6 +407,34 @@ describe('a missing figure is never a zero (STYLE rule 2)', () => {
     tvlUsd,
     discoveryVolume24hUsd: null,
     fetchedAt: at,
+  });
+
+  it("a pool's liquidity chart with no dollar price for its quote has no total, not $0", () => {
+    const body = (a: number | null, q: number | null) => ({
+      pool: 'p',
+      bands: [],
+      midPrice: 1,
+      totalAssetUsd: a,
+      totalQuoteUsd: q,
+      fetchedAt: at,
+      source: 's',
+      method: 'm',
+      methodVersion: 'v',
+      provenance: 'live',
+    });
+    expect(liquidityTotal(body(null, null))).toMatchObject({
+      value: null,
+      reason: 'no_reference_price',
+    });
+    // half a pool is never shown as the pool
+    expect(liquidityTotal(body(1_000, null)).value).toBeNull();
+    expect(liquidityTotal(body(1_000, 250))).toMatchObject({
+      value: 1_250,
+      quality: 'measured',
+      source: 's',
+      fetchedAt: at,
+      method: 'm',
+    });
   });
 
   it('a sum says how many of its parts were measured, and is whole only with all of them', () => {
