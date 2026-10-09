@@ -29,7 +29,7 @@ test('new-goal exploration opens a responsive preview-only workbench', async ({ 
   ).toEqual(['current', 'new']);
   await expect(page.locator('[data-ui="goal-conversation"]')).toBeVisible();
   // The chain of the plan is chosen here, beside the box (gate CHAIN-AT-THE-PLAN): two options, one
-  // group, moved with the arrow keys, and the bar's own switch says the same.
+  // group, moved with the arrow keys.
   const chains = page.getByRole('group', { name: en.chain.choice.legend }).getByRole('radio');
   await expect(chains).toHaveCount(2);
   await expect(chains.first()).toBeChecked();
@@ -37,10 +37,6 @@ test('new-goal exploration opens a responsive preview-only workbench', async ({ 
   await page.keyboard.press('ArrowRight');
   await expect(chains.nth(1)).toBeChecked();
   await expect(chains.nth(1)).toBeFocused();
-  await expect(page.locator('[data-ui="chain-switch"] > button')).toHaveAttribute(
-    'data-chain',
-    'robinhood',
-  );
   await page.keyboard.press('ArrowLeft');
   await expect(chains.first()).toBeChecked();
   await expect(page.locator('[data-ui="goal-empty-preview"]')).toContainText(

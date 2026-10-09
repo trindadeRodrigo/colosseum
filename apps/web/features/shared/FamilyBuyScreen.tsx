@@ -1,5 +1,10 @@
 'use client';
-import { chainFamily, type SharedFamily, type SharedRecipe } from '@colosseum/schemas';
+import {
+  type ChainId,
+  chainFamily,
+  type SharedFamily,
+  type SharedRecipe,
+} from '@colosseum/schemas';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { CardWait } from '../../components/shell/Wait';
@@ -7,7 +12,9 @@ import { buttonClass } from '../../components/ui/button-class';
 import { Card } from '../../components/ui/Card';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { SkeletonPlan } from '../../components/ui/Skeleton';
+import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
+import { ChainChoice } from '../account/ChainChoice';
 import { parseNumber } from '../goal/sheet';
 import {
   AmountField,
@@ -18,7 +25,7 @@ import {
   MIN_USD,
 } from '../order/InvestCard';
 import { keepOrder } from '../order/order-record';
-import { useApiFetch } from '../wallet/WalletProvider';
+import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { familyIdFor, useChainRecipe } from './chain-recipe';
 import { followedOf } from './FamilyScreen';
 import { sharedRefusal } from './refusal';
@@ -27,8 +34,11 @@ import { placeShared, readFamily } from './shared-api';
 import type { SharedTerms } from './terms';
 import { useSharedPerson } from './use-person';
 
-// Buying a shared portfolio, which opens a vault that follows it on the person's chain (gate
-// ONE-CHAIN), on one card with one press (InvestCard, gate INVEST-ONE-PRESS): the amount, then the
+// Buying a shared portfolio, which opens a vault that follows it on one chain (gate ONE-CHAIN): the
+// chain of the recipe the product page showed, or the one the address names (`?chain=`), or the chain
+// the person's new plans start on where the portfolio has a recipe there, and a choice of two where a
+// wallet of theirs signs on both (gate CHAIN-AT-THE-PLAN). The order names that chain. On one card
+// with one press (InvestCard, gate INVEST-ONE-PRESS): the amount, then the
 // card with what the wallet is missing only when it is short (GET /v1/funding with the slug), the
 // trust notice the first time, and the order as our server made it with the button that names the
 // amount. The version and the weights the buy is held to are the chain's where this app read them,
@@ -44,17 +54,22 @@ export type FamilyBuySnapshot = {
 
 export function FamilyBuyScreen({
   slug,
+  chain: named,
   embedded,
   snapshot,
 }: {
   slug: string;
+  /** The chain the address names (`?chain=`): the recipe to buy, where the person can sign on it. */
+  chain?: ChainId | null;
   embedded?: InvestEmbedded;
   snapshot?: FamilyBuySnapshot;
 }) {
   const t = useT();
   const lang = useLang();
   const apiFetch = useApiFetch();
-  const person = useSharedPerson();
+  const port = useWalletPort();
+  // Who is signed in, whatever the chain: which recipe they buy is worked out below.
+  const anyone = useSharedPerson();
   const [loaded, setLoaded] = useState<SharedFamily | null | 'failed'>(null);
   const shown = embedded ? snapshot : undefined;
   const family = shown?.family ?? loaded;
@@ -63,28 +78,39 @@ export function FamilyBuyScreen({
   const [round, setRound] = useState(0);
   // Our server said the portfolio changed: the way back to its page is offered under the card.
   const [changed, setChanged] = useState(false);
-  const chain = person.kind === 'ready' ? person.chain : null;
-  const owner = person.kind === 'ready' ? person.owner : null;
+  // The recipe chosen on this page, for a portfolio the person can buy on more than one chain.
+  const [picked, setPicked] = useState<ChainId | null>(null);
+  const signedIn = anyone.kind === 'ready';
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `round` reads the portfolio again
   useEffect(() => {
-    if (!chain || shown) return;
+    if (!signedIn || shown) return;
     let mine = true;
-    readFamily(apiFetch, slug, chain).then((read) => {
+    // Every recipe: the one bought is chosen here, from the person's wallets.
+    readFamily(apiFetch, slug, null).then((read) => {
       if (mine) setLoaded(read.kind === 'read' ? read.value.family : 'failed');
     });
     return () => {
       mine = false;
     };
-  }, [apiFetch, slug, chain, round, shown]);
+  }, [apiFetch, slug, signedIn, round, shown]);
 
+  // The recipes on a chain a wallet of theirs signs on. A product page hands over the one it showed.
+  const usable =
+    anyone.kind === 'ready' && family && family !== 'failed'
+      ? family.recipes.filter((r) => anyone.held.includes(r.chain))
+      : [];
   const recipe = shown
-    ? shown.recipe.chain === chain
-      ? shown.recipe
-      : null
-    : family && family !== 'failed' && chain
-      ? (family.recipes.find((r) => r.chain === chain) ?? null)
-      : null;
+    ? shown.recipe
+    : (usable.find((r) => r.chain === picked) ??
+      usable.find((r) => r.chain === named) ??
+      (anyone.kind === 'ready' ? usable.find((r) => r.chain === anyone.chain) : undefined) ??
+      usable[0] ??
+      null);
+  // The person on that recipe's chain, with their wallet there.
+  const person = useSharedPerson(recipe?.chain);
+  const chain = person.kind === 'ready' && recipe ? person.chain : null;
+  const owner = person.kind === 'ready' ? person.owner : null;
   const mock = person.kind === 'ready' ? person.mock : false;
   const check = useChainRecipe(
     chain ?? 'solana',
@@ -115,9 +141,14 @@ export function FamilyBuyScreen({
             ? t.plan.signedOut
             : person.kind === 'no-chain'
               ? t.goal.blocked.chainNotChosen
-              : family === 'failed'
+              : family === 'failed' || !family || family.recipes.length === 0
                 ? t.shared.family.missing
-                : t.shared.family.notHere(chain ? t.chain.names[chain] : '')}
+                : // On no chain a wallet of theirs signs on: said, with the chains it is on.
+                  t.shared.family.noWalletFor(
+                    new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(
+                      family.recipes.map((r) => t.chain.names[r.chain]),
+                    ),
+                  )}
         </p>
         <Link
           href={
@@ -164,6 +195,8 @@ export function FamilyBuyScreen({
         owner: { [chainFamily(chain)]: owner },
         amountUsd,
         family: slug,
+        // The chain of the recipe on this page: the order is on it, whatever the current chain is.
+        chain,
         version: terms.follow.version,
       },
       { chain, owner, type: 'buy' },
@@ -221,7 +254,7 @@ export function FamilyBuyScreen({
       amount={amount}
       owner={owner}
       userId={person.userId}
-      buyOf={{ family: slug }}
+      buyOf={{ family: slug, chain }}
       holdings={shown?.terms.targets ?? followed?.targets ?? null}
       blocked={blocked}
       place={place}
@@ -253,6 +286,29 @@ export function FamilyBuyScreen({
         <p className="max-w-(--tf-measure-body) text-body-lg">{t.shared.buy.lead(chainName)}</p>
         <SourceMark check={check} chain={chain} />
       </header>
+
+      {usable.length > 1 && !locked && (
+        <ChainChoice
+          data-ui="family-chain"
+          className="max-w-md"
+          legend={t.shared.family.which}
+          hint={t.shared.family.whichHint}
+          value={chain}
+          onChange={setPicked}
+          options={usable.map((r) => ({
+            chain: r.chain,
+            name: port.network(r.chain)?.name ?? t.chain.names[r.chain],
+            address: port.active(chainFamily(r.chain))?.address ?? null,
+            provenance: r.provenance,
+          }))}
+          labels={{
+            testNetwork: t.shell.testNetwork,
+            sampleFigure: t.shell.sampleFigure,
+            wallet: t.chain.choice.wallet,
+            saving: t.chain.switch.saving,
+          }}
+        />
+      )}
 
       <AmountField
         text={text}

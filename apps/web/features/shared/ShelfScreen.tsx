@@ -13,8 +13,6 @@ import { SkeletonCards } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { useAccount } from '../account/AccountProvider';
-import { chainInAddress } from '../account/chain-choice';
 import { formatBps, tokenName } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { AssetMark } from '../order/PlanView';
@@ -29,11 +27,11 @@ import { shortAddress, useSharedPerson } from './use-person';
 // The shelf (DESIGN-VAULT section 11; gate PRODUCTS-PLAN-PANE): a card per shared portfolio, the
 // figures first: one bar of what it holds with each share under it, each holding's yield with its pin, what it
 // is for in one line of its creator's, its chain and who published it. Whether auto-follow is offered
-// and a version that waits are on its page. It shows the portfolios with a recipe on one chain: a signed-in
-// person's current chain, or the chain someone signed out picked in the bar (gate CHAIN-SWITCH). The
-// address names it (`?chain=robinhood`), so a link opens the same shelf. What a card says is the
-// server's store: the portfolio's page reads the chain. A creator's name and description are text,
-// never markup or a link.
+// and a version that waits are on its page. It is one list of every chain's portfolios, for everyone
+// (gate CHAIN-AT-THE-PLAN): each card names the chain or chains it has a recipe on and keeps its own
+// sample mark, since the list mixes chains that are run differently. Which recipe a person can buy
+// is the portfolio's page's to say. What a card says is the server's store: the page reads the chain.
+// A creator's name and description are text, never markup or a link.
 
 type Load =
   | { kind: 'loading' }
@@ -47,45 +45,30 @@ export function ShelfScreen() {
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [round, setRound] = useState(0);
   const titleId = useId();
-  const { chain: looking, choose } = useAccount();
-  const chain =
-    person.kind === 'ready' ? person.chain : person.kind === 'signed-out' ? looking : null;
   const settled = person.kind !== 'loading';
-
-  // The address names the chain: someone signed out who opens a link to another chain's shelf is
-  // moved to it, once; after that the address follows the chain the bar shows.
-  const adopted = useRef(false);
-  useEffect(() => {
-    if (!settled || !chain) return;
-    if (!adopted.current) {
-      adopted.current = true;
-      const named = chainInAddress(window.location.search);
-      if (person.kind === 'signed-out' && named && named !== chain) {
-        void choose(named);
-        return;
-      }
-    }
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('chain') === chain) return;
-    params.set('chain', chain);
-    window.history.replaceState(null, '', `${window.location.pathname}?${params}`);
-  }, [settled, chain, person.kind, choose]);
+  // Where publishing is offered or not is said of the chain the person's new plans start on.
+  const chainName = person.kind === 'ready' ? t.chain.names[person.chain] : null;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `round` reads the shelf again
   useEffect(() => {
     if (!settled) return;
     let mine = true;
     setLoad({ kind: 'loading' });
-    readShelf(apiFetch, chain).then((read) => {
+    // No chain is named: every portfolio, each with the chains it has a recipe on. One whose every
+    // recipe is on a chain our server has switched off has nothing to show, and is left out.
+    readShelf(apiFetch, null).then((read) => {
       if (mine)
-        setLoad(read.kind === 'read' ? { kind: 'read', families: read.value.families } : read);
+        setLoad(
+          read.kind === 'read'
+            ? { kind: 'read', families: read.value.families.filter((f) => f.recipes.length > 0) }
+            : read,
+        );
     });
     return () => {
       mine = false;
     };
-  }, [apiFetch, chain, settled, round]);
+  }, [apiFetch, settled, round]);
 
-  const chainName = chain ? t.chain.names[chain] : null;
   // Signed in when the page was read, signed out now: the person left while looking at it.
   const wasIn = useRef(false);
   const [left, setLeft] = useState(false);
@@ -101,9 +84,7 @@ export function ShelfScreen() {
         <h1 id={titleId} className={PAGE_TITLE}>
           {t.shared.shelf.title}
         </h1>
-        <p className="max-w-(--tf-measure-body) text-body-lg">
-          {chainName ? t.shared.shelf.lead(chainName) : t.shared.shelf.leadAll}
-        </p>
+        <p className="max-w-(--tf-measure-body) text-body-lg">{t.shared.shelf.lead}</p>
         {person.kind === 'ready' && person.publishable && (
           <Link href="/publish" className={`${buttonClass({ variant: 'link' })} self-start`}>
             {t.shared.shelf.publish}
@@ -119,9 +100,9 @@ export function ShelfScreen() {
           </p>
         )}
         {/* the bar says "signed out" to a screen reader; the page says it to the eye, with what it still shows */}
-        {left && person.kind === 'signed-out' && chainName && (
+        {left && person.kind === 'signed-out' && (
           <p data-ui="shelf-signed-out" className="max-w-(--tf-measure-body) text-body-sm">
-            {t.shared.shelf.signedOut(chainName)}
+            {t.shared.shelf.signedOut}
           </p>
         )}
       </header>
@@ -144,7 +125,7 @@ export function ShelfScreen() {
       ) : load.families.length === 0 ? (
         <Card>
           <CardEmpty
-            sentence={chainName ? t.shared.shelf.empty(chainName) : t.shared.shelf.emptyAll}
+            sentence={t.shared.shelf.empty}
             action={
               person.kind === 'ready' && person.publishable ? (
                 <Link href="/publish" className={buttonClass({ variant: 'link' })}>

@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
+import { FAMILY_ID, familyOf, recipeOf, SLUG } from '../features/shared/test/fixtures';
 import { dictionary } from '../i18n';
 import { readyToInvest } from './invest';
 import { inTheme } from './theme';
@@ -67,8 +68,8 @@ async function toShelf(page: Page) {
     .locator('[data-ui="compact-nav-sheet"]')
     .getByRole('link', { name: en.shell.products })
     .click();
-  // the address names the chain the shelf shows (CHAIN-SWITCH)
-  await expect(page).toHaveURL(/\/shelf\?chain=solana$/);
+  // one list of every chain's portfolios: the address names no chain (gate CHAIN-AT-THE-PLAN)
+  await expect(page).toHaveURL(/\/shelf$/);
 }
 
 /** A portfolio's page, from the shelf. */
@@ -219,6 +220,52 @@ test('publish a portfolio, find it on the shelf, buy it and follow it, every ste
   await expect(workspace.locator('a[href="#vault-conversation"]')).toHaveCount(0);
   await expect(workspace).toContainText('SPY');
   await check(page, 'vault');
+});
+
+test('a portfolio with a recipe on both chains: both named on its card, and its page asks which', async ({
+  page,
+}) => {
+  // The stub runs one chain, so our server's two answers about this portfolio are written here, in
+  // the shared shapes: a recipe on Solana and one on Robinhood Chain.
+  const both = familyOf(FAMILY_ID, {
+    chains: ['solana', 'robinhood'],
+    recipes: [
+      recipeOf({ provenance: 'mock' }),
+      recipeOf({
+        chain: 'robinhood',
+        name: 'Robinhood Chain',
+        onchainId: '0x5fbdb2315678afecb367f032d93f642f64180aa3',
+        creator: '0x1111111111111111111111111111111111111111',
+        provenance: 'mock',
+      }),
+    ],
+  });
+  await signIn(page);
+  await page.route('**/v1/shelf', (route) =>
+    route.fulfill({ json: { families: [both], disclaimer: 'd' } }),
+  );
+  await page.route(`**/v1/indexes/${SLUG}`, (route) =>
+    route.fulfill({ json: { family: both, disclaimer: 'd' } }),
+  );
+  await toShelf(page);
+  const card = page.locator('[data-ui="shelf-card"]');
+  await expect(card.locator('[data-ui="chain-badge"]')).toHaveText(['Solana', 'Robinhood Chain']);
+  await check(page, 'shelf-both-chains');
+  await card.getByRole('link', { name: both.name }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(both.name);
+  // the page asks which chain to invest on, as /goal asks for a new plan's: a radio group of two
+  const chains = page.getByRole('group', { name: en.shared.family.which }).getByRole('radio');
+  await expect(chains).toHaveCount(2);
+  await expect(chains.first()).toBeChecked();
+  const pane = page.locator('[data-ui="plan-pane"]');
+  await expect(pane).toHaveCount(1);
+  await expect(pane).toContainText(en.shared.family.recipe('Solana'));
+  await check(page, 'family-both-chains');
+  await chains.first().focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(chains.nth(1)).toBeChecked();
+  await expect(pane).toHaveCount(1);
+  await expect(pane).toContainText(en.shared.family.recipe('Robinhood Chain'));
 });
 
 test('a portfolio that holds gold offers no auto-follow, and says why', async ({ page }) => {

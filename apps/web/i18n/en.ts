@@ -1145,20 +1145,15 @@ export const en = {
     },
     shelf: {
       title: 'Portfolios people have shared.',
-      lead: (chain: string) =>
-        `Explore published strategies on ${chain}. Open one to review its assets, sources and options for investing or following.`,
-      leadAll:
-        'Each is a list of assets and weights its creator published on a chain. Sign in to see the ones on your chain.',
+      lead: 'Explore published strategies on every chain we run. Each names the chain it is on. Open one to review its assets, sources and options for investing or following.',
       loading: 'Reading the shared portfolios…',
-      empty: (chain: string) => `No portfolio is shared on ${chain} yet.`,
-      emptyAll: 'No portfolio is shared yet.',
+      empty: 'No portfolio is shared yet.',
       publish: 'Publish a portfolio',
       /** Where publishing is not offered yet: said, in place of the link. */
       publishSoon: (chain: string) =>
         `Publishing a portfolio on ${chain} is coming. For now it can be done on Solana.`,
-      /** After signing out on this page: the shelf stays, and says whose it is now. */
-      signedOut: (chain: string) =>
-        `You’re signed out. This is still the shelf of ${chain}; sign in to follow a portfolio.`,
+      /** After signing out on this page: the shelf stays, and says what it still shows. */
+      signedOut: 'You’re signed out. The portfolios stay listed; sign in to follow one.',
       card: {
         by: (creator: string) => `by ${creator}`,
         platform: 'From tenonfi',
@@ -1231,12 +1226,15 @@ export const en = {
       backToShelf: 'Back to the shared portfolios',
       lead: (chain: string) =>
         `A list of assets and weights its creator published on ${chain}. Following it means a vault of yours takes its weights; a new version takes effect after a delay, and you see it before it does.`,
-      notHere: (chain: string) =>
-        `This portfolio isn’t published on ${chain}, your current chain, so it can’t be followed from here.`,
+      /** Signed in, and no wallet of theirs signs on a chain the portfolio is on. */
+      noWalletFor: (chains: string) =>
+        `This portfolio is on ${chains}, and the wallet you signed in with doesn’t sign there. It can’t be invested in or followed from this sign-in.`,
+      /** A portfolio with a recipe on more than one chain the person can use: which to invest on. */
+      which: 'Chain to invest on',
+      whichHint: 'The vault you open follows this portfolio on the chain you choose.',
       /** A vault of the person's on another chain follows it: it is updated on that chain. */
-      elsewhere: (chain: string) =>
-        `You have a vault on ${chain} that follows this portfolio. Switch to ${chain} to update it there.`,
-      switchTo: (chain: string) => `Switch to ${chain}`,
+      elsewhere: (chain: string) => `You have a vault on ${chain} that follows this portfolio.`,
+      showOn: (chain: string) => `Show it on ${chain}`,
       recipe: (chain: string) => `On ${chain}`,
       inEffect: 'In effect',
       since: (when: string) => `since ${when}`,

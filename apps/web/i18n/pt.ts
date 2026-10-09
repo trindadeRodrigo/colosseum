@@ -1024,18 +1024,13 @@ export const pt: Dictionary = {
     },
     shelf: {
       title: 'Portfólios que as pessoas compartilharam.',
-      lead: (chain: string) =>
-        `Explore estratégias publicadas na ${chain}. Abra uma para revisar os ativos, as fontes e as opções de investir ou seguir.`,
-      leadAll:
-        'Cada um é uma lista de ativos e pesos que quem o criou publicou numa rede. Entre para ver os da sua rede.',
+      lead: 'Explore estratégias publicadas em todas as redes que rodamos. Cada uma diz em qual rede está. Abra uma para ver seus ativos, fontes e opções para investir ou seguir.',
       loading: 'Lendo os portfólios compartilhados…',
-      empty: (chain: string) => `Nenhum portfólio foi compartilhado na ${chain} ainda.`,
-      emptyAll: 'Nenhum portfólio foi compartilhado ainda.',
+      empty: 'Nenhum portfólio foi compartilhado ainda.',
       publish: 'Publicar um portfólio',
       publishSoon: (chain: string) =>
         `Publicar um portfólio na ${chain} está a caminho. Por enquanto dá para publicar na Solana.`,
-      signedOut: (chain: string) =>
-        `Você saiu da conta. Esta ainda é a prateleira da ${chain}; entre para seguir um portfólio.`,
+      signedOut: 'Você saiu da conta. Os portfólios continuam listados; entre para seguir um.',
       card: {
         by: (creator: string) => `por ${creator}`,
         platform: 'Da tenonfi',
@@ -1103,11 +1098,12 @@ export const pt: Dictionary = {
       backToShelf: 'Voltar aos portfólios compartilhados',
       lead: (chain: string) =>
         `Uma lista de ativos e pesos que quem a criou publicou na ${chain}. Segui-la quer dizer que um cofre seu assume esses pesos; uma versão nova entra em vigor depois de um prazo, e você a vê antes disso.`,
-      notHere: (chain: string) =>
-        `Este portfólio não está publicado na ${chain}, sua rede atual, então não dá para segui-lo daqui.`,
-      elsewhere: (chain: string) =>
-        `Você tem um cofre na ${chain} que segue este portfólio. Troque para a ${chain} para atualizá-lo lá.`,
-      switchTo: (chain: string) => `Trocar para a ${chain}`,
+      noWalletFor: (chains: string) =>
+        `Este portfólio está na ${chains}, e a carteira com que você entrou não assina lá. Não dá para investir nele nem segui-lo com este login.`,
+      which: 'Rede em que investir',
+      whichHint: 'O cofre que você abre segue este portfólio na rede que você escolher.',
+      elsewhere: (chain: string) => `Você tem um cofre na ${chain} que segue este portfólio.`,
+      showOn: (chain: string) => `Mostrar na ${chain}`,
       recipe: (chain: string) => `Na ${chain}`,
       inEffect: 'Em vigor',
       since: (when: string) => `desde ${when}`,
