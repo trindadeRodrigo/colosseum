@@ -276,8 +276,10 @@ describe('the allocation, as the picture', () => {
     ]);
     // a part too thin for its mark is plain: 5% of a phone's bar is under 24px
     expect(
-      parts.map((p) => p.querySelector('[data-ui="asset-mark"]')?.textContent ?? null),
-    ).toEqual(['SPY', 'GLD', null]);
+      parts.map(
+        (p) => p.querySelector('[data-ui="asset-mark"] img')?.getAttribute('src') ?? null,
+      ),
+    ).toEqual(['/assets/tokens/spyx.png', '/assets/tokens/gldx.png', null]);
     // every holding has a label under the bar, a real target with its mark, name and share
     const labels = [...bar.querySelectorAll('[data-ui="plan-labels"] button')];
     expect(labels.map((l) => l.getAttribute('aria-label'))).toEqual([
