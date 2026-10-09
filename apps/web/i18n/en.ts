@@ -80,7 +80,8 @@ export const en = {
 
   signIn: {
     title: 'Sign in with a wallet that is yours.',
-    lead: 'Your plan sits in a vault only you can withdraw from, so it needs a wallet you own. Create one with a passkey, or connect one you already use.',
+    /** One sentence, then the choices (Thom, Oct 9). */
+    lead: 'Use a passkey, or a wallet you already have.',
     loading: 'Loading sign-in…',
     /** The landing's sign-in panel did not load. */
     notLoaded: 'Sign-in didn’t load here.',
@@ -89,31 +90,41 @@ export const en = {
     close: 'Close sign-in',
     passkey: {
       title: 'Passkey',
-      body: 'No seed phrase to write down. I use the passkey this device keeps for this site. A wallet is made for you that only that passkey opens.',
-      /** One button: signs in with a passkey this device has, or makes one. */
-      continue: 'Continue with a passkey',
-      /** After the prompt to use one was closed: makes one, and with it a new account. */
-      createNew: 'Create a new passkey',
-      /** Under that button: what a new passkey is, before one is made by mistake. */
-      createNewNote:
-        'New here? A new passkey opens a new account with a new, empty wallet. It doesn’t open a wallet you already have.',
+      /**
+       * The pair at the top of the passkey side: someone new, and someone who has one. A new passkey
+       * is a new, empty wallet, said beside the button that makes one, before it is pressed.
+       */
+      create: 'Create a passkey',
+      createNote:
+        'I’m new here. This opens a new account with a new, empty wallet. It doesn’t open a wallet you already have.',
+      continue: 'Use my passkey',
+      continueNote: 'I’ve signed in here before.',
+      /** The disclosure under the pair. */
+      what: 'What is a passkey?',
+      body: 'A key this device keeps for this site, opened the way you open the device: a fingerprint, a face or a code. There is no seed phrase to write down. A wallet is made for you that only that passkey opens.',
       waiting: 'Waiting for your passkey…',
       making: 'Making your wallet…',
     },
     wallet: {
       title: 'Wallet',
-      body: 'Connect a wallet you already use. Your plan lives on its chain: Solana for a Solana wallet, Robinhood Chain for an Ethereum wallet.',
-      /** Opens the list of wallets found in this browser. */
-      connect: 'Connect a wallet',
       /** The name of the list of wallets found in this browser. */
       found: 'Wallets found in this browser',
       waiting: 'Waiting for your wallet…',
-      none: 'No wallet was found in this browser. Install one, or open this page inside your wallet’s own browser. Or continue with a passkey: it needs nothing installed.',
+      /** Under a wallet's name: where a plan made with it lives. Nothing is switched by the person. */
+      lives: (chain: string) => `Your plan lives on ${chain}`,
+      livesEither: (a: string, b: string) => `Your plan lives on ${a} or ${b}`,
+      none: 'No wallet was found in this browser.',
+      /** The last entry: a wallet that is not in the list. Only wallets in this browser can sign in. */
+      other: 'Other wallet',
+      otherBody:
+        'Only wallets in this browser are listed. Install yours, or open this page inside your wallet’s own browser. Or use a passkey: it needs nothing installed.',
       /** A wallet that signs on both families: the chain is asked before it signs. */
       both: (wallet: string) =>
         `${wallet} works on Solana and on Robinhood Chain. Choose the chain your plan lives on: it can’t be changed later.`,
       /** After `both`: someone who signed in before chooses again what they chose then. */
       before: 'Signed in before? Choose the chain you chose then.',
+      /** From the chain question back to the list. */
+      back: 'Back to the wallets',
       /** A wallet every chain of which is switched off on our server. */
       off: (wallet: string) =>
         `${wallet} works only on chains switched off on our server for now, so it can’t be used to sign in. Use another wallet, or a passkey.`,
@@ -137,11 +148,16 @@ export const en = {
     failure: {
       passkeyOff:
         'Passkeys aren’t switched on for this app yet, so none can be created or used here. Connect a wallet instead, or come back later.',
+      /** A closed prompt is no failure: these two are said calmly, not in red (Thom, Oct 9). */
       passkeyNotCreated:
-        'The passkey wasn’t created: the prompt was closed or ran out of time. Nothing was saved. Try again when you’re ready.',
-      /** The prompt to use a passkey was closed: nothing is made unless the person asks (SIGN-IN-FLOW). */
+        'No passkey was created: the prompt was closed or ran out of time. Nothing was saved. Try again when you’re ready.',
+      /**
+       * The prompt to use a passkey was closed, or this device has none: the expected result for
+       * someone new. Nothing is made unless the person asks (SIGN-IN-FLOW); the one who has an account
+       * is spoken to first, and the way to a new one says what it opens.
+       */
       passkeyNotUsed:
-        'No passkey was used. If you made one on another device, use that device or choose “use a phone” in the prompt.',
+        'No passkey was used. If you made one on another device, use that device or choose “use a phone” in the prompt. No passkey yet? “Create a passkey” makes one, with a new, empty wallet.',
       passkeyUnknown:
         'I don’t know that passkey: no account here was opened with it. Try the one you signed up with.',
       /** A passkey sign-in that failed with nothing more said: no passkey was taken. */

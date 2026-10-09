@@ -63,31 +63,37 @@ export const pt: Dictionary = {
 
   signIn: {
     title: 'Entre com uma carteira que é sua.',
-    lead: 'Seu plano fica em um cofre de onde só você pode sacar, então ele precisa de uma carteira que seja sua. Crie uma com uma chave de acesso ou conecte uma que você já usa.',
+    lead: 'Use uma chave de acesso ou uma carteira que você já tem.',
     loading: 'Carregando o login…',
     notLoaded: 'O login não carregou aqui.',
     openPage: 'Abrir a página de login',
     close: 'Fechar o login',
     passkey: {
       title: 'Chave de acesso',
-      body: 'Você não precisa anotar frase de recuperação. Eu uso a chave de acesso que este aparelho guarda para este site. A carteira que criamos para você só abre com essa chave.',
-      continue: 'Continuar com uma chave de acesso',
-      createNew: 'Criar uma chave de acesso nova',
-      createNewNote:
-        'É sua primeira vez? Uma chave de acesso nova abre uma conta nova, com uma carteira nova e vazia. Ela não abre uma carteira que você já tem.',
+      create: 'Criar uma chave de acesso',
+      createNote:
+        'É minha primeira vez. Isso abre uma conta nova, com uma carteira nova e vazia. Não abre uma carteira que você já tem.',
+      continue: 'Usar minha chave de acesso',
+      continueNote: 'Já entrei aqui antes.',
+      what: 'O que é uma chave de acesso?',
+      body: 'Uma chave que este aparelho guarda para este site, aberta do jeito que você abre o aparelho: digital, rosto ou código. Não há frase de recuperação para anotar. A carteira que criamos para você só abre com essa chave.',
       waiting: 'Aguardando sua chave de acesso…',
       making: 'Criando sua carteira…',
     },
     wallet: {
       title: 'Carteira',
-      body: 'Conecte uma carteira que você já usa. Seu plano fica na rede dela: Solana para uma carteira Solana, Robinhood Chain para uma carteira Ethereum.',
-      connect: 'Conectar uma carteira',
       found: 'Carteiras encontradas neste navegador',
       waiting: 'Aguardando sua carteira…',
-      none: 'Nenhuma carteira foi encontrada neste navegador. Instale uma ou abra esta página no navegador da própria carteira. Ou continue com uma chave de acesso: não precisa instalar nada.',
+      lives: (chain: string) => `Seu plano fica na ${chain}`,
+      livesEither: (a: string, b: string) => `Seu plano fica na ${a} ou na ${b}`,
+      none: 'Nenhuma carteira foi encontrada neste navegador.',
+      other: 'Outra carteira',
+      otherBody:
+        'Só aparecem as carteiras deste navegador. Instale a sua ou abra esta página no navegador da própria carteira. Ou use uma chave de acesso: não precisa instalar nada.',
       both: (wallet: string) =>
         `${wallet} funciona na Solana e na Robinhood Chain. Escolha a rede onde seu plano fica: isso não pode ser mudado depois.`,
       before: 'Já entrou antes? Escolha a rede que você escolheu naquela vez.',
+      back: 'Voltar às carteiras',
       off: (wallet: string) =>
         `${wallet} só funciona em redes indisponíveis no nosso servidor por enquanto, então não pode ser usada para entrar. Use outra carteira ou uma chave de acesso.`,
       chains: 'A rede do seu plano',
@@ -110,7 +116,7 @@ export const pt: Dictionary = {
       passkeyNotCreated:
         'A chave de acesso não foi criada: a janela foi fechada ou o tempo acabou. Nada foi salvo. Tente de novo quando quiser.',
       passkeyNotUsed:
-        'Nenhuma chave de acesso foi usada. Se você criou uma em outro aparelho, use esse aparelho ou escolha “usar um celular” na janela.',
+        'Nenhuma chave de acesso foi usada. Se você criou uma em outro aparelho, use esse aparelho ou escolha “usar um celular” na janela. Ainda não tem uma? “Criar uma chave de acesso” faz uma, com uma carteira nova e vazia.',
       passkeyUnknown:
         'Não reconheço essa chave de acesso: nenhuma conta aqui foi aberta com ela. Tente a chave com que você se cadastrou.',
       passkeyNotAccepted:

@@ -75,6 +75,8 @@ export type WalletChoice = {
 export const BOTH_FAMILIES: ReadonlyArray<{ key: string; solana: string; evm: string }> = [
   { key: 'phantom', solana: 'solana:Phantom', evm: 'evm:app.phantom' },
   { key: 'backpack', solana: 'solana:Backpack', evm: 'evm:app.backpack' },
+  // MetaMask registers a Solana wallet beside its EVM one: listed apart, it was "MetaMask" twice.
+  { key: 'metamask', solana: 'solana:MetaMask', evm: 'evm:io.metamask' },
   // The throwaway wallet of development signs on both too (test/test-driver.ts); its ids are its own.
   { key: 'throwaway', solana: 'test:solana', evm: 'test:evm' },
 ];
@@ -97,15 +99,43 @@ export function walletChoices(found: readonly FoundWallet[]): WalletChoice[] {
 }
 
 /**
- * Whether "Create a new passkey" is offered after a failed attempt with a passkey. A passkey is never
- * made because using one failed (SIGN-IN-FLOW): Privy 3.46 reports every WebAuthn refusal (a closed
- * prompt, a timeout, no passkey on this device, an abandoned "use a phone") as one error, so the screen
- * cannot tell "none here" from "changed my mind". It offers the button instead, and only its press
- * makes one, in a gesture of its own. Not offered where making one cannot work either: passkeys are
- * off for the app, or the browser has none.
+ * A passkey prompt that was closed, timed out or found no passkey is no failure: it is what someone
+ * new gets from "Use my passkey", and what anyone gets by changing their mind. It is said calmly, as a
+ * note, and red is kept for what went wrong. Privy 3.46 reports every WebAuthn refusal as one error,
+ * so the screen cannot tell "none here" from "closed": the note speaks to both.
  */
-export function offersNewPasskey(failure: SignInFailure): boolean {
-  return (
-    failure !== 'passkeyOff' && failure !== 'passkeyUnsupported' && failure !== 'originRefused'
-  );
+export function isCalm(failure: SignInFailure): boolean {
+  return failure === 'passkeyNotUsed' || failure === 'passkeyNotCreated';
+}
+
+/**
+ * What tells apart two entries that carry the same name (two installs, or a wallet calling itself by
+ * another's name): the EIP-6963 id of an EVM wallet, which the name's owner cannot be given. Null for
+ * an entry whose name is its own in the list.
+ */
+export function twinMark(choice: WalletChoice, all: readonly WalletChoice[]): string | null {
+  if (all.filter((other) => other.name === choice.name).length < 2) return null;
+  return choice.ids.evm?.startsWith('evm:') ? choice.ids.evm.slice(4) : null;
+}
+
+/**
+ * One bit this browser keeps once a passkey has signed in here: a passkey for this site may exist on
+ * this device. No browser says whether one does (WebAuthn tells a page nothing before the prompt), so
+ * this is the only thing the screen can know: with it, "Use my passkey" leads; without it, nothing is
+ * known and the two passkey buttons are equals. It holds no id and is never sent anywhere.
+ */
+const PASSKEY_SEEN = 'tf-passkey';
+export function passkeySeenHere(): boolean {
+  try {
+    return typeof window !== 'undefined' && window.localStorage.getItem(PASSKEY_SEEN) === '1';
+  } catch {
+    return false;
+  }
+}
+export function keepPasskeySeen(): void {
+  try {
+    window.localStorage.setItem(PASSKEY_SEEN, '1');
+  } catch {
+    // No storage: the two buttons stay equals.
+  }
 }

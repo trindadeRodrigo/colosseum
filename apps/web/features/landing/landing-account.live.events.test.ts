@@ -40,9 +40,12 @@ const app = async () => {
   return host;
 };
 const control = (host: HTMLElement) => find(host, '[data-ui="account-control"]');
-/** A control as drawn, without what differs by design: ids, and the way in's weight and address. */
+/** A control as drawn, without what differs by design or by the clock: ids, the way in's weight and address, the words of a wait. */
 function drawn(host: HTMLElement): string {
   const copy = control(host).cloneNode(true) as HTMLElement;
+  // what it says after 400ms of waiting depends on how long the test took to get here
+  const said = copy.querySelector('[data-ui="account-said"]');
+  if (said) said.textContent = '';
   for (const el of [copy, ...copy.querySelectorAll('*')]) {
     for (const name of ['id', 'aria-labelledby', 'aria-describedby', 'aria-controls'])
       if (el.hasAttribute(name)) el.setAttribute(name, '');

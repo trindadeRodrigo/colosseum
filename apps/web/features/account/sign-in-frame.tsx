@@ -138,6 +138,8 @@ export function SignInFrame({
         onKeyDown={onKeyDown}
         className="relative flex w-full flex-col gap-6 overflow-y-auto border border-border bg-popover p-6 text-popover-foreground outline-none motion-safe:animate-dialog-in motion-reduce:animate-crossfade max-sm:h-dvh max-sm:rounded-none max-sm:border-0 max-sm:pt-16 sm:max-h-[calc(100dvh-32px)] sm:w-[calc(100%-32px)] sm:max-w-[920px] sm:rounded-md"
       >
+        {children(titleId)}
+        {/* Last in the order of the keys, after the ways in (Thom, Oct 9); drawn at the top right. */}
         <Button
           variant="icon"
           aria-label={t.signIn.close}
@@ -146,7 +148,6 @@ export function SignInFrame({
         >
           <Icon name="X" />
         </Button>
-        {children(titleId)}
       </div>
     </div>
   );
