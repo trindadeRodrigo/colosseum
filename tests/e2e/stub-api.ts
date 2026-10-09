@@ -521,7 +521,7 @@ async function placeShared(body: Body): Promise<OrderDetail> {
     const existing = await vaultOf();
     return doubleFor(owner).place({
       type: 'buy',
-      summary: 'Buy a shared portfolio on Solana, following it',
+      summary: 'Deposit into a vault on Solana that follows a shared portfolio',
       depositRaw: String(deposit),
       needsConsent: [],
       steps: [
@@ -531,7 +531,7 @@ async function placeShared(body: Body): Promise<OrderDetail> {
           cashRaw: String(deposit),
           trades: [],
         },
-        ...trades.map((t) => ({ kind: 'swap' as const, description: 'Buy', trades: [t] })),
+        ...trades.map((t) => ({ kind: 'swap' as const, description: 'Swap', trades: [t] })),
       ],
       build: async (leg) =>
         leg.kind === 'create_vault'
@@ -629,7 +629,7 @@ async function mixReview(
   ];
   if (issues.length)
     throw new ApiRefusal(422, {
-      error: 'this mix cannot be bought as it is',
+      error: 'this vault cannot take a deposit as it is',
       code: 'MIX_NOT_VALID',
       details: { issues },
     });
@@ -738,7 +738,8 @@ function goalReply(body: { messageId?: string; messages?: { who: string; text: s
       })),
     ),
     messageId: body.messageId,
-    message: 'Sample: a broad fund and gold, split equally. Nothing is bought until you confirm.',
+    message:
+      'Sample: a broad fund and gold, split equally. Nothing is deposited until you confirm.',
     question: null,
     proposal: {
       objective: 'Sample: grow with a hedge',
@@ -794,7 +795,7 @@ async function placeRetarget(address: string, body: MixBody): Promise<ApplyVault
       { kind: 'set_targets', description: 'Set your vault’s targets', trades: [] },
       ...trades.map((t) => ({
         kind: 'swap' as const,
-        description: t.buy === adapter.mock.cash ? 'Sell for cash' : 'Buy',
+        description: t.buy === adapter.mock.cash ? 'Sell for cash' : 'Swap',
         trades: [t],
       })),
     ],

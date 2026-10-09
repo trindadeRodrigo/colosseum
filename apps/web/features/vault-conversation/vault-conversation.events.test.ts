@@ -111,22 +111,18 @@ describe('a continuous conversation for one vault', () => {
     expect(rows[1]?.textContent).toContain('70% → 0%');
     expect(rows[1]?.textContent).toContain('−70 pp');
     expect(rows[1]?.textContent).toContain(en.shared.vault.conversation.removed);
-    // the joint beside a vault's targets: one piece for what is proposed, named with the proposed
-    // share alone, and a removed target has a row, an empty swatch and no piece
-    const pieces = [
-      ...host.querySelectorAll<HTMLElement>('[data-ui="mix-joint"] [data-part="piece"]'),
-    ];
+    // the plan bar beside a vault's targets: one leg for what is proposed, labelled with the proposed
+    // share alone, and a removed target has a row, an empty swatch and no leg
+    const bar = find(host, '[data-ui="plan-legs-bar"]');
+    expect([...bar.children].map((leg) => (leg as HTMLElement).style.width)).toEqual(['100%']);
     expect(
-      pieces.map((p) => [p.dataset.asset, p.getAttribute('aria-label'), p.style.width]),
-    ).toEqual([['solana:gldx', 'tGLDx, 100%', '100%']]);
+      [...find(host, '[data-ui="plan-legs"] ol').children].map((label) => label.textContent),
+    ).toEqual(['tGLDx·100%']);
     expect(find(rows[0] as Element, '[data-part="swatch"]').className).toContain('bg-leg-1');
     expect(find(rows[1] as Element, '[data-part="swatch"]').className).not.toMatch(/bg-leg-/);
-    expect(rows[1]?.hasAttribute('data-lit')).toBe(false);
-    await act(async () => pieces[0]?.focus());
-    expect(rows[0]?.getAttribute('data-lit')).toBe('true');
     // a vault's draft is never kept while the next is asked for: no pending line on it
     expect(find(host, '[data-ui="preview-pending"]').textContent).toBe('');
-    expect(host.querySelector('[data-receded]')).toBeNull();
+    expect(host.querySelector('[data-set-back]')).toBeNull();
     // Source pins may open; the standalone preview offers no execution or discussion command.
     expect(host.querySelector('form')).toBeNull();
     expect(host.querySelector('a[href^="/buy"]')).toBeNull();
@@ -216,6 +212,77 @@ describe('a continuous conversation for one vault', () => {
     ]);
     expect(calls[1]?.body.version).toBe(1);
     expect(calls[1]?.body).not.toHaveProperty('sheet');
+  });
+
+  it('shows a pending reply under the sent message and a card that promises no draft, then the reply in place', async () => {
+    const waiting: (() => void)[] = [];
+    let fail = false;
+    let posts = 0;
+    portStore.setApi(async (_url, init) => {
+      if (init?.method !== 'POST') return json({}, 404);
+      posts += 1;
+      await new Promise<void>((done) => waiting.push(done));
+      if (fail) return json({}, 500);
+      return json({
+        ...reply,
+        messageId: JSON.parse(String(init.body)).messageId,
+      });
+    });
+    const release = async () => {
+      await act(async () => waiting.shift()?.());
+      await settle();
+    };
+    const copy = en.shared.vault.conversation;
+    const host = await show();
+    const announced = () => find(host, '[data-ui="reply-announcer"]').textContent;
+    const box = find<HTMLTextAreaElement>(host, 'textarea');
+    expect(announced()).toBe('');
+    await type(box, 'More gold, please');
+    await click(find(host, '[data-ui="composer-send"]'));
+    const rows = () => [...find(host, '[data-ui="vault-transcript"]').children];
+    expect(rows()).toHaveLength(2);
+    const pending = find(host, '[data-ui="reply-pending"]');
+    expect(rows()[1]).toBe(pending);
+    expect(pending.textContent).toBe(`${copy.agent}: ${copy.pendingLines[0]}`);
+    expect(pending.closest('[aria-live], [role="status"]')).toBeNull();
+    expect(announced()).toBe(copy.reading);
+    expect(find(host, '[data-ui="composer"]').querySelector('[role="status"]')).toBeNull();
+    // the plan side: where a draft would be, a card says a reply is being worked on, with still boxes
+    // and no figure. It promises no draft: most replies here only talk.
+    const building = find(host, '[data-ui="vault-plan"] [data-ui="vault-building"]');
+    expect(find(building, 'h2').textContent).toBe(copy.building);
+    expect(building.textContent).toBe(`${copy.building}${copy.buildingLine}`);
+    expect(find(building, '[data-ui="draft-skeleton"]').getAttribute('aria-hidden')).toBe('true');
+    expect(find(host, '[data-ui="vault-plan"]').firstElementChild).toBe(building);
+    // a vault never keeps a stale draft while the next is asked for
+    expect(host.querySelector('[data-ui="vault-proposal"]')).toBeNull();
+    // the next thought can be typed; it is not sent
+    expect(box.readOnly).toBe(false);
+    await type(box, 'and less cash');
+    await click(find(host, '[data-ui="composer-send"]'));
+    expect(posts).toBe(1);
+    await release();
+    expect(host.querySelector('[data-ui="reply-pending"]')).toBeNull();
+    expect(host.querySelector('[data-ui="vault-building"]')).toBeNull();
+    expect(rows()[1]?.textContent).toBe(`${copy.agent}: ${reply.message}`);
+    expect(announced()).toBe(`${copy.agent}: ${reply.message} ${copy.draftArrived}`);
+    expect(host.querySelector('[data-ui="vault-proposal"]')).not.toBeNull();
+    expect(box.value).toBe('and less cash');
+
+    // the next send clears the draft, and a reply that does not come is said where it would have been
+    fail = true;
+    await click(find(host, '[data-ui="composer-send"]'));
+    expect(host.querySelector('[data-ui="vault-proposal"]')).toBeNull();
+    expect(find(host, '[data-ui="vault-building"]')).not.toBeNull();
+    expect(rows().at(-1)).toBe(find(host, '[data-ui="reply-pending"]'));
+    await release();
+    expect(host.querySelector('[data-ui="reply-pending"]')).toBeNull();
+    expect(host.querySelector('[data-ui="vault-building"]')).toBeNull();
+    const failed = find(host, '[data-ui="vault-transcript"] > [data-ui="vault-unanswered"]');
+    expect(rows().at(-1)).toBe(failed);
+    expect(find(failed, '[role="alert"]').textContent).toBe(copy.failed);
+    expect(host.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    expect(announced()).toBe('');
   });
 
   it('shows measured holdings, cash, and different current/proposed targets without execution', async () => {

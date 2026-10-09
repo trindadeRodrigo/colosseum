@@ -101,7 +101,7 @@ export const REASON_TEMPLATES = {
   ),
   MIX_NOT_FOR_GOAL: rule(
     ['mix', 'goal'],
-    '{asset} is in the mix you chose. The asset list does not put it in a plan for {goal|goal}: it can fall in value.',
+    '{asset} is among the holdings you chose. The asset list does not put it in a plan for {goal|goal}: it can fall in value.',
     '{asset} está na divisão que você escolheu. A lista de ativos não o coloca em um plano para {goal|goal}: ele pode perder valor.',
   ),
   MIX_STOPS_FOLLOWING: rule(

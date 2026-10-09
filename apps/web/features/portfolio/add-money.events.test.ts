@@ -702,6 +702,28 @@ describe('the monitor, with the vaults’ actions', () => {
   });
 });
 
+describe('what a vault with no name is called on the list', () => {
+  it('is "Vault #N" where the server numbers it, and its own name where it has one', async () => {
+    api({
+      vaults: [
+        vault({ number: 2 } as Parameters<typeof vault>[0]),
+        vault({
+          address: SECOND_VAULT,
+          basketId: '8',
+          name: 'Rent',
+          number: 1,
+        } as Parameters<typeof vault>[0]),
+      ],
+    });
+    const host = await mount(withAccount('en', createElement(MonitorScreen)));
+    for (let i = 0; i < 4; i += 1) await settle(50);
+    const names = [...host.querySelectorAll('[data-ui="vault-name"]')].map((n) => n.textContent);
+    expect(names).toContain('Vault #2');
+    expect(names).toContain('Rent');
+    expect(names).not.toContain('Vault #1');
+  });
+});
+
 describe('a vault’s own page, which anybody can open', () => {
   const page = async () => {
     const host = await mount(

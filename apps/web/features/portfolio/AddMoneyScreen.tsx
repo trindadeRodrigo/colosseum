@@ -21,7 +21,7 @@ import {
   MIN_USD,
 } from '../order/InvestCard';
 import { addMoneyPath, placeOrder } from '../order/order-api';
-import { keepOrder, recallOrder } from '../order/order-record';
+import { keepOrder, latestOf, recallOrder, recallOrders } from '../order/order-record';
 import { chainReady, onMock } from '../order/readiness';
 import type { SharedTerms } from '../shared/terms';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
@@ -227,13 +227,17 @@ export function AddMoneyScreen({
 
   // An add approved on this card before it was lost (the vault's page, opened again in the middle of
   // its steps), as this browser kept it for this person and this vault: the card takes it up again.
+  // Where an order was made to finish it (here or on its own page), that one is the card's: the newest
+  // of the line, approved or still to review, as the plan's own card takes it up (BuyScreen).
   const kept = embedded?.resumeOrder ? recallOrder(embedded.resumeOrder, port.userId) : null;
-  const approved =
-    kept?.terms?.kind === 'vault' &&
+  const root =
+    kept?.approved &&
+    kept.terms?.kind === 'vault' &&
     kept.chain === chain &&
     sameAddress(chain, kept.terms.vault, vault.address)
-      ? kept.approved
+      ? kept
       : null;
+  const latest = root ? latestOf(root, recallOrders(port.userId)) : null;
 
   // The wallet that is signed in when it is not the vault's owner: nothing is asked of it.
   const card = (
@@ -257,9 +261,15 @@ export function AddMoneyScreen({
       onStopped={embedded?.onStopped}
       onAmount={embedded ? embedded.onAmount : (next) => setText(String(next))}
       {...(embedded?.hostEnds ? { hostEnds: true } : {})}
-      {...(approved
-        ? { resume: { orderId: approved.order.id, expiresAt: approved.order.expiresAt } }
+      {...(latest
+        ? {
+            resume: {
+              orderId: latest.orderId,
+              expiresAt: latest.approved?.order.expiresAt ?? 0,
+            },
+          }
         : {})}
+      {...(embedded?.onFollowUp ? { onFollowUp: embedded.onFollowUp } : {})}
     />
   );
 

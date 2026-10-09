@@ -71,7 +71,11 @@ export function VaultActions({
         { ...words, unnamed: () => t.shared.vault.page.yourVault },
         chainName,
       )
-    : (goal ?? words.unnamed(chainName));
+    : // on a list: "Vault #N" where the server numbers it, with its goal under it; a server that
+      // gives no number leaves the goal as the name, as before
+      typeof vault.number === 'number'
+      ? words.numbered(vault.number)
+      : (goal ?? words.unnamed(chainName));
   const typed = readName(text);
   const Name = level === 1 ? 'h1' : level === 2 ? 'h2' : 'h3';
 
@@ -149,7 +153,7 @@ export function VaultActions({
           )}
         </p>
       </div>
-      {page && goal && (
+      {(page || typeof vault.number === 'number') && goal && name !== goal && (
         <p data-ui="vault-goal" className="max-w-(--tf-measure-body) text-body-sm">
           {goal}
         </p>

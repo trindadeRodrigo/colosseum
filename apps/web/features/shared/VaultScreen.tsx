@@ -14,6 +14,7 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { type CallFailure, readOrder } from '../order/order-api';
 import { stoppedShort } from '../order/order-check';
+import { latestOf, recallOrder, recallOrders } from '../order/order-record';
 import { explorerAddressUrlFor } from '../order/readiness';
 import { dollars } from '../portfolio/figures';
 import { vaultValueSource } from '../portfolio/portfolio';
@@ -260,7 +261,10 @@ function OwnVault({
     const kept = recallAction(userId, read.chain, vault.address);
     if (!kept?.orderId) return;
     let mine = true;
-    readOrder(apiFetch, kept.orderId).then((answer) => {
+    // where an order was made to finish it, that one says how the line stands
+    const first = recallOrder(kept.orderId, userId);
+    const asked = first ? latestOf(first, recallOrders(userId)).orderId : kept.orderId;
+    readOrder(apiFetch, asked).then((answer) => {
       if (!mine) return;
       if (answer.kind === 'read' && (answer.order.status === 'done' || stoppedShort(answer.order)))
         return keepAction(userId, read.chain, vault.address, null);

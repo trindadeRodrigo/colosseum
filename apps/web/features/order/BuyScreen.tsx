@@ -16,7 +16,7 @@ import {
   MIN_USD,
 } from './InvestCard';
 import { placeOrder } from './order-api';
-import { keepOrder } from './order-record';
+import { keepOrder, recallOrder, recallOrders } from './order-record';
 import { PlanGate } from './PlanGate';
 import { targetsOfPlan } from './plan-terms';
 import { basketOfPlan, deploymentsFor } from './readiness';
@@ -122,6 +122,24 @@ export function BuyScreen({ id, embedded }: { id: string; embedded?: InvestEmbed
     };
   }
 
+  // An order approved on this card before it was lost, as this browser kept it for this person and
+  // this plan: the card takes it up again. One that is not here, or is another plan's, is not. Where
+  // an order was made to finish it (here or on its own page), that one is the card's: the newest of
+  // the line, approved or still to review. What each says is read from our server by its screen.
+  const first = embedded?.resumeOrder ? recallOrder(embedded.resumeOrder, port.userId) : null;
+  const root =
+    first?.proposalId === plan.id && first.chain === chain && first.approved ? first : null;
+  let latest = root;
+  if (root) {
+    const mine = recallOrders(port.userId);
+    for (let hop = 0; latest && hop < 8; hop += 1) {
+      const from: string = latest.orderId;
+      const next = mine.find((r) => r.continues?.orderId === from && r.proposalId === plan.id);
+      if (!next) break;
+      latest = next;
+    }
+  }
+
   // What the amount is split into: the plan's own weights on its chain, cash left out.
   const cash = deploymentsFor(chain, ready.mock)?.[chain]?.cash;
   const card = (
@@ -149,6 +167,19 @@ export function BuyScreen({ id, embedded }: { id: string; embedded?: InvestEmbed
       // screen changes it (and the plan built for it).
       onAmount={embedded ? embedded.onAmount : (next) => setText(String(next))}
       amountFrom={embedded ? 'goal' : 'field'}
+      {...(embedded?.hostEnds ? { hostEnds: true } : {})}
+      {...(root && latest
+        ? {
+            resume: {
+              orderId: latest.orderId,
+              expiresAt: latest.approved?.order.expiresAt ?? 0,
+              basketId:
+                root.approved?.order.basketId ??
+                basketOfPlan(plan.id, plan.fromLink ? port.userId : null),
+            },
+          }
+        : {})}
+      {...(embedded?.onFollowUp ? { onFollowUp: embedded.onFollowUp } : {})}
     />
   );
   if (embedded) return card;

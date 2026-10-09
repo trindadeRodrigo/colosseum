@@ -10,7 +10,7 @@ import { AmountField } from '../order/AmountField';
 import type { OrderEmbed } from '../order/invest-words';
 import { MAX_USD, MIN_USD } from '../order/limits';
 import { OrderScreen } from '../order/OrderScreen';
-import { recallOrder } from '../order/order-record';
+import { latestOf, recallOrder, recallOrders } from '../order/order-record';
 import { AddMoneyScreen } from '../portfolio/AddMoneyScreen';
 import { sameAddress } from '../portfolio/vault-name';
 import { SharedReview } from './SharedReview';
@@ -152,10 +152,20 @@ export function VaultAction({
   const amount = open.kind === 'deposit' && open.resumed ? (record?.amountUsd ?? null) : typed;
 
   // What the order's own screen tells this pane, whoever holds it.
+  // An order that finishes a deposit that stopped took the card: it deposits nothing, so the amount
+  // typed for the first one is not said of it, now or after a reload.
+  const [followed, setFollowed] = useState(false);
+  const finishes =
+    followed || (record ? latestOf(record, recallOrders(userId)).continues !== undefined : false);
   const told = {
     onProgress: (progress: { orderId: string }) => {
       onOrder(progress.orderId, true);
       onPhase('signing');
+    },
+    // not approved yet: the pane is the person's again until they press
+    onFollowUp: () => {
+      setFollowed(true);
+      onPhase('open');
     },
     onDone: () => onPhase('done'),
     onStopped: () => onPhase('stopped'),
@@ -165,8 +175,9 @@ export function VaultAction({
   if (open.kind === 'deposit')
     body = (
       <>
-        {pressed || open.resumed ? (
-          amount !== null && (
+        {pressed || open.resumed || finishes ? (
+          amount !== null &&
+          !finishes && (
             <p data-ui="vault-action-amount" className="text-body">
               {p.amount} <span className="font-medium tabular-nums">{whole(amount, lang)}</span>
             </p>

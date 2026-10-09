@@ -7,7 +7,7 @@ import { click, find, mount, settle, unmountAll } from '../../components/ui/test
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
-import { keepOrder } from '../order/order-record';
+import { keepOrder, recallOrders } from '../order/order-record';
 import { assetsOn, orderOn } from '../order/test/fixtures';
 import { PORTFOLIO_PATH } from '../portfolio/portfolio';
 import { vaultTitle } from '../portfolio/vault-name';
@@ -28,6 +28,8 @@ import { VaultScreen } from './VaultScreen';
 const run = vi.hoisted(() => ({
   calls: [] as { order: OrderDetail; deps: ExecutorDeps }[],
   answer: 'done' as 'done' | 'failed',
+  /** Held: the executor answers only once the test lets it. */
+  gate: null as Promise<void> | null,
   /** The order the executor answers with, where a test says how its steps ended. */
   result: null as OrderDetail | null,
 }));
@@ -35,14 +37,15 @@ vi.mock('@colosseum/sdk', async (original) => ({
   ...(await original<typeof import('@colosseum/sdk')>()),
   execute: (order: OrderDetail, deps: ExecutorDeps) => {
     run.calls.push({ order, deps });
-    return Promise.resolve(
-      (run.answer === 'done'
-        ? { status: 'done', order: run.result ?? { ...order, status: 'done' } }
-        : {
-            status: 'failed',
-            order: { ...order, status: 'failed' },
-            error: { code: 'Unknown', message: 'it failed on chain', retryable: false },
-          }) as unknown as ExecutionResult,
+    return (run.gate ?? Promise.resolve()).then(
+      () =>
+        (run.answer === 'done'
+          ? { status: 'done', order: run.result ?? { ...order, status: 'done' } }
+          : {
+              status: 'failed',
+              order: { ...order, status: 'failed' },
+              error: { code: 'Unknown', message: 'it failed on chain', retryable: false },
+            }) as unknown as ExecutionResult,
     );
   },
 }));
@@ -210,6 +213,7 @@ beforeEach(() => {
   run.calls = [];
   run.answer = 'done';
   run.result = null;
+  run.gate = null;
   Object.defineProperty(window.navigator, 'locks', {
     value: {
       request: async (_n: string, _o: object, work: (lock: { name: string }) => Promise<unknown>) =>
@@ -236,12 +240,17 @@ describe('what a vault is called', () => {
   it('is by its chain until there is a number', () => {
     expect(vaultTitle({ name: null }, words, 'Solana')).toBe(words.unnamed('Solana'));
   });
-  it('is drawn so on the page: the name, or the unnamed title that does not repeat the chain', async () => {
-    // (the number reaches the page once the portfolio's answer carries it: the schema drops a field
-    // it does not know, so that case is the helper's above until the API has it)
-    api({ listed: { name: 'Rent' } });
+  it('is drawn so on the page: the name, else "Vault #N" from the person’s portfolio, else "Your vault"', async () => {
+    api({ listed: { number: 3 } });
+    const numbered = await show();
+    expect(find(numbered, 'h1').textContent).toBe('Vault #3');
+    // "Rename" is still there, to replace it with a name of the person's own
+    expect(numbered.querySelector('[data-action="rename"]')).not.toBeNull();
+    await unmountAll();
+    api({ listed: { number: 3, name: 'Rent' } });
     expect(find(await show(), 'h1').textContent).toBe('Rent');
     await unmountAll();
+    // a server that gives no number yet
     api();
     expect(find(await show(), 'h1').textContent).toBe(p.yourVault);
   });
@@ -836,6 +845,90 @@ describe('a reload in the middle of signing', () => {
     await click(find(pane(host), '[data-action="leave-action"]'));
     await click(find(host, '[data-action="vault-deposit"]'));
     expect(recallAction(USER, 'solana', MY_VAULT)).toBeNull();
+  });
+
+  it('"Continue" on an order taken up again holds the pane at once: no way back while its steps are signed', async () => {
+    let release: () => void = () => {};
+    run.gate = new Promise<void>((done) => {
+      release = done;
+    });
+    api();
+    expect(kept(everything(), terms('withdraw'))).toBe(true);
+    keepAction(USER, 'solana', MY_VAULT, { kind: 'withdraw', orderId: ORDER_ID });
+    const host = await show();
+    expect(pane(host).querySelector('[data-action="leave-action"]')).not.toBeNull();
+    await click(button(pane(host), en.order.shared.resume));
+    await settle();
+    // before any step answers: the pane is signing, the box says so, and Back is gone
+    expect(pane(host).dataset.state).toBe('signing');
+    expect(pane(host).querySelector('[data-action="leave-action"]')).toBeNull();
+    expect(find(host, '[data-ui="vault-chat-waits"]').textContent).toBe(p.waits.signing);
+    release();
+    for (let i = 0; i < 4; i += 1) await settle(30);
+    expect(pane(host).dataset.state).toBe('done');
+  });
+
+  it('an order that finishes a deposit is the one taken up, and no "Deposit amount" is said of it: it deposits nothing', async () => {
+    const FOLLOW = '9d2f8a3b-1c4e-4f5a-8b6c-7d8e9f0a1b2c';
+    const add = {
+      ...orderOn(),
+      id: ORDER_ID,
+      basketId: '42',
+      legs: orderOn().legs.map((l) => (l.kind === 'create_vault' ? { ...l, kind: 'deposit' } : l)),
+    } as OrderDetail;
+    const vaultTerms: SharedTerms = {
+      kind: 'vault',
+      vault: MY_VAULT,
+      basketId: '42',
+      targets: [{ asset: assetsOn('solana').spy, weightBps: 6000 }],
+      keeper: false,
+      source: 'api',
+    };
+    const base = {
+      userId: USER,
+      proposalId: '',
+      chain: 'solana' as const,
+      amountUsd: 10,
+      lines: [],
+      terms: vaultTerms,
+    };
+    keepOrder({
+      ...base,
+      orderId: ORDER_ID,
+      approved: { order: add, consents: [], at: '2026-10-09T12:00:00.000Z' },
+    });
+    expect(
+      keepOrder({
+        ...base,
+        orderId: FOLLOW,
+        approved: null,
+        continues: { orderId: ORDER_ID, trades: add.legs.flatMap((l) => l.trades) },
+      }),
+    ).toBe(true);
+    expect(recallOrders(USER).map((r) => r.orderId)).toContain(FOLLOW);
+    const server = api({
+      standing: () => ({ ...add, status: 'failed' }) as OrderDetail,
+      more: (path) =>
+        path === `/v1/orders/${FOLLOW}`
+          ? json({
+              ...add,
+              id: FOLLOW,
+              continues: ORDER_ID,
+              depositRaw: undefined,
+              legs: add.legs.slice(1),
+            })
+          : undefined,
+    });
+    keepAction(USER, 'solana', MY_VAULT, { kind: 'deposit', orderId: ORDER_ID });
+    const host = await show();
+    for (let i = 0; i < 4; i += 1) await settle(30);
+    // the line's newest order says how it stands: the first one failed, and the pane still opens
+    expect(screen(host).dataset.pane).toBe('deposit');
+    expect(server.calls.map((c) => c.path)).toContain(`/v1/orders/${FOLLOW}`);
+    expect(pane(host).querySelector('[data-ui="vault-action-amount"]')).toBeNull();
+    expect(pane(host).textContent).not.toContain(p.amount);
+    expect(pane(host).querySelector('input[inputmode="decimal"]')).toBeNull();
+    expect(server.calls.filter((c) => c.path === '/v1/orders' && c.method === 'POST')).toEqual([]);
   });
 
   it.each([
