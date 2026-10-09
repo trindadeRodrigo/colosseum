@@ -196,6 +196,23 @@ export const pt: Dictionary = {
     noWallet:
       'Você entrou, mas ainda não há carteira vinculada ao seu login, então não há rede para o seu plano.',
     reading: 'Verificando em qual rede seu plano fica…',
+    choice: {
+      legend: 'Rede deste plano',
+      hint: 'Um plano fica em uma rede. Escolha antes da primeira mensagem.',
+      wallet: (address: string) => `carteira ${address}`,
+      onlyWallet: (chain: string) =>
+        `Este plano vai ficar na ${chain}: a carteira com que você entrou só assina lá.`,
+      onlyOn: (chain: string) =>
+        `Este plano vai ficar na ${chain}: é a única rede que nosso servidor roda por enquanto.`,
+      on: 'Este plano fica na',
+      change: 'Trocar',
+      changeLabel: 'Trocar a rede deste plano',
+      confirm: (chain: string) =>
+        `Cada rede tem seus próprios ativos, então este rascunho não pode ir para a ${chain}. Ele continua nas suas conversas salvas.`,
+      start: (chain: string) => `Começar uma conversa nova na ${chain}`,
+      keep: 'Manter esta',
+      done: (chain: string) => `Planos novos agora começam na ${chain}.`,
+    },
   },
 
   goal: {

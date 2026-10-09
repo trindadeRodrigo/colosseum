@@ -1,7 +1,7 @@
 'use client';
 import type { ChainId, Network, Provenance } from '@colosseum/schemas';
 import Link from 'next/link';
-import { useEffect, useId, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Composer } from '../../components/ui/Composer';
 import { WORKSPACE_TITLE } from '../../components/ui/heading';
@@ -47,6 +47,7 @@ export function GoalConversation({
   provenance,
   conversationId = 'main',
   onSaved,
+  chainControl,
 }: {
   userId: string | null;
   chain: ChainId | null;
@@ -56,6 +57,11 @@ export function GoalConversation({
   conversationId?: string;
   /** Called with the person's first words each time the transcript is saved. */
   onSaved?: (title: string) => void;
+  /**
+   * The chain of this plan, drawn beside the box (GoalChain, gate CHAIN-AT-THE-PLAN): a choice while
+   * the conversation has no words, its badge with "Change" once it has.
+   */
+  chainControl?: (state: { started: boolean; busy: boolean }) => ReactNode;
 }) {
   const t = useT();
   const lang = useLang();
@@ -384,6 +390,7 @@ export function GoalConversation({
             {t.shell.signIn}
           </Link>
         )}
+        {loaded && chainControl?.({ started: turns.length > 0, busy })}
         <Composer
           label={copy.invitation}
           labelHidden

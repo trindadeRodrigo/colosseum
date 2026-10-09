@@ -239,6 +239,29 @@ export const en = {
     noWallet:
       'You’re signed in, but no wallet is linked to this sign-in yet, so there is no chain for your plan.',
     reading: 'Reading where your plan lives…',
+    /** The chain of a new plan, chosen on the page where it starts (gate CHAIN-AT-THE-PLAN). */
+    choice: {
+      legend: 'Chain for this plan',
+      hint: 'A plan lives on one chain. Choose it before your first message.',
+      /** A wallet's whole address, for a screen reader. */
+      wallet: (address: string) => `wallet ${address}`,
+      /** One chain to start on, because the person's wallet signs on no other. */
+      onlyWallet: (chain: string) =>
+        `This plan will live on ${chain}: the wallet you signed in with signs only there.`,
+      /** One chain to start on, because the other is switched off on our server. */
+      onlyOn: (chain: string) =>
+        `This plan will live on ${chain}: it is the only chain our server runs for now.`,
+      /** Before the chain's badge, once the conversation has words. */
+      on: 'This plan is on',
+      change: 'Change',
+      changeLabel: 'Change the chain of this plan',
+      confirm: (chain: string) =>
+        `Each chain has its own assets, so this draft can’t move to ${chain}. It stays in your saved conversations.`,
+      start: (chain: string) => `Start a new conversation on ${chain}`,
+      keep: 'Keep this one',
+      /** Said to a screen reader once the chain is stored. */
+      done: (chain: string) => `New plans start on ${chain} now.`,
+    },
   },
 
   goal: {
