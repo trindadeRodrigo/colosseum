@@ -37,16 +37,11 @@ export type Position = Vault['positions'][number];
 
 export type PortfolioOutcome =
   /**
-   * Every chain the API could read, the person's current chain first when it is among them; the
-   * chains it could not read, with why; and where the current chain stands: read, unavailable this
-   * time, or not held in this sign-in (no wallet of theirs signs there, so nothing was asked of it).
+   * Every chain the API could read, in the server's order (`first` ahead of the others where a
+   * screen asks for one), and the chains it could not read, with why. Which chain a person's new
+   * plans start on has no part in it: a vault is on its own chain (gate CHAIN-AT-THE-PLAN).
    */
-  | {
-      kind: 'read';
-      chains: PortfolioChain[];
-      unavailable: UnavailableChain[];
-      current: 'read' | 'unavailable' | 'not-held';
-    }
+  | { kind: 'read'; chains: PortfolioChain[]; unavailable: UnavailableChain[] }
   /** The route is not there: this server cannot read vaults. */
   | { kind: 'unavailable' }
   /** The server does not know this sign-in any more (401), or does not let it read (403). */
@@ -66,10 +61,14 @@ const record = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 
 /**
- * The person's vaults on `chain`, the chain their plan lives on. An answer that names another chain,
- * or more than one, is not shown: a plan lives on one chain (gate ONE-CHAIN).
+ * The person's vaults on every chain a wallet of theirs signs on (GET /v1/portfolio). `first`: a chain
+ * to put ahead of the others, for a screen that works on one. An answer that names a chain twice, or
+ * files a vault under a chain it is not on, is not shown.
  */
-export async function readPortfolio(apiFetch: ApiFetch, chain: ChainId): Promise<PortfolioOutcome> {
+export async function readPortfolio(
+  apiFetch: ApiFetch,
+  first?: ChainId,
+): Promise<PortfolioOutcome> {
   let res: Response;
   try {
     res = await apiFetch(PORTFOLIO_PATH);
@@ -101,13 +100,11 @@ export async function readPortfolio(apiFetch: ApiFetch, chain: ChainId): Promise
   if (new Set(named).size !== named.length) return { kind: 'unreadable' };
   if (entries.some((entry) => entry.vaults.some((vault) => vault.chain !== entry.chain)))
     return { kind: 'unreadable' };
-  // The chains that were read are shown, whatever happened to the current one.
-  const own = entries.find((entry) => entry.chain === chain);
+  const own = first ? entries.find((entry) => entry.chain === first) : undefined;
   return {
     kind: 'read',
     chains: own ? [own, ...entries.filter((entry) => entry !== own)] : entries,
     unavailable,
-    current: own ? 'read' : unavailable.some((u) => u.chain === chain) ? 'unavailable' : 'not-held',
   };
 }
 

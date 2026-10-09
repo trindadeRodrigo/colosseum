@@ -1,7 +1,7 @@
 'use client';
 import type { ChainId, Network, Provenance } from '@colosseum/schemas';
 import Link from 'next/link';
-import { useEffect, useId, useRef, useState } from 'react';
+import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Composer } from '../../components/ui/Composer';
 import { WORKSPACE_TITLE } from '../../components/ui/heading';
@@ -47,6 +47,8 @@ export function GoalConversation({
   provenance,
   conversationId = 'main',
   onSaved,
+  chainControl,
+  carried,
 }: {
   userId: string | null;
   chain: ChainId | null;
@@ -56,6 +58,16 @@ export function GoalConversation({
   conversationId?: string;
   /** Called with the person's first words each time the transcript is saved. */
   onSaved?: (title: string) => void;
+  /**
+   * The chain of this plan, drawn beside the box (GoalChain, gate CHAIN-AT-THE-PLAN): a choice while
+   * the conversation has no words, its badge with "Change" once it has.
+   */
+  chainControl?: (state: { started: boolean; busy: boolean }) => ReactNode;
+  /**
+   * Words typed before the first message on another chain, carried over when the chain was changed
+   * beside the box: the box starts with them.
+   */
+  carried?: RefObject<{ chain: ChainId; text: string } | null>;
 }) {
   const t = useT();
   const lang = useLang();
@@ -79,7 +91,9 @@ export function GoalConversation({
   const prefill = useRef<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() =>
+    carried?.current && carried.current.chain === chain ? carried.current.text : '',
+  );
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [reply, setReply] = useState<GoalReply | null>(null);
@@ -126,7 +140,8 @@ export function GoalConversation({
     setBusy(false);
     sending.current = false;
     prefill.current = readGoalHandoff(userId, ready);
-    setText(prefill.current ?? '');
+    // What the box holds stays: it is empty on a new conversation, or the words carried over.
+    setText((now) => prefill.current ?? now);
     setError(undefined);
     setLoaded(true);
     return () => {
@@ -384,6 +399,13 @@ export function GoalConversation({
             {t.shell.signIn}
           </Link>
         )}
+        {/* A draft exists once a reply came: words that got none leave the chain a plain choice. It
+            is fixed while a reply is worked on and through the deposit step and its signing. */}
+        {loaded &&
+          chainControl?.({
+            started: turns.some((turn) => turn.who === 'app'),
+            busy: busy || depositing,
+          })}
         <Composer
           label={copy.invitation}
           labelHidden
