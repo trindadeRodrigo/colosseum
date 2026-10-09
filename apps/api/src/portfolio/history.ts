@@ -9,6 +9,7 @@ import {
 } from '@colosseum/schemas';
 import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { Refusal } from '../orders/errors';
+import { numbered, type VaultNumbers } from './numbers';
 import { addressOn, ownedOn, type ScopedChain } from './scope';
 
 // A person's vaults over time (GET /v1/portfolio/history, PORT-2): the window one read covers, and the
@@ -190,7 +191,7 @@ function pointOf(row: StepRow, series: Pick<HistorySeries, 'source' | 'method'>)
 export async function chainHistory(
   db: Db,
   scoped: ScopedChain,
-  a: HistoryWindow & { address?: string },
+  a: HistoryWindow & { address?: string; numbers: VaultNumbers },
 ): Promise<HistorySeries[]> {
   // An address that is not one of the chain's family names no vault here, and is never handed to the
   // database; an EVM address is taken in any case (`addressOn`).
@@ -215,6 +216,7 @@ export async function chainHistory(
       {
         address,
         name: names.get(address) ?? null,
+        ...numbered(a.numbers, scoped.entry.chain, address),
         ...series,
         points: points.map((row) => pointOf(row, series)),
       },
