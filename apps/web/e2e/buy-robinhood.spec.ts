@@ -37,7 +37,7 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   await expect(chains).toHaveCount(2);
   await page.getByRole('radio', { name: new RegExp(`^${NAME}`) }).check();
   await expect(chains.nth(1)).toBeChecked();
-  await page.locator('header a[href="/sign-in"]').click();
+  await page.locator('header a[href^="/sign-in"]').click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await expect(dialog).toHaveCount(0);

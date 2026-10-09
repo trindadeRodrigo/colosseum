@@ -7,7 +7,7 @@ import { inTheme } from './theme';
 // A mix, end to end on the mock chain (gate ANY-COMPOSITION, #191): a new goal's mix from the
 // conversation, taken through the deposit step (gate DEPOSIT-STEP: one amount, the goal and risk the
 // person said, the weights changed by hand only behind their own control), reviewed with each warning
-// ticked, stored as a plan and bought through the unchanged buy; and a vault's own weights, edited by hand, reviewed, ordered and
+// ticked, stored as a plan and deposited into in the same pane; and a vault's own weights, edited by hand, reviewed, ordered and
 // signed step by step through the guard, which holds the targets step to the reviewed targets. Every screen is checked with axe at
 // 375 px, in light and in dark, and for no sideways scroll.
 
@@ -54,7 +54,7 @@ async function go(page: Page, name: string) {
 async function signIn(page: Page) {
   await page.request.post(`${STUB}/__stub/reset`);
   await page.goto('/goal');
-  await page.locator('header a[href="/sign-in"]').click();
+  await page.locator('header a[href^="/sign-in"]').click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await expect(dialog).toHaveCount(0);
@@ -88,7 +88,7 @@ async function toDeposit(page: Page, words: string, use = en.mix.preview.deposit
 const dollarsOf = (step: ReturnType<Page['locator']>, asset: string) =>
   step.locator(`[data-asset="solana:${asset}"] [data-ui="mix-line-amount"]`);
 
-test('a new goal’s mix from the conversation: one amount, edited by hand, reviewed, ticked, stored and bought', async ({
+test('a new goal’s vault from the conversation: one amount, edited by hand, reviewed, ticked, stored and deposited into', async ({
   page,
 }) => {
   await signIn(page);
@@ -138,15 +138,19 @@ test('a new goal’s mix from the conversation: one amount, edited by hand, revi
   const confirm = await tickAll(page, en.mix.goal.confirm);
   await confirm.click();
 
-  // the stored plan, bought through the unchanged buy, at the amount reviewed
-  await expect(page).toHaveURL(/\/plan\/[^/]+\/buy$/);
-  await expect(page.getByLabel(en.buy.amount.label, { exact: true })).toHaveValue('100');
+  // the stored plan's steps take the same pane, at the amount reviewed: nobody leaves /goal
+  // (gate DEPOSIT-IN-PLACE; the whole walk is deposit-in-place.spec.ts)
+  await expect(page).toHaveURL(/\/goal$/);
+  const pane = page.locator('[data-ui="deposit-sign"]');
+  await expect(pane.locator('[data-ui="deposit-sign-amount"]')).toContainText('$100');
+  await expect(page.getByLabel(en.buy.amount.label, { exact: true })).toHaveCount(0);
   const press = await readyToInvest(page, { dollars: '$100' });
   await press.click();
   await expect(page.locator('[data-ui="order-status"]')).toHaveText(
     en.order.outcome.done('Solana'),
     { timeout: 90_000 },
   );
+  await expect(pane).toHaveAttribute('data-state', 'done');
 });
 
 test('the deposit step asks nothing the conversation did not hear: the server works it out from the mix, and the amount is held to its limits', async ({

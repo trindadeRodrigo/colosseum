@@ -272,7 +272,12 @@ export function OrderScreen({
     unseen: boolean,
   ) {
     if (finishing) return;
-    const open = (orderId: string) => router.push(`/orders/${encodeURIComponent(orderId)}`);
+    // In a card that takes it (the pane of /goal), the order that finishes this one is shown there.
+    const open = (orderId: string) => {
+      if (!embed?.onFinish) return router.push(`/orders/${encodeURIComponent(orderId)}`);
+      setFinishing(false);
+      embed.onFinish(orderId);
+    };
     // An order is finished by one order. Where this browser already has it, that order is opened
     // and nothing is asked for: what the first one left is that order's, and its record, with what
     // the person approved in it, stays as it is.
@@ -340,15 +345,20 @@ export function OrderScreen({
   }
 
   // The card that holds this screen is told how far the steps are, and how they ended.
+  // An approved order read back with every step confirmed (the card took it up again after a reload) is
+  // told as done too: no run of this screen will say so.
   const told = useRef<string | null>(null);
+  const readDone = load.kind === 'read' && load.order.status === 'done';
   useEffect(() => {
-    if (!embed || !record?.approved || running || !outcome) return;
-    const key = `${record.orderId}:${outcome.status}`;
+    if (!embed || !record?.approved || running) return;
+    const status = outcome?.status ?? (readDone ? 'done' : null);
+    if (!status) return;
+    const key = `${record.orderId}:${status}`;
     if (told.current === key) return;
     told.current = key;
-    if (outcome.status === 'done') embed.onDone?.({ orderId: record.orderId });
+    if (status === 'done') embed.onDone?.({ orderId: record.orderId });
     else embed.onStopped?.({ orderId: record.orderId });
-  }, [embed, record, running, outcome]);
+  }, [embed, record, running, outcome, readDone]);
 
   // Leaving the page stops the run between steps; what was signed is still reported. The signal is
   // the one of the run under way, read as the screen goes: each press hands the executor a new one.
@@ -405,6 +415,9 @@ export function OrderScreen({
       setStopping(false);
       setRunning(true);
       setOutcome(null);
+      // A run asked for again ("Try again", "Continue") is under way from the press, before its
+      // first step answers: the host is told at once.
+      if (!first) embed?.onProgress?.({ orderId: record.orderId, step: 0, of: 0, line: '' });
       const answer = await run({
         order: approved.order,
         plan: {
@@ -731,9 +744,12 @@ export function OrderScreen({
                       : t.mix.order.signTargets
                     : record.approved
                       ? t.order.resume(amount)
-                      : embed
-                        ? t.invest.press(amount)
-                        : t.order.signAndBuy(amount);
+                      : record.continues && embed
+                        ? // it deposits nothing: the press signs what the first order left
+                          t.order.outcome.finishSign
+                        : embed
+                          ? t.invest.press(amount)
+                          : t.order.signAndBuy(amount);
   // A deposit is never signed for before the trust notice is accepted (DESIGN-VAULT section 13). The
   // invest card makes the order before that, to show its prices, so the order's own page asks too:
   // an order opened here that nobody approved is held until the notice is accepted, as on the card.
@@ -1151,23 +1167,35 @@ export function OrderScreen({
             <StatusMark status="off-track" size={12} className="mt-1.5" />
             <span>
               {finishFailure.text}
-              {finishFailure.orderId && (
-                <>
-                  {' '}
-                  <Link
-                    href={`/orders/${encodeURIComponent(finishFailure.orderId)}`}
-                    data-ui="order-finish-other"
-                    className={buttonClass({ variant: 'link' })}
-                  >
-                    {t.order.outcome.openThatOrder}
-                  </Link>
-                </>
-              )}
+              {finishFailure.orderId &&
+                (embed?.onFinish && recallOrder(finishFailure.orderId, userId) ? (
+                  <>
+                    {' '}
+                    <Button
+                      variant="link"
+                      data-ui="order-finish-other"
+                      onClick={() => embed.onFinish?.(finishFailure.orderId as string)}
+                    >
+                      {t.order.outcome.openThatOrder}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {' '}
+                    <Link
+                      href={`/orders/${encodeURIComponent(finishFailure.orderId)}`}
+                      data-ui="order-finish-other"
+                      className={buttonClass({ variant: 'link' })}
+                    >
+                      {t.order.outcome.openThatOrder}
+                    </Link>
+                  </>
+                ))}
             </span>
           </p>
         )}
         {/* The order is done: the next step is the portfolio it filled, and another buy beside it. */}
-        {done && !running && terms?.kind !== 'publish' && (
+        {done && !running && terms?.kind !== 'publish' && !embed?.hostEnds && (
           <div data-ui="order-next" className="flex flex-wrap items-center gap-3">
             <Link href="/monitor" className={buttonClass({ variant: 'primary' })}>
               {t.order.outcome.seePortfolio}
@@ -1276,6 +1304,14 @@ function Step({
     ? t.order.phase[phase as keyof Dictionary['order']['phase']]
     : t.order.status[now.status];
   const failed = now.status === 'failed';
+  // What a swap step receives, where every trade of it spends the chain's cash: its heading.
+  const swapsInto =
+    leg.kind === 'swap' &&
+    units &&
+    leg.trades.length > 0 &&
+    leg.trades.every((trade) => trade.sell === units.cash)
+      ? [...new Set(leg.trades.map((trade) => symbol(trade.buy)))]
+      : null;
   return (
     <li data-ui="order-step" data-status={now.status} className="flex flex-col gap-1 py-3">
       <p className="flex flex-wrap items-baseline gap-x-2 text-body">
@@ -1285,7 +1321,10 @@ function Step({
             ? t.order.kind.create_vault_buy
             : leg.trades.length > 0 && leg.kind === 'deposit'
               ? t.order.kind.deposit_buy
-              : t.order.kind[leg.kind]}
+              : swapsInto
+                ? // a step that spends cash on assets is headed by what it receives; its lines say the rest
+                  new Intl.ListFormat(locale, { type: 'conjunction' }).format(swapsInto)
+                : t.order.kind[leg.kind]}
         </span>
         {leg.cashRaw && <span className="tabular-nums">{spend(leg.cashRaw)}</span>}
         <span aria-hidden="true">·</span>

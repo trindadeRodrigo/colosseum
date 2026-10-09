@@ -279,7 +279,7 @@ describe('a buy that stopped after its deposit, finished with the cash in the va
     const none = await finish(whole, all.id);
     expect(none.statusCode).toBe(409);
     expect(OrderError.parse(none.json())).toMatchObject({
-      error: expect.stringMatching(/nothing left to buy/),
+      error: expect.stringMatching(/nothing left to do/),
       code: 'NOTHING_LEFT',
     });
   });
@@ -413,7 +413,7 @@ describe('a buy that stopped after its deposit, finished with the cash in the va
     const res = await finish(r, placed.id);
     expect(res.statusCode).toBe(409);
     expect(OrderError.parse(res.json())).toMatchObject({
-      error: expect.stringMatching(/trades in the same step that deposits/),
+      error: expect.stringMatching(/swaps in the same step that deposits/),
       code: 'CONTINUE_NOT_SUPPORTED',
     });
   });
