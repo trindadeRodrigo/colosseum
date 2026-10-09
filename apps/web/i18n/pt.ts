@@ -24,7 +24,9 @@ export const pt: Dictionary = {
     signedOut: 'Você saiu.',
     signOutFailed:
       'Não consegui encerrar sua sessão: o serviço de login não respondeu. Tente de novo.',
-    account: 'Sua carteira',
+    account: 'Sua conta',
+    accountLabel: 'Conta',
+    wallets: 'Suas carteiras',
     accountLoading: 'Carregando sua conta…',
     slow: {
       title: 'Sua conta ainda está carregando',
@@ -38,7 +40,6 @@ export const pt: Dictionary = {
       trying: 'Tentando de novo…',
       held: 'Um passo da sua ordem está sendo assinado. Conclua ou cancele esse passo primeiro e tente de novo.',
     },
-    address: 'Endereço',
     copyAddress: 'Copiar endereço',
     copied: 'Copiado',
     viewOn: (explorer: string) => `Ver no ${explorer}`,
@@ -51,11 +52,15 @@ export const pt: Dictionary = {
     language: 'Idioma',
     testNetwork: 'rede de teste',
     testNetworkLine: 'Rede de teste',
+    chainRun: {
+      shown: { sandbox: 'Rede de teste', mock: 'Exemplo' },
+      said: { sandbox: 'rede de teste', mock: 'exemplo' },
+    },
     slowDown: 'Nosso servidor pediu para eu ir mais devagar. Espere um minuto e tente de novo.',
     mockAnnounce: 'Números de exemplo',
     sampleFigure: 'número de exemplo',
     wait: {
-      slow: 'Acordando o serviço de dados: da primeira vez isso pode levar até um minuto.',
+      slow: 'Ainda carregando. O servidor pode estar acordando.',
       over: 'Nosso servidor não respondeu a tempo, então nada aparece aqui ainda.',
       retry: 'Tentar de novo',
     },
@@ -164,19 +169,12 @@ export const pt: Dictionary = {
     short: { solana: 'Solana', robinhood: 'Robinhood', base: 'Base' },
     explorers: { solana: 'Solscan', robinhood: 'explorador da Robinhood', base: 'Basescan' },
     switch: {
-      current: (chain: string) => `Rede: ${chain}`,
-      group: 'Escolha uma rede',
-      plansStay:
-        'Planos novos são montados na rede que você escolher. Os planos que você já tem continuam na rede deles.',
-      browsing: 'Mostra os portfólios compartilhados dessa rede.',
       noWallet: (chain: string) => `A carteira com que você entrou não assina na ${chain}.`,
-      off: (chain: string) => `${chain} está indisponível no nosso servidor por enquanto.`,
       saving: 'Trocando…',
-      done: (chain: string) => `Agora você está na ${chain}.`,
     },
     is: {
       picked: (chain: string) =>
-        `Planos novos são montados na ${chain}. Você pode trocar de rede pela barra no topo.`,
+        `Planos novos são montados na ${chain}. Você escolhe a rede onde começa um plano, em Investir.`,
       wallet: (chain: string) =>
         `Planos novos são montados na ${chain}, a rede da carteira que você conectou.`,
     },
@@ -213,6 +211,10 @@ export const pt: Dictionary = {
         `Este plano vai ficar na ${chain}: a carteira com que você entrou só assina lá.`,
       onlyOn: (chain: string) =>
         `Este plano vai ficar na ${chain}: é a única rede que nosso servidor roda por enquanto.`,
+      off: (chain: string) =>
+        `${chain} está indisponível no nosso servidor por enquanto, então um plano não pode começar lá.`,
+      notYours: (chain: string) =>
+        `A carteira com que você entrou não assina na ${chain}, então um plano não pode começar lá.`,
       on: 'Este plano fica na',
       change: 'Trocar',
       changeLabel: 'Trocar a rede deste plano',
@@ -405,7 +407,8 @@ export const pt: Dictionary = {
       choose: 'Escolher a rede',
     },
     blocked: {
-      chainNotChosen: 'Escolha primeiro uma rede na barra no topo.',
+      chainNotChosen:
+        'Não consegui ler sua conta, então não sei qual rede usar. Tente de novo em instantes, ou saia e entre de novo.',
       chainUnknown:
         'Ainda não sei em qual rede seu plano fica, então não consigo montar para ela. Pergunte de novo, acima.',
       refused: 'Nosso servidor não aceitou esses limites. Confira cada campo e tente de novo.',
@@ -494,6 +497,32 @@ export const pt: Dictionary = {
       prior_dataset: 'dados anteriores, não reais',
     },
     unknownKind: 'não real',
+    whatFrom: '{what}: {source}',
+    from: 'Fonte: {source}',
+    unnamed: 'Detalhes da fonte abaixo',
+    updated: 'Atualizado {ago}',
+    read: 'Lido {ago}',
+    readAt: 'Lido em {time}',
+    copyFailed: 'Não deu para copiar aqui. A linha inteira está abaixo para selecionar.',
+    staleOverLimit: 'Atualizado {ago}, além do limite de {limit} desta fonte',
+    staleNoLimit: 'Atualizado {ago}, desatualizado',
+    staleNoAge: 'Desatualizado, de idade desconhecida',
+    live: 'Real',
+    ago: {
+      now: 'há menos de um minuto',
+      ago: 'há {n} {unit}',
+      second: ['segundo', 'segundos'],
+      minute: ['minuto', 'minutos'],
+      hour: ['hora', 'horas'],
+      day: ['dia', 'dias'],
+      about: 'cerca de',
+    },
+    details: 'Detalhes',
+    sourceLabel: 'Fonte',
+    timeLabel: 'Lido em',
+    methodLabel: 'Como é calculado',
+    copyAddress: 'Copiar endereço {address}',
+    explorer: 'Ver {address} no explorador',
   },
 
   portfolio: {
@@ -585,6 +614,8 @@ export const pt: Dictionary = {
         drift: 'Diferença',
       },
       noPrice: 'sem preço',
+      noPriceWhy:
+        'Sem preço: esta leitura da rede não trouxe nenhum para este ativo, então ele não tem valor nem parcela aqui.',
       unpriced: (n: number) =>
         n === 1
           ? '1 posição não tem preço, então o valor a deixa de fora.'
@@ -1372,6 +1403,9 @@ export const pt: Dictionary = {
         removed: 'Removido da estratégia proposta',
         details: 'Detalhes do cofre e fontes dos preços',
         draftIntro: 'Proposta preliminar, não aplicada:',
+        figureSaid: '{value}, um valor medido',
+        figureSaidAged: '{value}, um valor medido, {age}',
+        figureNotKept: '(valor não guardado)',
         comparison: 'Meta atual → fatia proposta',
         reasons: 'Escolhas e fontes',
         tradeoffs: 'Escolhas e consequências',

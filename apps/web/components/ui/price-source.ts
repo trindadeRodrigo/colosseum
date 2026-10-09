@@ -23,5 +23,8 @@ export function pinSourceOfPrice(
     method: price.method,
     provenance: price.provenance,
     staleAgeSec: isStalePrice(price) ? price.ageSeconds : null,
+    // the price's own age on the chain's clock, stale or not: what "Updated" is said from
+    ageSec: price.ageSeconds,
+    staleLimitSec: price.maxAgeSeconds,
   };
 }

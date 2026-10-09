@@ -4,11 +4,12 @@ import Link from 'next/link';
 import { type ReactNode, useState } from 'react';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { cn } from '../../components/ui/cn';
+import { Hint } from '../../components/ui/Hint';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import type { PinSource } from '../../components/ui/provenance';
-import { SkeletonChart } from '../../components/ui/Skeleton';
 import { Status } from '../../components/ui/StatusMark';
+import { ScreenWait } from '../../components/waits/ScreenWait';
 import { type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { displayName } from '../order/plain';
@@ -44,6 +45,7 @@ import { addDecimals, putInPin, snapshotPin, sumPin } from './pins';
 import { sameVault } from './plan-blocks';
 import { sayStatus } from './status';
 import { vaultTitle } from './vault-title';
+import { BoardChartWait, OverviewWait, PnlWait } from './waits';
 import { useWords } from './words';
 
 // The overview (/portfolio), as a board: on the left what the person's vaults are worth together, how
@@ -66,7 +68,9 @@ export function OverviewPage() {
   return (
     <div data-ui="portfolio-overview" className="flex flex-col gap-8">
       <h1 className={`${PAGE_TITLE} sr-only`}>{w.overview.title}</h1>
-      <SectionGate read={plans}>{(answer) => <Board answer={answer} />}</SectionGate>
+      <SectionGate read={plans} skeleton={<OverviewWait />}>
+        {(answer) => <Board answer={answer} />}
+      </SectionGate>
     </div>
   );
 }
@@ -281,13 +285,11 @@ function Modes({
     <div role="group" aria-label={label} data-ui="chart-modes" className="flex items-center gap-2">
       {options.map((o) => {
         const on = o.id === value;
-        return (
+        const button = (
           <button
-            key={o.id}
             type="button"
             aria-pressed={on}
             aria-label={o.label}
-            title={o.label}
             onClick={() => onChange(o.id)}
             className={cn(
               'inline-flex h-9 cursor-pointer items-center justify-center rounded-full text-body-sm font-medium transition-colors',
@@ -300,6 +302,14 @@ function Modes({
             {o.icon}
             {on && <span aria-hidden="true">{o.label}</span>}
           </button>
+        );
+        // The chosen mode shows its word; the others are an icon, whose word is one hover or focus
+        // away. Every mode sits in the same wrapper, chosen or not, so the button pressed is still
+        // the same button afterwards and focus stays on it.
+        return (
+          <Hint key={o.id} tip={on ? null : o.label}>
+            {button}
+          </Hint>
         );
       })}
     </div>
@@ -512,9 +522,12 @@ function Figures({
             {periodWord}
           </span>
         </div>
-        {periods.length === 0 ? (
+        {periods.length === 0 && reading ? (
+          // the history the result stands on is on its way: its own boxes, and the chart says so
+          <PnlWait />
+        ) : periods.length === 0 ? (
           <p data-ui="board-pnl-none" className="text-body-sm text-muted-foreground">
-            {reading ? words.chart.reading : words.noPnl}
+            {words.noPnl}
           </p>
         ) : (
           <>
@@ -545,9 +558,14 @@ function Figures({
               </Figure>
               {best && bestName && (
                 <Figure ui="board-best" label={words.best}>
-                  <span className="block truncate text-body-sm font-normal" title={bestName}>
+                  <Hint
+                    tip={bestName}
+                    className="flex min-w-0"
+                    // 24px tall: a target on a line of its own (WCAG 2.5.8)
+                    triggerClassName="min-h-6 truncate text-body-sm font-normal"
+                  >
                     {bestName}
-                  </span>
+                  </Hint>
                   <ProvenancePin
                     value={signed(lang, best.pnlUsd)}
                     obs={total ? { ...total.obs, method: words.periodMethod } : null}
@@ -581,10 +599,17 @@ function Chart({
   const w = useWords();
   const lang = useLang();
   const nameOfChain = useChainName();
+  const { again } = usePortfolioSection();
   if (reading.kind === 'idle' || reading.kind === 'reading')
     return (
-      <div role="status" aria-label={w.overview.board.chart.reading}>
-        <SkeletonChart />
+      // Said in words, with the slow line and the retry of every other wait: the result beside it
+      // (PnlWait) stands on the same read and is said by this one line.
+      <div data-ui="chart-wait">
+        <ScreenWait
+          label={w.overview.board.chart.reading}
+          skeleton={<BoardChartWait />}
+          onRetry={again}
+        />
       </div>
     );
   if (reading.kind !== 'read')

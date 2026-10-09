@@ -7,6 +7,7 @@ import { holds } from './exposure';
 import { usePortfolioSection } from './PortfolioProvider';
 import { href, METHODOLOGY } from './pages';
 import { ChainsOut, PageHead, ReadAgain, Say, SectionGate, useChainName } from './parts';
+import { ExposureWait } from './waits';
 import { useWords } from './words';
 
 // The exposure page (/portfolio/exposure): what the person holds across their vaults, as
@@ -23,7 +24,9 @@ export function ExposurePage() {
   return (
     <div data-ui="portfolio-exposure" className="flex flex-col gap-8">
       <PageHead title={w.exposure.title} lead={w.exposure.lead} />
-      <SectionGate read={exposure}>{(answer) => <Holdings answer={answer} />}</SectionGate>
+      <SectionGate read={exposure} skeleton={<ExposureWait />}>
+        {(answer) => <Holdings answer={answer} />}
+      </SectionGate>
     </div>
   );
 }

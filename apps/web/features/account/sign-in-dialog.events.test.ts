@@ -207,7 +207,7 @@ describe('the sign-in dialog', () => {
     // opened the dialog is gone
     expect(host.querySelector('header a[href^="/sign-in"]')).toBeNull();
     const chip = find(host, '[data-ui="account-menu-button"]');
-    expect(chip.getAttribute('data-chain')).toBe('solana');
+    expect(chip.hasAttribute('data-ready')).toBe(true);
     expect(document.activeElement).toBe(chip);
   });
 
@@ -247,7 +247,7 @@ describe('the sign-in dialog', () => {
     await click(button(dialog() as HTMLElement, en.signIn.passkey.continue));
     await settle();
     expect(dialog()).toBeNull();
-    expect(find(host, '[data-ui="account-menu-button"]').getAttribute('data-chain')).toBe('solana');
+    expect(find(host, '[data-ui="account-menu-button"]').hasAttribute('data-ready')).toBe(true);
   });
 
   it('closes with Escape after the chain question replaced the wallet list, focus on the question', async () => {

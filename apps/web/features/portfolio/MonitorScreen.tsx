@@ -2,14 +2,13 @@
 import type { ChainId } from '@colosseum/schemas';
 import Link from 'next/link';
 import { type ReactNode, useId } from 'react';
-import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardEmpty } from '../../components/ui/Card';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
-import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { Status } from '../../components/ui/StatusMark';
+import { ScreenWait } from '../../components/waits/ScreenWait';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
@@ -20,6 +19,7 @@ import { displayName } from '../order/plain';
 import { HoldingsBar } from '../shared/HoldingsBar';
 import { useWalletPort } from '../wallet/WalletProvider';
 import { dollars, sharesOf } from './figures';
+import { MonitorHeadWait, MonitorVaultsWait } from './MonitorWait';
 import {
   addDecimals,
   chainTotal,
@@ -312,11 +312,7 @@ export function MonitorScreen() {
 
   let body: ReactNode;
   if (state.kind === 'loading' || state.kind === 'reading')
-    body = (
-      <Card>
-        <CardWait label={words.reading} skeleton={<SkeletonSummary />} />
-      </Card>
-    );
+    body = <ScreenWait label={words.reading} skeleton={<MonitorVaultsWait />} onRetry={again} />;
   else if (state.kind === 'signed-out')
     body = say(
       words.signedOut,
@@ -449,6 +445,8 @@ export function MonitorScreen() {
         <h1 className={vaults.length > 0 ? 'sr-only' : `${PAGE_TITLE} sr-only`}>
           {words.title(vaults.length)}
         </h1>
+        {/* While the vaults are read, the sums and the way to a new plan keep their place. */}
+        {(state.kind === 'loading' || state.kind === 'reading') && <MonitorHeadWait />}
         {held.length > 0 && outcome && (
           <PortfolioSummary
             totals={held.map(totalOf)}

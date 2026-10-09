@@ -35,8 +35,8 @@ import {
 // The signed-in person and their current chain, for every product screen (gate CHAIN-SWITCH). The
 // current chain is where a new plan is made; a plan already made stays on its own. It is the API's to
 // say (GET /v1/me): the chain of the outside wallet a person connected, or the one they chose. A person
-// who made their wallets here is not asked: they start on the chain they were looking at, and switch
-// from the bar. Someone signed out has a chain too, the one they are looking at, kept in this browser.
+// who made their wallets here is not asked: they start on the chain they were looking at, and choose
+// another where a plan starts, on /goal. Someone signed out has a chain too, the one they are looking at, kept in this browser.
 
 export type Account =
   /** The wallet is loading, or the API is being asked. */
@@ -294,7 +294,7 @@ export function AccountProvider({
 
   // A person with wallets and no chain yet (they made their wallets here, or connected wallets of
   // both families) starts on the chain they were looking at, where a wallet of theirs signs and our
-  // server runs. Not asked: they switch from the bar. When it cannot be stored, the account says why.
+  // server runs. Not asked: /goal's chain choice changes it. When it cannot be stored, the account says why.
   const person = read?.key === key ? read.person : null;
   useEffect(() => {
     if (!person || person.chain || person.chainOptions.length === 0 || key === null) return;

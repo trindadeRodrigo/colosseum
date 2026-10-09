@@ -303,6 +303,20 @@ describe('a vault conversation’s preview, applied to the vault', () => {
     expect(confirm.getAttribute('aria-disabled')).toBe('true');
     await click(confirm);
     expect(calls.filter((c) => c.url.endsWith('/targets'))).toHaveLength(1);
+    // A warning's figure sits in the label of its tick, and so does the popover of its source:
+    // reading that popover, and pressing its words, ticks nothing (review of #214, finding 3).
+    const warned = find(host, '[data-ui="mix-review-warnings"]');
+    // (opened by the keyboard's focus here: happy-dom, unlike a browser, takes a press on a button
+    // inside a label for the label's)
+    const pin = warned.querySelector<HTMLElement>('[data-ui="pin"]') as HTMLElement;
+    await fire(pin, new FocusEvent('focusin', { bubbles: true }));
+    await click(find(warned, '[data-ui="pin-what"]'));
+    expect(box(host).checked, 'after the words').toBe(false);
+    await click(find(warned, '[data-ui="pin-popover"]'));
+    expect(box(host).checked, 'after the panel').toBe(false);
+    expect(confirm.getAttribute('aria-disabled')).toBe('true');
+    await fire(document, new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(warned.querySelector('[data-ui="pin-popover"]')).toBeNull();
     await click(find(host, '[data-ui="mix-review-warnings"] input[type="checkbox"]'));
     expect(confirm.getAttribute('aria-disabled')).toBeNull();
     await click(confirm);

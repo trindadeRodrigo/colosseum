@@ -3,7 +3,15 @@ import { TRUST_STATUS } from '@colosseum/schemas';
 import { deploymentsOf, type GuardDeployment, solanaVaultAddress } from '@colosseum/sdk';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
+import {
+  click,
+  find,
+  mount,
+  pinLine,
+  settle,
+  type,
+  unmountAll,
+} from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary } from '../../i18n';
@@ -1405,7 +1413,9 @@ describe('a vault’s public page', () => {
     expect(pin).toBeTruthy();
     await click(pin as HTMLElement);
     // no priced holding: the value stands on the chain's read of the vault, at its time
-    const line = find(host, '[data-ui="pin-source"]').textContent ?? '';
+    // and the popover says first what the number is
+    expect(find(host, '[data-ui="pin-what"]').textContent).toBe('Value from Solana, read directly');
+    const line = await pinLine(figure as Element);
     for (const part of ['Solana', en.portfolio.vault.valueMethod]) expect(line).toContain(part);
     // written as the portfolio writes it: cents in full
     expect(figure?.textContent).toContain('$1,234.50');

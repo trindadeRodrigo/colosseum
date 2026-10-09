@@ -593,7 +593,7 @@ describe('the lending page’s tolerance', () => {
   it('refuses a tolerance out of 0.1% to 10% and says what to change', async () => {
     const host = await mount(onSnapshot(createElement(LendingPage)));
     await settle(host, (h) => h.querySelector('[data-ui="bearing-kpis"]') != null && !busy(h));
-    const box = find<HTMLInputElement>(host, 'input[aria-describedby="bearing-tol-err"]');
+    const box = find<HTMLInputElement>(host, 'input[aria-describedby~="bearing-tol-err"]');
     expect(find(host, '[data-ui="bearing-kpis"]').textContent).toContain('≥ 6.82%');
     await act(async () => {
       const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;

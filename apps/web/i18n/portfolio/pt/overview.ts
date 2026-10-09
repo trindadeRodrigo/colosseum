@@ -82,6 +82,8 @@ export const overview: Overview = {
       byVault: 'Por cofre',
       byAsset: 'Por ativo',
       period: 'Período',
+      value: 'Valor',
+      pnl: 'PnL',
       periods: { '1d': '1D', '7d': '7D', '30d': '30D', '1y': '1A', ytd: 'No ano', all: 'Tudo' },
       plot: (from: string, to: string) => `Valor dos seus cofres de ${from} a ${to}`,
       bars: (from: string, to: string) => `Valor dos seus cofres, empilhado, de ${from} a ${to}`,

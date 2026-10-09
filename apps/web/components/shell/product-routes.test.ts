@@ -561,7 +561,7 @@ describe('rule 3: no screen can reach a key', () => {
     for (const file of [
       'features/goal-conversation/GoalConversation.tsx',
       'features/account/SignInScreen.tsx',
-      'features/account/ChainSwitch.tsx',
+      'features/account/AccountMenu.tsx',
       'features/account/AccountProvider.tsx',
       'features/wallet/SignIn.tsx',
       'components/shell/AppNav.tsx',

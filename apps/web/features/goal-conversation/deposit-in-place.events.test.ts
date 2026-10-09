@@ -5,9 +5,9 @@ import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, fire, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
-import { ChainSwitch } from '../account/ChainSwitch';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
+import { StartChain } from '../account/test/start-chain';
 import { CHECK_MS } from '../mix/DepositStep';
 import { keepOrder, recallOrder } from '../order/order-record';
 import { rememberPlan } from '../order/plan-store';
@@ -316,7 +316,8 @@ const named = (host: ParentNode, name: string) => {
 const show = async (withBar = false) => {
   const host = await mount(
     withAccount('en', [
-      ...(withBar ? [createElement(ChainSwitch, { key: 'bar' })] : []),
+      // a choice of where new plans start made outside this page (the bar's switch is gone)
+      ...(withBar ? [createElement(StartChain, { key: 'start' })] : []),
       createElement(GoalHome, { key: 'goal' }),
     ]),
   );
@@ -1022,10 +1023,9 @@ describe('a deposit taken up again after a reload holds the chain and asks befor
     expect(pane(host).getAttribute('data-state')).toBe('approved');
   });
 
-  it('the bar’s chain switch moves the account’s chain and not the pane: the deposit stays on its chain', async () => {
+  it('a change of where new plans start, made elsewhere, moves the account’s chain and not the pane: the deposit stays on its chain', async () => {
     const { host, server } = await resumed(true);
-    await click(find(host, '[data-ui="chain-switch"] > button'));
-    await click(find(host, '[data-ui="chain-switch-panel"] button[data-chain="robinhood"]'));
+    await click(find(host, '[data-ui="start-chain"] [data-start="robinhood"]'));
     await settle();
     await settle();
     expect(server.puts()).toEqual(['robinhood']);

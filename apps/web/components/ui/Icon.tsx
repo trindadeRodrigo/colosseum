@@ -14,6 +14,8 @@ const REGISTRY = {
   ChevronDown: ['M6 9L12 15L18 9'],
   Copy: ['M9 9H20V20H9Z', 'M15 9V4H4V15H9'],
   Menu: ['M4 6H20', 'M4 12H20', 'M4 18H20'],
+  // iconography.md, section 6, allowed: the account control of the bar
+  Wallet: ['M3 7H21V19H3Z', 'M3 7V5H17V7', 'M15 13H17'],
   X: ['M6 6L18 18', 'M18 6L6 18'],
 } as const;
 

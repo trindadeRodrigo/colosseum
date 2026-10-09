@@ -3,16 +3,17 @@
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
-import { ChainSwitch } from '../account/ChainSwitch';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
+import { StartChain } from '../account/test/start-chain';
 import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
 import { BearingProvider, useBearing } from './BearingProvider';
 
-// Bearing's chain toggle and the bar's switcher are two things (gate CHAIN-AT-THE-PLAN): the toggle
-// filters the analytics pages and is kept for them; the bar's chain is where a person's new plans
-// start. Neither moves the other, signed in or out.
+// Bearing's chain toggle and where a person's new plans start are two things (gate
+// CHAIN-AT-THE-PLAN): the toggle filters the analytics pages and is kept for them; the other is
+// chosen on /goal (the bar's switcher, which this file once set beside the toggle, is gone). Neither
+// moves the other, signed in or out. `StartChain` stands for /goal's choice.
 
 const router = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn() }));
 vi.mock('next/navigation', () => ({
@@ -38,12 +39,13 @@ function Toggle() {
 const view = () =>
   mount(
     withAccount('en', [
-      createElement(ChainSwitch, { key: 'bar' }),
+      createElement(StartChain, { key: 'start' }),
       createElement(BearingProvider, { key: 'bearing' } as never, createElement(Toggle)),
     ]),
   );
-const barButton = (host: HTMLElement) => find(host, '[data-ui="chain-switch"] > button');
-const bar = (host: HTMLElement) => barButton(host).getAttribute('data-chain');
+const bar = (host: HTMLElement) => find(host, '[data-ui="start-chain"]').getAttribute('data-chain');
+const start = (host: HTMLElement, chain: string) =>
+  click(find(host, `[data-ui="start-chain"] [data-start="${chain}"]`));
 const page = (host: HTMLElement) => find(host, '[data-ui="toggle"]').textContent;
 const named = () => router.replace.mock.calls.map(([to]) => String(to));
 
@@ -62,8 +64,8 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-describe('Bearing’s chain toggle and the bar', () => {
-  it('signed out, the toggle filters the page and leaves the bar where it is', async () => {
+describe('Bearing’s chain toggle and where new plans start', () => {
+  it('signed out, the toggle filters the page and leaves where plans start as it is', async () => {
     portStore.set(fakePort());
     const host = await view();
     await settle();
@@ -76,18 +78,17 @@ describe('Bearing’s chain toggle and the bar', () => {
     expect(named().filter((to) => to.includes('robinhood'))).toHaveLength(1);
   });
 
-  it('signed out, the bar’s switch does not move the page', async () => {
+  it('signed out, choosing where plans start does not move the page', async () => {
     portStore.set(fakePort());
     const host = await view();
     await settle();
-    await click(barButton(host));
-    await click(find(host, '[data-ui="chain-switch-panel"] button[data-chain="robinhood"]'));
+    await start(host, 'robinhood');
     await settle();
     expect([bar(host), page(host)]).toEqual(['robinhood', 'solana']);
     expect(named().some((to) => to.includes('robinhood'))).toBe(false);
   });
 
-  it('does not open on the chain the bar is on', async () => {
+  it('does not open on the chain plans start on', async () => {
     window.localStorage.setItem('tf-chain', 'robinhood');
     portStore.set(fakePort());
     const host = await view();
@@ -124,9 +125,8 @@ describe('Bearing’s chain toggle and the bar', () => {
     await settle();
     expect([bar(host), page(host)]).toEqual(['robinhood', 'solana']);
     expect(puts).toEqual([]);
-    // and the bar's switch moves the person's chain alone
-    await click(barButton(host));
-    await click(find(host, '[data-ui="chain-switch-panel"] button[data-chain="solana"]'));
+    // and choosing where plans start moves that alone
+    await start(host, 'solana');
     await settle();
     await click(find(host, '[data-ui="toggle"]'));
     await settle();

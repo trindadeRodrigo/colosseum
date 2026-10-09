@@ -1,9 +1,21 @@
-import { type ChainId, chainFamily, type Network, normalizeAddress } from '@colosseum/schemas';
+import {
+  type ChainId,
+  chainFamily,
+  FIGURE_REFERENCE,
+  type Network,
+  normalizeAddress,
+} from '@colosseum/schemas';
 import type { ApiFetch } from '../account/person';
 import { networkFor } from '../order/readiness';
+import { type Figured, factsOf, figuredOf } from './agent';
 import { CONVERSATION_PREFIX } from './forget';
 
-export type Turn = { id: string; who: 'person' | 'app'; text: string };
+/**
+ * One message. A reply that stated figures by reference keeps them as they were served (`figures`):
+ * `text` is the plain reading, with each value written in, and the template holds each figure's place.
+ * What is kept is what was measured then, with its time; it is never refreshed.
+ */
+export type Turn = { id: string; who: 'person' | 'app'; text: string; figures?: Figured };
 export type Transcript = { revision: number; transcript: Turn[] };
 export type ConversationStore = {
   read: () => Promise<Transcript | null>;
@@ -39,6 +51,48 @@ export function plainText(text: string): string {
   return text.replace(/\r\n?/g, '\n').replace(NOT_PLAIN, '');
 }
 
+/** As our server counts them (VAULT_CONVERSATION_LIMITS.figuresChars). */
+const FIGURES_CHARS = 200_000;
+const keptFigures = (rows: readonly Turn[]) => rows.flatMap((row) => row.figures ?? []);
+
+/**
+ * A text whose figures are not kept: each figure's place holds `said` ("figure no longer kept"),
+ * never the bare value. A value without its pin, its age and its sample mark is not shown.
+ */
+export const withoutFigures = (template: string, said: string): string =>
+  template.replace(FIGURE_REFERENCE, () => said).slice(0, 8000);
+
+/**
+ * The turns within what our server keeps of figures: past it the oldest replies give theirs up, and
+ * then say so in each figure's place, so one long conversation never refuses every later save.
+ */
+export function withinFigureBudget(turns: Turn[], said: string): Turn[] {
+  const rows = [...turns];
+  for (
+    let at = 0;
+    at < rows.length && JSON.stringify(keptFigures(rows)).length > FIGURES_CHARS;
+    at += 1
+  ) {
+    const row = rows[at] as Turn;
+    if (row.figures)
+      rows[at] = { id: row.id, who: row.who, text: withoutFigures(row.figures.template, said) };
+  }
+  return rows;
+}
+
+/** A row's kept figures: its template and the facts it names, or null when they are not that. */
+function turnFiguresOf(value: unknown): Figured | null {
+  if (!value || typeof value !== 'object') return null;
+  const { template, facts } = value as Record<string, unknown>;
+  const read = factsOf(facts);
+  if (typeof template !== 'string' || !template.trim() || template.length > 8000 || !read)
+    return null;
+  const plain = plainText(template);
+  const figured = figuredOf(plain, read);
+  // every kept fact is named, and every placeholder names one
+  return figured && figured.facts.length === read.length ? figured : null;
+}
+
 /** History is plain text, never a restored sheet, confirmation or executable proposal. */
 export function transcriptOf(value: unknown): Transcript | null {
   if (!value || typeof value !== 'object') return null;
@@ -66,11 +120,17 @@ export function transcriptOf(value: unknown): Transcript | null {
     )
       return null;
     ids.add(row.id);
-    total += text.length;
     if (row.who === 'person') personWords += `${personWords ? '\n\n' : ''}${text.trim()}`;
-    rows.push({ id: row.id, who: row.who, text });
+    // Figures are our server's, on a reply only. Kept ones that cannot be read void the history, as
+    // any other malformed row does: a figure is never shown from data that is not one.
+    const figures = row.figures === undefined ? undefined : turnFiguresOf(row.figures);
+    if (figures === null || (figures && row.who !== 'app')) return null;
+    // counted as it is sent back to the model: with its placeholders where it has them
+    total += Math.max(text.length, figures?.template.length ?? 0);
+    rows.push({ id: row.id, who: row.who, text, ...(figures ? { figures } : {}) });
   }
   if (
+    JSON.stringify(keptFigures(rows)).length > FIGURES_CHARS ||
     total > 220_000 ||
     personWords.length > 22_000 ||
     rows.filter((r) => r.who === 'person').length > 200
@@ -161,7 +221,12 @@ export function serverConversation(
       // refuses, whoever made the text. One refused row would refuse every later save of this vault's.
       // A row with nothing left in it is refused too: it is left out.
       const transcript = value.transcript
-        .map((row) => ({ ...row, text: plainText(row.text) }))
+        .map(({ id, who, text, figures }) => ({
+          id,
+          who,
+          text: plainText(text),
+          ...(figures ? { figures } : {}),
+        }))
         .filter((row) => row.text.trim() !== '');
       try {
         const response = await api(path, {
