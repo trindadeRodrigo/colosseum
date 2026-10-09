@@ -281,14 +281,14 @@ export const en = {
         untitled: 'Earlier conversation',
       },
       invitation: 'What should your vault do?',
-      lead: 'Tell me your ideas, needs and limits. I can discuss an allocation with its sources and tradeoffs.',
+      lead: 'Tell me your ideas, needs and limits. I’ll draft a vault with its sources and tradeoffs.',
       placeholder: 'Describe what you want to explore…',
       starters: ['Explore technology stocks', 'Earn a monthly income', 'Protect my savings'],
       local: 'This browser · private draft conversation',
       signIn: 'Sign in to start a vault.',
       readingAccount: 'Your account and chain must be ready before I can get a reply.',
       empty:
-        'Your proposed allocation and its sources will appear here after a reply. No vault has been created.',
+        'The draft and its sources appear here after a reply.',
       previewOnly: 'Preview only. This draft cannot be invested here yet.',
       /** The preview card while the first reply is on its way: its heading, and the line under it. */
       building: 'Working on your first draft',
