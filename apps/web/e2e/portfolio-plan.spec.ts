@@ -59,9 +59,16 @@ test.describe('a plan’s page on the stub', () => {
     await expect(chart.locator('[data-ui="chart-readout"] [data-ui="figure"]')).toHaveCount(1);
     await expect(page.locator('main [data-ui="history-deposits"] li')).toHaveCount(2);
     const plot = chart.getByRole('img');
-    await plot.focus();
-    await page.keyboard.press('ArrowLeft');
-    await expect(chart.locator('[data-ui="chart-readout"]')).toContainText('Oct 6, 2026');
+    // The readings can still be arriving when the plot takes focus: from the newest one (Escape),
+    // one step left lands on Oct 6 once they are drawn.
+    await expect(async () => {
+      await plot.focus();
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('ArrowLeft');
+      await expect(chart.locator('[data-ui="chart-readout"]')).toContainText('Oct 6, 2026', {
+        timeout: 2_000,
+      });
+    }).toPass({ timeout: 30_000 });
     await page.keyboard.press('Escape');
     await expect(chart.locator('[data-ui="chart-readout"]')).toContainText(w.plan.history.newest);
     // another window is asked for and drawn
