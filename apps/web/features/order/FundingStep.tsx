@@ -3,11 +3,11 @@ import type { FundingFigure } from '@colosseum/schemas';
 import { Wait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { DataTable } from '../../components/ui/DataTable';
-import { utcMinute } from '../../components/ui/ExecutionList';
 import { SkeletonRows } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
+import { utc } from '../portfolio/figures';
 import { formatRaw } from './amounts';
 import type { FundingOutcome, TestFundsOutcome } from './order-api';
 import type { TokenUnits, unitsFor } from './units';
@@ -40,6 +40,7 @@ export function FundingStep({
   onReadAgain,
   onMock,
   testFunds,
+  capped,
 }: {
   funding: Funding;
   chainName: string;
@@ -52,6 +53,11 @@ export function FundingStep({
   onReadAgain: () => void;
   onMock: () => void;
   testFunds: TestFundsState;
+  /**
+   * The shortfall is more than one send of test funds gives: what a send gives is said in place of
+   * the plain note, and the button says what it will send.
+   */
+  capped?: { note: string; label: string };
 }) {
   const t = useT();
   const lang = useLang();
@@ -194,7 +200,13 @@ export function FundingStep({
       </div>
       {read && !read.ok && offered && (
         <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
-          {t.buy.funding.testNote}
+          {capped ? (
+            <span data-ui="test-funds-cap">
+              {capped.note} {t.buy.funding.testNote}
+            </span>
+          ) : (
+            t.buy.funding.testNote
+          )}
         </p>
       )}
       {read && !read.ok && !offered && !mock && (
@@ -214,10 +226,11 @@ export function FundingStep({
             busyLabel={t.buy.funding.testFunding}
             onClick={testFunds.onAsk}
           >
-            {t.buy.funding.testFunds}
+            {capped ? capped.label : t.buy.funding.testFunds}
           </Button>
         )}
-        {mock && read && !read.ok && (
+        {/* One way to fill the wallet at a time: test funds where the server sends them. */}
+        {mock && !offered && read && !read.ok && (
           <Button
             variant="secondary"
             busy={mockBusy}
@@ -272,9 +285,9 @@ export function FundingStep({
               {rows.map((r) => (
                 <li key={r.key}>
                   {[
-                    r.figure.symbol,
+                    r.units?.symbol ?? r.figure.symbol,
                     r.figure.source,
-                    utcMinute(r.figure.fetchedAt),
+                    utc(lang, r.figure.fetchedAt),
                     r.figure.method,
                   ].join(' · ')}
                 </li>

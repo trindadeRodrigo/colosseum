@@ -124,6 +124,32 @@ export function collectFacts(sheet: unknown): {
   return { facts, invalid };
 }
 
+/**
+ * A fact sheet with no figure that is not a finite number. A measured fact whose value is Infinity or
+ * NaN (a division by a stored zero somewhere under it) is answered as a missing fact that says so,
+ * with its unit, its regime and its size kept: the schema of an answer refuses such a number, and
+ * one of them would refuse the whole sheet with it. Every route that answers a fact sheet passes it
+ * through here, so no caller has to remember.
+ */
+export function finiteFacts<T>(sheet: T): T {
+  const walk = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(walk);
+    if (node === null || typeof node !== 'object') return node;
+    const o = node as Record<string, unknown>;
+    if ('value' in o && 'unit' in o && typeof o.value === 'number' && !Number.isFinite(o.value))
+      return {
+        value: null,
+        reason: 'insufficient_samples',
+        unit: o.unit,
+        ...(o.regime === undefined ? {} : { regime: o.regime }),
+        ...(o.sizeUsd === undefined ? {} : { sizeUsd: o.sizeUsd }),
+        detail: 'the measured value was not a finite number',
+      };
+    return Object.fromEntries(Object.entries(o).map(([k, v]) => [k, walk(v)]));
+  };
+  return walk(sheet) as T;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Costs
 

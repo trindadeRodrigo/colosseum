@@ -35,23 +35,32 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 
 const W_DEFAULT = 640;
 const H = 200;
+const PAID_H = 150;
 const TOP = 14;
 const BOTTOM = 24;
 const RIGHT = 70;
 
-export function PlanChart({
-  amountUsd,
-  card,
-  yieldObs,
-}: {
+type PlanChartProps = {
   amountUsd: number;
   card: BasketCard;
   yieldObs: PinSource | null;
-}) {
+};
+
+/** A goal with no date has no term to project over: no chart is drawn (gate GLIDE-OPT-IN). */
+export function PlanChart(props: PlanChartProps) {
+  const months = props.card.termMonths;
+  return months === null ? null : <DatedPlanChart {...props} months={months} />;
+}
+
+function DatedPlanChart({
+  amountUsd,
+  card,
+  yieldObs,
+  months,
+}: PlanChartProps & { months: number }) {
   const t = useT();
   const lang = useLang();
   const words = t.plan.chart;
-  const months = card.termMonths;
   const { lowPct, highPct } = card.expectedReturn;
   const end = (pct: number) => amountUsd + (amountUsd * pct * months) / 1200;
   const low = end(lowPct);
@@ -121,11 +130,68 @@ export function PlanChart({
       </figure>
     );
 
+  const paidY = (v: number) =>
+    TOP + (PAID_H - TOP - BOTTOM) * (1 - (high > amountUsd ? v / (high - amountUsd) : 0));
   // An income plan pays its yield out each month, so its balance does not grow: there is no balance
   // to draw. What it pays over the term is said instead, on the same pin.
   if (card.cashFlow === 'monthly')
     return (
       <figure data-ui="plan-chart" data-kind="paid" className="m-0 flex flex-col gap-2">
+        {/* What is paid out, added up month by month: a band from the low end to the high end of
+            the range, dashed because it is projected. */}
+        <div ref={box}>
+          <svg
+            role="img"
+            aria-label={words.paidLabel(months, percent(lowPct), percent(highPct))}
+            viewBox={`0 0 ${W} ${PAID_H}`}
+            className="block h-auto w-full"
+            style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}
+          >
+            {[0, high - amountUsd].map((v) => (
+              <g key={v}>
+                <line x1={left} x2={W - RIGHT} y1={paidY(v)} y2={paidY(v)} stroke="var(--border)" />
+                <text x={left - 6} y={paidY(v) + 3} textAnchor="end" fill="var(--muted-foreground)">
+                  {money(v)}
+                </text>
+              </g>
+            ))}
+            <path
+              className="motion-safe:animate-crossfade"
+              d={`M${x(0)} ${paidY(0)} L${x(months)} ${paidY(high - amountUsd)} L${x(months)} ${paidY(low - amountUsd)} Z`}
+              fill="var(--chart-3)"
+              fillOpacity={0.28}
+            />
+            <line
+              x1={x(0)}
+              y1={paidY(0)}
+              x2={x(months)}
+              y2={paidY(high - amountUsd)}
+              stroke="var(--chart-1)"
+              strokeWidth={2}
+              strokeDasharray="5 3"
+            />
+            <line
+              x1={x(0)}
+              y1={paidY(0)}
+              x2={x(months)}
+              y2={paidY(low - amountUsd)}
+              stroke="var(--chart-3)"
+              strokeDasharray="3 3"
+            />
+            <text x={x(months) + 6} y={paidY(high - amountUsd) + 3} fill="var(--foreground)">
+              {words.high}
+            </text>
+            <text x={x(months) + 6} y={paidY(low - amountUsd) + 12} fill="var(--muted-foreground)">
+              {words.low}
+            </text>
+            <text x={left} y={PAID_H - 6} fill="var(--muted-foreground)">
+              0
+            </text>
+            <text x={x(months)} y={PAID_H - 6} textAnchor="end" fill="var(--muted-foreground)">
+              {t.goal.card.months(months)}
+            </text>
+          </svg>
+        </div>
         <figcaption className="flex flex-wrap items-baseline gap-x-2 text-body-sm">
           <span className="text-muted-foreground">{words.paid(months)}:</span>
           <ProvenancePin

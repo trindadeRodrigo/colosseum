@@ -2,13 +2,16 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
+import { CHAIN_NAMES } from '../../components/ui/ChainBadge';
 import { cn } from '../../components/ui/cn';
 import { Disclaimer } from '../../components/ui/Disclaimer';
 import { formatAge } from '../../components/ui/format';
 import { Icon } from '../../components/ui/Icon';
 import { Skeleton } from '../../components/ui/Skeleton';
+import { Segmented } from '../../components/ui/TimeChart';
 import { useLang } from '../../i18n/I18nProvider';
 import { useBearing } from './BearingProvider';
+import { BEARING_CHAINS, isBearingChain, onChain } from './chain';
 import { RISK_API } from './data';
 import { hhmm } from './format';
 import { href, METHODOLOGY, PAGES } from './pages';
@@ -27,6 +30,7 @@ const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visi
 
 export function BearingShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { chain } = useBearing();
   const t = useWords();
   const lang = useLang();
   const current = pathname.split('/')[2] ?? 'stocks';
@@ -100,7 +104,7 @@ export function BearingShell({ children }: { children: ReactNode }) {
             {PAGES.map((p) => (
               <li key={p.id}>
                 <Link
-                  href={href(p.id)}
+                  href={onChain(href(p.id), chain)}
                   title={t.pages[p.id].label}
                   onClick={followed}
                   aria-current={p.id === current ? 'page' : undefined}
@@ -128,7 +132,7 @@ export function BearingShell({ children }: { children: ReactNode }) {
           </ul>
           <p className={cn('mt-6 px-2.5 text-caption', collapsed && 'min-[900px]:hidden')}>
             <Link
-              href={href(METHODOLOGY)}
+              href={onChain(href(METHODOLOGY), chain)}
               aria-current={current === METHODOLOGY ? 'page' : undefined}
               onClick={followed}
               className={cn(
@@ -149,11 +153,30 @@ export function BearingShell({ children }: { children: ReactNode }) {
           <h1 className="mt-2 mb-4 max-w-[34ch] font-display text-[clamp(1.75rem,1.3rem+1.4vw,2.5rem)]/[1.15] font-normal tracking-[-0.015em]">
             {page.lede}
           </h1>
+          <ChainToggle />
           <Banner />
         </div>
         {children}
         <Disclaimer lang={lang} heading={t.notAdvice} className="mt-8" />
       </div>
+    </div>
+  );
+}
+
+/** Which chain every figure on the page is read for: named in the address, following the app's bar. */
+export function ChainToggle() {
+  const { chain, setChain } = useBearing();
+  const t = useWords();
+  return (
+    <div data-ui="bearing-chain" className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+      <Segmented
+        label={t.chain.label}
+        options={BEARING_CHAINS.map((c) => ({ id: c, label: CHAIN_NAMES[c] }))}
+        value={chain}
+        onChange={(c) => {
+          if (isBearingChain(c)) setChain(c);
+        }}
+      />
     </div>
   );
 }

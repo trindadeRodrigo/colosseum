@@ -71,11 +71,27 @@ export function utcMinute(at: string): string {
 
 export type ExecutionListProps = {
   executions: readonly Execution[];
+  /**
+   * How an instant is written, where the screen has one way for every time it shows ("Oct 5, 2026,
+   * 15:00 UTC"). Left out: `utcMinute`. A time that is not an instant is shown as it was given.
+   */
+  formatTime?: (at: string) => string;
+  /**
+   * False where the page is already headed by the one chain every line is on: the lines then carry
+   * no chain badge (gate CHAIN-EVERYWHERE, as amended). A list that mixes chains keeps them.
+   */
+  chainTags?: boolean;
   labels?: Partial<ExecutionListLabels>;
   className?: string;
 };
 
-export function ExecutionList({ executions, labels, className }: ExecutionListProps) {
+export function ExecutionList({
+  executions,
+  labels,
+  formatTime,
+  chainTags = true,
+  className,
+}: ExecutionListProps) {
   const text = {
     ...EXECUTION_LIST_LABELS,
     ...labels,
@@ -97,7 +113,7 @@ export function ExecutionList({ executions, labels, className }: ExecutionListPr
           >
             {mock && <HatchBand className="absolute inset-y-0 left-0" />}
             <span className="font-medium">{e.verb}</span>
-            {e.chain && <ChainBadge chain={e.chain} />}
+            {chainTags && e.chain && <ChainBadge chain={e.chain} />}
             <span className="tabular-nums">{e.detail}</span>
             <span aria-hidden="true">·</span>
             {e.status === 'failed' ? (
@@ -118,7 +134,7 @@ export function ExecutionList({ executions, labels, className }: ExecutionListPr
               dateTime={isoUtc(e.at) ?? undefined}
               className="tabular-nums text-muted-foreground"
             >
-              {utcMinute(e.at)}
+              {formatTime && isoUtc(e.at) !== null ? formatTime(e.at) : utcMinute(e.at)}
             </time>
             {mock && <MockWord />}
             {e.provenance === 'sandbox' && (

@@ -28,7 +28,7 @@ export const LIMITS = {
     standard: null,
     /** Planning an order and building a transaction: each one asks the chain for quotes. */
     build: 30,
-    /** The sentence parser, which calls a model. No route is in this class yet. */
+    /** The guided intake and private plan turns share the existing parse budget. */
     parse: 10,
   },
 } as const;
@@ -126,6 +126,48 @@ export function registerLimits(
       details: { retryable: true },
     };
     return reply.code(429).header('retry-after', wait).send(body);
+  });
+}
+
+/**
+ * The structurer's writes outside /v1, by method and route: each stores a row, and `POST /goals`
+ * reaches the model when one is configured. None asks for a sign-in.
+ */
+export const OPEN_WRITES: readonly string[] = [
+  'POST /goals',
+  'POST /plans',
+  'POST /plans/:id/transactions',
+  'POST /executions/:id/report',
+  'POST /policies/:id/revoke',
+  'POST /policies/:id/rebalance',
+];
+
+/**
+ * A budget for those writes, on the root: the anonymous caller's, by address, counted apart from /v1.
+ * Nothing else about the routes changes, and no other route is counted. Until the host's proxies are
+ * named (`TRUST_PROXY_HOPS`, plugins/proxy.ts) the address is the proxy's, so the budget is one that
+ * every caller shares.
+ */
+export function registerOpenWriteLimit(
+  root: FastifyInstance,
+  options: { limits?: Limits; now?: () => Date } = {},
+): void {
+  const limits = options.limits ?? LIMITS;
+  const now = options.now ?? (() => new Date());
+  const counter = createCounter(limits.windowSeconds * 1000);
+  root.addHook('onRequest', async (req, reply) => {
+    if (!OPEN_WRITES.includes(`${req.method} ${req.routeOptions?.url ?? ''}`)) return;
+    const at = now().getTime();
+    const taken = counter.take(`address:${req.ip}`, limits.caller.anonymous, at);
+    if (taken.ok) return;
+    const wait = Math.max(1, Math.ceil((taken.resetAt - at) / 1000));
+    return reply
+      .code(429)
+      .header('retry-after', wait)
+      .send({
+        error: 'too many requests',
+        fix: `Try again in ${wait} second${wait === 1 ? '' : 's'}.`,
+      });
   });
 }
 

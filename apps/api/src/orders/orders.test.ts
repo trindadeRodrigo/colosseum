@@ -822,19 +822,26 @@ describe('the /v1 route table', () => {
     const app = await buildApp();
     await app.ready();
     expect(v1Paths(app.swagger())).toEqual([
+      '/v1/baskets/intake',
       '/v1/baskets/personalize',
       '/v1/baskets/propose',
       '/v1/baskets/{id}',
+      '/v1/baskets/{id}/thread',
       '/v1/config',
+      '/v1/conversations/{chain}/goal/accept',
+      '/v1/conversations/{chain}/goal/reply',
       '/v1/funding',
       '/v1/indexes/{slug}',
       '/v1/indexes/{slug}/versions',
       '/v1/me',
       '/v1/me/chain',
+      '/v1/me/plans',
+      '/v1/me/withdrawals',
       '/v1/mock/fund',
       '/v1/mock/orders/{id}/legs/{legId}/land',
       '/v1/orders',
       '/v1/orders/{id}',
+      '/v1/orders/{id}/continue',
       '/v1/orders/{id}/legs/{legId}/build',
       '/v1/orders/{id}/legs/{legId}/cancel',
       '/v1/orders/{id}/legs/{legId}/report',
@@ -842,6 +849,10 @@ describe('the /v1 route table', () => {
       '/v1/shelf',
       '/v1/testnet/fund',
       '/v1/vaults/{chain}/{address}',
+      '/v1/vaults/{chain}/{address}/conversation',
+      '/v1/vaults/{chain}/{address}/conversation/reply',
+      '/v1/vaults/{chain}/{address}/name',
+      '/v1/vaults/{chain}/{address}/targets',
     ]);
     // No route lets a caller through without a token: 503 with no Privy app set, 401 with one.
     const res = await app.inject({ method: 'GET', url: '/v1/portfolio' });
@@ -851,8 +862,21 @@ describe('the /v1 route table', () => {
     const bare = Fastify();
     bare.setValidatorCompiler(validatorCompiler);
     bare.setSerializerCompiler(serializerCompiler);
-    await registerV1Routes(bare, { CHAIN_MODE_SOLANA: 'off', CHAIN_MODE_ROBINHOOD: 'off' });
+    // Which routes read a sign-in without needing one (`config.optionalSignIn`, plugins/auth.ts).
+    const optional: string[] = [];
+    bare.addHook('onRoute', (route) => {
+      if (route.config?.optionalSignIn && route.method !== 'HEAD')
+        optional.push(`${route.method} ${route.url} ${route.config.auth}`);
+    });
+    await registerV1Routes(bare, {
+      CHAIN_MODE_SOLANA: 'off',
+      CHAIN_MODE_ROBINHOOD: 'off',
+      AGENT_SURFACE: 'on',
+    });
     await bare.ready();
+    // Exactly one, and a public one: the read of a plan by its id. Another route that starts reading
+    // tokens it does not need is a change to who the API takes a caller for, and is made on purpose.
+    expect(optional).toEqual(['GET /v1/baskets/:id public']);
     const routes = bare.printRoutes({ commonPrefix: false });
     expect(routes).toContain('/v1/orders');
     expect(routes).not.toContain('mock');
@@ -895,29 +919,50 @@ describe('no /v1 route can make the server sign', () => {
     // a faucet key is set (tests/boundaries.test.ts, BEHIND_A_FLAG).
     expect(files.map((f) => relative(src, f)).sort()).toEqual([
       'faucet/test-funds.ts',
+      'llm.ts',
+      'model-quota.ts',
       'orders/chains.ts',
+      'orders/continue.ts',
       'orders/errors.ts',
       'orders/families.ts',
+      // a shared portfolio's figures, from the plan inputs handed in: no file, no key, no chain call
+      'orders/figures.ts',
       'orders/legs.ts',
+      'orders/mix.ts',
       'orders/person.ts',
       'orders/personalize.ts',
+      'orders/plan-join.ts',
       'orders/prepare.ts',
       'orders/shared.ts',
+      'orders/stated-purpose.ts',
       'orders/store.ts',
+      'orders/thread.ts',
+      'orders/vault-agent.ts',
+      'orders/vault-conversation-owner.ts',
+      'orders/vault-conversation.ts',
+      'orders/withdraw.ts',
       'plugins/auth.ts',
       'plugins/limits.ts',
+      'plugins/loggable.ts',
       'plugins/paths.ts',
       'routes/v1/baskets.ts',
       'routes/v1/config.ts',
       'routes/v1/funding.ts',
+      'routes/v1/goal-conversation-reply.ts',
       'routes/v1/index.ts',
+      'routes/v1/intake.ts',
       'routes/v1/me.ts',
+      'routes/v1/mix.ts',
       'routes/v1/mock.ts',
       'routes/v1/orders.ts',
       'routes/v1/portfolio.ts',
       'routes/v1/shared.ts',
       'routes/v1/testnet.ts',
+      'routes/v1/thread.ts',
+      'routes/v1/vault-conversation-reply.ts',
+      'routes/v1/vault-conversation.ts',
       'routes/v1/vault.ts',
+      'vault-agent-model.ts',
     ]);
     // The chain packages that can sign keep that behind their `./server` entry, and neither the
     // package's root nor that entry is here: the Solana and EVM adapters come in by their key-free
@@ -925,7 +970,10 @@ describe('no /v1 route can make the server sign', () => {
     // arithmetic over what it is handed: it imports the schemas and nothing else. The engine comes in
     // by its `./personal` entry, which reads no clock, network or environment
     // (packages/engine/src/personal/purity.test.ts), not by its root, which holds the model client.
+    // Intake and private vault previews use Anthropic's SDK in these two clients only. Neither
+    // holds a chain signing key; the quota module only reserves model calls.
     expect([...packages.keys()].sort()).toEqual([
+      '@anthropic-ai/sdk',
       '@colosseum/basket',
       '@colosseum/chain-evm/vault',
       '@colosseum/chain-mock',
@@ -942,6 +990,10 @@ describe('no /v1 route can make the server sign', () => {
     ]);
     // jose is used to verify and nowhere to sign; node:crypto to hash and to make ids.
     expect([...(packages.get('jose') ?? [])]).toEqual(['plugins/auth.ts']);
+    expect([...(packages.get('@anthropic-ai/sdk') ?? [])]).toEqual([
+      'llm.ts',
+      'vault-agent-model.ts',
+    ]);
     for (const file of files) {
       // The code, without its comments.
       const text = readFileSync(file, 'utf8')

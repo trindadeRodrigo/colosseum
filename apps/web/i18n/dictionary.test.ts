@@ -65,6 +65,7 @@ const BEARING_NAMES = new Set(
  * fragments, kept as he wrote them. Each is named: a new one has to be added here on purpose.
  */
 const BEARING_FRAGMENTS = new Set([
+  'bearing.chain.sideBySide.caption',
   'bearing.dex.capacity.aria',
   'bearing.dex.capacity.note',
   'bearing.dex.liquidity.aria',
@@ -197,12 +198,13 @@ describe('the words of the product, in each language', () => {
 
   it('says a passkey that is not registered here in so many words, in both languages', () => {
     const [en, pt] = [dictionary('en'), dictionary('pt')];
-    expect(en.signIn.failure.passkeyNotRegistered).toBe(
-      'That passkey isn’t registered here. Pick another, or create one.',
+    expect(en.signIn.failure.passkeyNotRegistered).toMatch(/^That passkey isn’t registered here: /);
+    expect(pt.signIn.failure.passkeyNotRegistered).toMatch(
+      /^Essa chave de acesso não está registrada aqui: /,
     );
-    expect(pt.signIn.failure.passkeyNotRegistered).toBe(
-      'Essa chave de acesso não está registrada aqui. Escolha outra ou crie uma.',
-    );
+    // and it does not send the person to make a new one, which would open a second, empty account
+    for (const d of [en, pt])
+      expect(d.signIn.failure.passkeyNotRegistered).not.toMatch(/create|crie|criar/i);
   });
 
   it('still bans "unlock" as a word of promise, in Portuguese too', () => {
@@ -222,7 +224,7 @@ describe('the words of the product, in each language', () => {
     expect(en.goal.examples.list).toEqual([
       'Grow $2,000 for ten years, high risk',
       'Protect $50,000 for 18 months, low risk',
-      '$80,000 for $300 a month of income',
+      '$80,000 for $300 a month of income, 5 years, low risk',
     ]);
   });
 

@@ -3,6 +3,7 @@ import { dictionary, type Lang, type ThemeChoice } from '../../i18n';
 import { Disclaimer } from '../ui/Disclaimer';
 import { AppNav } from './AppNav';
 import { LanguageSwitch } from './LanguageSwitch';
+import { RouterLinks } from './RouterLinks';
 import { ThemeSwitch } from './ThemeSwitch';
 
 // The one frame of the product's routes: the bar, the page, and the foot. The bar is his compact bar,
@@ -25,6 +26,7 @@ export function AppShell({ lang, theme, children }: AppShellProps) {
       className="group/shell mx-auto flex min-h-dvh w-full max-w-page flex-col px-[clamp(16px,4vw,56px)] has-[[data-ui=bearing]]:max-w-none"
     >
       <AppNav />
+      <RouterLinks />
       <main
         id="content"
         tabIndex={-1}

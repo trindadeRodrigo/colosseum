@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
+import { inTheme } from './theme';
 
 // Bearing's analytics end to end (WEB-BEARING): the five pages and the methodology, against the e2e
 // stub, whose /risk routes answer from Rodrigo's recording of the risk API (tests/e2e/stub-risk.ts,
@@ -25,12 +26,7 @@ async function open(page: Page, path: string) {
 
 async function check(page: Page, name: string) {
   for (const theme of ['light', 'dark'] as const) {
-    await page.evaluate((t) => {
-      const html = document.documentElement;
-      html.classList.remove('light', 'dark', 'tf-auto');
-      html.classList.add(t);
-    }, theme);
-    await page.waitForTimeout(600);
+    await inTheme(page, theme);
     const result = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
       .analyze();
@@ -200,13 +196,98 @@ test.describe('Bearing analytics on the recorded risk API', () => {
     await open(page, '/analytics/methodology');
     await expect(page.getByRole('heading', { name: 'What a number means' })).toBeVisible();
     await check(page, 'methodology');
+    // the section names the chain it reads in the address once it opens (Solana, with none chosen)
     await page.goto('/risk');
-    await expect(page).toHaveURL(/\/analytics\/stocks$/);
+    await expect(page).toHaveURL(/\/analytics\/stocks(\?chain=solana)?$/);
     await page.goto('/risk/methodology');
-    await expect(page).toHaveURL(/\/analytics\/methodology$/);
+    await expect(page).toHaveURL(/\/analytics\/methodology(\?chain=solana)?$/);
     await page.clock.setFixedTime(CAPTURED + 3 * 3600e3);
     await page.goto('/risk/gldx');
-    await expect(page).toHaveURL(/\/analytics\/commodities\?asset=GLDx$/);
+    await expect(page).toHaveURL(/\/analytics\/commodities\?asset=GLDx(&chain=solana)?$/);
     await expect(page.getByRole('button', { name: /Assets/ })).toContainText('GLDx');
+  });
+});
+
+// Bearing per chain (web/bearing-chains). Robinhood Chain's answers come from a fixture
+// (fixtures/risk/bearing-robinhood.json), which the recording predates: every one of its figures is
+// labelled fixture, so the page shows it with the MOCK plate and never as a measurement.
+test.describe('Bearing on each chain', () => {
+  async function openOn(page: Page, path: string) {
+    await page.clock.setFixedTime(CAPTURED + 3 * 3600e3);
+    await page.goto(path);
+    await expect(page.locator('main [data-ui="waiting"]')).toHaveCount(0, { timeout: 60_000 });
+    await expect(page.locator('main p', { hasText: /^(Reading|Pricing)/ })).toHaveCount(0, {
+      timeout: 60_000,
+    });
+  }
+  const pressed = (page: Page) =>
+    page.locator('[data-ui="bearing-chain"] button[aria-pressed="true"]');
+
+  test('Robinhood Chain: its stocks, the chain said once by the switch, fixture never live', async ({
+    page,
+  }) => {
+    await openOn(page, '/analytics/stocks?chain=robinhood');
+    await expect(pressed(page)).toHaveText('Robinhood Chain');
+    const kpis = page.locator('main [data-ui="bearing-kpi"]');
+    await expect(kpis).toHaveCount(5);
+    // no counter, card or row repeats the chain: only the chains side by side tags its rows
+    await expect(kpis.locator('[data-ui="chain-badge"]')).toHaveCount(0);
+    await expect(page.locator('main [data-ui="bearing-card"] [data-ui="chain-badge"]')).toHaveCount(
+      await page.locator('main [data-ui="bearing-chains"] [data-ui="chain-badge"]').count(),
+    );
+    // its pools are not in Bearing's registry yet: said quietly, with no figure and no chain's name
+    await expect(kpis.first().locator('[data-ui="bearing-reason"]')).toHaveText(
+      'not collected yet',
+    );
+    const row = page.locator('section[aria-labelledby="bearing-table"] tbody tr');
+    await expect(row.first().locator('th')).toContainText('NVDA');
+    await expect(row.first().locator('[data-ui="chain-badge"]')).toHaveCount(0);
+    // every figure is the fixture's, so every one has the MOCK plate: none is shown as live
+    const figures = page.locator('main [data-ui="figure"]:not([data-state="missing"])');
+    expect(await figures.count()).toBeGreaterThan(0);
+    await expect(page.locator('main [data-ui="figure"][data-state="live"]')).toHaveCount(0);
+    await expect(page.locator('main [data-ui="figure"][data-state="stale"]')).toHaveCount(0);
+    await check(page, 'stocks on Robinhood Chain');
+  });
+
+  /**
+   * A figure of the page's own chain: outside the chains side by side, whose rows name their own.
+   * Not a counter's: on Robinhood Chain the counters are counts and what is not collected.
+   */
+  const ownFigure = (page: Page) =>
+    page.locator('main [data-ui="bearing-fig"]:not([data-ui="bearing-chains"] *)').first();
+
+  test('the toggle moves the page to Solana and back, in the address, and the menu keeps it', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openOn(page, '/analytics/stocks');
+    await expect(page).toHaveURL(/\/analytics\/stocks\?chain=solana$/);
+    await expect(pressed(page)).toHaveText('Solana');
+    await pinned(page, 'stocks on Solana');
+    await page
+      .locator('[data-ui="bearing-chain"]')
+      .getByRole('button', { name: 'Robinhood Chain' })
+      .click();
+    await expect(page).toHaveURL(/\/analytics\/stocks\?chain=robinhood$/);
+    await expect(ownFigure(page)).toHaveAttribute('data-chain', 'robinhood');
+    await expect(page.locator('#bearing-nav a', { hasText: 'Lending' })).toHaveAttribute(
+      'href',
+      '/analytics/lending?chain=robinhood',
+    );
+    await page.locator('[data-ui="bearing-chain"]').getByRole('button', { name: 'Solana' }).click();
+    await expect(page).toHaveURL(/\/analytics\/stocks\?chain=solana$/);
+    await expect(ownFigure(page)).toHaveAttribute('data-chain', 'solana');
+  });
+
+  test('a page Robinhood Chain has nothing collected for says so, axe clean', async ({ page }) => {
+    for (const id of ['lending', 'stablecoins'] as const) {
+      await openOn(page, `/analytics/${id}?chain=robinhood`);
+      await expect(page.locator('[data-ui="bearing-not-on-chain"]')).toHaveText(
+        'Not collected yet on Robinhood Chain: Bearing measures this page on Solana only for now.',
+      );
+      await expect(page.locator('main [data-ui="figure"]')).toHaveCount(0);
+      await check(page, `${id} on Robinhood Chain`);
+    }
   });
 });

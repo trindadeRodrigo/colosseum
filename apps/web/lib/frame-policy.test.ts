@@ -64,8 +64,12 @@ describe('the framing policy', () => {
     // a header's source is matched without regard to case, so `/Embed` takes the embed's rule…
     expect(csp('/Embed')).toEqual(["frame-ancestors 'self'"]);
     // …and the proxy, which every spelling of /embed reaches, takes it back
+    // the proxy's first matchers are the embed's; its last is every page, for the policy the browser
+    // only reports on (content-policy.test.ts)
     const reaches = (path: string) =>
-      config.matcher.some((m) => pathToRegexp(m, [], { sensitive: true }).test(path));
+      config.matcher
+        .filter((m): m is string => typeof m === 'string')
+        .some((m) => pathToRegexp(m, [], { sensitive: true }).test(path));
     for (const path of ['/Embed', '/EMBED/solana/abc', '/eMbEd/x', '/embed/x', '/embed/a/b/c']) {
       expect(reaches(path), path).toBe(true);
       expect(isEmbedPage(path), path).toBe(false);
@@ -79,7 +83,7 @@ describe('the framing policy', () => {
       expect(answer.headers.get('content-security-policy')).toBeNull();
       expect(answer.headers.get('x-frame-options')).toBeNull();
     }
-    // and it is reached by nothing else
+    // and they are reached by nothing else
     for (const path of ['/goal', '/embedded', '/dev/embed'])
       expect(reaches(path), path).toBe(false);
   });

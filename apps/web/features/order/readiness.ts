@@ -4,6 +4,7 @@ import {
   basketIdOfPlan,
   type DeploymentNetwork,
   deploymentsOf,
+  type GuardDeployment,
   type GuardDeployments,
 } from '@colosseum/sdk';
 import { publicWalletEnv, walletChains } from '../wallet/chains';
@@ -86,6 +87,35 @@ export function explorerUrlFor(chain: ChainId, txId: string | null, mock: boolea
   if (mock) return `mock://${chain}/tx/${txId}`;
   try {
     return explorerLink(walletChains(publicWalletEnv())[chain].config, txId);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a shared portfolio can be published on a chain with this deployment: the guard signs an EVM
+ * publish only through the registry the deployment names (AGT-4). No deployment at all is the chain
+ * not being ready, which the screens say on their own.
+ */
+export const publishableOn = (deployment: GuardDeployment | undefined): boolean =>
+  deployment?.family !== 'evm' || deployment.registry !== undefined;
+
+/**
+ * A wallet's page on the explorer of the network this app signs for, from the same chain table as a
+ * transaction's link: Solscan names an account `/account/…`, the EVM explorers `/address/…`. Null on
+ * the mock, whose addresses are no network's, and on a network with no explorer.
+ */
+export function explorerAddressUrlFor(
+  chain: ChainId,
+  address: string,
+  mock: boolean,
+): string | null {
+  if (mock || !address) return null;
+  try {
+    const { config } = walletChains(publicWalletEnv())[chain];
+    if (!config.explorerTx?.includes('/tx/{txId}')) return null;
+    const page = config.family === 'solana' ? 'account' : 'address';
+    return config.explorerTx.replace('/tx/{txId}', `/${page}/${encodeURIComponent(address)}`);
   } catch {
     return null;
   }

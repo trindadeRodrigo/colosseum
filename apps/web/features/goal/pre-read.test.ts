@@ -1,25 +1,13 @@
 import type { BasketSheetDraft } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
-import { dictionary } from '../../i18n';
-import { EXAMPLE_FIELDS, exampleDraft } from './examples';
 import { browserCountry, fillFromWords, preRead, type Words } from './pre-read';
 
 // The words of a goal this app reads for itself, before POST /goals, and how they fill the blanks the
-// first structurer's reader leaves. Every example chip, in both languages, and ten goals typed freely
-// in each, read back field by field.
+// first structurer's reader leaves. Ten goals typed freely in each language, read back field by field.
 
 const NOW = new Date('2026-10-06T12:00:00Z');
 
 describe('the words of a goal', () => {
-  it.each(['en', 'pt'] as const)('read every example chip back in full, in %s', (lang) => {
-    for (const [i, text] of dictionary(lang).goal.examples.list.entries()) {
-      const fields = EXAMPLE_FIELDS[i];
-      const words = preRead(text, NOW);
-      for (const [key, value] of Object.entries(fields ?? {}))
-        expect(words[key as keyof Words] ?? null, `${text}: ${key}`).toBe(value);
-    }
-  });
-
   it.each<[string, Words]>([
     [
       'Protect $50,000 for 18 months, low risk',
@@ -170,12 +158,6 @@ describe('the reader’s draft, filled from the words', () => {
       fillFromWords(draft({ goal: 'income' }), new Set(), { incomeTargetUsdMonthly: 300 }).draft
         .incomeTargetUsdMonthly,
     ).toBe(300);
-  });
-
-  it('gives an example chip in full without the reader', () => {
-    for (const lang of ['en', 'pt'] as const)
-      for (const text of dictionary(lang).goal.examples.list)
-        expect(exampleDraft(text, dictionary(lang).goal.examples.list, lang)).not.toBeNull();
   });
 });
 

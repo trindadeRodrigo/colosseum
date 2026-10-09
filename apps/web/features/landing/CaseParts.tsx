@@ -52,7 +52,8 @@ export function Legs({
             onPointerEnter={(e) => e.pointerType === 'mouse' && setLit(leg.chart)}
             onPointerLeave={(e) => e.pointerType === 'mouse' && setLit(null)}
             className={cn(
-              'grid grid-cols-[10px_1fr_auto] items-baseline gap-x-2 text-[13px]/5 motion-safe:transition-opacity motion-safe:duration-150',
+              // content-start: a row-mate's two-line name makes the row taller, never this one's reason lower
+              'grid grid-cols-[10px_1fr_auto] content-start items-baseline gap-x-2 text-[13px]/5 motion-safe:transition-opacity motion-safe:duration-150',
               lit !== null && lit !== leg.chart && 'opacity-45',
             )}
           >

@@ -1,12 +1,14 @@
 'use client';
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { Wait } from '../../components/shell/Wait';
+import { CHAIN_NAMES } from '../../components/ui/ChainBadge';
 import { cn } from '../../components/ui/cn';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { Skeleton, SkeletonChart, SkeletonRows } from '../../components/ui/Skeleton';
 import { type BearingDictionary, bearingDictionary } from '../../i18n/bearing';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useBearing } from './BearingProvider';
+import type { BearingChain } from './chain';
 import { cleanSource, type Fact, factDetail, pinSource } from './fact';
 import { EN_FMT, type Fmt, fmtFor, iso, reasonW } from './format';
 
@@ -27,11 +29,29 @@ export function useFmt(): Fmt {
   return lang === 'en' ? EN_FMT : fmtFor(lang);
 }
 
-/** A reason code in the person's language; one the dictionary does not know, as the API wrote it. */
+/**
+ * A reason code in the person's language; one the dictionary does not know, as the API wrote it. It
+ * names no chain: the page's switch says which chain is read (gate CHAIN-EVERYWHERE, as amended).
+ */
 export function useReason() {
   const t = useWords();
   return (code?: string | null) =>
     t.reasons[(code ?? 'not_served') as keyof typeof t.reasons] ?? reasonW(code);
+}
+
+/** A page Bearing does not measure on the chain the person reads: said, with nothing in its place. */
+export function NotOnChain() {
+  const { chain } = useBearing();
+  const t = useWords();
+  return (
+    <p
+      role="status"
+      data-ui="bearing-not-on-chain"
+      className="mt-6 max-w-[72ch] border border-l-2 border-border border-l-primary px-3 py-2"
+    >
+      {t.chain.pageNotCollected(CHAIN_NAMES[chain])}
+    </p>
+  );
 }
 
 export function Reason({ code, detail }: { code?: string | null; detail?: string }) {
@@ -52,12 +72,16 @@ export function Fig({
   f,
   fmt,
   className,
+  chain: own,
 }: {
   f: Fact | null | undefined;
   fmt: (v: number) => string;
   className?: string;
+  /** The chain the figure is of, where it is not the page's (the chains side by side). */
+  chain?: BearingChain;
 }) {
-  const { clock } = useBearing();
+  const { clock, chain: page } = useBearing();
+  const chain = own ?? page;
   const all = useT();
   const words = useWords();
   if (!f) return <Reason code="not_served" />;
@@ -65,11 +89,11 @@ export function Fig({
   if (!f.source && !f.method) return <Reason code="not_served" />;
   const shown = `${f.quality === 'lower_bound' ? '≥ ' : ''}${fmt(f.value)}`;
   return (
-    <span data-ui="bearing-fig" className={cn('whitespace-nowrap', className)}>
+    <span data-ui="bearing-fig" data-chain={chain} className={cn('whitespace-nowrap', className)}>
       <ProvenancePin
         value={shown}
         obs={pinSource(f, clock)}
-        detail={factDetail(f)}
+        detail={[CHAIN_NAMES[chain], factDetail(f)].filter(Boolean).join(' · ')}
         labels={all.pin}
         className="font-mono font-medium"
       />
@@ -459,100 +483,102 @@ export function Pie({
       <div className="mb-2">
         <div className="font-condensed text-caption font-medium text-muted-foreground">{title}</div>
         <div className="mt-0.5 font-mono text-b-kpi font-medium">{totalHtml}</div>
-        {note && <div className="text-caption text-muted-foreground">{note}</div>}
+        {note && top.length > 0 && <div className="text-caption text-muted-foreground">{note}</div>}
       </div>
-      {top.length ? (
-        <div className="mt-2 grid justify-items-start gap-3 max-[1100px]:min-[481px]:grid-cols-[144px_minmax(0,1fr)] max-[1100px]:min-[481px]:items-start">
-          <svg
-            width={144}
-            height={144}
-            viewBox="0 0 144 144"
-            role="img"
-            aria-label={`${title}: ${top.map((s) => `${s.label} ${share(s.value)}`).join(', ')}`}
-            className="block"
-          >
-            {paths.map(({ s, i, color, d, full }) =>
-              full ? (
-                // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the titles, the legend and the table
-                <circle
-                  key={s.label}
-                  cx={c}
-                  cy={c}
-                  r={(R + r) / 2}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth={R - r}
-                  opacity={on != null && on !== i ? 0.35 : 1}
-                  onMouseEnter={() => setOn(i)}
-                >
-                  <title>{`${s.label} · ${fm.usd1(s.value)} · ${share(s.value)}`}</title>
-                </circle>
-              ) : (
-                // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the titles, the legend and the table
-                <path
-                  key={s.label}
-                  d={d}
-                  fill={color}
-                  stroke={on === i ? 'var(--foreground)' : 'var(--card)'}
-                  strokeWidth={2}
-                  strokeLinejoin="round"
-                  opacity={on != null && on !== i ? 0.35 : 1}
-                  onMouseEnter={() => setOn(i)}
-                >
-                  <title>{`${s.label} · ${fm.usd1(s.value)} · ${share(s.value)}`}</title>
-                </path>
-              ),
-            )}
-            <text
-              x={72}
-              y={70}
-              textAnchor="middle"
-              className="fill-foreground font-mono text-[13px] font-medium"
+      {
+        top.length ? (
+          <div className="mt-2 grid justify-items-start gap-3 max-[1100px]:min-[481px]:grid-cols-[144px_minmax(0,1fr)] max-[1100px]:min-[481px]:items-start">
+            <svg
+              width={144}
+              height={144}
+              viewBox="0 0 144 144"
+              role="img"
+              aria-label={`${title}: ${top.map((s) => `${s.label} ${share(s.value)}`).join(', ')}`}
+              className="block"
             >
-              {on != null && top[on] ? fm.usd1(top[on].value) : ''}
-            </text>
-            <text
-              x={72}
-              y={86}
-              textAnchor="middle"
-              className="fill-muted-foreground font-mono text-[11px]"
-            >
-              {on != null && top[on] ? share(top[on].value) : ''}
-            </text>
-          </svg>
-          <ul className="m-0 grid w-full list-none gap-1 p-0">
-            {paths.map(({ s, i, color }) => (
-              <li
-                key={s.label}
-                // biome-ignore lint/a11y/noNoninteractiveTabindex: a row of the legend can be focused to read its slice
-                tabIndex={0}
-                onMouseEnter={() => setOn(i)}
-                onFocus={() => setOn(i)}
-                onBlur={() => setOn(null)}
-                className={cn(
-                  'grid grid-cols-[10px_minmax(0,1fr)_auto] items-baseline gap-2 px-0.5 py-px text-caption',
-                  on === i && 'bg-muted',
-                )}
+              {paths.map(({ s, i, color, d, full }) =>
+                full ? (
+                  // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the titles, the legend and the table
+                  <circle
+                    key={s.label}
+                    cx={c}
+                    cy={c}
+                    r={(R + r) / 2}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth={R - r}
+                    opacity={on != null && on !== i ? 0.35 : 1}
+                    onMouseEnter={() => setOn(i)}
+                  >
+                    <title>{`${s.label} · ${fm.usd1(s.value)} · ${share(s.value)}`}</title>
+                  </circle>
+                ) : (
+                  // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the titles, the legend and the table
+                  <path
+                    key={s.label}
+                    d={d}
+                    fill={color}
+                    stroke={on === i ? 'var(--foreground)' : 'var(--card)'}
+                    strokeWidth={2}
+                    strokeLinejoin="round"
+                    opacity={on != null && on !== i ? 0.35 : 1}
+                    onMouseEnter={() => setOn(i)}
+                  >
+                    <title>{`${s.label} · ${fm.usd1(s.value)} · ${share(s.value)}`}</title>
+                  </path>
+                ),
+              )}
+              <text
+                x={72}
+                y={70}
+                textAnchor="middle"
+                className="fill-foreground font-mono text-[13px] font-medium"
               >
-                <i
-                  aria-hidden="true"
-                  className="block size-2.5 self-center"
-                  style={{ background: color }}
-                />
-                <span className="[overflow-wrap:anywhere]">{s.label}</span>
-                <span className="font-mono">{share(s.value)}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="font-mono text-b-meta text-muted-foreground max-[1100px]:col-span-full">
-            {t.point}
+                {on != null && top[on] ? fm.usd1(top[on].value) : ''}
+              </text>
+              <text
+                x={72}
+                y={86}
+                textAnchor="middle"
+                className="fill-muted-foreground font-mono text-[11px]"
+              >
+                {on != null && top[on] ? share(top[on].value) : ''}
+              </text>
+            </svg>
+            <ul className="m-0 grid w-full list-none gap-1 p-0">
+              {paths.map(({ s, i, color }) => (
+                <li
+                  key={s.label}
+                  // biome-ignore lint/a11y/noNoninteractiveTabindex: a row of the legend can be focused to read its slice
+                  tabIndex={0}
+                  onMouseEnter={() => setOn(i)}
+                  onFocus={() => setOn(i)}
+                  onBlur={() => setOn(null)}
+                  className={cn(
+                    'grid grid-cols-[10px_minmax(0,1fr)_auto] items-baseline gap-2 px-0.5 py-px text-caption',
+                    on === i && 'bg-muted',
+                  )}
+                >
+                  <i
+                    aria-hidden="true"
+                    className="block size-2.5 self-center"
+                    style={{ background: color }}
+                  />
+                  <span className="[overflow-wrap:anywhere]">{s.label}</span>
+                  <span className="font-mono">{share(s.value)}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="font-mono text-b-meta text-muted-foreground max-[1100px]:col-span-full">
+              {t.point}
+            </p>
+          </div>
+        ) : total > 0 ? (
+          <p className="py-6 text-muted-foreground">
+            <Reason code="not_collected" />
           </p>
-        </div>
-      ) : (
-        <p className="py-6 text-muted-foreground">
-          <Reason code="not_collected" />
-        </p>
-      )}
+        ) : null /* no total either: its place above already says why, once */
+      }
     </div>
   );
 }

@@ -27,6 +27,7 @@ import {
   Kpi,
   Kpis,
   MultiSelect,
+  NotOnChain,
   PageWait,
   Pie,
   Reason,
@@ -40,7 +41,13 @@ import {
 // lender exits by withdrawing, so "available now" takes the place of exit capacity. Stablecoins the
 // registry lists and the collectors do not measure yet are rows with their reason.
 
+/** Lending pools are Solana's: on another chain the page says it is not collected there. */
 export function StablePage() {
+  const { chain } = useBearing();
+  return chain === 'solana' ? <StableOnSolana /> : <NotOnChain />;
+}
+
+function StableOnSolana() {
   const { base, lending } = useBearing();
   const b = useAnswer(() => base(), [base]);
   const all = useAnswer(() => lending(), [lending]);
@@ -202,7 +209,11 @@ function StableView({ rows }: { rows: LendRow[] }) {
       key: 'asset',
       header: w.table.asset,
       rowHeader: true,
-      cell: (x) => <span className={x.rs ? undefined : 'text-muted-foreground'}>{x.t}</span>,
+      cell: (x) => (
+        <span className="inline-flex flex-wrap items-baseline gap-x-2">
+          <span className={x.rs ? undefined : 'text-muted-foreground'}>{x.t}</span>
+        </span>
+      ),
     },
     {
       key: 'n',

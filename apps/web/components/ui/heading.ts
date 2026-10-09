@@ -3,3 +3,7 @@
 // and its loaded state title it the same way, so the heading does not change face or size when the
 // page's data comes or does not.
 export const PAGE_TITLE = 'max-w-(--tf-measure-display) font-display text-h1 font-normal';
+
+// Invest's conversation/strategy workbench uses the founder-approved Analytics title scale.
+// Only its workspace h1s use this register; other pages keep PAGE_TITLE.
+export const WORKSPACE_TITLE = 'text-body-lg font-semibold';
