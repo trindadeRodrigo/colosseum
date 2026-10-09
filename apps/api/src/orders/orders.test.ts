@@ -631,7 +631,7 @@ describe('prepareIntent holds a buy to the caps itself, for a caller that does n
     for (const amountUsd of [1_000_000.01, 1e300, Number.POSITIVE_INFINITY, Number.NaN]) {
       const refused = await refusal(prepare({ amountUsd }));
       expect([amountUsd, refused.status]).toEqual([amountUsd, 422]);
-      expect(refused.message).toBe('one order buys at most $1,000,000');
+      expect(refused.message).toBe('one deposit is at most $1,000,000');
     }
   });
 
