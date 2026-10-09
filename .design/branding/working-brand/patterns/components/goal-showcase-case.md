@@ -1,6 +1,8 @@
 # Goal showcase case (marketing)
 > Type: custom | Component: `<ShowcaseCase>` | Source: landing prototype `.case` (Mariana / trip fund, Diego / mountain season) | Revised 2026-10-08 (honey on night)
 
+> **Superseded on the landing (2026-10-08, gate `LANDING-HERO`, Rodrigo):** `/` is the hero alone, with the honey fog behind it; this component is no longer built. Kept as the record of the design.
+
 A sample person, their goal in their own words, and the plan cut for it: the plan drawn as a joint + prompt + plan panel (sheet chips, KPIs, chart, legs, exit line) + the sample marking. It shows *the same pieces fit differently for different people*. **Everything in it is sample.**
 
 ## Anatomy

@@ -1,6 +1,8 @@
 # Joint stage (pinned hero)
 > Type: custom | Component: `<JointStage>` | Source: landing prototype `.stage` / `.sticky` / `#scene` (three.js) | Revised 2026-10-08 (honey on night)
 
+> **Superseded on the landing (2026-10-08, gate `LANDING-HERO`, Rodrigo):** `/` is the hero alone, with the honey fog behind it; this component is no longer built. Kept as the record of the design.
+
 The landing hero: one slender pinned through-tenon (post, rail, pin), drawn as a joiner's drawing in the brand's ink (gate `JOINT-3D`), sits pinned behind the copy and **seats as you scroll steps 01–03**, then the stage releases and scrolls away with the page. It is the brand's lock animation (H2) driven by the reader, not by a timer.
 
 ## Anatomy

@@ -30,8 +30,8 @@
 | [bearing-heatmap-tile.md](./components/bearing-heatmap-tile.md) | custom | 24 × 7 hour-of-week depth lattice in a night-2 tile (10px, 16px padding); honey lightness ramp; b-kpi in Inter Tight with a signed delta; stale/sample; table alternative |
 | [disclaimer-block.md](./components/disclaimer-block.md) | custom | `DISCLAIMER` verbatim, body size, hairline 10px box, under the plan and atop API docs |
 | [compact-nav.md](./components/compact-nav.md) | custom | Landing header: the face + Inter Tight wordmark → centred compact bar with menu from step 03; solid, no blur; honey CTA |
-| [goal-showcase-case.md](./components/goal-showcase-case.md) | custom | Photo + prompt (Inter Tight, on a plate) + plan panel + honey chart with curve-fill + KPIs + sample marking; fixture-driven figures |
-| [joint-stage.md](./components/joint-stage.md) | custom | Pinned 3D/2D hero on night with the glow that seats on scroll and releases; wood for the 3D timber only; reduced-motion and no-WebGL fallbacks |
+| [goal-showcase-case.md](./components/goal-showcase-case.md) | custom | Superseded on the landing by `LANDING-HERO` (Oct 8): was the sample person, prompt and plan panel |
+| [joint-stage.md](./components/joint-stage.md) | custom | Superseded on the landing by `LANDING-HERO` (Oct 8): was the pinned 3D/2D hero on night that seats on scroll |
 | [subscribe-block.md](./components/subscribe-block.md) | custom | Closing section with the composer-shaped email field and a pill Subscribe button, options, status messages |
 
 Tier 2 + 3 total 18 specs, above the methodology's 5–12 guide, because the caller required the custom list explicitly.
