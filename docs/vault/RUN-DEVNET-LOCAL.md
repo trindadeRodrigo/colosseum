@@ -47,7 +47,7 @@ Chrome or Safari, at `http://localhost:3010`.
 2. **Invest** (`/goal`): say the goal (about $20 is plenty), answer what is asked, confirm the sheet, "Build my plan".
 3. **See your plan** (`/plan/<id>`): the holdings with their pins, the card's line "Sample figures · test network", the disclaimer. "Deposit $20".
 4. **Fund** (`/plan/<id>/buy`): "What your wallet needs" with tUSDC and SOL. Short: press "Get test funds" (with the faucet key), or fund by hand and "Read my wallet again".
-5. Tick "I've read this and I accept it", "Review the steps to buy $20".
+5. Tick "I've read this and I accept it", then "Deposit $20".
 6. **Order** (`/orders/<id>`): "Sign and deposit $20". No passkey prompt and no Privy window; each step turns "Confirmed" with "Tx ↗" (Solscan on devnet).
 7. **Portfolio** (`/monitor`): the vault and what it holds, on Solana devnet.
 
