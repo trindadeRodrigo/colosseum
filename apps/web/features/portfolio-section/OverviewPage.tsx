@@ -158,7 +158,7 @@ function Board({ answer }: { answer: PlansAnswer }) {
         aria-label={w.overview.board.total}
         data-ui="overview-board"
         data-provenance={provenance ?? undefined}
-        className="overflow-hidden rounded-board border border-border bg-card text-card-foreground"
+        className="overflow-hidden rounded-xl border border-border bg-card text-card-foreground"
       >
         <div className="grid min-w-0 lg:grid-cols-[minmax(0,5fr)_minmax(0,9fr)]">
           <Figures
@@ -290,9 +290,9 @@ function Modes({
             title={o.label}
             onClick={() => onChange(o.id)}
             className={cn(
-              'inline-flex h-9 cursor-pointer items-center justify-center rounded-round text-body-sm font-medium transition-colors',
+              'inline-flex h-9 cursor-pointer items-center justify-center rounded-full text-body-sm font-medium transition-colors',
               on
-                ? 'gap-2 bg-primary/15 px-4 text-foreground'
+                ? 'gap-2 bg-honey-tint px-4 text-foreground'
                 : 'w-9 border border-border text-muted-foreground hover:border-input hover:text-foreground',
               RING,
             )}
@@ -319,7 +319,7 @@ function PeriodSelect({
   options: { id: PeriodId; label: string }[];
 }) {
   return (
-    <label className="relative inline-flex h-9 items-center gap-2 rounded-round border border-border pr-2 pl-3 text-body-sm font-medium text-foreground focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring hover:border-input">
+    <label className="relative inline-flex h-9 items-center gap-2 rounded-full border border-border pr-2 pl-3 text-body-sm font-medium text-foreground focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring hover:border-input">
       <ClockIcon />
       <span className="sr-only">{label}</span>
       <select
@@ -455,13 +455,16 @@ function Figures({
               // the board's figures are not live: said in words, as the hatch band would have
               <span
                 data-ui="board-plate"
-                className="rounded-round border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-caption font-medium text-warning"
+                className="rounded-full border border-warning/40 bg-clay-tint px-2.5 py-0.5 text-caption font-medium text-warning"
               >
                 {sampleLine(t.shell, provenance)}
               </span>
             )}
           </div>
-          <p data-ui="board-total" className="text-[2rem]/10 font-semibold tabular-nums">
+          <p
+            data-ui="board-total"
+            className="font-display text-[2rem]/10 font-semibold tracking-[-0.02em] tabular-nums"
+          >
             {total ? (
               <ProvenancePin value={dollars(lang, total.usd)} obs={total.obs} labels={t.pin} />
             ) : (
@@ -505,7 +508,7 @@ function Figures({
       <div className="flex flex-col gap-4 border-t border-border p-5">
         <div className="flex items-center justify-between gap-3">
           <p className="text-body-sm text-muted-foreground">{words.pnl}</p>
-          <span className="rounded-round border border-border px-2.5 py-0.5 font-mono text-caption">
+          <span className="rounded-full border border-border px-2.5 py-0.5 font-mono text-caption">
             {periodWord}
           </span>
         </div>
@@ -520,13 +523,16 @@ function Figures({
                 value={signed(lang, pnl)}
                 obs={total ? { ...total.obs, method: words.periodMethod } : null}
                 labels={t.pin}
-                className={cn('text-[1.75rem]/9 font-semibold tabular-nums', pnl >= 0 ? UP : DOWN)}
+                className={cn(
+                  'font-display text-[1.75rem]/9 font-semibold tracking-[-0.02em] tabular-nums',
+                  pnl >= 0 ? UP : DOWN,
+                )}
               />
               {percent(lang, share) && (
                 <span
                   className={cn(
-                    'rounded-round px-2 py-0.5 text-body-sm tabular-nums',
-                    pnl >= 0 ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive',
+                    'rounded-full px-2 py-0.5 text-body-sm tabular-nums',
+                    pnl >= 0 ? 'bg-leaf-tint text-success' : 'bg-madder-tint text-destructive',
                   )}
                 >
                   {percent(lang, share)}
@@ -655,7 +661,7 @@ function Vaults({
   return (
     <section
       aria-labelledby="overview-vaults"
-      className="overflow-hidden rounded-board border border-border bg-card text-card-foreground"
+      className="overflow-hidden rounded-xl border border-border bg-card text-card-foreground"
     >
       {/* The card's head, as a portfolio board has it: what it lists and its figures in one line. */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-border px-5 py-4">
@@ -663,7 +669,7 @@ function Vaults({
           id="overview-vaults"
           className="flex items-center gap-2.5 text-body-lg font-semibold whitespace-nowrap"
         >
-          <span className="inline-flex size-8 items-center justify-center rounded-board-inner bg-primary/15 text-foreground">
+          <span className="inline-flex size-8 items-center justify-center rounded-lg bg-honey-tint text-foreground">
             <VaultIcon />
           </span>
           {words.heading}
@@ -695,12 +701,12 @@ function Vaults({
           <span className="font-medium">{vaults}</span>
         </p>
         <div className="ml-auto flex items-center gap-2">
-          <ReadAgain className="h-9 rounded-round px-4" />
+          <ReadAgain className="h-9 rounded-full px-4" />
           {/* Orange, so the way to a new plan stands out on the page. */}
           <Link
             data-ui="new-plan"
             href="/goal"
-            className="inline-flex h-9 items-center justify-center rounded-round border border-warning bg-transparent px-4 text-body-sm font-medium text-warning transition-colors hover:bg-warning/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="inline-flex h-9 items-center justify-center rounded-full border border-warning bg-transparent px-4 text-body-sm font-medium text-warning transition-colors hover:bg-clay-tint focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
             {words.newPlan}
           </Link>

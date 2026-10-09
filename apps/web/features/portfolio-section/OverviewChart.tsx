@@ -237,7 +237,7 @@ export function OverviewChart(props: Props) {
           <div
             data-ui="chart-tooltip"
             aria-live="polite"
-            className="pointer-events-none absolute top-2 z-10 flex min-w-40 flex-col gap-1 rounded-board-inner border border-border bg-popover px-3 py-2 font-mono text-[12px]/5 text-popover-foreground"
+            className="pointer-events-none absolute top-2 z-10 flex min-w-40 flex-col gap-1 rounded-lg border border-border bg-popover px-3 py-2 font-mono text-[12px]/5 text-popover-foreground"
             style={
               onLeft
                 ? { right: `${((W - cx + 12) / W) * 100}%` }
