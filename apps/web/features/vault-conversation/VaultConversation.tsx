@@ -16,6 +16,7 @@ import { HoldingsBar } from '../shared/HoldingsBar';
 import { useApiFetch } from '../wallet/WalletProvider';
 import {
   agentReplyOf,
+  replyText,
   type VaultAgent,
   VaultAgentError,
   type VaultAgentReply,
@@ -206,7 +207,11 @@ export function VaultConversation({
         setError(copy.failed);
         return;
       }
-      const message = plainText([result.message, result.question].filter(Boolean).join('\n\n'));
+      // compared as they will be kept: a character our server refuses must not hide a repeat
+      const message = replyText(
+        plainText(result.message),
+        result.question ? plainText(result.question) : undefined,
+      );
       const completed = [...next, { id: crypto.randomUUID(), who: 'app' as const, text: message }];
       if (result.proposal) {
         const lines = [
