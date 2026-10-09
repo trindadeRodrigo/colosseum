@@ -72,6 +72,24 @@ const proposalOf = (mix: Mix) => ({
   })),
 });
 
+/** 90% and ten lines of 1%: each small one is drawn at 3%, wider than it is. */
+const SMALL: Mix = [
+  ['SPY', 9000],
+  ...Array.from({ length: 10 }, (_, i) => [`S${i}`, 100] as const),
+];
+
+async function axe(page: Page, name: string) {
+  const result = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze();
+  expect(
+    result.violations.flatMap((v) =>
+      v.nodes.map((n) => `${v.id}: ${n.html.slice(0, 160)} ${n.failureSummary ?? ''}`),
+    ),
+    name,
+  ).toEqual([]);
+}
+
 /** Answers the next turns with `mix`, each once `gate` lets it through. */
 async function answerWith(page: Page, mix: Mix, gate: Promise<void> = Promise.resolve()) {
   await page.unroute('**/v1/conversations/*/goal/reply');
@@ -184,7 +202,7 @@ test('a draft arrives as a joint tied to its rows, and the next one moves only w
   await expect(pieces).toHaveCount(SIX.length);
   for (const [i, [symbol, bps]] of SIX.entries())
     await expect(pieces.nth(i)).toHaveAccessibleName(`${symbol}, ${shareOf('en', bps)}`);
-  const beam = await joint.getByRole('group').boundingBox();
+  const beam = await joint.getByRole('toolbar').boundingBox();
   const first = await pieces.first().boundingBox();
   expect((first?.width ?? 0) / (beam?.width ?? 1)).toBeCloseTo(0.1667, 2);
   // and it carries its row's colour
@@ -228,6 +246,8 @@ test('a draft arrives as a joint tied to its rows, and the next one moves only w
   );
   await expect(pieces).toHaveCount(SIX.length);
   await shot(page, 'pending-next-1440');
+  // the keyboard stands on a piece the next draft will drop
+  await piece('AAPL').focus();
   release();
 
   // then only the difference moves: what stayed slides and resizes, the new piece seats, the old fades
@@ -242,11 +262,28 @@ test('a draft arrives as a joint tied to its rows, and the next one moves only w
   // a piece neither moved nor resized stands still
   await expect(piece('SPY').locator('[data-part="body"]')).not.toHaveClass(/tf-joint-move/);
   await expect(piece('USDC').locator('[data-part="body"]')).toHaveClass(/tf-joint-move/);
+  // the piece that had the keyboard is gone: the beam has it, and nothing is left lit or dimmed
+  await expect(joint.getByRole('toolbar')).toBeFocused();
+  await expect(joint.locator('[data-lit="true"]')).toHaveCount(0);
   await shot(page, 'changed-midway-1440');
   await resume(page);
-  await expect(strategy.locator('[data-ui="preview-pending"]')).toHaveCount(0);
+  await expect(strategy.locator('[data-ui="preview-pending"]')).toHaveText('');
   await expect(strategy.getByRole('button', { name: en.mix.preview.use })).toBeEnabled();
   await shot(page, 'changed-settled-1440');
+
+  // a wait can be long: every word and figure on the waiting card stays readable, in both themes
+  await answerWith(page, SIX, new Promise<void>((done) => (release = done)));
+  await say(page, 'Back to the first one');
+  await expect(strategy.locator('[data-ui="preview-pending"]')).toHaveText(
+    en.shared.vault.conversation.reworking,
+  );
+  for (const theme of ['light', 'dark'] as const) {
+    await inTheme(page, theme);
+    await axe(page, `pending, ${theme}`);
+    await shot(page, `pending-next-${theme}-1440`);
+  }
+  release();
+  await expect(pieces).toHaveCount(SIX.length);
 });
 
 test('with reduced motion a draft is simply there, and the next one too', async ({ page }) => {
@@ -277,7 +314,7 @@ test('with reduced motion a draft is simply there, and the next one too', async 
   await joint.locator('[data-asset="solana:spy"]').hover();
   expect(
     await joint
-      .locator('[data-asset="solana:spy"]')
+      .locator('[data-asset="solana:spy"] [data-part="body"]')
       .evaluate((el) => getComputedStyle(el).translate),
   ).toMatch(/^(none|0px)/);
 });
@@ -285,6 +322,7 @@ test('with reduced motion a draft is simply there, and the next one too', async 
 for (const [name, mix] of [
   ['one', ONE],
   ['many', MANY],
+  ['small', SMALL],
 ] as const)
   test(`a draft of ${name} asset${mix.length > 1 ? 's' : ''} fits a phone and a desk, in both languages`, async ({
     page,
@@ -308,6 +346,20 @@ for (const [name, mix] of [
     await expect(piece).toHaveAttribute('data-lit', 'true');
     await strategy.locator('h3').first().dispatchEvent('pointerdown', { pointerType: 'touch' });
 
+    // the words under the beam say what it draws: exact widths, or small shares drawn wider
+    await expect(joint.locator('[data-part="hint"]')).toHaveText(
+      mix.some(([, bps]) => bps < 300)
+        ? en.shared.vault.conversation.jointHintWidened
+        : en.shared.vault.conversation.jointHint,
+    );
+    // lighting a piece does not move what is under the beam, however many lines the hint takes
+    const table = () => strategy.locator('table').boundingBox();
+    const rest = await table();
+    await piece.dispatchEvent('pointerup', { pointerType: 'touch' });
+    await expect(joint.locator('[data-part="lit"]')).toBeVisible();
+    expect(await table()).toEqual(rest);
+    await strategy.locator('h3').first().dispatchEvent('pointerdown', { pointerType: 'touch' });
+
     for (const lang of ['en', 'pt'] as const) {
       if (lang === 'pt') {
         await page
@@ -317,8 +369,10 @@ for (const [name, mix] of [
         await expect(strategy.getByRole('heading', { level: 3 }).first()).toHaveText(
           pt.shared.vault.conversation.proposed,
         );
-        await expect(joint.getByRole('group')).toHaveAccessibleName(
-          pt.shared.vault.conversation.jointLabel,
+        await expect(joint.getByRole('toolbar')).toHaveAccessibleName(
+          mix.some(([, bps]) => bps < 300)
+            ? pt.shared.vault.conversation.jointLabelWidened
+            : pt.shared.vault.conversation.jointLabel,
         );
         for (const [i, [symbol, bps]] of mix.entries())
           await expect(joint.locator('[data-part="piece"]').nth(i)).toHaveAccessibleName(
@@ -334,7 +388,7 @@ for (const [name, mix] of [
             width,
           );
           // every piece lies inside the beam
-          const beam = await joint.getByRole('group').boundingBox();
+          const beam = await joint.getByRole('toolbar').boundingBox();
           const boxes = await joint
             .locator('[data-part="piece"]')
             .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON()));
@@ -348,15 +402,7 @@ for (const [name, mix] of [
         await page.setViewportSize({ width: 375, height: 812 });
         // the pointer rests on nothing: a lit piece dims the others, which is not the card at rest
         await page.mouse.move(0, 0);
-        const result = await new AxeBuilder({ page })
-          .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
-          .analyze();
-        expect(
-          result.violations.flatMap((v) =>
-            v.nodes.map((n) => `${v.id}: ${n.html.slice(0, 160)} ${n.failureSummary ?? ''}`),
-          ),
-          `${lang}, ${theme}`,
-        ).toEqual([]);
+        await axe(page, `${lang}, ${theme}`);
       }
     }
   });

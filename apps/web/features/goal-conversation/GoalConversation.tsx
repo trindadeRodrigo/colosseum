@@ -348,17 +348,15 @@ export function GoalConversation({
           >
             {busy && waiting ? <LatticeLoader size={32} /> : <LatticeGlyph size={32} />}
             <h2 className="text-body-lg font-medium">{t.talk.workbench.strategy}</h2>
-            {busy ? (
-              <p
-                role="status"
-                data-ui="goal-working"
-                className="max-w-[48ch] text-body-sm text-muted-foreground"
-              >
-                {copy.working}
-              </p>
-            ) : (
-              <p className="max-w-[48ch] text-body-sm text-muted-foreground">{copy.empty}</p>
-            )}
+            {/* one region for both lines, there before its words change, so a screen reader hears
+                that a draft is being worked on */}
+            <p
+              role="status"
+              data-ui={busy ? 'goal-working' : undefined}
+              className="max-w-[48ch] text-body-sm text-muted-foreground"
+            >
+              {busy ? copy.working : copy.empty}
+            </p>
             <p className="text-caption text-muted-foreground">{copy.previewOnly}</p>
             {reply?.notes && <WeightNotes notes={reply.notes} />}
           </div>

@@ -1,9 +1,16 @@
 'use client';
-import { type CSSProperties, type KeyboardEvent, useEffect, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  type KeyboardEvent,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { cn } from '../../components/ui/cn';
 import { AssetMark } from '../order/PlanView';
 
-// A proposed mix drawn as one joint (plan-leg.md, "The mix joint"): a beam of pieces laid end to end,
+// A mix drawn as one joint (plan-leg.md, "The mix joint"): a beam of pieces laid end to end,
 // one per asset and as wide as its share, each seated in the one before it by a tenon. It is the plan
 // pane's thick bar and its wood ramp, made into the brand's joint, and it lies flat because a mix has
 // up to seventeen parts: the landing's standing post (PlanDrawing) is drawn for four, and at this
@@ -11,8 +18,12 @@ import { AssetMark } from '../order/PlanView';
 //
 // The pieces are where they belong from the first frame. What moves is paint (transform and opacity),
 // so nothing below the beam shifts: a new mix assembles piece by piece, each sliding its tenon home,
-// and a changed mix moves only what changed. Every share is read in the row under the beam, which
-// shows its final figure at once; the beam never says a number.
+// and a changed mix moves only what changed (useJointMotion keeps that account for a caller). Every
+// share is read in the row under the beam, which shows its final figure at once; the beam never says
+// a number. A share too small to see is drawn wider than it is, and then the words under the beam and
+// the drawing's name say so: the picture is never passed off as exact when it is not.
+//
+// A caller's rows carry `data-row`, so a tap on one is not taken for a tap away from the drawing.
 
 /** The wood ramp, in the order the pieces come. A fifth piece takes the first again. */
 const FILL = ['bg-leg-1', 'bg-leg-2', 'bg-leg-3', 'bg-leg-4'] as const;
@@ -29,7 +40,13 @@ const TENONED = 7;
 export const SEAT_MS = 480;
 
 export type JointShare = { key: string; bps: number };
-export type JointSlot = JointShare & { index: number; left: number; width: number };
+export type JointSlot = JointShare & {
+  index: number;
+  left: number;
+  width: number;
+  /** Drawn wider than its share, at the narrowest width a piece is drawn. */
+  widened: boolean;
+};
 export type JointMotion =
   | { kind: 'still' }
   | { kind: 'arrive' }
@@ -56,7 +73,7 @@ export function jointLayout(shares: readonly JointShare[]): JointSlot[] {
     let left = 0;
     return shares.map((s, index) => {
       const width = small.has(index) ? floor : ((raw[index] ?? 0) * room) / rest;
-      const slot = { ...s, index, left, width };
+      const slot = { ...s, index, left, width, widened: small.has(index) };
       left += width;
       return slot;
     });
@@ -89,6 +106,37 @@ export function jointMotion(
   };
 }
 
+/** Whether the person asked their system for less motion: then a mix is simply there. */
+const stillAsked = () =>
+  typeof window !== 'undefined' &&
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+const sameShares = (a: readonly JointShare[], b: readonly JointShare[]) =>
+  a.length === b.length && a.every((s, i) => s.key === b[i]?.key && s.bps === b[i]?.bps);
+
+/**
+ * The account of how the mix on screen came to be there, for `MixJoint` and the rows beside it: the
+ * first one arrives, one that follows it changes it, and for a person who asked for reduced motion
+ * every one is still. `run` counts the mixes shown.
+ */
+export function useJointMotion(shares: readonly JointShare[]): {
+  motion: JointMotion;
+  run: number;
+} {
+  const [seen, setSeen] = useState(() => ({
+    shares,
+    run: 0,
+    motion: (stillAsked() ? { kind: 'still' } : { kind: 'arrive' }) as JointMotion,
+  }));
+  if (seen.shares === shares || sameShares(seen.shares, shares)) return seen;
+  const next = {
+    shares,
+    run: seen.run + 1,
+    motion: stillAsked() ? ({ kind: 'still' } as JointMotion) : jointMotion(seen.shares, shares),
+  };
+  setSeen(next);
+  return next;
+}
+
 const vars = (values: Record<string, string>) => values as CSSProperties;
 
 export type JointPiece = JointShare & {
@@ -98,32 +146,52 @@ export type JointPiece = JointShare & {
   share: string;
 };
 
-export function MixJoint({
-  pieces,
-  label,
-  hint,
-  lit,
-  onLit,
-  motion,
-  run,
-}: {
-  pieces: readonly JointPiece[];
+export type JointWords = {
   /** What the drawing is, for a reader who cannot see it. */
   label: string;
   /** Under the beam while no piece is pointed at: how to read it. */
   hint: string;
+  /** The same two when a small share is drawn wider than it is: they say so. */
+  widenedLabel: string;
+  widenedHint: string;
+};
+
+export function MixJoint({
+  pieces,
+  words,
+  lit: asked,
+  onLit,
+  motion,
+  run,
+  receded = false,
+}: {
+  pieces: readonly JointPiece[];
+  words: JointWords;
   /** The key of the piece that is pointed at, here or in its row. */
   lit: string | null;
   onLit: (key: string | null) => void;
   motion: JointMotion;
   /** Counts the mixes shown: a new one starts its motion afresh. */
   run: number;
+  /** The mix is the one before the one being worked on: the beam recedes, its words do not. */
+  receded?: boolean;
 }) {
   const beam = useRef<HTMLDivElement>(null);
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   // the piece the arrow keys stand on: the beam is one tab stop
   const [at, setAt] = useState(0);
   const slots = jointLayout(pieces);
+  const widened = slots.some((slot) => slot.widened);
+  // a piece the mix no longer has cannot stay lit: nothing would be, and all would stay dimmed
+  const lit = pieces.some((p) => p.key === asked) ? asked : null;
+  // the piece that has the keyboard: if the next mix drops it, the beam takes the focus, not the page
+  const focused = useRef<string | null>(null);
+  const keys = pieces.map((p) => p.key).join(' ');
+  useLayoutEffect(() => {
+    if (focused.current === null || keys.split(' ').includes(focused.current)) return;
+    focused.current = null;
+    beam.current?.focus();
+  }, [keys]);
   const stagger = staggerMs(pieces.length);
   const stand = Math.min(at, pieces.length - 1);
   // a tap anywhere but on a piece or a row lets the lit piece go
@@ -160,8 +228,20 @@ export function MixJoint({
   const shownAt = pieces.findIndex((p) => p.key === lit);
   return (
     <div data-ui="mix-joint" data-motion={motion.kind} className="flex min-w-0 flex-col gap-2">
-      {/* biome-ignore lint/a11y/useSemanticElements: a drawing's pieces are a group, not a form's fieldset */}
-      <div ref={beam} role="group" aria-label={label} className="@container relative h-11">
+      {/* One tab stop whose arrows walk its pieces: a toolbar's keys (the beam itself takes focus only
+          when the piece that had it is gone). */}
+      <div
+        ref={beam}
+        role="toolbar"
+        tabIndex={-1}
+        aria-label={widened ? words.widenedLabel : words.label}
+        data-widened={widened}
+        data-receded={receded || undefined}
+        className={cn(
+          '@container relative h-11 motion-safe:transition-opacity motion-safe:duration-(--tf-dur-fade)',
+          receded && 'opacity-70',
+        )}
+      >
         {motion.kind === 'change' &&
           motion.gone.map((slot) => (
             // a piece the new mix dropped: it fades where it lay while the others close over it
@@ -195,14 +275,17 @@ export function MixJoint({
               data-part="piece"
               data-asset={piece.key}
               data-lit={on}
-              aria-pressed={on}
+              data-widened={slot.widened || undefined}
               aria-label={`${piece.name}, ${piece.share}`}
               tabIndex={i === stand ? 0 : -1}
               onFocus={() => {
+                focused.current = piece.key;
                 setAt(i);
                 onLit(piece.key);
               }}
               onBlur={(e) => {
+                // a piece taken out of the page while focused did not give the focus up
+                if (e.currentTarget.isConnected) focused.current = null;
                 if (!beam.current?.contains(e.relatedTarget as Node | null)) onLit(null);
               }}
               onKeyDown={(e) => onKey(e, i)}
@@ -218,8 +301,7 @@ export function MixJoint({
               }}
               style={{ left: `${slot.left}%`, width: `${slot.width}%` }}
               className={cn(
-                'absolute inset-y-0 cursor-pointer motion-safe:transition-[translate,opacity] motion-safe:duration-(--tf-dur-fade) motion-safe:ease-seat',
-                on && '-translate-y-1 motion-reduce:translate-y-0',
+                'absolute inset-y-0 cursor-pointer motion-safe:transition-opacity motion-safe:duration-(--tf-dur-fade) motion-safe:ease-seat',
                 lit !== null && !on && 'opacity-45',
               )}
             >
@@ -235,7 +317,9 @@ export function MixJoint({
                     : { '--tf-joint-x': `${dx}cqw` },
                 )}
                 className={cn(
-                  'absolute inset-0 flex items-center justify-center',
+                  // the lit piece lifts inside its button, which stays under the pointer
+                  'absolute inset-0 flex items-center justify-center motion-safe:transition-[translate] motion-safe:duration-(--tf-dur-fade) motion-safe:ease-seat',
+                  on && 'motion-safe:-translate-y-1',
                   enters && 'tf-joint-arrive',
                   from && Math.abs(dx) > 0.01 && 'tf-joint-move',
                 )}
@@ -275,23 +359,28 @@ export function MixJoint({
           );
         })}
       </div>
-      {/* The piece pointed at, said beside the beam: its row may be a long way down a phone. It keeps
-          its one line whether a piece is lit or not, and a reader hears each piece by its own name. */}
-      <p
+      {/* The piece pointed at, said beside the beam: its row may be a long way down a phone. The hint
+          keeps its place under it, so the line is as tall lit as not; a reader hears each piece by its
+          own name, and the drawing's name says what the hint says. */}
+      <div
         aria-hidden="true"
         data-ui="mix-joint-readout"
-        className="flex h-5 min-w-0 items-center gap-2 text-caption text-muted-foreground"
+        className="grid min-w-0 text-caption text-muted-foreground"
       >
-        {shown ? (
-          <>
+        <p data-part="hint" className={cn('col-start-1 row-start-1 min-w-0', shown && 'invisible')}>
+          {widened ? words.widenedHint : words.hint}
+        </p>
+        {shown && (
+          <p
+            data-part="lit"
+            className="col-start-1 row-start-1 flex h-5 min-w-0 items-center gap-2"
+          >
             <span className={cn('size-2.5 shrink-0', fillOf(shownAt))} />
             <span className="min-w-0 truncate font-medium text-foreground">{shown.name}</span>
             <span className="shrink-0 tabular-nums">{shown.share}</span>
-          </>
-        ) : (
-          <span className="min-w-0 truncate">{hint}</span>
+          </p>
         )}
-      </p>
+      </div>
     </div>
   );
 }

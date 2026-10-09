@@ -1,5 +1,5 @@
 'use client';
-import { type CSSProperties, useId, useState } from 'react';
+import { type CSSProperties, useId, useMemo, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { cn } from '../../components/ui/cn';
@@ -7,13 +7,14 @@ import { Disclaimer } from '../../components/ui/Disclaimer';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { LatticeLoader } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
+import { useWaitPhase } from '../../components/ui/wait';
 import { type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { AssetMark } from '../order/PlanView';
 import { displayName } from '../order/plain';
 import { dollars } from '../portfolio/figures';
+import { fillOf, MixJoint, staggerMs, useJointMotion } from '../shared/MixJoint';
 import type { VaultStrategyPreview } from './agent';
-import { fillOf, type JointMotion, jointMotion, MixJoint, staggerMs } from './MixJoint';
 
 export function sourceValue(lang: Lang, value: number | null | undefined, unit?: string): string {
   if (value == null) return '—';
@@ -26,14 +27,6 @@ export function sourceValue(lang: Lang, value: number | null | undefined, unit?:
   }
   return `${new Intl.NumberFormat(LOCALE[lang], { maximumFractionDigits: 6 }).format(value)}${unit ? ` ${unit}` : ''}`;
 }
-
-const sharesOf = (proposal: VaultStrategyPreview) =>
-  proposal.allocations.map((line) => ({ key: line.assetId, bps: line.weightBps }));
-/** Whether the person asked their system for less motion: then a mix is simply there. */
-const stillAsked = () =>
-  typeof window !== 'undefined' &&
-  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
-const STILL: JointMotion = { kind: 'still' };
 
 /**
  * A sourced visual preview; this component has no order, signing or execution capability.
@@ -64,23 +57,17 @@ export function StrategyPreview({
   use?: { label: string; onUse: () => void };
 }) {
   const id = useId();
-  const [lit, setLit] = useState<string | null>(null);
-  // The mix on the card and how it came to be there: a first one arrives, a next one changes it.
-  const [seen, setSeen] = useState(() => ({
-    proposal,
-    run: 0,
-    motion: stillAsked() ? STILL : ({ kind: 'arrive' } as JointMotion),
-  }));
-  let shown = seen;
-  if (seen.proposal !== proposal) {
-    shown = {
-      proposal,
-      run: seen.run + 1,
-      motion: stillAsked() ? STILL : jointMotion(sharesOf(seen.proposal), sharesOf(proposal)),
-    };
-    setSeen(shown);
-  }
-  const { motion, run } = shown;
+  const [pointed, setLit] = useState<string | null>(null);
+  // a row the next draft dropped cannot stay lit
+  const lit = proposal.allocations.some((line) => line.assetId === pointed) ? pointed : null;
+  // how the mix on the card came to be there: a first one arrives, a next one changes it
+  const shares = useMemo(
+    () => proposal.allocations.map((line) => ({ key: line.assetId, bps: line.weightBps })),
+    [proposal],
+  );
+  const { motion, run } = useJointMotion(shares);
+  // the loader beside the pending words comes only once the wait is over 400ms (STYLE.md)
+  const waiting = useWaitPhase(Boolean(pending)) !== 'quiet';
   const t = useT();
   const copy = t.shared.vault.conversation;
   const language = useLang();
@@ -150,134 +137,135 @@ export function StrategyPreview({
             >
               {previewOnly ?? copy.previewOnly}
             </p>
-            {pending && (
-              <p
-                role="status"
-                data-ui="preview-pending"
-                className="col-start-1 row-start-1 flex items-start gap-2 text-caption text-muted-foreground"
-              >
-                <span className="flex h-5 items-center">
-                  <LatticeLoader size={16} />
-                </span>
-                {pending}
-              </p>
-            )}
-          </div>
-          <div
-            data-ui="preview-mix"
-            data-pending={pending ? true : undefined}
-            className={cn(
-              'flex min-w-0 flex-col gap-4 motion-safe:transition-opacity motion-safe:duration-(--tf-dur-fade)',
-              pending && 'opacity-50',
-            )}
-          >
-            <MixJoint
-              pieces={rows.flatMap((row) =>
-                row.piece === null
-                  ? []
-                  : [
-                      {
-                        key: row.asset,
-                        bps: row.proposed,
-                        name: row.symbol ?? displayName(row.asset, t.plan),
-                        share: allocationShare(row.proposed),
-                      },
-                    ],
+            {/* the region is there before its words are, so a screen reader hears them come */}
+            <p
+              role="status"
+              data-ui="preview-pending"
+              className="col-start-1 row-start-1 flex items-start gap-2 text-caption text-muted-foreground"
+            >
+              {pending && (
+                <>
+                  <span className="flex size-5 shrink-0 items-center">
+                    {waiting && <LatticeLoader size={16} />}
+                  </span>
+                  {pending}
+                </>
               )}
-              label={copy.jointLabel}
-              hint={copy.jointHint}
-              lit={lit}
-              onLit={setLit}
-              motion={motion}
-              run={run}
-            />
-            <table className="w-full table-fixed border-collapse text-body-sm">
-              <caption className="sr-only">{targets ? copy.comparison : copy.proposed}</caption>
-              <thead className="text-caption text-muted-foreground">
-                <tr className="border-b border-border">
-                  <th scope="col" className="py-2 text-start font-normal">
-                    {t.shared.vault.columns.asset}
+            </p>
+          </div>
+          {/* Only the beam recedes while a reply is on its way: every word and figure stays as
+              readable as it was. */}
+          <MixJoint
+            pieces={rows.flatMap((row) =>
+              row.piece === null
+                ? []
+                : [
+                    {
+                      key: row.asset,
+                      bps: row.proposed,
+                      name: row.symbol ?? displayName(row.asset, t.plan),
+                      share: allocationShare(row.proposed),
+                    },
+                  ],
+            )}
+            words={{
+              label: copy.jointLabel,
+              hint: copy.jointHint,
+              widenedLabel: copy.jointLabelWidened,
+              widenedHint: copy.jointHintWidened,
+            }}
+            lit={lit}
+            onLit={setLit}
+            motion={motion}
+            run={run}
+            receded={Boolean(pending)}
+          />
+          <table className="w-full table-fixed border-collapse text-body-sm">
+            <caption className="sr-only">{targets ? copy.comparison : copy.proposed}</caption>
+            <thead className="text-caption text-muted-foreground">
+              <tr className="border-b border-border">
+                <th scope="col" className="py-2 text-start font-normal">
+                  {t.shared.vault.columns.asset}
+                </th>
+                <th
+                  scope="col"
+                  className={`py-2 text-end font-normal ${targets ? 'w-[6.5rem] sm:w-[8.5rem]' : 'w-20'}`}
+                >
+                  {targets ? copy.comparison : copy.proposedShare}
+                </th>
+                {targets && (
+                  <th scope="col" className="w-14 py-2 text-end font-normal">
+                    {copy.change}
                   </th>
-                  <th
-                    scope="col"
-                    className={`py-2 text-end font-normal ${targets ? 'w-[6.5rem] sm:w-[8.5rem]' : 'w-20'}`}
-                  >
-                    {targets ? copy.comparison : copy.proposedShare}
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr
+                  key={row.asset}
+                  data-row={row.asset}
+                  data-lit={row.piece !== null ? lit === row.asset : undefined}
+                  {...(row.piece !== null
+                    ? {
+                        // the row answers as its piece does: a mouse over it, or a finger's tap
+                        onPointerEnter: (e) => e.pointerType === 'mouse' && setLit(row.asset),
+                        onPointerLeave: (e) => e.pointerType === 'mouse' && setLit(null),
+                        onPointerUp: (e) => {
+                          if (e.pointerType !== 'mouse')
+                            setLit((now) => (now === row.asset ? null : row.asset));
+                        },
+                      }
+                    : {})}
+                  style={enters(row) ? rowDelay(row) : undefined}
+                  className={cn(
+                    'border-b border-border align-top motion-safe:transition-colors motion-safe:duration-(--tf-dur-fade)',
+                    lit === row.asset && 'bg-muted',
+                    enters(row) && 'tf-joint-row',
+                  )}
+                >
+                  <th scope="row" className="py-3 pr-2 pl-1 text-start font-normal">
+                    <span className="flex min-w-0 items-center gap-2">
+                      {/* the piece's own colour, so the row and the piece are one thing to the eye */}
+                      <span
+                        aria-hidden="true"
+                        data-part="swatch"
+                        className={cn(
+                          'size-2.5 shrink-0',
+                          row.piece === null ? 'border border-border' : fillOf(row.piece),
+                        )}
+                      />
+                      <AssetMark asset={row.asset} />
+                      <span className="min-w-0 [overflow-wrap:anywhere]">
+                        {row.symbol ?? displayName(row.asset, t.plan)}
+                      </span>
+                    </span>
+                    <span className="mt-2 block text-caption text-muted-foreground [overflow-wrap:anywhere]">
+                      {row.why}
+                    </span>
                   </th>
+                  <td className="py-3 pr-1 text-end tabular-nums">
+                    {/* the final figure, whole, from the first frame: it drops in, it never counts */}
+                    <span
+                      key={`${row.current}:${row.proposed}`}
+                      data-part="share"
+                      style={figureMoves(row) ? rowDelay(row) : undefined}
+                      className={cn('inline-block', figureMoves(row) && 'tf-joint-figure')}
+                    >
+                      {targets
+                        ? `${allocationShare(row.current)} → ${allocationShare(row.proposed)}`
+                        : allocationShare(row.proposed)}
+                    </span>
+                  </td>
                   {targets && (
-                    <th scope="col" className="w-14 py-2 text-end font-normal">
-                      {copy.change}
-                    </th>
+                    <td className="py-3 pr-1 text-end text-caption tabular-nums">
+                      {change(row.proposed - row.current)}
+                    </td>
                   )}
                 </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr
-                    key={row.asset}
-                    data-row={row.asset}
-                    data-lit={row.piece !== null ? lit === row.asset : undefined}
-                    {...(row.piece !== null
-                      ? {
-                          // the row answers as its piece does: a mouse over it, or a finger's tap
-                          onPointerEnter: (e) => e.pointerType === 'mouse' && setLit(row.asset),
-                          onPointerLeave: (e) => e.pointerType === 'mouse' && setLit(null),
-                          onPointerUp: (e) => {
-                            if (e.pointerType !== 'mouse')
-                              setLit((now) => (now === row.asset ? null : row.asset));
-                          },
-                        }
-                      : {})}
-                    style={enters(row) ? rowDelay(row) : undefined}
-                    className={cn(
-                      'border-b border-border align-top motion-safe:transition-colors motion-safe:duration-(--tf-dur-fade)',
-                      lit === row.asset && 'bg-muted',
-                      enters(row) && 'tf-joint-row',
-                    )}
-                  >
-                    <th scope="row" className="py-3 pr-2 pl-1 text-start font-normal">
-                      <span className="flex min-w-0 items-center gap-2">
-                        {/* the piece's own colour, so the row and the piece are one thing to the eye */}
-                        <span
-                          aria-hidden="true"
-                          data-part="swatch"
-                          className={cn(
-                            'size-2.5 shrink-0',
-                            row.piece === null ? 'border border-border' : fillOf(row.piece),
-                          )}
-                        />
-                        <AssetMark asset={row.asset} />
-                        <span className="min-w-0 [overflow-wrap:anywhere]">
-                          {row.symbol ?? displayName(row.asset, t.plan)}
-                        </span>
-                      </span>
-                      <span className="mt-2 block text-caption text-muted-foreground [overflow-wrap:anywhere]">
-                        {row.why}
-                      </span>
-                    </th>
-                    <td className="py-3 pr-1 text-end tabular-nums">
-                      {/* the final figure, whole, from the first frame: it drops in, it never counts */}
-                      <span
-                        key={`${row.current}:${row.proposed}`}
-                        data-part="share"
-                        style={figureMoves(row) ? rowDelay(row) : undefined}
-                        className={cn('inline-block', figureMoves(row) && 'tf-joint-figure')}
-                      >
-                        {targets
-                          ? `${allocationShare(row.current)} → ${allocationShare(row.proposed)}`
-                          : allocationShare(row.proposed)}
-                      </span>
-                    </td>
-                    {targets && (
-                      <td className="py-3 pr-1 text-end text-caption tabular-nums">
-                        {change(row.proposed - row.current)}
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
           <WeightNotes notes={proposal.weightNotes} allocations={proposal.allocations} />
           {proposal.warnings.length > 0 && (
             <div data-ui="mix-warnings" className="flex flex-col gap-2">

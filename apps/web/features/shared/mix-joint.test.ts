@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { replyText } from './agent';
+import { replyText } from '../vault-conversation/agent';
 import { jointLayout, jointMotion, SEAT_MS, staggerMs } from './MixJoint';
 
 const mix = (...bps: number[]) => bps.map((b, i) => ({ key: `solana:a${i}`, bps: b }));
@@ -18,6 +18,13 @@ describe('where the pieces of a mix lie', () => {
   it('draws a sliver at the narrowest width and takes the room from the rest in proportion', () => {
     const slots = jointLayout(mix(9800, 100, 100));
     expect(slots.map((s) => s.width)).toEqual([94, 3, 3]);
+    // and it knows which pieces it drew wider than their share, so the drawing can say so
+    expect(slots.map((s) => s.widened)).toEqual([false, true, true]);
+    expect(jointLayout(mix(5000, 3000, 2000)).some((s) => s.widened)).toBe(false);
+    // 90% and ten lines of 1% are drawn 70 / 30
+    const ninety = jointLayout(mix(9000, ...Array.from({ length: 10 }, () => 100)));
+    expect(ninety[0]?.width).toBeCloseTo(70, 9);
+    expect(ninety.filter((s) => s.widened)).toHaveLength(10);
     expect(slots[2]?.left).toBe(97);
     // a piece lifted to the narrowest width does not push a neighbour under it
     const many = jointLayout(
@@ -48,7 +55,9 @@ describe('what moves when one mix follows another', () => {
     ]);
     if (change.kind !== 'change') throw new Error('expected a change');
     expect(change.from.get('solana:a2')).toMatchObject({ left: 80, width: 20, index: 2 });
-    expect(change.gone).toEqual([{ key: 'solana:a1', bps: 3000, index: 1, left: 50, width: 30 }]);
+    expect(change.gone).toEqual([
+      { key: 'solana:a1', bps: 3000, index: 1, left: 50, width: 30, widened: false },
+    ]);
     // the same assets in another order is a change too
     expect(jointMotion(before, [...before].reverse()).kind).toBe('change');
   });
@@ -69,6 +78,13 @@ describe('a reply said as one text', () => {
     expect(replyText('Here it is.', 'How long?')).toBe('Here it is.\n\nHow long?');
     expect(replyText('Here it is. How long?', 'How long?')).toBe('Here it is. How long?');
     expect(replyText('Here it is.\n\nHow  long? ', 'how long?')).toBe('Here it is.\n\nHow  long? ');
+    // the same question without its mark, or inside quotes or emphasis, is the same question
+    expect(replyText('Here it is. How long?', 'How long')).toBe('Here it is. How long?');
+    expect(replyText('Here it is. How long', 'How long?')).toBe('Here it is. How long');
+    expect(replyText('Here it is. “How long?”', 'How long?')).toBe('Here it is. “How long?”');
+    expect(replyText('Here it is. **How long?**', '"How long?"')).toBe('Here it is. **How long?**');
+    // a question of marks alone is no question to match
+    expect(replyText('Here it is.', '?')).toBe('Here it is.\n\n?');
     // a question asked earlier in the message, and not at its end, is still asked at the end
     expect(replyText('How long? I ask because it matters.', 'How long?')).toBe(
       'How long? I ask because it matters.\n\nHow long?',

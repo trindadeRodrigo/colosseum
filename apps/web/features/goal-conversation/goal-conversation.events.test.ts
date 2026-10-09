@@ -495,7 +495,11 @@ describe('the proposed mix drawn as a joint', () => {
       await send(host, 'Six things');
       const joint = find(host, '[data-ui="mix-joint"]');
       expect(joint.getAttribute('data-motion')).toBe('arrive');
-      expect(find(joint, '[role="group"]').getAttribute('aria-label')).toBe(
+      // every piece here is as wide as its share, and the drawing says so
+      expect(find(joint, '[data-part="hint"]').textContent).toBe(
+        dictionary(lang).shared.vault.conversation.jointHint,
+      );
+      expect(find(joint, '[role="toolbar"]').getAttribute('aria-label')).toBe(
         dictionary(lang).shared.vault.conversation.jointLabel,
       );
       expect(pieces(host)).toHaveLength(SIX.length);
@@ -521,7 +525,9 @@ describe('the proposed mix drawn as a joint', () => {
     const [spy, qqq] = pieces(host);
     // focus on a piece lights its row, and only its row
     await act(async () => qqq.focus());
-    expect(qqq.getAttribute('aria-pressed')).toBe('true');
+    // a highlight, not a toggle: nothing is announced as pressed
+    expect(qqq.getAttribute('data-lit')).toBe('true');
+    expect(qqq.hasAttribute('aria-pressed')).toBe(false);
     expect(rowOf(host, 'QQQ').getAttribute('data-lit')).toBe('true');
     expect(rowOf(host, 'SPY').getAttribute('data-lit')).toBe('false');
     expect(find(host, '[data-ui="mix-joint-readout"]').textContent).toContain('QQQ');
@@ -544,8 +550,109 @@ describe('the proposed mix drawn as a joint', () => {
     expect(rowOf(host, 'AAPL').getAttribute('data-lit')).toBe('true');
     await fire(find(host, '[data-ui="goal-chat"]'), touch('pointerdown'));
     expect(host.querySelectorAll('[data-lit="true"]')).toHaveLength(0);
+    expect(host.querySelector('[data-ui="mix-joint-readout"] [data-part="lit"]')).toBeNull();
     expect(find(host, '[data-ui="mix-joint-readout"]').textContent).toBe(
       en.shared.vault.conversation.jointHint,
+    );
+  });
+
+  it.each(['en', 'pt'] as const)(
+    'says so, under the beam and in its name, when a small share is drawn wider than it is (%s)',
+    async (lang) => {
+      const words = dictionary(lang).shared.vault.conversation;
+      // 90% and ten lines of 1%: the ten are drawn at 3% each, a third of the beam for a tenth of the money
+      const small = Array.from({ length: 10 }, (_, i) => [`S${i}`, 100] as [string, number]);
+      answer([{ proposal: mixOf(['SPY', 9000], ...small) }, { proposal: mixOf(...SIX) }]);
+      const host = await show(lang);
+      await send(host, 'Mostly one fund');
+      const joint = find(host, '[data-ui="mix-joint"]');
+      expect(pieces(host).map((p) => p.style.width)).toEqual(['70%', ...small.map(() => '3%')]);
+      expect(find(joint, '[data-part="hint"]').textContent).toBe(words.jointHintWidened);
+      expect(find(joint, '[role="toolbar"]').getAttribute('aria-label')).toBe(
+        words.jointLabelWidened,
+      );
+      expect(pieces(host).map((p) => p.dataset.widened)).toEqual([
+        undefined,
+        ...small.map(() => 'true'),
+      ]);
+      // the figures are exact all the same, in the row and in the piece's name
+      const one = sourceValue(lang, 0.01, 'fraction');
+      expect(find(rowOf(host, 'S0'), '[data-part="share"]').textContent).toBe(one);
+      expect(pieces(host)[1].getAttribute('aria-label')).toBe(`S0, ${one}`);
+      // and the plain sentence comes back with a mix that is drawn as it is
+      await send(host, 'Six things instead');
+      expect(find(joint, '[data-part="hint"]').textContent).toBe(words.jointHint);
+      expect(find(joint, '[role="toolbar"]').getAttribute('aria-label')).toBe(words.jointLabel);
+      expect(host.querySelectorAll('[data-part="piece"][data-widened]')).toHaveLength(0);
+    },
+  );
+
+  it('lets a lit piece go, and takes the focus on the beam, when the next draft drops it', async () => {
+    answer([
+      { proposal: mixOf(['SPY', 5000], ['GLD', 3000], ['USDC', 2000]) },
+      { proposal: mixOf(['SPY', 6000], ['USDC', 4000]) },
+    ]);
+    const host = await show();
+    await send(host, 'A fund, gold and cash');
+    const gold = pieces(host)[1];
+    await act(async () => gold.focus());
+    expect(rowOf(host, 'GLD').getAttribute('data-lit')).toBe('true');
+    // off and on again by a finger on its row: it is lit when the next draft comes
+    await fire(rowOf(host, 'GLD'), touch('pointerup'));
+    await fire(rowOf(host, 'GLD'), touch('pointerup'));
+    expect(gold.getAttribute('data-lit')).toBe('true');
+    await send(host, 'No gold');
+    expect(pieces(host).map((p) => p.dataset.asset)).toEqual(['solana:spy', 'solana:usdc']);
+    // nothing is lit, so nothing is dimmed, and the readout is the hint again
+    expect(pieces(host).map((p) => p.dataset.lit)).toEqual(['false', 'false']);
+    expect(pieces(host).some((p) => p.className.includes('opacity-45'))).toBe(false);
+    expect(host.querySelector('[data-ui="mix-joint-readout"] [data-part="lit"]')).toBeNull();
+    expect(host.querySelectorAll('tr[data-lit="true"]')).toHaveLength(0);
+  });
+
+  it('moves the focus to the beam when the piece that had it is dropped', async () => {
+    const release = answer(
+      [
+        { proposal: mixOf(['SPY', 5000], ['GLD', 3000], ['USDC', 2000]) },
+        { proposal: mixOf(['SPY', 6000], ['USDC', 4000]) },
+      ],
+      true,
+    );
+    const host = await show();
+    await send(host, 'A fund, gold and cash');
+    await release();
+    await send(host, 'No gold');
+    await act(async () => pieces(host)[1].focus());
+    await release();
+    expect(pieces(host)).toHaveLength(2);
+    expect(document.activeElement).toBe(find(host, '[data-ui="mix-joint"] [role="toolbar"]'));
+  });
+
+  it('drops the kept draft when the next reply is only a question, and never called it a new draft', async () => {
+    const release = answer(
+      [
+        { proposal: mixOf(['SPY', 5000], ['GLD', 3000], ['USDC', 2000]) },
+        { proposal: null, message: 'I need one thing first.', question: 'For how long?' },
+      ],
+      true,
+    );
+    const host = await show();
+    const strategy = find(host, '[data-ui="goal-strategy"]');
+    await send(host, 'A fund, gold and cash');
+    await release();
+    await send(host, 'Make it safer');
+    // the line promises no new draft: the reply may be a question
+    const line = find(strategy, '[data-ui="preview-pending"]').textContent ?? '';
+    expect(line).toBe(en.shared.vault.conversation.reworking);
+    expect(line).not.toMatch(/new draft/i);
+    await release();
+    expect(strategy.querySelector('[data-ui="mix-joint"]')).toBeNull();
+    expect(strategy.querySelector('[data-action="use-mix"]')).toBeNull();
+    expect(find(strategy, '[data-ui="goal-empty-preview"]').textContent).toContain(
+      en.goal.explore.empty,
+    );
+    expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain(
+      'I need one thing first.\n\nFor how long?',
     );
   });
 
@@ -559,10 +666,14 @@ describe('the proposed mix drawn as a joint', () => {
     );
     const host = await show();
     const strategy = find(host, '[data-ui="goal-strategy"]');
+    const status = find(strategy, '[data-ui="goal-empty-preview"] [role="status"]');
+    expect(status.textContent).toBe(en.goal.explore.empty);
     await send(host, 'A fund, gold and cash');
     // the first wait: the empty card says so, and draws nothing yet
     expect(find(strategy, '[data-ui="goal-working"]').textContent).toBe(en.goal.explore.working);
     expect(find(strategy, '[data-ui="goal-working"]').getAttribute('role')).toBe('status');
+    // the region was there before the words came
+    expect(status).toBe(find(strategy, '[data-ui="goal-working"]'));
     expect(strategy.querySelector('[data-ui="mix-joint"]')).toBeNull();
     await release();
     expect(strategy.querySelector('[data-ui="goal-working"]')).toBeNull();
@@ -570,15 +681,21 @@ describe('the proposed mix drawn as a joint', () => {
     const use = () => find(strategy, '[data-action="use-mix"]');
     expect(use().getAttribute('aria-disabled')).not.toBe('true');
 
-    // the next wait: the draft stays, said to be the one before, and its action waits
+    // the next wait: the draft stays, said to be the last one, and its action waits
+    const pendingLine = find(strategy, '[data-ui="preview-pending"]');
+    expect(pendingLine.getAttribute('role')).toBe('status');
+    expect(pendingLine.textContent).toBe('');
     await click(use());
     expect(host.querySelector('[data-action="mix-review"]')).not.toBeNull();
     await send(host, 'Swap the gold for a second fund');
     expect(find(strategy, '[data-ui="preview-pending"]').textContent).toBe(
       en.shared.vault.conversation.reworking,
     );
-    expect(find(strategy, '[data-ui="preview-pending"]').getAttribute('role')).toBe('status');
-    expect(find(strategy, '[data-ui="preview-mix"]').getAttribute('data-pending')).toBe('true');
+    expect(pendingLine).toBe(find(strategy, '[data-ui="preview-pending"]'));
+    // only the beam recedes: its hint, the rows and their figures are not inside what is dimmed
+    const dimmed = find(strategy, '[data-receded]');
+    expect(dimmed.getAttribute('role')).toBe('toolbar');
+    expect(dimmed.querySelector('[data-part="hint"]')).toBeNull();
     expect(pieces(host).map((p) => p.dataset.asset)).toEqual([
       'solana:spy',
       'solana:gld',
@@ -593,8 +710,9 @@ describe('the proposed mix drawn as a joint', () => {
     await release();
     const joint = find(strategy, '[data-ui="mix-joint"]');
     expect(joint.getAttribute('data-motion')).toBe('change');
-    expect(strategy.querySelector('[data-ui="preview-pending"]')).toBeNull();
+    expect(find(strategy, '[data-ui="preview-pending"]').textContent).toBe('');
     expect(use().getAttribute('aria-disabled')).not.toBe('true');
+    expect(strategy.querySelector('[data-receded]')).toBeNull();
     expect(pieces(host).map((p) => [p.dataset.asset, p.style.width])).toEqual([
       ['solana:spy', '60%'],
       ['solana:usdc', '20%'],

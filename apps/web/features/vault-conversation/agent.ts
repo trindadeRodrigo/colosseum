@@ -95,12 +95,21 @@ const texts = (value: unknown, max: number): value is string[] =>
 
 /**
  * What a reply says, as one text: its message, then its question. A model often ends its message with
- * the very question it also sends on its own, and then the question is said once.
+ * the very question it also sends on its own, and then the question is said once. The two are compared
+ * as words: case, spacing, quotes or emphasis round the question and its closing mark do not make it
+ * a second question. A question the message does not end with is always said.
  */
 export function replyText(message: string, question?: string | null): string {
   if (!question) return message;
-  const plain = (words: string) => words.replace(/\s+/g, ' ').trim().toLowerCase();
-  return plain(message).endsWith(plain(question)) ? message : `${message}\n\n${question}`;
+  const words = (text: string) =>
+    text
+      .toLowerCase()
+      .replace(/["'“”‘’«»*_`()[\]]/g, '')
+      .replace(/\s+/g, ' ')
+      .replace(/[\s?.!:]+$/, '')
+      .trim();
+  const asked = words(question);
+  return asked && words(message).endsWith(asked) ? message : `${message}\n\n${question}`;
 }
 
 /** A provider reply is plain data. A preview grants no signing or funded-vault update capability. */

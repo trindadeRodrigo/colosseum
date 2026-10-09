@@ -1267,7 +1267,11 @@ export const pt: Dictionary = {
         jointLabel:
           'A estratégia proposta desenhada como um encaixe: uma peça para cada ativo, com a largura da sua fatia.',
         jointHint: 'Uma peça por ativo, com a largura da sua fatia.',
-        reworking: 'Preparando um novo rascunho. Este é o anterior.',
+        jointLabelWidened:
+          'A estratégia proposta desenhada como um encaixe: uma peça para cada ativo. Fatias pequenas são desenhadas mais largas do que são, para ficarem visíveis; cada peça diz sua fatia exata.',
+        jointHintWidened:
+          'Uma peça por ativo. Fatias pequenas são desenhadas mais largas para ficarem visíveis; os números da lista são exatos.',
+        reworking: 'Lendo o que você disse. Este é o último rascunho.',
         resume: 'Retomar conversa',
         holdings: 'Ativos',
         explain: 'Explique meus ativos',

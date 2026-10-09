@@ -1386,8 +1386,13 @@ export const en = {
         jointLabel:
           'The proposed strategy drawn as one joint: a piece for each asset, as wide as its share.',
         jointHint: 'One piece per asset, as wide as its share.',
+        /** The same two when a small share is drawn wider than it is, so that it can be seen. */
+        jointLabelWidened:
+          'The proposed strategy drawn as one joint: a piece for each asset. Small shares are drawn wider than they are so they can be seen; each piece says its exact share.',
+        jointHintWidened:
+          'One piece per asset. Small shares are drawn wider so they can be seen; the figures in the list are exact.',
         /** On the last draft while a reply is on its way. */
-        reworking: 'Working on a new draft. This is the one before it.',
+        reworking: 'Reading what you said. This is the last draft.',
         resume: 'Resume conversation',
         holdings: 'Holdings',
         explain: 'Explain my holdings',
