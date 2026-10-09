@@ -566,6 +566,8 @@ describe('the newest snapshot and the status', () => {
         address,
         owner: a.solana,
         name: 'House fund',
+        // Their first vault (gate VAULT-NUMBER): there beside the name.
+        number: 1,
         basketId: '4242',
         plan: null,
         openedFor: null,

@@ -878,9 +878,13 @@ describe('the /v1 route table', () => {
       AGENT_SURFACE: 'on',
     });
     await bare.ready();
-    // Exactly one, and a public one: the read of a plan by its id. Another route that starts reading
+    // Exactly two, both public: the read of a plan by its id, and the read of a vault, which answers
+    // its owner the vault's number among theirs (gate VAULT-NUMBER). Another route that starts reading
     // tokens it does not need is a change to who the API takes a caller for, and is made on purpose.
-    expect(optional).toEqual(['GET /v1/baskets/:id public']);
+    expect(optional).toEqual([
+      'GET /v1/baskets/:id public',
+      'GET /v1/vaults/:chain/:address public',
+    ]);
     const routes = bare.printRoutes({ commonPrefix: false });
     expect(routes).toContain('/v1/orders');
     expect(routes).not.toContain('mock');
@@ -957,6 +961,7 @@ describe('no /v1 route can make the server sign', () => {
       'plugins/paths.ts',
       'portfolio/exposure.ts',
       'portfolio/history.ts',
+      'portfolio/numbers.ts',
       'portfolio/plans.ts',
       'portfolio/rebalances-snapshots.ts',
       'portfolio/rebalances.ts',
