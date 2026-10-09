@@ -158,6 +158,14 @@ test('the bar keeps its height: signed out, on /sign-in, and signed in', async (
   await expect(menu.locator('[data-ui="account-wallet"]')).toHaveCount(2);
   await expect(menu.getByRole('button', { name: 'Copy address' })).toHaveCount(2);
   await expect(menu.getByRole('group')).toHaveCount(0);
+  // how each chain is run is words beside its name, with no hatched glyph; each row is inside the menu
+  await expect(menu.locator('[data-ui="account-wallet-run"]')).toHaveCount(2);
+  await expect(menu.locator('[data-ui="sample-glyph"], .tf-hatch')).toHaveCount(0);
+  const frame = await menu.boundingBox();
+  for (const row of await menu.locator('[data-ui="account-wallet"]').all()) {
+    const at = await row.boundingBox();
+    expect(at && frame && at.x >= frame.x && at.x + at.width <= frame.x + frame.width).toBe(true);
+  }
   // the whole menu is inside the phone's window
   await expect
     .poll(async () => {

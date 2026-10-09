@@ -429,18 +429,18 @@ describe('who is signed in, in the bar', () => {
     expect(find(host, '[data-ui="account-said"]').textContent).toBe('');
   });
 
-  it('marks the throwaway wallet of development with the named sample glyph in its row, never MOCK', async () => {
+  it('says "Sample" beside the chain of a wallet on the mock, in words with no glyph, never MOCK', async () => {
     portStore.set(signedInPort(PHANTOM, { test: true }, 'mock'));
     const host = await shell();
     await settle();
-    // nothing in the bar is a figure or an address any more: the mark is where the address is
+    // nothing in the bar is a figure or an address: no mark there
     expect(find(host, '[data-ui="account"] > button').querySelector('.tf-hatch')).toBeNull();
     const menu = await openMenu(host);
     const row = find(menu, '[data-ui="account-wallet"]');
-    expect(row.querySelector('[data-ui="sample-glyph"]')?.getAttribute('aria-label')).toBe(
-      en.sampleFigure,
-    );
-    expect(row.querySelectorAll('.tf-hatch')).toHaveLength(1);
+    // a chain named with no figure beside it carries the word, not the hatched glyph (Thom, Oct 9)
+    expect(find(row, '[data-ui="account-wallet-run"]').textContent).toBe(en.chainRun.shown.mock);
+    expect(row.querySelector('[data-ui="sample-glyph"], .tf-hatch, .tf-mock-plate')).toBeNull();
+    expect(row.textContent).toContain(`Solana, ${en.chainRun.said.mock}`);
     expect(menu.textContent).not.toContain('MOCK');
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
@@ -515,8 +515,20 @@ describe('the account control of someone signed in (Thom, Oct 6 and Oct 9)', () 
       'Solana',
       'Robinhood Chain',
     ]);
-    // each on a test network here: said beside the chain's name, once for a screen reader
-    for (const row of rows) expect(row.textContent).toContain(en.testNetwork);
+    // each on a test network here: said beside the chain's name in words alone, with no glyph (no
+    // figure stands here); a screen reader hears "Solana, test network"
+    for (const row of rows) {
+      const run = find(row, '[data-ui="account-wallet-run"]');
+      expect(run.textContent).toBe(en.chainRun.shown.sandbox);
+      expect(run.getAttribute('aria-hidden')).toBe('true');
+      expect(row.querySelector('[data-ui="sample-glyph"], .tf-hatch, .tf-mock-plate')).toBeNull();
+    }
+    const heard = (row: HTMLElement) =>
+      [...(row.firstElementChild as HTMLElement).childNodes]
+        .filter((n) => !(n instanceof HTMLElement && n.getAttribute('aria-hidden') === 'true'))
+        .map((n) => n.textContent)
+        .join('');
+    expect(rows.map(heard)).toEqual(['Solana, test network', 'Robinhood Chain, test network']);
     // the address cut short, the whole one for a screen reader and under the pointer
     const [solana, evm] = rows.map((r) => find(r, '[data-ui="account-address"]'));
     expect(find(solana as HTMLElement, '[aria-hidden="true"]').textContent).toBe('So11…1112');
@@ -590,9 +602,9 @@ describe('the account control of someone signed in (Thom, Oct 6 and Oct 9)', () 
     expect(find(menu, '[data-ui="copy-button"]').getAttribute('aria-label')).toBe(en.copyAddress);
   });
 
-  it('says the sample mark’s words once, on the first row that carries one, and links no explorer for a chain on the mock', async () => {
+  it('says how each chain is run on its own row, nothing for a live one, and links no explorer for a chain on the mock', async () => {
     onSolana();
-    // Solana live, Robinhood Chain on the mock: the mark is on the second row alone
+    // Solana live, Robinhood Chain on the mock
     const port = signedInPort(EMBEDDED);
     portStore.set({
       ...port,
@@ -605,16 +617,15 @@ describe('the account control of someone signed in (Thom, Oct 6 and Oct 9)', () 
     const [solana, robinhood] = [
       ...menu.querySelectorAll<HTMLElement>('[data-ui="account-wallet"]'),
     ] as [HTMLElement, HTMLElement];
-    expect(solana.querySelector('[data-ui="sample-glyph"], .tf-hatch')).toBeNull();
-    // a screen reader is told that row is a sample: the mark there is named, not hidden
-    const heard = [...robinhood.querySelectorAll('*')]
-      .filter((el) => !el.closest('[aria-hidden="true"]'))
-      .map(
-        (el) =>
-          `${el.getAttribute('aria-label') ?? ''} ${el.children.length ? '' : el.textContent}`,
-      )
-      .join(' ');
-    expect(heard).toContain(en.sampleFigure);
+    // a live chain says nothing after its name
+    expect(solana.querySelector('[data-ui="account-wallet-run"]')).toBeNull();
+    expect((solana.firstElementChild as HTMLElement).textContent).toBe('Solana');
+    // the other row says it is a sample, to the eye and to a screen reader, each row for itself
+    expect(find(robinhood, '[data-ui="account-wallet-run"]').textContent).toBe(
+      en.chainRun.shown.mock,
+    );
+    expect(robinhood.textContent).toContain(`Robinhood Chain, ${en.chainRun.said.mock}`);
+    expect(menu.querySelector('[data-ui="sample-glyph"], .tf-hatch')).toBeNull();
     expect(solana.querySelector('[data-ui="account-explorer"]')).not.toBeNull();
     expect(robinhood.querySelector('[data-ui="account-explorer"]')).toBeNull();
   });

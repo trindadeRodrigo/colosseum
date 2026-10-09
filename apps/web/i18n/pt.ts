@@ -52,6 +52,10 @@ export const pt: Dictionary = {
     language: 'Idioma',
     testNetwork: 'rede de teste',
     testNetworkLine: 'Rede de teste',
+    chainRun: {
+      shown: { sandbox: 'Rede de teste', mock: 'Exemplo' },
+      said: { sandbox: 'rede de teste', mock: 'exemplo' },
+    },
     slowDown: 'Nosso servidor pediu para eu ir mais devagar. Espere um minuto e tente de novo.',
     mockAnnounce: 'Números de exemplo',
     sampleFigure: 'número de exemplo',

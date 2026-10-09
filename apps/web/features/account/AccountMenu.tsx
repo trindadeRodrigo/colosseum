@@ -4,14 +4,12 @@ import { useId, useRef } from 'react';
 import { CopyButton } from '../../components/ui/CopyButton';
 import { shorten } from '../../components/ui/format';
 import { Icon } from '../../components/ui/Icon';
-import { MockPlate } from '../../components/ui/MockPlate';
 import { useT } from '../../i18n/I18nProvider';
 import { explorerAddressUrlFor, onMock } from '../order/readiness';
 import { useWalletPort } from '../wallet/WalletProvider';
 import { useAccount } from './AccountProvider';
 import { AccountBars, CHIP_BOX, LABEL_BOX } from './account-control-parts';
 import { ChainLogo } from './ChainLogo';
-import { ChainMark } from './ChainName';
 import { useKeepInWindow } from './keep-in-window';
 import { usePopover } from './use-popover';
 
@@ -21,7 +19,7 @@ import { usePopover } from './use-popover';
 // wallet on each chain has two addresses: showing one in the bar would say otherwise.
 //
 // Its menu lists the person's wallets, one row for each chain they have a wallet on: the chain's
-// mark and name, how it is run where the rules ask (the sample glyph, "test network"), the short
+// mark and name, how it is run where it is not live ("Test network", "Sample": words, no glyph), the short
 // address with a copy icon beside it, and its page on the explorer. Then "Sign out" as a plain last
 // item. The same block heads the phone's sheet. Nothing in it switches a chain: where a plan starts
 // is chosen on /goal. It is a disclosure, not a menu of commands.
@@ -48,10 +46,12 @@ export function AccountBlock({ out, className }: { out: SignOutState; className?
     const wallet = port.active(chainFamily(chain));
     return wallet ? [{ chain, address: wallet.address }] : [];
   });
-  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.sampleFigure };
-  const provenanceOf = (chain: ChainId) => port.network(chain)?.provenance ?? 'mock';
-  // The words of the sample mark are said once for the list: on the first row that carries one.
-  const firstMarked = wallets.findIndex(({ chain }) => provenanceOf(chain) !== 'live');
+  /** How a chain is run where it is not live: `sandbox` on a test network, `mock` on the sample chain. */
+  const runOf = (chain: ChainId) => {
+    const provenance = port.network(chain)?.provenance ?? 'mock';
+    // anything but a test network or mainnet is a sample (the mock, a fixture)
+    return provenance === 'live' ? null : provenance === 'sandbox' ? 'sandbox' : 'mock';
+  };
 
   return (
     <div data-ui="account-block" className={className}>
@@ -61,7 +61,8 @@ export function AccountBlock({ out, className }: { out: SignOutState; className?
           data-ui="account-wallets"
           className="flex flex-col gap-3 pt-2"
         >
-          {wallets.map(({ chain, address }, index) => {
+          {wallets.map(({ chain, address }) => {
+            const run = runOf(chain);
             const explorer = explorerAddressUrlFor(chain, address, onMock(port, chain));
             const name = port.network(chain)?.name ?? t.chain.names[chain];
             return (
@@ -71,19 +72,19 @@ export function AccountBlock({ out, className }: { out: SignOutState; className?
                 data-chain={chain}
                 className="flex flex-col gap-1 px-2"
               >
+                {/* The chain's mark and name, then how it is run where it is not live, in words
+                    alone: no figure stands here, so no glyph (Thom, Oct 9). A screen reader hears
+                    "Solana, test network". */}
                 <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted-foreground">
-                  <ChainLogo chain={chain} />
+                  <ChainLogo chain={chain} size={16} decorative />
                   <span data-ui="account-wallet-chain">{name}</span>
-                  {/* How the chain is run, where it is not live: the sample glyph, "test network".
-                      The throwaway wallet of development is a sample whatever the chain. */}
-                  {port.test ? (
-                    <MockPlate labels={{ figure: t.shell.sampleFigure }} />
-                  ) : (
-                    <ChainMark
-                      provenance={provenanceOf(chain)}
-                      labels={marks}
-                      announce={index === firstMarked}
-                    />
+                  {run && (
+                    <>
+                      <span className="sr-only">, {t.shell.chainRun.said[run]}</span>
+                      <span aria-hidden="true" data-ui="account-wallet-run" data-run={run}>
+                        {t.shell.chainRun.shown[run]}
+                      </span>
+                    </>
                   )}
                 </p>
                 {/* The short address with its copy beside it; the whole one is what is copied, what

@@ -68,6 +68,15 @@ export const en = {
     testNetwork: 'test network',
     /** A card whose figures are read from a test network says only that: they are not samples. */
     testNetworkLine: 'Test network',
+    /**
+     * Beside a chain's name where no figure stands with it (the account menu's wallets; Thom, Oct 9):
+     * how the chain is run, in words alone, with no glyph. `shown` is what is read on the screen,
+     * `said` what a screen reader hears after the chain's name: "Solana, test network".
+     */
+    chainRun: {
+      shown: { sandbox: 'Test network', mock: 'Sample' },
+      said: { sandbox: 'test network', mock: 'sample' },
+    },
     /** When the server answers that it is being asked too often. */
     slowDown: 'Our server asked me to slow down. Wait a minute, then try again.',
     /** A sample card's one quiet line (MOCK-QUIET). */

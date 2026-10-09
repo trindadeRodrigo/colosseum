@@ -1,10 +1,10 @@
 import type { ChainId } from '@colosseum/schemas';
 
 // Where a chain's own mark goes, beside its name: the account menu's wallet rows take it through
-// this one component. The two official marks are being added as files with a component of their own
-// (the token-logos work); until they are here this draws nothing, and the name beside it says the
-// chain. When they land, this is the one place to draw them.
+// this one component. It stands in for `components/ui/ChainLogo.tsx` of the token-logos work, with
+// the same props, and draws nothing: when that file is on staging the rows import it instead and
+// this one is deleted.
 
-export function ChainLogo(_: { chain: ChainId; size?: number }) {
+export function ChainLogo(_: { chain: ChainId; size?: number; decorative?: boolean }) {
   return null;
 }
