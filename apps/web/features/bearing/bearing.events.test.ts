@@ -8,9 +8,9 @@ import { click, find, fire, mount, press, unmountAll } from '../../components/ui
 import { BearingProvider, TICK_MS } from './BearingProvider';
 import { Banner } from './BearingShell';
 import { DexPage } from './DexPage';
-import { mk, none } from './fact';
+import { mk, none, sumFact } from './fact';
 import { LendingPage } from './LendingPage';
-import { Fig, MultiSelect } from './parts';
+import { Fig, MultiSelect, Pie } from './parts';
 import { inPortuguese, onSnapshot } from './test/cases';
 import { snapshotReader } from './test/snapshot';
 
@@ -454,5 +454,111 @@ describe('the banner: live, stale with time, or the API down', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('a missing figure is never drawn as a zero (STYLE rule 2)', () => {
+  const live = (children: unknown) =>
+    createElement(BearingProvider, {
+      reader: snapshotReader(),
+      now: Date.parse('2026-10-03T12:00:00Z'),
+      children,
+    } as never);
+  const part = (v: number) =>
+    mk(v, { source: 's', fetchedAt: '2026-10-03T11:00:00Z', method: 'm' });
+  const short = sumFact([part(600), none('not_collected'), part(200)], {});
+  const usd = (v: number) => `$${v}`;
+
+  it.each([
+    ['en', 'of the 2 measured', '1 pool has no figure and is not drawn.'],
+    ['pt', 'dos 2 medidos', '1 pool não tem número e não é desenhado.'],
+  ] as const)(
+    'a total with a part missing says it is of the measured ones, in %s',
+    async (lang, words, line) => {
+      const pie = createElement(Pie, {
+        title: 'Supplied by pool',
+        slices: [
+          { label: 'A', value: 600 },
+          { label: 'B', value: null },
+          { label: 'C', value: 200 },
+        ],
+        total: short.value,
+        totalHtml: createElement(Fig, { f: short, fmt: usd }),
+      });
+      const host = await mount(lang === 'pt' ? inPortuguese(live(pie)) : live(pie));
+      // the total: a lower bound, and of how many
+      expect(find(host, '[data-ui="bearing-pie"] .tf-figure').textContent).toBe('≥ $800');
+      expect(find(host, '[data-ui="bearing-partial"]').textContent).toBe(words);
+      // the pool with no figure gets no slice and no row; the pie says one is not drawn
+      expect(host.querySelectorAll('[data-ui="bearing-pie"] svg path')).toHaveLength(2);
+      const legend = [...host.querySelectorAll('[data-ui="bearing-pie"] li')].map(
+        (li) => li.textContent,
+      );
+      expect(legend).toHaveLength(2);
+      expect(legend[0]).toContain('A');
+      expect(legend[0]).toContain('75');
+      expect(legend[1]).toContain('C');
+      expect(legend[1]).toContain('25');
+      expect(legend.join(' ')).not.toContain('B');
+      expect(find(host, '[data-ui="bearing-pie-missing"]').textContent).toBe(line);
+    },
+  );
+
+  it.each([
+    ['en', 'the stored value could not be used'],
+    ['pt', 'o valor guardado não pôde ser usado'],
+  ] as const)(
+    'a stored value that is not a number says so in its own words, in %s',
+    async (lang, words) => {
+      const fig = createElement(Fig, {
+        f: none('not_a_number', 'the measured value was not a finite number'),
+        fmt: usd,
+      });
+      const host = await mount(lang === 'pt' ? inPortuguese(live(fig)) : live(fig));
+      expect(find(host, '[data-ui="bearing-reason"]').textContent).toBe(words);
+      expect(host.querySelector('[data-ui="figure"]')).toBeNull();
+    },
+  );
+
+  it('a whole total carries no such words, and a pie with every pool measured no such line', async () => {
+    const whole = sumFact([part(600), part(200)], {});
+    const host = await mount(
+      live(
+        createElement(Pie, {
+          title: 'Supplied by pool',
+          slices: [
+            { label: 'A', value: 600 },
+            { label: 'C', value: 200 },
+          ],
+          total: whole.value,
+          totalHtml: createElement(Fig, { f: whole, fmt: usd }),
+        }),
+      ),
+    );
+    expect(find(host, '[data-ui="bearing-pie"] .tf-figure').textContent).toBe('$800');
+    expect(host.querySelector('[data-ui="bearing-partial"]')).toBeNull();
+    expect(host.querySelector('[data-ui="bearing-pie-missing"]')).toBeNull();
+  });
+
+  it('with no total, the shares are of the pools drawn, and no slice is the size of a zero total', async () => {
+    const host = await mount(
+      live(
+        createElement(Pie, {
+          title: 'TVL by pool',
+          slices: [
+            { label: 'A', value: 300 },
+            { label: 'C', value: 100 },
+          ],
+          total: null,
+          totalHtml: createElement(Fig, { f: none('not_collected'), fmt: usd }),
+        }),
+      ),
+    );
+    const legend = [...host.querySelectorAll('[data-ui="bearing-pie"] li')].map(
+      (li) => li.textContent,
+    );
+    expect(legend[0]).toContain('75');
+    expect(legend[1]).toContain('25');
+    expect(legend.join(' ')).not.toMatch(/∞|NaN|Infinity/);
   });
 });

@@ -11,10 +11,11 @@ import {
   dexCounters,
   dexIds,
   dexVolume,
+  liquidityTotal,
   poolsOf,
   vol24,
 } from './dex';
-import { mk, none, pinSource, STALE_AFTER_MS, sumFact } from './fact';
+import { largestFirst, mk, none, partial, pinSource, STALE_AFTER_MS, sumFact } from './fact';
 import { pct, usd, usd1 } from './format';
 import {
   collateralAssets,
@@ -392,5 +393,118 @@ describe('DexScreener’s 24 h volume (gate VOLUME-DEXSCREENER)', () => {
     expect(assetVol({ sheet: sheet([]), hist: null as never, pools }).source).toBe(
       'DexScreener · 24 h',
     );
+  });
+});
+
+describe('a missing figure is never a zero (STYLE rule 2)', () => {
+  const at = '2026-10-06T04:00:00Z';
+  const fact = (v: number) => mk(v, { source: 's', fetchedAt: at, method: 'm' });
+  const pool = (address: string, tvlUsd: number | null): Pool => ({
+    address,
+    venue: 'raydium_clmm',
+    assetSymbol: 'GLDx',
+    quoteSymbol: 'USDC',
+    tvlUsd,
+    discoveryVolume24hUsd: null,
+    fetchedAt: at,
+  });
+
+  it("a pool's liquidity chart with no dollar price for its quote has no total, not $0", () => {
+    const body = (a: number | null, q: number | null) => ({
+      pool: 'p',
+      bands: [],
+      midPrice: 1,
+      totalAssetUsd: a,
+      totalQuoteUsd: q,
+      fetchedAt: at,
+      source: 's',
+      method: 'm',
+      methodVersion: 'v',
+      provenance: 'live',
+    });
+    expect(liquidityTotal(body(null, null))).toMatchObject({
+      value: null,
+      reason: 'no_reference_price',
+    });
+    // half a pool is never shown as the pool
+    expect(liquidityTotal(body(1_000, null)).value).toBeNull();
+    expect(liquidityTotal(body(1_000, 250))).toMatchObject({
+      value: 1_250,
+      quality: 'measured',
+      source: 's',
+      fetchedAt: at,
+      method: 'm',
+    });
+  });
+
+  it('a sum says how many of its parts were measured, and is whole only with all of them', () => {
+    const short = sumFact([fact(10), none('not_collected'), fact(5)], {});
+    expect(short).toMatchObject({ value: 15, measured: 2, of: 3, quality: 'lower_bound' });
+    expect(partial(short)).toBe(true);
+    const whole = sumFact([fact(10), fact(5)], {});
+    expect(whole).toMatchObject({ measured: 2, of: 2 });
+    expect(partial(whole)).toBe(false);
+    // with no part measured there is no figure to mark
+    expect(partial(sumFact([none('not_collected')], {}))).toBe(false);
+  });
+
+  it('sorts what has no figure last, never among the measured as a zero', () => {
+    const rows = [none('not_collected'), fact(3), fact(-1), fact(8), none('not_served')];
+    expect(
+      rows
+        .slice()
+        .sort(largestFirst)
+        .map((f) => f.value),
+    ).toEqual([8, 3, -1, null, null]);
+  });
+
+  it('pool TVL is the sum of the pools that have one, marked partial; with none it has no figure', () => {
+    const k = dexCounters(
+      assets,
+      ['GLDx'],
+      {},
+      [pool('A', 1_000), pool('B', null)],
+      'weekend',
+      true,
+    );
+    expect(k.tvl).toMatchObject({ value: 1_000, measured: 1, of: 2, quality: 'lower_bound' });
+    expect(partial(k.tvl)).toBe(true);
+    const none2 = dexCounters(assets, ['GLDx'], {}, [pool('A', null)], 'weekend', true);
+    expect(none2.tvl).toMatchObject({ value: null, reason: 'not_collected' });
+    const whole = dexCounters(
+      assets,
+      ['GLDx'],
+      {},
+      [pool('A', 1_000), pool('B', 2_000)],
+      'weekend',
+      true,
+    );
+    expect(whole.tvl.value).toBe(3_000);
+    expect(partial(whole.tvl)).toBe(false);
+  });
+
+  it('collateral is summed over the positions with a figure, and every figure made of it says so', () => {
+    const cap = fact(500);
+    const groups = groupBy([
+      [
+        { key: 'm1|SPYx', asset: 'SPYx', coll: fact(1_000), cap },
+        { key: 'm2|SPYx', asset: 'SPYx', coll: none('not_collected'), cap },
+        { key: 'm3|SPYx', asset: 'SPYx', coll: fact(250), cap },
+      ],
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ collV: 1_250, missing: 1 });
+    const f = covFacts(groups, 'weekend', assets);
+    expect(f.collF).toMatchObject({ value: 1_250, measured: 2, of: 3, quality: 'lower_bound' });
+    expect(f.maxF).toMatchObject({ value: 500, measured: 2, of: 3, quality: 'lower_bound' });
+    expect(f.covF).toMatchObject({ value: 0.4, measured: 2, of: 3, quality: 'lower_bound' });
+    for (const x of [f.collF, f.maxF, f.covF]) expect(partial(x)).toBe(true);
+    // with every position measured nothing is marked
+    const whole = covFacts(
+      groupBy([[{ key: 'm1|SPYx', asset: 'SPYx', coll: fact(1_000), cap }]]),
+      'weekend',
+      assets,
+    );
+    for (const x of [whole.collF, whole.maxF, whole.covF]) expect(partial(x)).toBe(false);
   });
 });

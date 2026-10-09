@@ -21,11 +21,12 @@ import {
   type DexAsset,
   dexCounters,
   dexIds,
+  liquidityTotal,
   poolLabel,
   poolsOf,
   tvlSeries,
 } from './dex';
-import { type Fact, mk, none } from './fact';
+import type { Fact } from './fact';
 import { type Fmt, iso } from './format';
 import { HeatTile } from './HeatTile';
 import {
@@ -229,9 +230,9 @@ function DexView({
             title={t.pie.title}
             slices={pools.map((p) => ({
               label: poolLabel(p, many, t.liquidity.quoteNotNamed),
-              value: p.tvlUsd || 0,
+              value: p.tvlUsd ?? null,
             }))}
-            total={k.tvl.value || 0}
+            total={k.tvl.value}
             totalHtml={<Fig f={k.tvl} fmt={fm.usd1} />}
             note={t.pie.note}
           />
@@ -249,7 +250,7 @@ function DexView({
             <TvlChart
               pools={pools}
               b={b}
-              tvl={k.tvl.value || 0}
+              tvl={k.tvl.value}
               tools={tools}
               range={range}
               setRange={setRange}
@@ -455,7 +456,8 @@ function TvlChart({
 }: {
   pools: readonly Pool[];
   b: Base;
-  tvl: number;
+  /** The selection's TVL today; null when it has no figure, and then no share of it is said. */
+  tvl: number | null;
   tools: ReactNode;
   range: number;
   setRange: (r: number) => void;
@@ -572,14 +574,7 @@ function LiquidityChart({
     );
   else {
     const d = res.body;
-    const meta = {
-      source: d.source,
-      fetchedAt: d.fetchedAt,
-      method: d.method,
-      methodVersion: d.methodVersion,
-      provenance: d.provenance,
-    };
-    const total: Fact = mk((d.totalAssetUsd || 0) + (d.totalQuoteUsd || 0), meta);
+    const total: Fact = liquidityTotal(d);
     const when =
       d.basis === 'recorded'
         ? t.recordedAt(fm.minute(d.fetchedAt))

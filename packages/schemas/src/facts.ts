@@ -31,6 +31,8 @@ export const FactNullReason = z.enum([
   'no_samples_in_regime',
   /** Fewer samples than the method's minimum at this size or in this bucket. */
   'insufficient_samples',
+  /** A value was stored or computed, and it is not a finite number (a division by a stored zero). */
+  'not_a_number',
   /** The size is above the largest measured notional. */
   'beyond_measured_size',
   /** No reference price for the asset at that time (Step 11). */
@@ -139,7 +141,7 @@ export function finiteFacts<T>(sheet: T): T {
     if ('value' in o && 'unit' in o && typeof o.value === 'number' && !Number.isFinite(o.value))
       return {
         value: null,
-        reason: 'insufficient_samples',
+        reason: 'not_a_number',
         unit: o.unit,
         ...(o.regime === undefined ? {} : { regime: o.regime }),
         ...(o.sizeUsd === undefined ? {} : { sizeUsd: o.sizeUsd }),

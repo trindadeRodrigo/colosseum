@@ -563,9 +563,9 @@ function LendBody(p: {
             title={t.pie.title}
             slices={selRows.map((row) => ({
               label: poolName(row.meta, t.market),
-              value: histFact(row, 'suppliedUsd', 'supplied').value || 0,
+              value: histFact(row, 'suppliedUsd', 'supplied').value,
             }))}
-            total={supF.value || 0}
+            total={supF.value}
             totalHtml={<Fig f={supF} fmt={fm.usd1} />}
             note={t.pie.note}
           />

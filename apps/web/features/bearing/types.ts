@@ -139,8 +139,9 @@ export type LiquidityBody = {
   midPrice: number;
   asset?: string;
   quote?: string;
-  totalAssetUsd?: number;
-  totalQuoteUsd?: number;
+  /** Null when the pool's quote token has no dollar price: the band amounts are then not in dollars. */
+  totalAssetUsd?: number | null;
+  totalQuoteUsd?: number | null;
   basis?: string;
   fetchedAt: string;
   source: string;

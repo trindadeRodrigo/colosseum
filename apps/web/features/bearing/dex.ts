@@ -6,6 +6,7 @@ import type {
   AssetsBody,
   HistBody,
   LiqHistBody,
+  LiquidityBody,
   Pool,
   PoolsBody,
   SheetBody,
@@ -112,20 +113,24 @@ export function dexCounters(
   let poolT: string | null = null;
   for (const p of pools) poolT = maxT(poolT, p.fetchedAt);
   const noPools = selIds.some((id) => !dd[id]?.pools.ok);
-  const tvl: Fact = pools.length
+  // a pool with no TVL is not a zero: the sum is of the pools that have one, and says so
+  const sized = pools.filter((p) => p.tvlUsd != null);
+  const tvl: Fact = sized.length
     ? mk(
-        pools.reduce((s, p) => s + (p.tvlUsd || 0), 0),
+        sized.reduce((s, p) => s + (p.tvlUsd as number), 0),
         {
+          measured: sized.length,
+          of: pools.length,
           source: 'risk_pools.tvl_usd (GET /risk/pools), read when each pool was registered',
           fetchedAt: poolT,
-          quality: noPools ? 'lower_bound' : 'measured',
+          quality: noPools || sized.length < pools.length ? 'lower_bound' : 'measured',
           method: `sum of the TVL of the selected pools (GET /risk/pools?asset= per asset)${
             noPools ? '; some assets’ pool lists did not load, so this is a lower bound' : ''
           }`,
           methodVersion: 'registry-0.1',
         },
       )
-    : none(!selIds.length || poolsChosen ? 'nothing_selected' : 'not_collected');
+    : none(pools.length || !(!selIds.length || poolsChosen) ? 'not_collected' : 'nothing_selected');
   const cap = sumFact(
     selIds.map((id) => capFact(byId.get(id), r, body)),
     {
@@ -307,6 +312,24 @@ export function tvlSeries(
   }));
   const held: TPoint[] = pts.map((q) => ({ t: q.t, v: q.k ? q.a : null }));
   return { fact, value, held };
+}
+
+/**
+ * The dollars in a pool's liquidity chart: both sides, or no figure. A side with no dollar figure
+ * (the quote token has no dollar price) is never a zero, and half a pool is not shown as the pool.
+ */
+export function liquidityTotal(d: LiquidityBody): Fact {
+  const a = d.totalAssetUsd;
+  const q = d.totalQuoteUsd;
+  if (a == null || q == null)
+    return none('no_reference_price', "the pool's quote token has no dollar price");
+  return mk(a + q, {
+    source: d.source,
+    fetchedAt: d.fetchedAt,
+    method: d.method,
+    methodVersion: d.methodVersion,
+    provenance: d.provenance,
+  });
 }
 
 export const countW = (n: number, one: string) => `${num(n)} ${one}${n === 1 ? '' : 's'}`;

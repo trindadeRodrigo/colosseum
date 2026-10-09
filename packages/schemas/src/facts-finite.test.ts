@@ -45,13 +45,14 @@ describe('a fact sheet’s figures', () => {
     const out = finiteFacts(sheet);
     expect(out.tracking[0]?.gap).toEqual({
       value: null,
-      reason: 'insufficient_samples',
+      reason: 'not_a_number',
       unit: 'fraction',
       regime: 'weekend',
       detail: 'the measured value was not a finite number',
     });
     expect(out.tracking[1]?.gap).toEqual(sheet.tracking[1]?.gap);
-    expect(out.flow.turnover).toMatchObject({ value: null, sizeUsd: 5000 });
+    expect(out.flow.imbalance).toMatchObject({ value: null, reason: 'not_a_number' });
+    expect(out.flow.turnover).toMatchObject({ value: null, reason: 'not_a_number', sizeUsd: 5000 });
     // every fact of the sheet is one the answer's schema takes, and none is left that it refuses
     const { facts, invalid } = collectFacts(out);
     expect(invalid).toEqual([]);
