@@ -1,7 +1,11 @@
 'use client';
+import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { buttonClass } from '../../components/ui/button-class';
+import { PAGE_TITLE } from '../../components/ui/heading';
 import { Skeleton, SkeletonChart, SkeletonLine, SkeletonTable } from '../../components/ui/Skeleton';
 import { ScreenWait } from '../../components/waits/ScreenWait';
+import { SECTION } from './pages';
 import { Block } from './plan-blocks';
 import { useWords } from './words';
 
@@ -138,5 +142,18 @@ export function PlanBlocksWait() {
 /** What a plan's page shows while it is made on the server (its `loading.tsx`). */
 export function PlanWait() {
   const w = useWords();
-  return <ScreenWait label={w.shell.reading} skeleton={<PlanBlocksWait />} />;
+  return (
+    <div className="flex flex-col gap-8">
+      {/* the page's own head while it waits: the way back, and its title until the goal is read */}
+      <header className="flex flex-col gap-3">
+        <p>
+          <Link href={SECTION} className={buttonClass({ variant: 'link' })}>
+            {w.plan.back}
+          </Link>
+        </p>
+        <h1 className={PAGE_TITLE}>{w.plan.title}</h1>
+      </header>
+      <ScreenWait label={w.shell.reading} skeleton={<PlanBlocksWait />} />
+    </div>
+  );
 }

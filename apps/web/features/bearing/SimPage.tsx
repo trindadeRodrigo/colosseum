@@ -42,36 +42,40 @@ const simKpis = (k: BearingDictionary['sim']['kpi']): KpiWait[] => [
   { label: k.loss, note: k.lossNote('0.00%') },
 ];
 
+/** The simulation while its assets are read: the form it opens with, then its four figures. */
+export function SimWait() {
+  const words = useWords();
+  const k = words.sim.kpi;
+  return (
+    <PageWait
+      label={words.sim.reading}
+      kpis={simKpis(k)}
+      filters={0}
+      charts={false}
+      lead={
+        // the form the page opens with: an asset, an amount, and the button that prices the sale
+        <Card>
+          <div aria-hidden="true" className="flex flex-wrap items-end gap-x-4 gap-y-3">
+            {[words.sim.asset, words.sim.amount].map((name, i) => (
+              <div key={name} className="flex min-w-0 flex-col gap-1">
+                <span className="text-caption font-medium text-muted-foreground">{name}</span>
+                <Skeleton className={`h-8 rounded-md ${i === 0 ? 'w-24' : 'w-40'}`} />
+              </div>
+            ))}
+            <Skeleton className="h-8 w-24 rounded-md" />
+          </div>
+        </Card>
+      }
+    />
+  );
+}
+
 export function SimPage() {
   const { base } = useBearing();
   const b = useAnswer(() => base(), [base]);
   const words = useWords();
   const reading = words.sim.reading;
-  if (!b) {
-    const k = words.sim.kpi;
-    return (
-      <PageWait
-        label={reading}
-        kpis={simKpis(k)}
-        filters={0}
-        charts={false}
-        lead={
-          // the form the page opens with: an asset, an amount, and the button that prices the sale
-          <Card>
-            <div aria-hidden="true" className="flex flex-wrap items-end gap-x-4 gap-y-3">
-              {[words.sim.asset, words.sim.amount].map((name, i) => (
-                <div key={name} className="flex min-w-0 flex-col gap-1">
-                  <span className="text-caption font-medium text-muted-foreground">{name}</span>
-                  <Skeleton className={`h-8 rounded-md ${i === 0 ? 'w-24' : 'w-40'}`} />
-                </div>
-              ))}
-              <Skeleton className="h-8 w-24 rounded-md" />
-            </div>
-          </Card>
-        }
-      />
-    );
-  }
+  if (!b) return <SimWait />;
   if (!b.assets.ok)
     return (
       <p className="mt-6">

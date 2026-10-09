@@ -2,16 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  Skeleton,
-  SkeletonChart,
-  SkeletonFigure,
-  SkeletonLine,
-  SkeletonListRow,
-  SkeletonPageHead,
-  SkeletonPlanBar,
-  SkeletonTable,
-} from './Skeleton';
+import { Skeleton, SkeletonChart, SkeletonLine, SkeletonListRow, SkeletonTable } from './Skeleton';
 import { GLOBALS } from './test/css';
 import { find, mount, unmountAll } from './test/dom';
 
@@ -23,10 +14,7 @@ afterEach(unmountAll);
 
 const PIECES = {
   line: createElement(SkeletonLine, { className: 'text-body-sm', width: 'w-40' }),
-  figure: createElement(SkeletonFigure, {}),
   'list row': createElement(SkeletonListRow, {}),
-  'plan bar': createElement(SkeletonPlanBar, {}),
-  'page head': createElement(SkeletonPageHead, { titleLines: 2 }),
   chart: createElement(SkeletonChart, { frame: 'h-[380px]' }),
   table: createElement(SkeletonTable, {
     rows: 3,
@@ -75,9 +63,7 @@ describe('the skeleton’s pieces', () => {
     expect(lines[1]?.children[0]?.classList).not.toContain('text-end');
   });
 
-  it('a figure is its label’s line over its own, and a list row has its mark', async () => {
-    const figure = await mount(PIECES.figure);
-    expect(figure.querySelectorAll('[data-ui="skeleton-line"]')).toHaveLength(2);
+  it('a list row has its mark, its name and what stands at its end', async () => {
     const row = await mount(PIECES['list row']);
     expect(row.querySelectorAll('[data-ui="skeleton"]')).toHaveLength(3);
     expect(find(row, '[data-ui="skeleton"].rounded-full')).toBeTruthy();
