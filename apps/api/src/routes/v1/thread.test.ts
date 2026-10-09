@@ -321,11 +321,13 @@ describe('a plan’s thread', () => {
   it('shows nothing of itself on any other route: the plan by its id, the list of plans, the portfolio', async () => {
     const who = await someone();
     const { id } = await make(who, 6_104);
-    const secret = 'my salary is my own business 7731';
+    // a marker no random id or figure can hold: four digits alone once matched a plan's uuid
+    const secret = 'my salary is my own business zq7731kestrel';
     await say(who, id, { text: secret, reply: reply() });
     for (const path of [`/v1/baskets/${id}`, '/v1/me/plans', '/v1/portfolio', '/v1/me']) {
       const res = await get(who, path);
-      expect(res.body, path).not.toContain('7731');
+      expect(res.body, path).not.toContain('zq7731kestrel');
+      expect(res.body, path).not.toContain('my salary');
       expect(res.body, path).not.toContain('thread');
     }
   });
