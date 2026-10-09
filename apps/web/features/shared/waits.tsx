@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { buttonClass } from '../../components/ui/button-class';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { Skeleton, SkeletonLine, SkeletonListRow } from '../../components/ui/Skeleton';
@@ -66,16 +67,19 @@ export function FamilyWait() {
     <ScreenWait
       label={t.shared.family.loading}
       skeleton={
-        <div aria-hidden="true" data-ui="family-wait" className="flex flex-col gap-8">
+        <div data-ui="family-wait" className="flex flex-col gap-8">
           <div className="flex flex-col gap-3">
-            <span className={`${buttonClass({ variant: 'link' })} self-start`}>
+            {/* The way back works while the page waits: on a slow read it is what a person wants. */}
+            <Link href="/shelf" className={`${buttonClass({ variant: 'link' })} self-start`}>
               {t.shared.family.backToShelf}
-            </span>
-            <SkeletonLine className={PAGE_TITLE} width="w-80" />
-            <p className="max-w-(--tf-measure-body) text-body text-muted-foreground">
-              {t.shared.family.nextStep}
-            </p>
-            <SkeletonLine className="max-w-(--tf-measure-body) text-body-lg" width="w-64" />
+            </Link>
+            <div aria-hidden="true" className="flex flex-col gap-3">
+              <SkeletonLine className={PAGE_TITLE} width="w-80" />
+              <p className="max-w-(--tf-measure-body) text-body text-muted-foreground">
+                {t.shared.family.nextStep}
+              </p>
+              <SkeletonLine className="max-w-(--tf-measure-body) text-body-lg" width="w-64" />
+            </div>
           </div>
           <PlanViewWait aside={2} />
         </div>

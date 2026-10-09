@@ -8,6 +8,7 @@ import { PAGE_TITLE } from '../../components/ui/heading';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import type { PinSource } from '../../components/ui/provenance';
 import { Status } from '../../components/ui/StatusMark';
+import { ScreenWait } from '../../components/waits/ScreenWait';
 import { type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { displayName } from '../order/plain';
@@ -586,13 +587,17 @@ function Chart({
   const w = useWords();
   const lang = useLang();
   const nameOfChain = useChainName();
+  const { again } = usePortfolioSection();
   if (reading.kind === 'idle' || reading.kind === 'reading')
     return (
-      <div data-ui="chart-wait" aria-busy="true">
-        <p role="status" className="sr-only">
-          {w.overview.board.chart.reading}
-        </p>
-        <BoardChartWait />
+      // Said in words, with the slow line and the retry of every other wait: the result beside it
+      // (PnlWait) stands on the same read and is said by this one line.
+      <div data-ui="chart-wait">
+        <ScreenWait
+          label={w.overview.board.chart.reading}
+          skeleton={<BoardChartWait />}
+          onRetry={again}
+        />
       </div>
     );
   if (reading.kind !== 'read')

@@ -4,8 +4,8 @@ import { cn } from './cn';
 // Waiting for data, in the shape of what comes (card.md, "Loading"; STYLE.md, the loader). The boxes
 // are the layout's own boxes, so nothing moves when the data arrives: a block for a figure, a bar for a
 // line of text, a frame for a chart. A screen builds its wait from these in its own layout: a line in
-// the text's own type (`SkeletonLine`), a figure under its label, a table in its columns, a row with
-// its mark, the plan's bar, a page's head. A skeleton never shows a figure, real or made up. They are still: the spec has no shimmer and nothing ambient. What
+// the text's own type (`SkeletonLine`), a mark, a table in its columns, a row with its mark. A
+// skeleton never shows a figure, real or made up. They are still: the spec has no shimmer and nothing ambient. What
 // moves is the one loader the spec draws, "the lattice assembles", beside the words that say what is
 // awaited, and only once the wait is over 400ms; under reduced motion it is the still lattice.
 //
@@ -62,32 +62,6 @@ export function SkeletonMark({ className }: { className?: string }) {
   return <Skeleton className={cn('size-6 shrink-0 rounded-full', className)} />;
 }
 
-/**
- * A figure with its label to come: the label's line, then the figure's, each in its own type, so a
- * stat cell of any size keeps its box. A skeleton never shows a figure, real or made up.
- */
-export function SkeletonFigure({
-  label = 'text-caption',
-  figure = 'text-[1.125rem]/7',
-  width = 'w-24',
-  className,
-}: {
-  /** The label's type. */
-  label?: string;
-  /** The figure's type. */
-  figure?: string;
-  /** The figure's bar. */
-  width?: string;
-  className?: string;
-}) {
-  return (
-    <span aria-hidden="true" data-ui="skeleton-figure" className={cn('block min-w-0', className)}>
-      <SkeletonLine className={label} width="w-16" />
-      <SkeletonLine className={figure} width={width} />
-    </span>
-  );
-}
-
 /** A row of a list to come: its mark, its name, and what stands at its end. */
 export function SkeletonListRow({
   mark = true,
@@ -112,45 +86,6 @@ export function SkeletonListRow({
       <SkeletonLine className="min-w-0 flex-1" width="w-24" />
       {end && <SkeletonLine className="shrink-0" width="w-9" />}
     </span>
-  );
-}
-
-/** The bar of a plan's shares to come: one still band the bar's height, with its pill ends. */
-export function SkeletonPlanBar({ className }: { className?: string }) {
-  return <Skeleton className={cn('h-2 w-full rounded-full', className)} />;
-}
-
-/** The head of a page to come: its title, of however many lines, and its lede under it. */
-export function SkeletonPageHead({
-  title = 'text-h1 font-display',
-  titleLines = 1,
-  lede = 'text-body-lg',
-  ledeLines = 2,
-  className,
-}: {
-  /** The title's type. */
-  title?: string;
-  titleLines?: number;
-  /** The lede's type; `null` for a page with none. */
-  lede?: string | null;
-  ledeLines?: number;
-  className?: string;
-}) {
-  return (
-    <div
-      aria-hidden="true"
-      data-ui="skeleton-page-head"
-      className={cn('flex flex-col gap-3', className)}
-    >
-      <SkeletonLine className={title} width="w-80" lines={titleLines} />
-      {lede && (
-        <SkeletonLine
-          className={cn('max-w-(--tf-measure-body)', lede)}
-          width="w-full"
-          lines={ledeLines}
-        />
-      )}
-    </div>
   );
 }
 

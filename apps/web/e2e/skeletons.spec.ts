@@ -616,3 +616,68 @@ test('a Bearing page with nothing collected on a chain says so at once, with no 
   await expect(page.locator('[data-ui="bearing-not-on-chain"]')).toBeVisible();
   await expect(waiting(page)).toHaveCount(0);
 });
+
+test('a shared portfolio’s way back works while the page waits', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  const h = await hold(page, /\/v1\/indexes\//);
+  await page.goto(`/indexes/${SLUG}`);
+  await expect(waiting(page).first()).toBeVisible();
+  // a link, to a screen reader too, and it leads back while the read is still held
+  const back = page.locator('main').getByRole('link', { name: en.shared.family.backToShelf });
+  await expect(back).toBeVisible();
+  await back.click();
+  await expect(page).toHaveURL(/\/shelf/);
+  h.release();
+});
+
+test('a vault’s page of the board moves once: a block that reads after the plans waits in the frame the page drew', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const BLOCKS = ['history', 'exit', 'risk', 'trades'] as const;
+  const frames = (stage: 'page' | 'block') =>
+    Promise.all(
+      BLOCKS.map(async (b) => {
+        const frame =
+          stage === 'page'
+            ? page.locator(`[data-ui="plan-${b}-wait"] > div`)
+            : page.locator(`[data-ui="plan-${b}"] [data-ui="card"]:has([data-ui="waiting"])`);
+        await expect(frame, `${b}, ${stage}`).toBeVisible();
+        const box = await frame.boundingBox();
+        return { block: b, x: box?.x, width: box?.width, height: box?.height };
+      }),
+    );
+  const plans = await hold(page, /\/v1\/portfolio\/plans/);
+  const rest = await hold(page, /\/v1\/portfolio\/(history|exposure|rebalances)/);
+  await (await signInTo(page, `/portfolio/plan/solana/${SOL_INCOME}`))();
+  await expect(page.locator('[data-ui="plan-wait"]')).toBeVisible();
+  const drawn = await frames('page');
+  // the plans land; each block's own read is still on its way
+  plans.release();
+  await expect(page.locator('[data-ui="plan-blocks"]')).toBeVisible({ timeout: 60_000 });
+  // every block frame is the size the page's wait drew it: no room added for a line of its own
+  expect(await frames('block')).toEqual(drawn);
+  // and each says what it waits for, in its frame
+  await expect(page.locator('[data-ui="plan-history"] [role="status"]')).toHaveCount(1);
+  rest.release();
+  await expect(waiting(page)).toHaveCount(0, { timeout: 60_000 });
+});
+
+test('the board’s chart says what it waits for, in words, while its history is read', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const h = await hold(page, /\/v1\/portfolio\/history/);
+  await (await signInTo(page, '/portfolio'))();
+  const wait = page.locator('[data-ui="chart-wait"] [data-ui="waiting"]');
+  await expect(wait).toHaveAttribute('aria-busy', 'true');
+  // a sighted person reads it too: the line is on the page, not for a screen reader alone
+  const line = wait.locator('[role="status"]');
+  await expect(line).toHaveText(/\S/);
+  await expect(line).toBeInViewport();
+  expect(await line.evaluate((el) => el.classList.contains('sr-only'))).toBe(false);
+  await expect(page.locator('[data-ui="board-pnl-wait"]')).toBeVisible();
+  h.release();
+  await expect(wait).toHaveCount(0, { timeout: 60_000 });
+  await expect(page.locator('[data-ui="overview-chart"]')).toBeVisible();
+});
