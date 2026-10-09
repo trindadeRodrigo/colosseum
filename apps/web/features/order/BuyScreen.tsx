@@ -16,7 +16,7 @@ import {
   MIN_USD,
 } from './InvestCard';
 import { placeOrder } from './order-api';
-import { keepOrder } from './order-record';
+import { keepOrder, recallOrder } from './order-record';
 import { PlanGate } from './PlanGate';
 import { targetsOfPlan } from './plan-terms';
 import { basketOfPlan, deploymentsFor } from './readiness';
@@ -122,6 +122,11 @@ export function BuyScreen({ id, embedded }: { id: string; embedded?: InvestEmbed
     };
   }
 
+  // An order approved on this card before it was lost, as this browser kept it for this person and
+  // this plan: the card takes it up again. One that is not here, or is another plan's, is not.
+  const kept = embedded?.resumeOrder ? recallOrder(embedded.resumeOrder, port.userId) : null;
+  const approved = kept?.proposalId === plan.id && kept.chain === chain ? kept.approved : null;
+
   // What the amount is split into: the plan's own weights on its chain, cash left out.
   const cash = deploymentsFor(chain, ready.mock)?.[chain]?.cash;
   const card = (
@@ -149,6 +154,18 @@ export function BuyScreen({ id, embedded }: { id: string; embedded?: InvestEmbed
       // screen changes it (and the plan built for it).
       onAmount={embedded ? embedded.onAmount : (next) => setText(String(next))}
       amountFrom={embedded ? 'goal' : 'field'}
+      {...(embedded?.hostEnds ? { hostEnds: true } : {})}
+      {...(approved
+        ? {
+            resume: {
+              orderId: approved.order.id,
+              expiresAt: approved.order.expiresAt,
+              basketId:
+                approved.order.basketId ??
+                basketOfPlan(plan.id, plan.fromLink ? port.userId : null),
+            },
+          }
+        : {})}
     />
   );
   if (embedded) return card;

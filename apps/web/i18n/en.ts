@@ -272,6 +272,16 @@ export const en = {
       elsewhere: 'See shared portfolios',
       unavailable:
         'The strategy conversation service is unavailable. Your words are kept; no draft was produced.',
+      /** The box while a deposit is open on the pane (gate DEPOSIT-IN-PLACE), and the ask before it is left. */
+      deposit: {
+        signing: 'The conversation waits while your deposit’s steps are signed.',
+        open: 'The conversation waits while this deposit is open. Finish its steps, or go back to the proposal.',
+        leave: 'Leave this deposit? Steps already sent stay sent, and the rest stay unsigned.',
+        leaveSigning:
+          'A step is being signed. Leave this deposit? The step under way is still sent, and the rest stay unsigned.',
+        stay: 'Stay',
+        leaveYes: 'Leave it',
+      },
       timeout: 'The reply took too long. Your words are kept; try again in a moment.',
       budget:
         'The conversation has reached its daily usage limit. Your words are kept; try again later.',
@@ -2055,6 +2065,20 @@ export const en = {
       brokenMix:
         'The weights in the editor don’t add up yet, so there are no holdings to show. Fix them below, or go back to the proposed weights.',
       balance: 'Your wallet’s balance is checked before you sign.',
+      /** The steps to sign, in the same pane, once the review is confirmed (gate DEPOSIT-IN-PLACE). */
+      signing: {
+        title: 'Sign your deposit',
+        doneTitle: 'Your deposit is done',
+        amount: 'Deposit amount',
+        change: 'Change',
+        changeLabel: 'Change the amount on the deposit step',
+        lead: 'The whole amount goes into a vault only you can withdraw from, then into each of its assets, one step at a time. You sign each step here.',
+        resumed:
+          'You approved this deposit before this page was opened again. Its steps are where they were.',
+        done: 'Your deposit is in your vault.',
+        openVault: 'Open your vault',
+        leaveNote: 'This deposit stopped, and its order is kept.',
+      },
       editByHand: 'Edit weights by hand',
       editorLead:
         'Type a weight for each asset, in percent. Whatever you leave unassigned stays in cash. The weights here are the ones I check.',

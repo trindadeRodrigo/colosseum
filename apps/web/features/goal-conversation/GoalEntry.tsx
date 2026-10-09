@@ -14,7 +14,7 @@ import {
   touch,
   writeIndex,
 } from './conversations';
-import { GoalConversation, goalConversationKey } from './GoalConversation';
+import { GoalConversation, goalConversationKey, LeaveDeposit } from './GoalConversation';
 
 /**
  * `/goal` is the strategy conversation, keyed to the person, their chain and its network. A picker
@@ -39,12 +39,17 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
   useEffect(() => {
     setIndex(base ? readIndex(base) : { current: 'main', items: [] });
   }, [base]);
+  // A deposit is open on the conversation's pane: another conversation or a vault is asked for twice.
+  const [deposit, setDeposit] = useState(false);
+  const [pending, setPending] = useState<string | null>(null);
   const others = index.items.filter((item) => item.id !== index.current);
   const vaults =
     portfolio.kind === 'answered' && portfolio.outcome.kind === 'read'
       ? portfolio.outcome.chains.flatMap((entry) => entry.vaults)
       : [];
-  function choose(value: string) {
+  function choose(value: string, sure = false) {
+    if (deposit && !sure && value !== 'current') return setPending(value);
+    setPending(null);
     if (value === 'new' && base) {
       // The conversation on screen stays in the saved list; a new, empty one takes its place.
       const next = { ...index, current: newConversationId() };
@@ -104,6 +109,13 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
           )}
         </Select>
       </div>
+      {pending !== null && (
+        <LeaveDeposit
+          signing={false}
+          onLeave={() => choose(pending, true)}
+          onStay={() => setPending(null)}
+        />
+      )}
       <GoalConversation
         key={`${port.userId}:${chain}:${network?.provenance}:${index.current}`}
         userId={port.userId}
@@ -111,6 +123,7 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
         provenance={network?.provenance ?? null}
         ready={port.status === 'ready' && account.status === 'ready' && network?.on === true}
         conversationId={index.current}
+        onDeposit={setDeposit}
         onSaved={(title) => {
           if (base) setIndex((now) => touch(base, now, now.current, title));
         }}

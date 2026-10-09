@@ -10,7 +10,9 @@ import { LatticeLoader } from '../../components/ui/Skeleton';
 import { useWaitPhase } from '../../components/ui/wait';
 import { dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
+import { type DepositHost, DepositSign, type OpenDeposit } from '../mix/DepositSign';
 import { DepositStep, type Purpose } from '../mix/DepositStep';
+import { recallOrder } from '../order/order-record';
 import { share } from '../portfolio/figures';
 import {
   replyText,
@@ -39,7 +41,12 @@ export const goalConversationKey = (
 ) =>
   `tf-goal-conversation:2:${encodeURIComponent(userId)}:${chain}:${network ?? 'unconfigured'}:${provenance}`;
 
-/** Plain browser history is never restored as a proposal, confirmation or executable order. */
+/**
+ * Plain browser history is never restored as a proposal, confirmation or executable order. The one
+ * thing taken up again after a reload is a deposit the person already approved here (gate
+ * DEPOSIT-IN-PLACE): this browser keeps its plan's and its order's ids beside the transcript, and the
+ * pane opens on that order as its own record and our server have it, never on anything kept here.
+ */
 export function GoalConversation({
   userId,
   chain,
@@ -47,6 +54,7 @@ export function GoalConversation({
   provenance,
   conversationId = 'main',
   onSaved,
+  onDeposit,
 }: {
   userId: string | null;
   chain: ChainId | null;
@@ -56,6 +64,8 @@ export function GoalConversation({
   conversationId?: string;
   /** Called with the person's first words each time the transcript is saved. */
   onSaved?: (title: string) => void;
+  /** Called as a deposit is open on the pane (approved, its steps not all confirmed), and as it no longer is. */
+  onDeposit?: (open: boolean) => void;
 }) {
   const t = useT();
   const lang = useLang();
@@ -69,6 +79,7 @@ export function GoalConversation({
   // shown again on return. It is read back through the same check as a fresh server reply
   // (strategyReplyOf), and it stays a preview: nothing here can buy or sign from it.
   const previewKey = key ? `${key}:preview` : null;
+  const depositKey = key ? `${key}:deposit` : null;
   const current = useRef(context);
   current.current = context;
   const generation = useRef(0);
@@ -97,6 +108,21 @@ export function GoalConversation({
     typed.current = words !== '';
     setAmountText(words);
   };
+  // The deposit the person approved on this pane: from the press until every step is confirmed the
+  // conversation waits, so no reply can take the pane from under a step that is being signed.
+  const [open, setOpen] = useState<OpenDeposit | null>(null);
+  const [signing, setSigning] = useState(false);
+  // "Start over" was pressed with a deposit open: asked once more before it is left.
+  const [asking, setAsking] = useState(false);
+  const locked = open !== null && !open.done;
+  const lockedNow = useRef(locked);
+  lockedNow.current = locked;
+  const tellDeposit = useRef(onDeposit);
+  tellDeposit.current = onDeposit;
+  useEffect(() => {
+    tellDeposit.current?.(locked);
+    return () => tellDeposit.current?.(false);
+  }, [locked]);
   const [error, setError] = useState<string>();
   // The mix on the screen was read back from this browser, not answered on this visit: it is shown, and
   // the deposit comes back with the next reply (Rodrigo, Oct 8: a kept plan is a preview only).
@@ -117,6 +143,28 @@ export function GoalConversation({
     } catch {
       restored = null;
     }
+    // A deposit approved here before a reload: only one whose order this browser kept for this person,
+    // approved, for that plan and chain. Its amount is the order record's own.
+    let resumed: OpenDeposit | null = null;
+    try {
+      const raw = depositKey && chain ? localStorage.getItem(depositKey) : null;
+      const read = raw ? (JSON.parse(raw) as Partial<OpenDeposit>) : null;
+      const record =
+        read && typeof read.orderId === 'string' ? recallOrder(read.orderId, userId) : null;
+      if (read && record?.approved && record.proposalId === read.planId && record.chain === chain)
+        resumed = {
+          planId: record.proposalId,
+          orderId: record.orderId,
+          amountUsd: record.amountUsd,
+          ...(read.done ? { done: { vault: read.done.vault ?? null } } : {}),
+        };
+      else if (raw && depositKey) localStorage.removeItem(depositKey);
+    } catch {
+      resumed = null;
+    }
+    setOpen(resumed);
+    setSigning(false);
+    setAsking(false);
     setReply(null);
     setMix(held.current.length ? restored : null);
     setKept(Boolean(held.current.length && restored));
@@ -133,7 +181,21 @@ export function GoalConversation({
       ++generation.current;
       cancel.current?.abort();
     };
-  }, [api, key, context, userId, ready, previewKey, chain]);
+  }, [api, key, context, userId, ready, previewKey, depositKey, chain]);
+
+  /** The open deposit's ids are kept beside the transcript, so a reload finds its order again. */
+  function keepOpen(next: OpenDeposit | null) {
+    setOpen(next);
+    if (!next) setSigning(false);
+    if (!depositKey) return;
+    try {
+      if (next) localStorage.setItem(depositKey, JSON.stringify(next));
+      else localStorage.removeItem(depositKey);
+    } catch {
+      // storage full or blocked: the deposit is still on the pane for this visit
+    }
+  }
+  const host: DepositHost = { onOpen: keepOpen, onRunning: setSigning };
 
   /** The last mix is kept beside the transcript, read back through the same check as a reply. */
   function keepPreview(next: VaultStrategyPreview | null) {
@@ -167,8 +229,12 @@ export function GoalConversation({
     if (saved && first) onSaved?.(first.length > 60 ? `${first.slice(0, 59)}…` : first);
     return saved;
   }
-  function startOver() {
+  function startOver(sure = false) {
     if (sending.current) return;
+    // A deposit is open: leaving it is asked once more. What was sent stays sent.
+    if (lockedNow.current && !sure) return setAsking(true);
+    setAsking(false);
+    keepOpen(null);
     ++generation.current;
     held.current = [];
     setTurns([]);
@@ -184,7 +250,7 @@ export function GoalConversation({
     persist([]);
   }
   async function send(words: string) {
-    if (!ready || !chain || !key || !loaded || sending.current) return;
+    if (!ready || !chain || !key || !loaded || sending.current || lockedNow.current) return;
     // Words that got no reply are sent again as the turn they already are, never as a second copy.
     const last = held.current.at(-1);
     const next =
@@ -259,6 +325,8 @@ export function GoalConversation({
         setMix(result.proposal);
         setKept(false);
         setDepositing(false);
+        // a deposit that is done gives the pane back to the next proposal
+        keepOpen(null);
         keepPreview(result.proposal);
       }
       persist(completed);
@@ -320,10 +388,17 @@ export function GoalConversation({
           >
             {chatOpen ? t.talk.hideChat : t.talk.showChat}
           </Button>
-          {turns.length > 0 && (
-            <Button variant="link" disabled={busy} onClick={startOver}>
+          {turns.length > 0 && !asking && (
+            <Button variant="link" disabled={busy} onClick={() => startOver()}>
               {t.talk.startOver}
             </Button>
+          )}
+          {asking && (
+            <LeaveDeposit
+              signing={signing}
+              onLeave={() => startOver(true)}
+              onStay={() => setAsking(false)}
+            />
           )}
         </div>
       </header>
@@ -393,7 +468,8 @@ export function GoalConversation({
           maxLength={2000}
           placeholder={copy.placeholder}
           busy={busy}
-          disabled={!ready || !loaded}
+          disabled={!ready || !loaded || locked}
+          {...(locked ? { hint: signing ? copy.deposit.signing : copy.deposit.open } : {})}
           error={error}
           lang={lang}
           labels={{
@@ -401,7 +477,7 @@ export function GoalConversation({
             busy: t.shared.vault.conversation.reading,
           }}
         />
-        {unanswered?.who === 'person' && (
+        {unanswered?.who === 'person' && !locked && (
           <p
             data-ui="goal-retry"
             className="flex flex-wrap items-center gap-x-4 gap-y-1 text-body-sm"
@@ -459,9 +535,20 @@ export function GoalConversation({
                 backToPreview.current = true;
                 setDepositing(false);
               }}
+              host={host}
             />
             {reply && !reply.proposal && reply.notes && <WeightNotes notes={reply.notes} />}
           </>
+        ) : open && chain && ready ? (
+          // approved before a reload: the same steps, from the order's own record
+          <DepositSign
+            chain={chain}
+            planId={open.planId}
+            amountUsd={open.amountUsd}
+            resume={open}
+            host={host}
+            onLeave={() => keepOpen(null)}
+          />
         ) : mix ? (
           <>
             <StrategyPreview
@@ -502,5 +589,40 @@ export function GoalConversation({
         )}
       </div>
     </section>
+  );
+}
+
+/** Asked before a deposit that is open is left: what was sent stays sent, the rest stays unsigned. */
+export function LeaveDeposit({
+  signing,
+  onLeave,
+  onStay,
+}: {
+  signing: boolean;
+  onLeave: () => void;
+  onStay: () => void;
+}) {
+  const w = useT().goal.explore.deposit;
+  const id = useId();
+  const group = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    group.current?.querySelector<HTMLElement>('[data-action="stay"]')?.focus();
+  }, []);
+  return (
+    <div
+      ref={group}
+      role="alertdialog"
+      aria-labelledby={id}
+      data-ui="leave-deposit"
+      className="flex max-w-(--tf-measure-body) flex-wrap items-baseline gap-x-3 gap-y-1 text-body-sm"
+    >
+      <span id={id}>{signing ? w.leaveSigning : w.leave}</span>
+      <Button variant="link" data-action="stay" onClick={onStay}>
+        {w.stay}
+      </Button>
+      <Button variant="link" data-action="leave" onClick={onLeave}>
+        {w.leaveYes}
+      </Button>
+    </div>
   );
 }

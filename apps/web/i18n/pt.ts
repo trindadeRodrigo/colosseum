@@ -230,6 +230,16 @@ export const pt: Dictionary = {
       elsewhere: 'Ver portfólios compartilhados',
       unavailable:
         'O serviço de conversa de estratégia está indisponível. Suas palavras foram mantidas; nenhum rascunho foi produzido.',
+      deposit: {
+        signing: 'A conversa espera enquanto as etapas do seu depósito são assinadas.',
+        open: 'A conversa espera enquanto este depósito está aberto. Conclua as etapas ou volte para a proposta.',
+        leave:
+          'Sair deste depósito? As etapas já enviadas continuam enviadas, e as outras ficam sem assinar.',
+        leaveSigning:
+          'Uma etapa está sendo assinada. Sair deste depósito? A etapa em andamento ainda é enviada, e as outras ficam sem assinar.',
+        stay: 'Ficar',
+        leaveYes: 'Sair',
+      },
       timeout:
         'A resposta demorou demais. Suas palavras foram mantidas; tente novamente em instantes.',
       budget:
@@ -1915,6 +1925,19 @@ export const pt: Dictionary = {
       brokenMix:
         'Os pesos no editor ainda não fecham, então não há mistura para mostrar. Corrija abaixo, ou volte aos pesos propostos.',
       balance: 'O saldo da sua carteira é conferido na tela de compra.',
+      signing: {
+        title: 'Assine o seu depósito',
+        doneTitle: 'Seu depósito está concluído',
+        amount: 'Valor do depósito',
+        change: 'Alterar',
+        changeLabel: 'Alterar o valor na etapa do depósito',
+        lead: 'O valor inteiro vai para um cofre de onde só você pode sacar e depois para cada ativo dele, uma etapa por vez. Você assina cada etapa aqui.',
+        resumed:
+          'Você aprovou este depósito antes de esta página ser aberta de novo. As etapas estão onde estavam.',
+        done: 'Seu depósito está no seu cofre.',
+        openVault: 'Abrir o seu cofre',
+        leaveNote: 'Este depósito parou, e a ordem dele está guardada.',
+      },
       editByHand: 'Editar os pesos à mão',
       editorLead:
         'Digite um peso para cada ativo, em porcentagem. O que você deixar sem atribuir fica em caixa. Os pesos daqui são os que eu confiro.',
