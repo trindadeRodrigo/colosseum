@@ -12,7 +12,15 @@ import { goalFit } from './mix';
 import { ORDER_POLICY } from './prepare';
 import { catalogCap, holdingConstraints } from './relaxed-limits';
 import { project, type Reading, readingsOf, series } from './relaxed-projection';
-import { type GoalAgentContext, requestedStocks, statedPurposeIn } from './vault-agent';
+import {
+  FIGURE_CUT,
+  FIGURE_REMOVED,
+  type GoalAgentContext,
+  hasFinancialFigure,
+  requestedStocks,
+  statedPurposeIn,
+  trimFigureSentences,
+} from './vault-agent';
 
 // The relaxed intake (gate RELAXED-INTAKE, from scripts/relaxed/intake.ts and RELAXED-1): the goal
 // agent behind /goal whenever a model key is set (`relaxedGoalAgentFromEnv`). The model is free where
@@ -176,12 +184,12 @@ const REQUIRED: Record<Shape, (keyof Reply['stated'])[]> = {
 function systemPrompt(table: string, language: 'en' | 'pt', today: string) {
   return `You are the planner at Tenonfi. A person tells you what they want to do with their money and you turn it into holdings from one table, the catalog of their chain, which you see in full below. You talk to them the way a sharp, warm friend who knows markets would: plainly, briefly, in their language, with real reasoning. You are not a form. Answer in ${language === 'pt' ? 'Portuguese' : 'English'} unless the person writes in another language.
 
-What you are free to do: read intent, including people, companies, themes, nicknames and half-sentences; decide which holdings on the table fit and why; notice when something they named is not on the table and say so; ask what you genuinely need, in a natural sentence, one or two things at a time; keep the whole conversation in mind; change course when they do; explain, compare, and give your view of the shape of the plan. You may repeat the person's own numbers back to them.
+What you are free to do: read intent, including people, companies, themes, nicknames and half-sentences; decide which holdings on the table fit and why; notice when something they named is not on the table and say so; ask what you genuinely need, in a natural sentence, one or two things at a time; keep the whole conversation in mind; change course when they do; explain, compare, and give your view of the shape of the plan.
 
 Four rules, which the code after you also enforces:
 1. You may only name holdings that appear on the table, by their exact id. If a thing they named is not there (a private company, a stock not on this chain), say so instead of substituting.
 2. You never choose weights yourself. When the person gives a share for a pot or for a holding ("80% in yield", "all of the income part in syrupUSDC", "20% in big tech"), you pass it on as that pot's or that line's "share" (0 to 1, of the pot for a line, of the money for a pot) and the code applies it exactly. Lines with no share stated split equally. Each holding has a cap on the table: the most of the money the vault lets it hold today. A cap never stops you: if the person asks for more, pass their share on as asked; the code applies it and shows a warning that the vault would refuse that split until the cap is lifted. Mention it in one short sentence, no more.
-3. You never compute or estimate a return, a projection, a price or how long money lasts, and you never promise a return. A yield may be named only as the table shows it, with its read date. The code computes every projection from the table's readings and prints it under your message as soon as the amount and the date or the monthly withdrawals are in the sheet; refer to it ("the projection below") instead of doing sums. A holding with no yield on the table earns nothing in that projection.
+3. You never compute or estimate a return, a projection, a price or how long money lasts, and you never promise a return. Write no figure in "say", in a "why" or in a pot's name: no digit, no percent or currency sign, no price, yield, return or date, not as words either ("five percent"), and never "guaranteed" or "risk-free". The code cuts every sentence that does. The person's numbers go in the sheet ("stated", "share"), where the code reads them and shows them; to repeat what they said, quote them exactly: You said “...”. A holding's yield is on the plan beside your message, with its source; point to it instead of stating it. The code computes every projection from the table's readings and prints it under your message as soon as the amount and the date or the monthly withdrawals are in the sheet; refer to it ("the projection below") instead of doing sums. A holding with no yield on the table earns nothing in that projection.
 4. Nothing is built until the person confirms. Before that, you need: the amount for any plan; when they will need the money for a plan to grow or to protect; the monthly income they want for an income plan; the shares for a split, if not stated. Ask for what is missing while you work, never for what they already said, and never guess a number. Propose lines as soon as you know enough of the intent; the person sees the plan build beside the chat.
 
 Shapes: "pick" for named things, equal split; "grow", "income" or "protect" when the words call for it; "split" when they want part of the money doing one thing and part another (for example a liquid reserve and a growth pot), one pot per bucket with its own shape (a bucket with no shape takes the plan's). A plan or pot to protect holds cash, dollar-yield rows and gold: no stock tokens, no crypto. A plan or pot to pay income holds cash and dollar-yield rows: no stock tokens, no crypto, no gold. The code holds to the asset registry on this and leaves out what does not fit. A stock token goes into a plan to protect or pay income only when the person plainly asked for that stock, or for stocks, in their own words; the code reads their words itself and warns them. Never add one on your own.
@@ -191,7 +199,7 @@ Direct instructions: when the person tells you what to hold or how to split ("ma
 Every turn you answer with the JSON object the API holds you to:
 - "say": the message the person reads. Your words, your reasoning, your questions. One short paragraph, or two when there is a lot to say. Mention holdings by name, not by id. Do not list weights; the code shows the lines beside your message.
 - "shape", "lines" (for every shape but split), "buckets" (only for split, else null; a bucket's "share" is the pot's share of the money as 0 to 1, only when the person gave the number, else null). Each line has "id", "why" and "share": that holding's share of its pot (or of the plan when there are no pots) as 0 to 1, only when the person gave it ("all of it" is 1), else null.
-- "stated": only what the person said, nothing guessed. "need_by" is the day they need the money, as YYYY-MM-DD, read from their words ("March 2027" is 2027-03-01; a term such as "for retirement in 30 years" or "in five years" is that many years from today; ask if it is unclear; null when they gave no term). "monthly" is a monthly withdrawal or income they want; "withdraw_months" how many months of it, when they said or it follows from their words (a three-month trip is 3); "withdraw_start" the day of the first withdrawal as YYYY-MM-DD, when they said it. Say back the dates you read so they can correct them.
+- "stated": only what the person said, nothing guessed. "need_by" is the day they need the money, as YYYY-MM-DD, read from their words ("March 2027" is 2027-03-01; a term such as "for retirement in 30 years" or "in five years" is that many years from today; ask if it is unclear; null when they gave no term). "monthly" is a monthly withdrawal or income they want; "withdraw_months" how many months of it, when they said or it follows from their words (a three-month trip is 3); "withdraw_start" the day of the first withdrawal as YYYY-MM-DD, when they said it. The code shows the dates it read under your message, so they can correct them.
 - "not_available": things they named that are not on the table.
 - "open": what rule 4 still needs for this shape; empty when the plan is ready to confirm.
 
@@ -462,7 +470,42 @@ export function createRelaxedGoalAgent(options: {
         log('reply did not fit the sheet', whereOf(read.error));
         return { kind: 'failure', reason: 'invalid' };
       }
-      const r = read.data;
+      // ---- code: no figure of the model's reaches the person (CLAUDE.md, RELAXED-INTAKE) ----
+      // Every field the model writes that is served goes through the check the vault conversation
+      // uses: a sentence with a digit, a percent or currency sign, a written-out amount, "guaranteed"
+      // or "risk-free" is cut, unless it is the person's own words quoted back or a catalog name.
+      const personWords = messages.filter((m) => m.who === 'person').map((m) => m.text);
+      const catalogNames = [
+        ...assets.flatMap((asset) => [asset.symbol, asset.underlying]),
+        ...(context.stockAttributes?.stocks ?? [])
+          .filter((row) => assets.some((asset) => asset.symbol === row.symbol))
+          .map((row) => row.company),
+      ];
+      const figure = (text: string) => hasFinancialFigure(text, personWords, catalogNames);
+      const trim = (text: string) => trimFigureSentences(text, figure, catalogNames);
+      const said = trim(read.data.say);
+      const cleanLines = (lines: Reply['lines']) =>
+        lines.map((l) => ({ ...l, why: trim(l.why).text || FIGURE_REMOVED[language] }));
+      const r: Reply = {
+        ...read.data,
+        // what is left of the message, then the server's line saying part of it was cut
+        say: said.cut ? [said.text, FIGURE_CUT[language]].filter(Boolean).join('\n') : said.text,
+        lines: cleanLines(read.data.lines),
+        buckets: read.data.buckets?.map((b, i) => ({
+          ...b,
+          name: figure(b.name) || !b.name.trim() ? `Pot ${i + 1}` : b.name,
+          lines: cleanLines(b.lines),
+        })),
+        stated: {
+          ...read.data.stated,
+          // the term in words: the person's own, or nothing
+          when:
+            read.data.stated.when && !figure(read.data.stated.when) ? read.data.stated.when : null,
+        },
+        not_available: read.data.not_available
+          .filter((n) => !figure(n.name))
+          .map((n) => ({ name: n.name, why: n.why ? trim(n.why).text || null : null })),
+      };
 
       // ---- code: ids, eligibility, split, caps ----
       const notes: string[] = [];
@@ -548,7 +591,11 @@ export function createRelaxedGoalAgent(options: {
         pots.push({ name: r.shape, shape: r.shape, given: null, lines: keep(r.lines, r.shape) });
       if (dropped.length) log('ids not on the catalog', dropped.length);
       if (dropped.length)
-        notes.push(`Dropped, not on this chain's catalog: ${dropped.join(', ')}.`);
+        notes.push(
+          dropped.every((id) => /^[\w:.-]{1,40}$/.test(id) && !figure(id.replace(/\p{N}/gu, '')))
+            ? `Dropped, not on this chain's catalog: ${dropped.join(', ')}.`
+            : `Dropped ${dropped.length} that ${dropped.length === 1 ? 'is' : 'are'} not on this chain's catalog.`,
+        );
       for (const n of r.not_available)
         notes.push(
           `${n.name} is not on this chain's catalog${n.why ? `: ${n.why.replace(/[.\s]+$/, '')}` : ''}.`,

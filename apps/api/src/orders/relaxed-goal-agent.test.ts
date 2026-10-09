@@ -83,6 +83,9 @@ type ModelReply = {
     lines: ModelLine[];
   }[];
   sources?: unknown;
+  stated?: Record<string, unknown>;
+  not_available?: { name: string; why: string | null }[];
+  open?: string[];
 };
 
 const STATED = {
@@ -139,7 +142,17 @@ async function run(model: ModelReply, words: string | string[], ctx = context())
   );
   expect(calls).toHaveLength(1);
   if (result.kind !== 'reply') throw new Error(`no reply: ${JSON.stringify(result)}`);
+  lastCall = calls[0] as { system: unknown };
   return result.reply;
+}
+let lastCall: { system: unknown } = { system: '' };
+/** The reply, and the system prompt the model was sent, as one text. */
+async function prompted(model: ModelReply, words: string | string[], ctx = context()) {
+  const reply = await run(model, words, ctx);
+  const system = Array.isArray(lastCall.system)
+    ? lastCall.system.map((block: { text: string }) => block.text).join('\n')
+    : String(lastCall.system);
+  return { reply, system, call: lastCall };
 }
 
 const weights = (reply: VaultAgentReply) =>
@@ -364,6 +377,103 @@ describe('relaxed intake: the split', () => {
       'The deposit step buys exactly these holdings and shares, after the server checks every line again.',
     );
     expect(notes(reply)).not.toContain('solver');
+  });
+});
+
+describe('relaxed intake: the model never states a figure', () => {
+  const CUT =
+    'Part of this reply was left out because it stated a figure that could not be confirmed.';
+  const REMOVED =
+    'This part of the draft was left out because it stated a figure that could not be confirmed.';
+  const lines = [line('solana:tslax'), line('solana:nvdax')];
+  /** The message without the server's projection paragraph under it. */
+  const own = (reply: VaultAgentReply) => reply.message.split('\n\n')[0];
+  it('cuts a sentence of the message that states a return, a price or a guarantee, and says so', async () => {
+    const reply = await run(
+      {
+        shape: 'pick',
+        lines,
+        say: 'Here are the two you named. Tesla will return 40% next year, guaranteed, and NVDAx trades at $131.20 today.',
+      },
+      'Tesla and Nvidia please',
+    );
+    expect(own(reply)).toBe(`Here are the two you named.\n${CUT}`);
+    expect(JSON.stringify(reply)).not.toMatch(/40%|guaranteed|131/);
+  });
+  it('serves the server’s note when nothing of the message is left', async () => {
+    const reply = await run(
+      { shape: 'pick', lines, say: 'Up 212% since January; risk-free at this price.' },
+      'Tesla and Nvidia please',
+    );
+    expect(own(reply)).toBe(CUT);
+  });
+  it('cuts the same from each line’s reason, and leaves the server’s words where none is left', async () => {
+    const reply = await run(
+      {
+        shape: 'pick',
+        lines: [
+          {
+            id: 'solana:tslax',
+            why: 'Up 212% since January; risk-free at this price.',
+            share: null,
+          },
+          {
+            id: 'solana:nvdax',
+            why: 'The chip maker you named. It trades at $131.20 today.',
+            share: null,
+          },
+        ],
+      },
+      'Tesla and Nvidia please',
+    );
+    expect(reply.proposal?.allocations.map((a) => a.why)).toEqual([
+      REMOVED,
+      'The chip maker you named.',
+    ]);
+    expect(JSON.stringify(reply)).not.toMatch(/212|risk-free|131/);
+  });
+  it('holds a pot’s name, what is not available and the term to the same check', async () => {
+    const reply = await run(
+      {
+        shape: 'split',
+        lines: [],
+        buckets: [
+          {
+            name: 'Guaranteed 12% pot',
+            shape: 'income',
+            share: null,
+            lines: [line('solana:usdy')],
+          },
+          { name: 'Growth', shape: 'grow', share: null, lines: [line('solana:tslax')] },
+        ],
+        stated: { ...STATED, when: 'five years at 12% a year' },
+        not_available: [
+          { name: 'SpaceX', why: 'Private. It would return 300% if listed.' },
+          { name: 'a fund paying 9% guaranteed', why: null },
+        ],
+      },
+      'Some income, some growth, and SpaceX',
+    );
+    const served = JSON.stringify(reply);
+    expect(served).not.toMatch(/12%|Guaranteed|guaranteed|300|9%/);
+    expect(notes(reply)).toContain("SpaceX is not on this chain's catalog: Private.");
+    expect(reply.proposal?.summary).toContain('Pot 1 (income): USDY');
+    expect(reply.proposal?.summary).toContain('Growth (grow): TSLAx');
+  });
+  it('keeps the person’s own words quoted back to them, and a catalog name with a digit in it', async () => {
+    const say = 'You said “70% TSLA and 30% NVDA”. That is what the draft holds.';
+    const reply = await run(
+      { shape: 'pick', lines: [line('solana:tslax', 0.7), line('solana:nvdax', 0.3)], say },
+      'I want 70% TSLA and 30% NVDA',
+    );
+    expect(own(reply)).toBe(say);
+  });
+  it('asks the model for no figure of its own', async () => {
+    const { system } = await prompted({ shape: 'pick', lines }, 'Tesla and Nvidia please');
+    expect(system).not.toContain("You may repeat the person's own numbers back to them");
+    expect(system).not.toContain('A yield may be named');
+    expect(system).not.toContain('Say back the dates you read');
+    expect(system).toContain('Write no figure');
   });
 });
 

@@ -662,7 +662,11 @@ function hasNonFiniteNumber(value: unknown): boolean {
 }
 
 /** Exact attributed person quotes and catalog names may contain numbers; new metrics may not. */
-function hasFinancialFigure(text: string, personWords: string[], catalogNames: string[]): boolean {
+export function hasFinancialFigure(
+  text: string,
+  personWords: string[],
+  catalogNames: string[],
+): boolean {
   const names = catalogNames.filter((name) => /\p{N}/u.test(name));
   let remainder = text.replace(
     /\b(?:you said|you wrote|you asked|your request was|você disse|voce disse|você escreveu|voce escreveu|seu pedido foi)\s*:?\s*[“"]([^”"]+)[”"]/giu,
@@ -707,15 +711,32 @@ function sentencesOf(text: string, catalogNames: string[]): string[] {
 }
 
 /** Said by the server in place of a required field of the proposal whose every sentence was removed. */
-const FIGURE_REMOVED = {
+export const FIGURE_REMOVED = {
   en: 'This part of the draft was left out because it stated a figure that could not be confirmed.',
   pt: 'Esta parte da proposta foi omitida porque trazia um número que não pôde ser confirmado.',
 };
 /** Said by the server on a line of its own after what is left of a message, and once in a list that lost an item or part of one. */
-const FIGURE_CUT = {
+export const FIGURE_CUT = {
   en: 'Part of this reply was left out because it stated a figure that could not be confirmed.',
   pt: 'Parte desta resposta foi omitida porque trazia um número que não pôde ser confirmado.',
 };
+
+/**
+ * `text` without the sentences `figure` flags, and how many were cut. A figure that only shows across
+ * two sentences leaves nothing of the text, and every sentence counts. Shared with the relaxed intake.
+ */
+export function trimFigureSentences(
+  text: string,
+  figure: (text: string) => boolean,
+  catalogNames: string[],
+): { text: string; cut: number } {
+  if (!figure(text)) return { text, cut: 0 };
+  const sentences = sentencesOf(text, catalogNames);
+  const kept = sentences.filter((sentence) => !figure(sentence));
+  const rest = kept.join('').trim();
+  if (!figure(rest)) return { text: rest, cut: sentences.length - kept.length };
+  return { text: '', cut: sentences.length };
+}
 
 /**
  * The repair attempt's reply without the sentences that state a figure (`figure`), so one stray number
@@ -733,15 +754,9 @@ function withoutFigureSentences(
 ): { reply: VaultAgentModelReply; cut: number } | null {
   let cut = 0;
   const trim = (text: string): string => {
-    if (!figure(text)) return text;
-    const sentences = sentencesOf(text, catalogNames);
-    const kept = sentences.filter((sentence) => !figure(sentence));
-    cut += sentences.length - kept.length;
-    const rest = kept.join('').trim();
-    // A figure that only shows across two sentences leaves nothing of the field, and counts.
-    if (!figure(rest)) return rest;
-    cut += kept.length;
-    return '';
+    const trimmed = trimFigureSentences(text, figure, catalogNames);
+    cut += trimmed.cut;
+    return trimmed.text;
   };
   const list = (items: string[]): string[] => {
     const before = cut;
