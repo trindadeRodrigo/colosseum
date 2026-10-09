@@ -13,13 +13,13 @@ import { z } from 'zod';
 import { Refusal, refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { type PlanInputs, preparePersonalInputs } from '../../orders/personalize';
-import { statedPurpose } from '../../orders/stated-purpose';
 import {
   type AgentAnalytics,
   analyticsGap,
   buildGoalAgentContext,
   readAgentAnalytics,
   replyToVaultConversation,
+  statedPurposeIn,
 } from '../../orders/vault-agent';
 import type { VaultAgentModel } from '../../vault-agent-model';
 import { signedIn } from './orders';
@@ -172,7 +172,7 @@ export function registerGoalConversationReplyRoute(
             : 'the new-goal conversation reply asks about a stated limit its repair attempt still missed',
         );
       // Read from the person's messages alone: the same whichever model attempt is served.
-      return { ...result.reply, chain, ...statedPurpose(req.body.messages) };
+      return { ...result.reply, chain, ...statedPurposeIn(req.body.messages, context) };
     },
   );
 }

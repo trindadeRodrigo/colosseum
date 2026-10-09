@@ -392,6 +392,12 @@ describe('new-goal model preview route', () => {
     [['growth 👎']],
     [['It is safe to take high risk']],
     [['I want it to grow, high risk is fine.', 'Medium risk'], { goal: 'grow', risk: 'medium' }],
+    // the skip rule: only a message plainly about the mix leaves what was said standing
+    [['I want it to grow, high risk is fine.', 'scrap that']],
+    [['I want it to grow, high risk is fine.', 'safer please']],
+    [['I want it to grow, high risk is fine.', 'esquece']],
+    [['I want it to grow, high risk is fine.', 'what do you think?']],
+    [['I want it to grow, high risk is fine.', 'more cash'], { goal: 'grow', risk: 'high' }],
     [['This is for my retirement in Tesla and Nvidia.']],
     [['Tell me about Tesla.']],
     [['Go slow, I am incoming to this.']],

@@ -5,7 +5,18 @@ import { statedPurpose } from './stated-purpose';
 // (gate DEPOSIT-STEP): every row under "states nothing" once served a wrong goal or risk.
 
 const person = (...texts: string[]) => texts.map((text) => ({ who: 'person' as const, text }));
-const read = (...texts: string[]) => statedPurpose(person(...texts));
+/** The catalog's names, as the route hands them in. */
+const NAMES = [
+  'TSLAx',
+  'TSLA',
+  'Tesla, Inc.',
+  'NVDAx',
+  'NVIDIA Corporation',
+  'tSPYx',
+  'SPY',
+  'Meta Platforms',
+];
+const read = (...texts: string[]) => statedPurpose(person(...texts), NAMES);
 const NOTHING = { goal: null, risk: null };
 
 describe('the goal and risk a person stated, read from their own words', () => {
@@ -199,17 +210,105 @@ describe('the goal and risk a person stated, read from their own words', () => {
     expect(read('Keep it safe.', 'Is safe the right choice?')).toEqual(NOTHING);
     expect(read('Quero renda.', 'Não quero mais renda.')).toEqual(NOTHING);
     expect(read('I want income.', 'Growth or income, I cannot decide')).toEqual(NOTHING);
-    // a question or a hedge about one kind leaves the other
-    expect(read('I want growth, high risk is fine.', 'What is high risk?')).toEqual({
-      goal: 'grow',
-      risk: null,
-    });
-    expect(read('I want growth, high risk is fine.', 'maybe income')).toEqual({
-      goal: null,
-      risk: 'high',
-    });
-    // a question about something else is passed over
-    expect(read('I want growth, high risk is fine.', 'What is Tesla?')).toEqual({
+    // Until the skip rule was an allow-list these kept the other kind, and the last kept both: a
+    // message that is not plainly about the mix now withdraws both, and the person is asked by a tap.
+    expect(read('I want growth, high risk is fine.', 'What is high risk?')).toEqual(NOTHING);
+    expect(read('I want growth, high risk is fine.', 'maybe income')).toEqual(NOTHING);
+    expect(read('I want growth, high risk is fine.', 'What is Tesla?')).toEqual(NOTHING);
+  });
+
+  const SAID = 'I want it to grow, high risk is fine.';
+  it.each([
+    'scrap that',
+    'forget what I said',
+    'I take that back',
+    'cancel that',
+    'undo that',
+    'that was wrong',
+    'ignore that',
+    'make it the opposite',
+    'the other one',
+    'on second thought',
+    'esquece',
+    'deixa pra lá',
+    'muda isso',
+    'o contrário',
+    'cancela',
+    'retiro o que disse',
+    'safer please',
+    'lower it',
+    'too much',
+    'tone it down',
+    'defensive please',
+    'I am scared of losing money',
+    'mais calmo por favor',
+    // a change of direction beside the kind's own word, and a mix word with nothing it is about
+    'less risk',
+    'more growth',
+    'menos risco',
+    'more please',
+    'less',
+    'add more',
+    // an asset, and something else too
+    'add Tesla, but safer',
+    'more Tesla and less risk',
+    'Tesla scares me',
+    'is Tesla safe?',
+    'add Tesla 🚀',
+    // an everyday word that is also in a company's name names no asset
+    'strategy please',
+    'block that',
+    'what do you think?',
+    'make it greener',
+    'tell me more',
+  ])('takes back what was said before "%s"', (later) => {
+    expect(read(SAID, later)).toEqual(NOTHING);
+  });
+
+  it.each([
+    'add more Tesla',
+    'Add some Tesla.',
+    'more TSLA, less NVDA',
+    'I want 70% Tesla',
+    'swap SPY for gold',
+    'can you add Nvidia?',
+    'remove the bonds please',
+    '50/50',
+    'adicione mais Tesla',
+    'quero 30% em ouro',
+    'mais Tesla e menos SPY',
+    'tire as ações',
+    'thanks',
+    'ok thanks',
+    'obrigado',
+    'perfect',
+  ])('leaves it standing through "%s", which is about the mix or a courtesy', (later) => {
+    expect(read(SAID, later)).toEqual({ goal: 'grow', risk: 'high' });
+  });
+
+  it('leaves one kind standing through a clean statement of the other alone', () => {
+    expect(read('I want it to grow.', 'medium risk')).toEqual({ goal: 'grow', risk: 'medium' });
+    expect(read('High risk is fine', 'I want income')).toEqual({ goal: 'income', risk: 'high' });
+    // but not when the later message also touches it
+    expect(read('I want it to grow.', 'low risk, safer')).toEqual(NOTHING);
+  });
+
+  it('withdraws what a bare yes agreed to, since the server reads no value from it', () => {
+    const answer = (question: string, yes: string) =>
+      statedPurpose(
+        [
+          { who: 'person', text: SAID },
+          { who: 'app', text: question },
+          { who: 'person', text: yes },
+        ],
+        NAMES,
+      );
+    expect(answer('Should I switch this to income at low risk instead?', 'yes')).toEqual(NOTHING);
+    expect(answer('Would lower risk suit you better?', 'ok')).toEqual({ goal: 'grow', risk: null });
+    expect(answer('Devo mudar para renda?', 'sim')).toEqual({ goal: null, risk: 'high' });
+    // a yes to anything else is a courtesy
+    expect(answer('Shall I add Tesla?', 'yes')).toEqual({ goal: 'grow', risk: 'high' });
+    expect(answer('Here is the draft for growth at high risk.', 'ok')).toEqual({
       goal: 'grow',
       risk: 'high',
     });
