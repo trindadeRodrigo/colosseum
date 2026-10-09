@@ -10,7 +10,6 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/Card';
@@ -18,7 +17,6 @@ import { ChainBadge } from '../../components/ui/ChainBadge';
 import { CopyButton } from '../../components/ui/CopyButton';
 import { ExplorerLink } from '../../components/ui/ExplorerLink';
 import { PAGE_TITLE } from '../../components/ui/heading';
-import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { type Dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -67,6 +65,7 @@ import { chainReady, explorerUrlFor, onMock } from './readiness';
 import { planNumberOf, type RunOutcome, useOrderRunner } from './run-order';
 import { TrustNotice } from './TrustNotice';
 import { type ChainUnits, unitsFor } from './units';
+import { OrderScreenWait } from './waits';
 import { useStayed } from './withdraw-stayed';
 
 // The order: the review of every step, then signing it, then each step's status as it lands. The
@@ -456,11 +455,7 @@ export function OrderScreen({
       </p>
     );
   if (port.status === 'loading' || account.status === 'loading' || record === undefined)
-    return (
-      <Card>
-        <CardWait label={t.order.loading} skeleton={<SkeletonSummary />} />
-      </Card>
-    );
+    return <OrderScreenWait />;
   if (port.status === 'signed-out')
     return (
       <Notice
@@ -471,10 +466,25 @@ export function OrderScreen({
       />
     );
   if (load.kind === 'loading')
+    // The order this browser kept says what the page opens with, so its head is already there.
     return (
-      <Card>
-        <CardWait label={t.order.loading} skeleton={<SkeletonSummary />} />
-      </Card>
+      <OrderScreenWait
+        head={
+          record ? (
+            <header className="flex flex-col items-start gap-3">
+              <ChainBadge chain={record.chain} />
+              <h1 id={titleId} className={PAGE_TITLE}>
+                {record.approved ? t.order.title : t.order.review.title}
+              </h1>
+              {!record.approved && (
+                <p className="max-w-(--tf-measure-body) text-body-lg">
+                  {record.continues ? t.order.review.continuesLead : t.order.review.lead}
+                </p>
+              )}
+            </header>
+          ) : undefined
+        }
+      />
     );
   if (load.kind !== 'read') {
     const body =
@@ -502,12 +512,7 @@ export function OrderScreen({
     // Made in another browser and stopped after its deposit: the cash is in the vault, and the buy
     // can be finished from here. Anything else of it is signed where it was reviewed.
     if (cashIn(first) && stoppedShort(first)) {
-      if (served === undefined)
-        return (
-          <Card>
-            <CardWait label={t.order.loading} skeleton={<SkeletonSummary />} />
-          </Card>
-        );
+      if (served === undefined) return <OrderScreenWait />;
       const units = served ? unitsFor(served.chain, onMock(port, served.chain)) : null;
       const cash = units?.tokens[units.cash];
       const targets =

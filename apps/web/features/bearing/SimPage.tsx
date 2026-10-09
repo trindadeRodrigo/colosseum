@@ -2,7 +2,9 @@
 import { type FormEvent, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { type Column, DataTable } from '../../components/ui/DataTable';
+import { Skeleton, SkeletonRows } from '../../components/ui/Skeleton';
 import { Status } from '../../components/ui/StatusMark';
+import type { BearingDictionary } from '../../i18n/bearing';
 import { type Base, useAnswer, useBearing } from './BearingProvider';
 import { readKey } from './chain';
 import { R, type Res } from './data';
@@ -10,7 +12,20 @@ import { capFact } from './dex';
 import { FlowChart } from './Flow';
 import type { Fact } from './fact';
 import { REGIMES } from './format';
-import { Card, Count, Fig, Kpi, Kpis, Loading, PageWait, Reason, useFmt, useWords } from './parts';
+import {
+  Card,
+  Count,
+  Fig,
+  Kpi,
+  Kpis,
+  KpisWait,
+  type KpiWait,
+  Loading,
+  PageWait,
+  Reason,
+  useFmt,
+  useWords,
+} from './parts';
 import { chunksFor, parseAmount, type SimPath, simPaths } from './sim';
 import { etLabel, regimeAt } from './time';
 import type { RecovBody, SheetBody, SplitBody } from './types';
@@ -18,6 +33,14 @@ import type { RecovBody, SheetBody, SplitBody } from './types';
 // The simulation page (analytics2.js, simPage): sell a position now, and see what each way out would
 // lose, as a flow and as a table; what the best path pays, part by part; and the same sale in every
 // time of week. The amount is the person's own input and carries no pin.
+
+/** The simulation's four figures, by their labels: known before any sale is priced. */
+const simKpis = (k: BearingDictionary['sim']['kpi']): KpiWait[] => [
+  { label: k.sale, note: k.saleNote('TSLAx') },
+  { label: k.now, note: 'Sat 00:00 ET' },
+  { label: k.capacity, note: k.capacityNote },
+  { label: k.loss, note: k.lossNote('0.00%') },
+];
 
 export function SimPage() {
   const { base } = useBearing();
@@ -29,12 +52,23 @@ export function SimPage() {
     return (
       <PageWait
         label={reading}
-        kpis={[
-          { label: k.sale, note: k.saleNote('TSLAx') },
-          { label: k.now, note: 'Sat 00:00 ET' },
-          { label: k.capacity, note: k.capacityNote },
-        ]}
+        kpis={simKpis(k)}
         filters={0}
+        charts={false}
+        lead={
+          // the form the page opens with: an asset, an amount, and the button that prices the sale
+          <Card>
+            <div aria-hidden="true" className="flex flex-wrap items-end gap-x-4 gap-y-3">
+              {[words.sim.asset, words.sim.amount].map((name, i) => (
+                <div key={name} className="flex min-w-0 flex-col gap-1">
+                  <span className="text-caption font-medium text-muted-foreground">{name}</span>
+                  <Skeleton className={`h-8 rounded-md ${i === 0 ? 'w-24' : 'w-40'}`} />
+                </div>
+              ))}
+              <Skeleton className="h-8 w-24 rounded-md" />
+            </div>
+          </Card>
+        }
       />
     );
   }
@@ -158,7 +192,19 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
       ]),
     [key, n, chunks, reader],
   );
-  if (!rs || !body || !cap) return <Loading>{t.pricing(fm.usd(n), id)}</Loading>;
+  if (!rs || !body || !cap)
+    return (
+      <Loading
+        skeleton={
+          <div className="mt-4 flex flex-col gap-8">
+            <KpisWait kpis={simKpis(t.kpi)} />
+            <SkeletonRows rows={3} columns={5} />
+          </div>
+        }
+      >
+        {t.pricing(fm.usd(n), id)}
+      </Loading>
+    );
   const [s, recov, sc, fNow, fSplit] = rs as [
     Res<SheetBody>,
     Res<RecovBody>,

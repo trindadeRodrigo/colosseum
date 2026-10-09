@@ -21,6 +21,7 @@ import { PlanGate } from './PlanGate';
 import { targetsOfPlan } from './plan-terms';
 import { basketOfPlan, deploymentsFor } from './readiness';
 import { usePlan } from './use-plan';
+import { BuyScreenWait } from './waits';
 
 // Buying a plan, on one card with one press (InvestCard, gate INVEST-ONE-PRESS): the amount, the plan's
 // own to start with, then the card, which shows what the wallet is missing only when it is short, the
@@ -59,6 +60,8 @@ export function BuyScreen({ id, embedded }: { id: string; embedded?: InvestEmbed
 
   if (!ready || !plan || !chain) {
     const gate = state.kind === 'ready' ? { kind: 'loading' as const } : state;
+    // On its own page the wait is the page in outline; inside another screen, that screen's own.
+    if (gate.kind === 'loading' && !embedded) return <BuyScreenWait />;
     return <PlanGate state={gate} next={`/plan/${encodeURIComponent(id)}/buy`} />;
   }
 

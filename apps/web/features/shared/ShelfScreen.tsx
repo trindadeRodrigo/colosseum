@@ -2,15 +2,14 @@
 import type { SharedFamily, SharedRecipe } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState } from 'react';
-import { Wait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardEmpty, CardHeader } from '../../components/ui/Card';
 import { ChainBadges } from '../../components/ui/ChainBadge';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
-import { SkeletonCards } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
+import { ScreenWait } from '../../components/waits/ScreenWait';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
@@ -25,6 +24,7 @@ import { isPlatformCreator } from './platform';
 import { holdingsOf, rate } from './product-figures';
 import { readShelf } from './shared-api';
 import { shortAddress, useSharedPerson } from './use-person';
+import { ShelfWait } from './waits';
 
 // The shelf (DESIGN-VAULT section 11; gate PRODUCTS-PLAN-PANE): a card per shared portfolio, the
 // figures first: one bar of what it holds with each share under it, each holding's yield with its pin, what it
@@ -127,7 +127,7 @@ export function ShelfScreen() {
       </header>
 
       {load.kind === 'loading' ? (
-        <Wait label={t.shared.shelf.loading} skeleton={<SkeletonCards />} />
+        <ScreenWait label={t.shared.shelf.loading} skeleton={<ShelfWait />} />
       ) : load.kind !== 'read' ? (
         <section aria-labelledby={titleId} className="flex flex-col items-start gap-4">
           <p className="max-w-(--tf-measure-body) text-body">

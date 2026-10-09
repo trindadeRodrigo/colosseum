@@ -22,6 +22,7 @@ import { leastLive } from './pins';
 import { RebalanceStep } from './RebalanceStep';
 import { groupsOf, type StepGroup } from './rebalances';
 import { type VaultTitle, vaultTitle } from './vault-title';
+import { StepsWait } from './waits';
 import { useWords } from './words';
 
 // The rebalancing page (/portfolio/rebalancing): the steps that traded in the person's vaults or
@@ -43,7 +44,7 @@ export function RebalancingPage() {
   return (
     <div data-ui="portfolio-rebalancing" className="flex flex-col gap-8">
       <PageHead title={w.rebalancing.title} lead={w.rebalancing.lead} />
-      <SectionGate read={named ? rebalances : WAITING}>
+      <SectionGate read={named ? rebalances : WAITING} skeleton={<StepsWait />}>
         {(answer) => <Steps answer={answer} plans={plans.kind === 'read' ? plans.answer : null} />}
       </SectionGate>
     </div>

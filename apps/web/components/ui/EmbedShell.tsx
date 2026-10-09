@@ -16,7 +16,7 @@ import { Skeleton } from './Skeleton';
 
 export type EmbedShellLabels = {
   loading: string;
-  /** Under the loading line after a few seconds: the data service may be waking. */
+  /** Under the loading line after a few seconds: the server may be waking. */
   slow: string;
   unavailable: string;
   /** The summary of the schedule's disclosure, in a narrow container. */
@@ -25,7 +25,7 @@ export type EmbedShellLabels = {
 };
 export const EMBED_SHELL_LABELS: EmbedShellLabels = {
   loading: 'Loading plan…',
-  slow: 'Waking the data service: this can take up to a minute the first time.',
+  slow: 'Still loading. The server may be waking up.',
   unavailable: 'This plan isn’t available.',
   showSchedule: 'Show schedule',
   poweredBy: 'Powered by',
@@ -75,7 +75,7 @@ export type EmbedShellProps = Common &
       }
     | {
         state: 'loading';
-        /** The wait has lasted a few seconds: one calm line says the data service may be waking. */
+        /** The wait has lasted a few seconds: one calm line says the server may be waking. */
         slow?: boolean;
       }
     /** Not found, or revoked: one sentence and nothing else. */

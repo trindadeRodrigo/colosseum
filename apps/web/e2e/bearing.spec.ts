@@ -80,7 +80,7 @@ test.describe('Bearing analytics on the recorded risk API', () => {
     // the wait itself passes axe in light and dark, with no sideways scroll
     await check(page, 'waiting');
     await page.setViewportSize({ width: 1440, height: 900 });
-    // after 4 seconds, one calm line: the data service may be waking
+    // after 4 seconds, one calm line: the server may be waking
     await expect(wait.locator('[data-ui="waiting-slow"]')).toBeVisible({ timeout: 6_000 });
     release();
     await expect(wait).toHaveCount(0, { timeout: 60_000 });

@@ -1,7 +1,7 @@
-import { RouteWait } from '../../../../components/shell/RouteWait';
+import { PlanScreenWait } from '../../../../features/order/waits';
 
-// While the page is made on the server: the card it opens with, in its own shape.
-
+// While the page is made on the server: the page in its own outline, so its own wait takes over
+// without a box moving.
 export default function Loading() {
-  return <RouteWait shape="plan" />;
+  return <PlanScreenWait />;
 }

@@ -90,6 +90,7 @@ function LendingOnSolana() {
             note: t.lending.kpi.coveredNote('1.00%', t.regimes.us_market_hours),
           },
           { label: t.lending.kpi.largest, note: t.lending.kpi.largestNote('1.00%') },
+          { label: t.lending.kpi.loss, note: t.lending.kpi.lossNote('00.00%') },
         ]}
       />
     );
