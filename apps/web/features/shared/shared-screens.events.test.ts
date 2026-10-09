@@ -13,6 +13,7 @@ import { withAccount } from '../account/test/screen';
 import { acceptTrust, keepOrder, recallOrder, trustAccepted } from '../order/order-record';
 import { basketOfPlan, explorerAddressUrlFor, publishableOn } from '../order/readiness';
 import { PLAN_ID, planOn, recordOf } from '../order/test/fixtures';
+import { price } from '../portfolio/test/portfolio';
 import { EMBEDDED, EVM, fakePort, json, METAMASK, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
@@ -1382,6 +1383,57 @@ describe('the publish form', () => {
 });
 
 describe('a vault’s public page', () => {
+  it('says "Market closed · last price" under a price whose market is closed, and under no other', async () => {
+    const held = (asset: string) => ({
+      asset,
+      raw: '1000000',
+      multiplier: '1',
+      display: '1',
+      targetBps: 5000,
+      lastKeeperAt: null,
+      valueUsd: '1',
+      weightBps: 5000,
+      driftBps: 0,
+    });
+    portStore.setApi(async (path) => {
+      if (path === '/v1/me') return json(person);
+      if (path === `/v1/vaults/solana/${VAULT}`)
+        return json({
+          chain: 'solana',
+          name: 'Solana',
+          mode: 'live',
+          provenance: 'sandbox',
+          vault: {
+            ...vaultOf({ positions: [held('solana:usdy'), held('solana:paxg')] }),
+            provenance: 'sandbox',
+          },
+          prices: [
+            price('solana:usdy', '1.1', { market: 'closed' }),
+            price('solana:paxg', '2600', { market: 'open' }),
+          ],
+          disclaimer: 'd',
+        });
+      return json({ error: 'not found' }, 404);
+    });
+    const host = await show(createElement(VaultScreen, { chain: 'solana', address: VAULT }));
+    const notes = [...host.querySelectorAll('[data-ui="market-closed"]')];
+    expect(notes.length).toBeGreaterThan(0);
+    // under the closed one's price, beside its pin, wherever the page draws the holdings
+    for (const note of notes) {
+      expect(note.textContent).toBe(en.shell.marketClosed);
+      expect(note.parentElement?.querySelector('[data-ui="figure"]')?.textContent).toContain(
+        '$1.10',
+      );
+    }
+    // and under no open one
+    const open = [...host.querySelectorAll('[data-ui="figure"]')].filter((f) =>
+      f.textContent?.includes('$2,600'),
+    );
+    expect(open.length).toBeGreaterThan(0);
+    for (const figure of open)
+      expect(figure.parentElement?.querySelector('[data-ui="market-closed"]')).toBeNull();
+  });
+
   it('pins the vault’s value to the read and the prices it stands on', async () => {
     portStore.setApi(async (path) => {
       if (path === '/v1/me') return json(person);

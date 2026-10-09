@@ -1,5 +1,6 @@
-// Beside a stock or fund price while its market is closed: the test networks hold the last close with
-// a fresh timestamp over a weekend, so the price would read as just updated. The word is the server's
+// Beside a stock or fund price while its market is closed: the test networks hold the last price with
+// a fresh timestamp over a weekend, so it would read as just updated. "Last price", not "last close":
+// `closed` is the chain's session rule, which a pause inside the session also answers. The word is the server's
 // (`Price.market`, read from the chain's own session rule): `closed` says it, `open` and `unknown` say
 // nothing, and an asset that trades at all hours is answered `open`. Never worked out from this
 // browser's clock. Text only: the pin and the test-network mark stay where they are.

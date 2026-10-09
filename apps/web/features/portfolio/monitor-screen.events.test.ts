@@ -374,7 +374,7 @@ describe('the monitor, for a person with a vault on their chain', () => {
       expect(pin.querySelector('button')?.getAttribute('aria-label')).toMatch(/^Source for /);
   });
 
-  it('says "Market closed · last close" under a price whose market the server says is closed, and under no other', async () => {
+  it('says "Market closed · last price" under a price whose market the server says is closed, and under no other', async () => {
     api({
       person: onSolana,
       portfolio: () =>

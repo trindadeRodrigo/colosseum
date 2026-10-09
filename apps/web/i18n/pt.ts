@@ -51,7 +51,7 @@ export const pt: Dictionary = {
     language: 'Idioma',
     testNetwork: 'rede de teste',
     testNetworkLine: 'Rede de teste',
-    marketClosed: 'Mercado fechado · último fechamento',
+    marketClosed: 'Mercado fechado · último preço',
     slowDown: 'Nosso servidor pediu para eu ir mais devagar. Espere um minuto e tente de novo.',
     mockAnnounce: 'Números de exemplo',
     sample: 'Exemplo',

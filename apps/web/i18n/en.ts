@@ -65,7 +65,7 @@ export const en = {
     /** A card whose figures are read from a test network says only that: they are not samples. */
     testNetworkLine: 'Test network',
     /** Under a stock or fund price while its market is closed (components/ui/MarketNote.tsx). */
-    marketClosed: 'Market closed · last close',
+    marketClosed: 'Market closed · last price',
     /** When the server answers that it is being asked too often. */
     slowDown: 'Our server asked me to slow down. Wait a minute, then try again.',
     /** A sample card's one quiet line (MOCK-QUIET). */

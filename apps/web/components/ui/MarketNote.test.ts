@@ -11,7 +11,7 @@ const note = (market: 'open' | 'closed' | 'unknown' | undefined) =>
 describe('MarketNote', () => {
   it('says a closed market in words, with no glyph', () => {
     const said = one(note('closed'), ui('market-closed'));
-    expect(text(said)).toBe('Market closed · last close');
+    expect(text(said)).toBe('Market closed · last price');
     expect(all(said, tag('svg'))).toHaveLength(0);
   });
 
