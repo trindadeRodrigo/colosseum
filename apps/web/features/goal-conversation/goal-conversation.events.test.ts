@@ -14,6 +14,7 @@ import {
 import { dictionary } from '../../i18n';
 import { withAccount } from '../account/test/screen';
 import { GOAL_HANDOFF, GOAL_HANDOFF_OWNER } from '../goal/draft';
+import { CHECK_MS } from '../mix/DepositStep';
 import { sourceValue } from '../vault-conversation/StrategyPreview';
 import { preview } from '../vault-conversation/test/fixtures';
 import { fakePort, json, PHANTOM, signedInPort } from '../wallet/test/fake-port';
@@ -541,6 +542,34 @@ describe('the deposit step of a new goal', () => {
     // nothing is signed or ordered from /goal
     expect(calls.map((call) => call.path)).toEqual([path]);
     expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('sends for checking exactly the ids and shares the preview shows, and nothing of its own', async () => {
+    // a relaxed-intake mix of three lines, cash among them (gate RELAXED-INTAKE): what the deposit
+    // step sends is that mix, never the engine's own picks (gate ANY-COMPOSITION)
+    const shown = [
+      { assetId: 'solana:spy', weightBps: 5000, symbol: 'SPY' },
+      { assetId: 'solana:gldx', weightBps: 3000, symbol: 'tGLDx' },
+      { assetId: 'solana:usdc', weightBps: 2000, symbol: 'USDC' },
+    ].map((line) => ({ ...line, why: `Why ${line.symbol}.`, evidenceIds: ['exit'] }));
+    replies({ goal: 'grow', risk: 'high', proposal: { ...preview, allocations: shown } });
+    const host = await show();
+    await send(host, 'Half a fund, some gold, the rest cash; grow, high risk');
+    await click(find(host, '[data-action="deposit"]'));
+    await type(amount(host), '250');
+    await settle(CHECK_MS + 50);
+    const checked = calls.filter((call) => call.path === accept);
+    expect(checked.length).toBeGreaterThan(0);
+    for (const call of checked)
+      expect(call.body).toMatchObject({
+        origin: 'model',
+        goal: 'grow',
+        risk: 'high',
+        amountUsd: 250,
+        allocations: shown.map(({ assetId, weightBps }) => ({ assetId, weightBps })),
+      });
+    // the plan is never handed to the engine to pick its own holdings
+    expect(calls.some((call) => call.path.includes('/v1/baskets/'))).toBe(false);
   });
 
   it('asks by a tap what an older server or the person left unsaid, never a default', async () => {
