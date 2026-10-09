@@ -198,7 +198,10 @@ export async function compose(input: ComposeInput): Promise<Composed> {
         appendTransactionMessageInstructions(
           [
             computeUnitLimitInstruction(limit),
-            ...(price > 0n ? [computeUnitPriceInstruction(price)] : []),
+            // LOCAL: always a price, at least 1 micro-lamport (about 1 lamport a transaction). With
+            // none, a wallet such as Phantom adds its own priority-fee instruction before signing, and
+            // the app then refuses the changed transaction (devnet's recent fees are 0).
+            computeUnitPriceInstruction(price > 0n ? price : 1n),
             ...instructions,
           ],
           m,
@@ -210,7 +213,8 @@ export async function compose(input: ComposeInput): Promise<Composed> {
   // The price is capped so the priority fee stays under `maxLamports` at the limit asked for.
   const priceAt = (limit: number) => {
     const cap = (maxLamports * 1_000_000n) / BigInt(limit);
-    return wanted < cap ? wanted : cap;
+    const capped = wanted < cap ? wanted : cap;
+    return capped > 0n ? capped : 1n;
   };
   const tooLarge = (bytes: number) =>
     new ChainError(
