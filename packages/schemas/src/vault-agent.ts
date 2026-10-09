@@ -65,6 +65,16 @@ export const VaultAgentModelProposal = z.strictObject({
   tradeoffs: z.array(prose(600)).max(12),
   unknowns: z.array(prose(600)).max(12),
 });
+/**
+ * What a new goal's money is for and the risk the person accepts, as the server read them in the
+ * person's own messages (`statedPurpose`, apps/api). Null: the person has not plainly said it. Never
+ * the model's reading, and never a default.
+ */
+export const VaultAgentStatedPurpose = z.strictObject({
+  goal: z.enum(['grow', 'income', 'protect']).nullable(),
+  risk: z.enum(['low', 'medium', 'high']).nullable(),
+});
+export type VaultAgentStatedPurpose = z.infer<typeof VaultAgentStatedPurpose>;
 export const VaultAgentModelReply = z.strictObject({
   message: prose(2400),
   question: prose(500).nullable(),

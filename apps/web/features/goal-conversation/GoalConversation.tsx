@@ -1,7 +1,6 @@
 'use client';
-import type { BasketSheet, ChainId, Network, Provenance } from '@colosseum/schemas';
+import type { ChainId, Network, Provenance } from '@colosseum/schemas';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Composer } from '../../components/ui/Composer';
@@ -11,15 +10,13 @@ import { LatticeLoader } from '../../components/ui/Skeleton';
 import { useWaitPhase } from '../../components/ui/wait';
 import { dictionary } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { buildPlan, PERSONALIZE_PATH } from '../goal/build-plan';
-import { UseGoalMix } from '../mix/UseGoalMix';
-import { rememberPlan } from '../order/plan-store';
+import { DepositStep, type Purpose } from '../mix/DepositStep';
 import { share } from '../portfolio/figures';
 import {
   replyText,
   strategyReplyOf,
   VaultAgentError,
-  type VaultAgentReply,
+  type VaultStrategyPreview,
 } from '../vault-conversation/agent';
 import { StrategyPreview, WeightNotes } from '../vault-conversation/StrategyPreview';
 import {
@@ -30,7 +27,7 @@ import {
   writeLocal,
 } from '../vault-conversation/storage';
 import { useApiFetch } from '../wallet/WalletProvider';
-import { goalAgent } from './agent';
+import { type GoalReply, goalAgent } from './agent';
 import { conversationStoreKey } from './conversations';
 import { consumeGoalHandoff, readGoalHandoff } from './handoff';
 
@@ -85,40 +82,20 @@ export function GoalConversation({
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [reply, setReply] = useState<VaultAgentReply | null>(null);
-  // The preview the person chose to use: the flow stays only while that preview is the one shown.
-  const [using, setUsing] = useState<VaultAgentReply | null>(null);
+  const [reply, setReply] = useState<GoalReply | null>(null);
+  // The mix on the screen: the last proposal the conversation made. A reply that only talks, or one
+  // that failed, leaves it there, so asking for a change never costs the person what they had.
+  const [mix, setMix] = useState<VaultStrategyPreview | null>(null);
+  // The deposit step is open, for the mix on the screen. Another proposal is read as a preview first.
+  const [depositing, setDepositing] = useState(false);
+  // The amount typed on the deposit step: kept while the mix is changed in the conversation.
+  const [amountText, setAmountText] = useState('');
   const [error, setError] = useState<string>();
-  // "Invest in this plan" (RELAXED-INTAKE) hands the plan's sheet to the existing personalize route
-  // and the person on to the existing plan screen, where the deployed buy and vault creation run.
-  const router = useRouter();
-  const [investing, setInvesting] = useState(false);
-  const [investError, setInvestError] = useState<string>();
+  // The mix on the screen was read back from this browser, not answered on this visit: it is shown, and
+  // the deposit comes back with the next reply (Rodrigo, Oct 8: a kept plan is a preview only).
+  const [kept, setKept] = useState(false);
   // The chat folds away so the plan can take the whole width.
   const [chatOpen, setChatOpen] = useState(true);
-  async function investIn(sheet: Record<string, unknown>) {
-    if (investing || !userId) return;
-    setInvesting(true);
-    setInvestError(undefined);
-    const outcome = await buildPlan(api, sheet as BasketSheet, PERSONALIZE_PATH);
-    if (outcome.kind === 'built') {
-      for (const kept of [
-        { id: outcome.id, proposal: outcome.proposal, rollUp: outcome.rollUp },
-        ...outcome.candidates,
-      ])
-        rememberPlan({ id: kept.id, userId, proposal: kept.proposal, rollUp: kept.rollUp });
-      router.push(`/plan/${encodeURIComponent(outcome.id)}`);
-      return;
-    }
-    setInvesting(false);
-    setInvestError(
-      outcome.kind === 'no-plan'
-        ? copy.investFailed.noPlan
-        : outcome.kind === 'signed-out' || outcome.kind === 'no-identity'
-          ? copy.investFailed.signedOut
-          : copy.investFailed.other,
-    );
-  }
   useEffect(() => {
     ++generation.current;
     requestApi.current = api;
@@ -126,17 +103,18 @@ export function GoalConversation({
     cancel.current?.abort();
     held.current = key ? readLocal(key).transcript : [];
     setTurns(held.current);
-    let restored: VaultAgentReply | null = null;
+    let restored: VaultStrategyPreview | null = null;
     try {
       const raw = previewKey && chain ? localStorage.getItem(previewKey) : null;
-      restored = raw && chain ? strategyReplyOf(JSON.parse(raw), chain) : null;
+      restored = (raw && chain ? strategyReplyOf(JSON.parse(raw), chain) : null)?.proposal ?? null;
     } catch {
       restored = null;
     }
-    // A saved plan is shown without a sheet for investing (one saved earlier may be stale).
-    if (restored?.proposal?.investSheet)
-      restored = { ...restored, proposal: { ...restored.proposal, investSheet: undefined } };
-    setReply(held.current.length ? restored : null);
+    setReply(null);
+    setMix(held.current.length ? restored : null);
+    setKept(Boolean(held.current.length && restored));
+    setDepositing(false);
+    setAmountText('');
     setBusy(false);
     sending.current = false;
     prefill.current = readGoalHandoff(userId, ready);
@@ -149,25 +127,27 @@ export function GoalConversation({
     };
   }, [api, key, context, userId, ready, previewKey, chain]);
 
-  function keepPreview(next: VaultAgentReply | null) {
+  /** The last mix is kept beside the transcript, read back through the same check as a reply. */
+  function keepPreview(next: VaultStrategyPreview | null) {
     if (!previewKey || !chain) return;
     try {
-      if (next?.proposal)
+      if (next)
         localStorage.setItem(
           previewKey,
-          // The plan is kept without its sheet for investing: a sheet made by an older bridge is
-          // never invested from; the button comes back with the next reply.
           JSON.stringify({
             version: 1,
             chain,
             messageId: 'kept',
-            ...next,
-            proposal: next.proposal ? { ...next.proposal, investSheet: undefined } : next.proposal,
+            message: 'kept',
+            question: null,
+            warnings: [],
+            weightNotes: [],
+            proposal: next,
           }),
         );
       else localStorage.removeItem(previewKey);
     } catch {
-      // storage full or blocked: the plan is still on screen for this visit
+      // storage full or blocked: the mix is still on screen for this visit
     }
   }
 
@@ -187,6 +167,10 @@ export function GoalConversation({
     setText('');
     setReply(null);
     keepPreview(null);
+    setMix(null);
+    setKept(false);
+    setDepositing(false);
+    setAmountText('');
     setError(undefined);
     persist([]);
   }
@@ -209,10 +193,8 @@ export function GoalConversation({
     setBusy(true);
     setError(undefined);
     setText('');
-    // The draft on the card stays while its successor is worked on, so the new one can show what
-    // changed; it is marked as the one before, and it can no longer be used. It changes when the new
-    // answer is in, and an answer with no plan, or none at all, leaves it in view (Rodrigo, Oct 8).
-    setUsing(null);
+    // The mix on the card stays while its successor is worked on, marked as the one before, and its
+    // deposit action waits for the reply.
     held.current = next;
     setTurns(next);
     if (persist(next) && prefill.current && userId) {
@@ -255,15 +237,13 @@ export function GoalConversation({
       }
       held.current = completed;
       setTurns(completed);
-      // An answer with no plan (a question only) keeps the last plan in view.
-      setReply((previous) => {
-        const shown =
-          result.proposal || !previous?.proposal
-            ? result
-            : { ...result, proposal: previous.proposal };
-        keepPreview(shown);
-        return shown;
-      });
+      setReply(result);
+      if (result.proposal) {
+        setMix(result.proposal);
+        setKept(false);
+        setDepositing(false);
+        keepPreview(result.proposal);
+      }
       persist(completed);
     } catch (cause) {
       if (active()) {
@@ -288,6 +268,18 @@ export function GoalConversation({
       }
     }
   }
+  // What the person said the money is for and the risk, as the newest reply read the whole conversation.
+  const said: Purpose = { goal: reply?.goal ?? null, risk: reply?.risk ?? null };
+  // "Back to the proposal": focus goes to the button that opened the step, never to the page. A new
+  // proposal closing the step leaves focus where the person is typing.
+  const backToPreview = useRef(false);
+  useEffect(() => {
+    if (depositing || !backToPreview.current) return;
+    backToPreview.current = false;
+    box.current?.parentElement?.querySelector<HTMLElement>('[data-action="deposit"]')?.focus();
+  }, [depositing]);
+  /** Weights, the goal and the risk are changed by saying so: back to the box, the mix kept. */
+  const toChat = () => box.current?.querySelector('textarea')?.focus();
   // The person's last words with no reply after them: a failed reply, or one a reload cut short.
   const unanswered = !busy && ready && loaded ? turns.at(-1) : undefined;
   // a wait under 400ms shows nothing; after that the lattice assembles beside the words (STYLE.md)
@@ -434,32 +426,42 @@ export function GoalConversation({
         aria-busy={busy}
         className={`tf-scroll-thin relative flex min-w-0 flex-col gap-4 ${chatOpen ? 'md:col-span-7' : 'md:col-span-12'} md:min-h-0 md:overflow-y-auto md:pr-2`}
       >
-        {reply?.proposal ? (
+        {mix && chain && userId && depositing && !kept ? (
           <>
-            <StrategyPreview
-              proposal={reply.proposal}
-              previewOnly={copy.draftNote}
-              {...(busy ? { pending: t.shared.vault.conversation.reworking } : {})}
-              {...(chain && userId && using !== reply
-                ? { use: { label: t.mix.preview.use, onUse: () => setUsing(reply) } }
-                : {})}
-              invest={{
-                onPress: () => {
-                  const sheet = reply.proposal?.investSheet;
-                  if (sheet) void investIn(sheet);
-                },
-                busy: investing,
-                ...(investError ? { error: investError } : {}),
+            <DepositStep
+              chain={chain}
+              userId={userId}
+              allocations={mix.allocations}
+              said={said}
+              amountText={amountText}
+              onAmountText={setAmountText}
+              provenance={provenance}
+              onChangeMix={toChat}
+              waiting={busy}
+              onClose={() => {
+                backToPreview.current = true;
+                setDepositing(false);
               }}
             />
-            {chain && userId && using === reply && (
-              <UseGoalMix
-                chain={chain}
-                userId={userId}
-                allocations={reply.proposal.allocations}
-                onClose={() => setUsing(null)}
-              />
-            )}
+            {reply && !reply.proposal && reply.notes && <WeightNotes notes={reply.notes} />}
+          </>
+        ) : mix ? (
+          <>
+            <StrategyPreview
+              proposal={mix}
+              previewOnly={copy.draftNote}
+              {...(busy ? { pending: t.shared.vault.conversation.reworking } : {})}
+              {...(chain && userId && !kept
+                ? {
+                    use: {
+                      label: t.mix.preview.deposit,
+                      onUse: () => setDepositing(true),
+                      primary: true,
+                    },
+                  }
+                : {})}
+            />
+            {reply && !reply.proposal && reply.notes && <WeightNotes notes={reply.notes} />}
           </>
         ) : (
           <div

@@ -1,6 +1,6 @@
 'use client';
 import type { MixReview } from '@colosseum/schemas';
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
@@ -49,6 +49,9 @@ export function MixReviewCard({
   confirmLabel,
   onConfirm,
   onBack,
+  backLabel,
+  purpose,
+  focusOnOpen = false,
   busy,
   changed,
 }: {
@@ -58,6 +61,12 @@ export function MixReviewCard({
   confirmLabel: string;
   onConfirm: () => void;
   onBack: () => void;
+  /** Where "back" leads, when it is not to changing the mix: the deposit step of a new goal. */
+  backLabel?: string;
+  /** What the mix was checked for, in words: "For growth, at higher risk." A new goal's review. */
+  purpose?: string;
+  /** The review took the place of another screen: its heading takes focus, so it is read from the top. */
+  focusOnOpen?: boolean;
   busy: boolean;
   /** The server answered a new review to a confirm: its figures moved since the person looked. */
   changed?: boolean;
@@ -72,6 +81,13 @@ export function MixReviewCard({
     );
   const usd = (value: number) => dollars(lang, value.toFixed(2));
   const left = unticked(review, ticked).length;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the review opens
+  useEffect(() => {
+    if (!focusOnOpen) return;
+    const heading = document.getElementById(titleId);
+    heading?.setAttribute('tabindex', '-1');
+    heading?.focus();
+  }, []);
   return (
     <Card
       as="section"
@@ -84,6 +100,11 @@ export function MixReviewCard({
       <CardHeader id={titleId} title={r.title} level={2} meta={t.chain.names[review.chain]} />
       <CardBody className="flex min-w-0 flex-col gap-4">
         <p className="max-w-(--tf-measure-body) text-body-sm">{r.lead}</p>
+        {purpose && (
+          <p data-ui="mix-review-purpose" className="text-body-sm">
+            {purpose}
+          </p>
+        )}
         {changed && (
           <p role="status" className="flex items-start gap-1.5 text-body-sm">
             <StatusMark status="watch" className="mt-1.5" />
@@ -206,7 +227,7 @@ export function MixReviewCard({
             {confirmLabel}
           </Button>
           <Button variant="secondary" disabled={busy} onClick={onBack}>
-            {r.back}
+            {backLabel ?? r.back}
           </Button>
         </div>
       </CardBody>

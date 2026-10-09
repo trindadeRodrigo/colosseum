@@ -173,7 +173,7 @@ describe('private strategy exploration for a new goal', () => {
       });
       expect(calls[0].body).not.toHaveProperty('vault');
       expect(calls[0].body).not.toHaveProperty('address');
-      // on a proposal the line over "Use this mix" says how the draft is bought, not that it cannot be
+      // on a proposal the line over "Deposit" says how the draft is bought, not that it cannot be
       expect(find(host, '[data-ui="goal-strategy"]').textContent).toContain(
         dictionary(lang).goal.explore.draftNote,
       );
@@ -189,9 +189,22 @@ describe('private strategy exploration for a new goal', () => {
         ),
       ).toEqual(['40%', '60%']);
       expect(host.querySelector('[data-ui="buy-card"]')).toBeNull();
-      expect(
-        find(host, '[data-ui="goal-strategy"]').querySelector('button[data-variant="primary"]'),
-      ).toBeNull();
+      // The preview's one primary button is "Deposit" (gate DEPOSIT-STEP, Thom, Oct 8): it opens the
+      // deposit step, and neither buys, funds nor signs anything.
+      const primary = [
+        ...find(host, '[data-ui="goal-strategy"]').querySelectorAll(
+          'button[data-variant="primary"]',
+        ),
+      ];
+      expect(primary.map((button) => button.textContent)).toEqual([
+        dictionary(lang).mix.preview.deposit,
+      ]);
+      const before = calls.length;
+      await click(primary[0] as HTMLElement);
+      expect(host.querySelector('[data-ui="deposit-step"]')).not.toBeNull();
+      expect(host.querySelector('[data-ui="buy-card"]')).toBeNull();
+      expect(calls).toHaveLength(before);
+      expect(router.push).not.toHaveBeenCalled();
     },
   );
   it('sends complete words and actual prior nonexecuted draft weights to refine the next turn', async () => {
@@ -486,6 +499,176 @@ describe('private strategy exploration for a new goal', () => {
   });
 });
 
+describe('the deposit step of a new goal', () => {
+  const accept = '/v1/conversations/solana/goal/accept';
+  const strategy = (host: HTMLElement) => find(host, '[data-ui="goal-strategy"]');
+  const amount = (host: HTMLElement) =>
+    find<HTMLInputElement>(host, '[data-ui="amount-large"] input');
+  /** Replies in turn; a null is a reply that failed. */
+  const replies = (...turns: (Record<string, unknown> | null)[]) => {
+    let n = 0;
+    portStore.setApi(async (url, init) => {
+      if (init?.method !== 'POST') return baseApi(url);
+      const body = JSON.parse(String(init.body));
+      calls.push({ path: url, body });
+      if (url === accept) return json({}, 502);
+      const turn = turns[Math.min(n++, turns.length - 1)];
+      return turn ? json({ ...response(body.messageId), ...turn }) : json({}, 500);
+    });
+  };
+
+  it('opens from the proposal with the goal and risk the person said, and no form', async () => {
+    replies({ goal: 'grow', risk: 'high' });
+    const host = await show();
+    await send(host, 'Stocks to grow, I can take high risk');
+    // the one action of the preview: named for what it does, and the card's primary button
+    const press = find(host, '[data-action="deposit"]');
+    expect(press.textContent).toBe(en.mix.preview.deposit);
+    expect(en.mix.preview.deposit).toBe('Deposit');
+    expect(dictionary('pt').mix.preview.deposit).toBe('Depositar');
+    expect(press.getAttribute('data-variant')).toBe('primary');
+    expect(find(host, '[data-ui="goal-strategy"]').textContent).not.toMatch(/use this mix/i);
+    await click(find(host, '[data-action="deposit"]'));
+    const step = find(host, '[data-ui="deposit-step"]');
+    expect(find(step, '[data-ui="deposit-purpose"]').textContent).toContain(
+      en.mix.deposit.purpose('grow', 'high'),
+    );
+    expect(step.querySelectorAll('select')).toHaveLength(0);
+    expect(step.querySelectorAll('input')).toHaveLength(1);
+    // the same rows the preview drew, read only
+    for (const line of preview.allocations)
+      expect(step.querySelector(`[data-asset="${line.assetId}"]`)).not.toBeNull();
+    // nothing is signed or ordered from /goal
+    expect(calls.map((call) => call.path)).toEqual([path]);
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('asks by a tap what an older server or the person left unsaid, never a default', async () => {
+    // a reply with no goal or risk at all, and one with a value this app does not know
+    replies({}, { goal: 'speculate', risk: 'medium' });
+    const host = await show();
+    await send(host, 'Some stocks');
+    await click(find(host, '[data-action="deposit"]'));
+    expect(host.querySelector('[data-ui="deposit-purpose"]')).toBeNull();
+    expect(host.querySelectorAll('[data-ui="deposit-goal"] button')).toHaveLength(3);
+    expect(host.querySelectorAll('[data-ui="deposit-risk"] button')).toHaveLength(3);
+    expect(host.querySelectorAll('[aria-pressed="true"]')).toHaveLength(0);
+    await send(host, 'medium risk please');
+    await click(find(host, '[data-action="deposit"]'));
+    expect(find(host, '[data-ui="deposit-purpose"]').textContent).toContain(
+      en.mix.deposit.purpose(null, 'medium'),
+    );
+    expect(host.querySelectorAll('[data-ui="deposit-goal"] button')).toHaveLength(3);
+    expect(host.querySelector('[data-ui="deposit-risk"]')).toBeNull();
+  });
+
+  it('changes the mix in the conversation: the box takes focus, and the proposal and amount stay', async () => {
+    const more = {
+      ...preview,
+      objective: 'More of one, less of the other',
+      allocations: preview.allocations.map((line, i) => ({
+        ...line,
+        weightBps: i === 0 ? line.weightBps + 100 : i === 1 ? line.weightBps - 100 : line.weightBps,
+      })),
+    };
+    replies(
+      { goal: 'grow', risk: 'high' },
+      null,
+      { goal: 'grow', risk: 'low', proposal: null, message: 'Lower risk it is.' },
+      { goal: 'grow', risk: 'low', proposal: more },
+    );
+    const host = await show();
+    await send(host, 'Stocks to grow, high risk');
+    await click(find(host, '[data-action="deposit"]'));
+    await type(amount(host), '250');
+    await click(find(host, '[data-action="change-mix"]'));
+    expect(document.activeElement).toBe(find(host, 'textarea'));
+    expect(host.querySelector('[data-ui="deposit-step"]')).not.toBeNull();
+
+    // the chat fails: its error says so by the box, and the deposit step keeps the mix and the amount
+    await send(host, 'more of the first, less of the second');
+    expect(find(host, '[data-ui="goal-chat"]').textContent).toContain(en.goal.explore.failed);
+    expect(find(host, '[data-ui="goal-retry"]').textContent).toContain(en.goal.explore.retry);
+    expect(amount(host).value).toBe('250');
+    expect(
+      strategy(host).querySelector(`[data-asset="${preview.allocations[0]?.assetId}"]`),
+    ).not.toBeNull();
+
+    // a reply that only talks changes what was said, not the mix
+    await send(host, 'actually low risk');
+    expect(find(host, '[data-ui="deposit-purpose"]').textContent).toContain(
+      en.mix.deposit.purpose('grow', 'low'),
+    );
+    expect(amount(host).value).toBe('250');
+
+    // another proposal is read as a preview first; using it finds the amount where it was
+    await send(host, 'more of the first, less of the second');
+    expect(host.querySelector('[data-ui="deposit-step"]')).toBeNull();
+    expect(strategy(host).textContent).toContain('More of one, less of the other');
+    await click(find(host, '[data-action="deposit"]'));
+    expect(amount(host).value).toBe('250');
+    expect(calls.filter((call) => call.path === path).at(-1)?.body.messages).toEqual(
+      expect.arrayContaining([{ who: 'person', text: 'more of the first, less of the second' }]),
+    );
+  });
+
+  it('moves focus with the screen: to the amount when the step opens, to the button on the way back', async () => {
+    replies({ goal: 'grow', risk: 'high' });
+    const host = await show();
+    await send(host, 'Stocks to grow, high risk');
+    await click(find(host, '[data-action="deposit"]'));
+    expect(document.activeElement).toBe(amount(host));
+    await click(
+      [...host.querySelectorAll('button')].find(
+        (button) => button.textContent === en.mix.deposit.backToProposal,
+      ) as HTMLElement,
+    );
+    expect(document.activeElement).toBe(find(host, '[data-action="deposit"]'));
+  });
+
+  it('holds the deposit action while a reply is being worked on', async () => {
+    let release: () => void = () => {};
+    let n = 0;
+    portStore.setApi(async (url, init) => {
+      if (init?.method !== 'POST') return baseApi(url);
+      const body = JSON.parse(String(init.body));
+      n += 1;
+      if (n === 2)
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      return json({ ...response(body.messageId), goal: 'grow', risk: 'high' });
+    });
+    const host = await show();
+    await send(host, 'Stocks to grow, high risk');
+    await type(find<HTMLTextAreaElement>(host, 'textarea'), 'more of the first');
+    await click(find(host, '[data-ui="composer-send"]'));
+    // the last mix stays on the screen, and its button waits for the reply
+    const press = find(host, '[data-action="deposit"]');
+    expect(press.getAttribute('aria-disabled')).toBe('true');
+    await click(press);
+    expect(host.querySelector('[data-ui="deposit-step"]')).toBeNull();
+    release();
+    await settle();
+    expect(find(host, '[data-action="deposit"]').getAttribute('aria-disabled')).toBeNull();
+  });
+
+  it('starts over with no mix, no amount and no deposit step', async () => {
+    replies({ goal: 'grow', risk: 'high' });
+    const host = await show();
+    await send(host, 'Stocks to grow, high risk');
+    await click(find(host, '[data-action="deposit"]'));
+    await type(amount(host), '250');
+    await click(
+      [...host.querySelectorAll('button')].find(
+        (button) => button.textContent === en.talk.startOver,
+      ) as HTMLElement,
+    );
+    expect(host.querySelector('[data-ui="deposit-step"]')).toBeNull();
+    expect(host.querySelector('[data-ui="goal-empty-preview"]')).not.toBeNull();
+  });
+});
+
 describe('the proposed mix drawn as a joint', () => {
   const lineOf = (symbol: string, weightBps: number) => ({
     assetId: `solana:${symbol.toLowerCase()}`,
@@ -672,7 +855,7 @@ describe('the proposed mix drawn as a joint', () => {
     expect(document.activeElement).toBe(find(host, '[data-ui="mix-joint"] [role="toolbar"]'));
   });
 
-  it('keeps the last draft, usable again, when the next reply is only a question (Rodrigo, Oct 8), and never called it a new draft', async () => {
+  it('keeps the last mix when the next reply is only a question, and never called it a new draft', async () => {
     const release = answer(
       [
         { proposal: mixOf(['SPY', 5000], ['GLD', 3000], ['USDC', 2000]) },
@@ -690,17 +873,16 @@ describe('the proposed mix drawn as a joint', () => {
     expect(line).toBe(en.shared.vault.conversation.reworking);
     expect(line).not.toMatch(/new draft/i);
     await release();
-    // an answer with no plan keeps the last plan in view, no longer pending
+    // the settled rule (gate DEPOSIT-STEP): a reply with no proposal keeps the last mix, no longer
+    // marked as waiting, and its deposit action is the person's again
     expect(pieces(host).map((p) => p.dataset.asset)).toEqual([
       'solana:spy',
       'solana:gld',
       'solana:usdc',
     ]);
     expect(find(strategy, '[data-ui="preview-pending"]').textContent).toBe('');
-    expect(find(strategy, '[data-action="use-mix"]').getAttribute('aria-disabled')).not.toBe(
-      'true',
-    );
     expect(strategy.querySelector('[data-ui="goal-empty-preview"]')).toBeNull();
+    expect(find(strategy, '[data-action="deposit"]').getAttribute('aria-disabled')).toBeNull();
     expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain(
       'I need one thing first.\n\nFor how long?',
     );
@@ -728,15 +910,22 @@ describe('the proposed mix drawn as a joint', () => {
     await release();
     expect(strategy.querySelector('[data-ui="goal-working"]')).toBeNull();
     expect(find(strategy, '[data-ui="mix-joint"]').getAttribute('data-motion')).toBe('arrive');
-    const use = () => find(strategy, '[data-action="use-mix"]');
+    const use = () => find(strategy, '[data-action="deposit"]');
     expect(use().getAttribute('aria-disabled')).not.toBe('true');
 
     // the next wait: the draft stays, said to be the last one, and its action waits
+    // the button opens the deposit step; back on the proposal, the next words are sent
+    await click(use());
+    expect(host.querySelector('[data-action="deposit-review"]')).not.toBeNull();
+    await click(
+      [...host.querySelectorAll('button')].find(
+        (button) => button.textContent === en.mix.deposit.backToProposal,
+      ) as HTMLElement,
+    );
+    // the line is there, empty, before its words change
     const pendingLine = find(strategy, '[data-ui="preview-pending"]');
     expect(pendingLine.getAttribute('role')).toBe('status');
     expect(pendingLine.textContent).toBe('');
-    await click(use());
-    expect(host.querySelector('[data-action="mix-review"]')).not.toBeNull();
     await send(host, 'Swap the gold for a second fund');
     expect(find(strategy, '[data-ui="preview-pending"]').textContent).toBe(
       en.shared.vault.conversation.reworking,
@@ -751,11 +940,10 @@ describe('the proposed mix drawn as a joint', () => {
       'solana:gld',
       'solana:usdc',
     ]);
-    // the flow that was using it closes, and the button cannot open it again meanwhile
-    expect(host.querySelector('[data-action="mix-review"]')).toBeNull();
+    // the button cannot open the deposit step while the reply is on its way
     expect(use().getAttribute('aria-disabled')).toBe('true');
     await click(use());
-    expect(host.querySelector('[data-action="mix-review"]')).toBeNull();
+    expect(host.querySelector('[data-action="deposit-review"]')).toBeNull();
 
     await release();
     const joint = find(strategy, '[data-ui="mix-joint"]');
@@ -793,7 +981,7 @@ describe('the proposed mix drawn as a joint', () => {
     expect(strategy.querySelector('tr[data-row="solana:gld"]')).toBeNull();
   });
 
-  it('keeps the draft before it when the next reply does not come (Rodrigo, Oct 8), and says so', async () => {
+  it('keeps the mix before it when the next reply does not come', async () => {
     let fail = false;
     portStore.setApi(async (url, init) => {
       if (init?.method !== 'POST') return baseApi(url);
@@ -805,9 +993,12 @@ describe('the proposed mix drawn as a joint', () => {
     expect(host.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
     fail = true;
     await send(host, 'Something else');
-    expect(host.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
+    // the settled rule (gate DEPOSIT-STEP): the chat says it failed, and the last mix stays usable
     expect(find(host, '[role="alert"]').textContent).toBe(en.goal.explore.failed);
+    expect(host.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
     expect(host.querySelector('[data-ui="goal-empty-preview"]')).toBeNull();
+    expect(find(host, '[data-ui="preview-pending"]').textContent).toBe('');
+    expect(find(host, '[data-action="deposit"]').getAttribute('aria-disabled')).toBeNull();
   });
 
   it('moves nothing for a person who asked for reduced motion: each mix is simply there', async () => {
@@ -947,46 +1138,25 @@ describe('the relaxed intake’s plan on /goal (RELAXED-INTAKE)', () => {
     basis: 'Past-rate arithmetic from the sourced yield readings, never a promise.',
     sourceIds: [],
   };
-  const answerWith = (extra: Record<string, unknown>, personalize?: () => Response) =>
+  const answerWith = (extra: Record<string, unknown>) =>
     portStore.setApi(async (url, init) => {
       if (init?.method !== 'POST') return baseApi(url);
       const body = JSON.parse(String(init.body));
       calls.push({ path: url, body });
-      if (url === '/v1/baskets/personalize') return personalize?.() ?? json({}, 500);
       return json({ ...response(body.messageId), proposal: { ...preview, ...extra } });
     });
 
-  it('offers "Invest in this plan" only with the engine’s sheet, hands the sheet over and says why no plan came', async () => {
-    answerWith({ investSheet: sheet }, () =>
-      json({ error: 'no plan', code: 'GOAL_NOT_ACHIEVABLE' }, 422),
-    );
-    const host = await show();
-    await send(host, 'Grow $2,000');
-    const invest = find(host, '[data-action="invest-plan"]');
-    expect(invest.textContent).toBe(en.shared.vault.conversation.invest.press);
-    expect(invest.getAttribute('data-variant')).toBe('primary');
-    await click(invest);
-    await settle();
-    expect(calls.filter((call) => call.path === '/v1/baskets/personalize')).toEqual([
-      { path: '/v1/baskets/personalize', body: { sheet } },
-    ]);
-    expect(find(host, '[data-ui="preview-invest"] [role="alert"]').textContent).toBe(
-      en.goal.explore.investFailed.noPlan,
-    );
-    expect(router.push).not.toHaveBeenCalled();
-    // a plan read back from this browser is shown without its sheet: nothing is invested from it
-    await unmountAll();
-    const again = await show();
-    await settle();
-    expect(again.querySelector('[data-ui="mix-joint"]')).not.toBeNull();
-    expect(again.querySelector('[data-action="invest-plan"]')).toBeNull();
-  });
-
-  it('offers no "Invest in this plan" without the sheet', async () => {
-    answerWith({});
+  it('leads to the deposit step only: no "Invest in this plan", and nothing sent to the engine', async () => {
+    // a reply from a server that still carries an engine sheet: it is not read, and nothing invests from it
+    answerWith({ investSheet: sheet });
     const host = await show();
     await send(host, 'Grow $2,000');
     expect(host.querySelector('[data-action="invest-plan"]')).toBeNull();
+    const primary = [
+      ...find(host, '[data-ui="goal-strategy"]').querySelectorAll('button[data-variant="primary"]'),
+    ];
+    expect(primary.map((button) => button.getAttribute('data-action'))).toEqual(['deposit']);
+    expect(calls.some((call) => call.path === '/v1/baskets/personalize')).toBe(false);
   });
 
   it('draws the projected months in honey on a chalk baseline, once asked for', async () => {

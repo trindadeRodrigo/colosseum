@@ -31,6 +31,7 @@ import {
   type SharedFamily,
   Target,
   VaultAgentReplyShape,
+  VaultAgentStatedPurpose,
   warningsBelong,
 } from '@colosseum/schemas';
 import {
@@ -561,7 +562,10 @@ function bodyOf<T>(schema: z.ZodType<T>, value: unknown): T {
   return read.data;
 }
 /** The new-goal conversation's answer, as apps/api declares it (routes/v1/goal-conversation-reply.ts). */
-const GoalReply = VaultAgentReplyShape.extend({ chain: ChainId }).superRefine(warningsBelong);
+const GoalReply = VaultAgentReplyShape.extend({
+  chain: ChainId,
+  ...VaultAgentStatedPurpose.shape,
+}).superRefine(warningsBelong);
 const cents = (n: number) => Math.round(n * 100) / 100;
 
 async function mixReview(body: MixBody, amountUsd: number, goal: MixReview['goal']) {
@@ -646,11 +650,35 @@ const confirmed = (body: MixBody, review: MixReview) =>
   body.confirm && body.reviewHash === review.reviewHash && review.unconfirmed.length === 0;
 
 /** The goal conversation's preview: two picks, equal, and what the server did with the weights. */
-function goalReply(body: { messageId?: string }) {
+/**
+ * The goal and risk are read from the person's own words, as the API serves them: "grow", "income" or
+ * "safe", and "low", "medium" or "high" beside "risk", or their Portuguese. Words that say neither are
+ * answered with null.
+ */
+function goalReply(body: { messageId?: string; messages?: { who: string; text: string }[] }) {
   const picks = [`${CHAIN}:spy`, `${CHAIN}:gold`];
+  const words = (body.messages ?? [])
+    .filter((message) => message.who === 'person')
+    .map((message) => message.text.toLowerCase())
+    .join(' ');
+  const goal = /\b(grow|crescer)/.test(words)
+    ? 'grow'
+    : /\b(income|renda)\b/.test(words)
+      ? 'income'
+      : /\b(safe|seguro)\b/.test(words)
+        ? 'protect'
+        : null;
+  const level = /\b(low|medium|high)(?:er)? risk\b|\brisco (baixo|médio|alto)/.exec(words);
+  const risk = level
+    ? ({ low: 'low', baixo: 'low', medium: 'medium', médio: 'medium', high: 'high', alto: 'high' }[
+        (level[1] ?? level[2]) as string
+      ] ?? null)
+    : null;
   return GoalReply.parse({
     version: 1,
     chain: CHAIN,
+    goal,
+    risk,
     messageId: body.messageId,
     message: 'Sample: a broad fund and gold, split equally. Nothing is bought until you confirm.',
     question: null,
@@ -914,7 +942,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     return send(res, 200, { id: PLAN_ID, proposal: built });
   }
   if (path === `/v1/conversations/${CHAIN}/goal/reply` && method === 'POST')
-    return send(res, 200, goalReply((await read(req)) as { messageId?: string }));
+    return send(res, 200, goalReply((await read(req)) as Parameters<typeof goalReply>[0]));
   if (path === `/v1/conversations/${CHAIN}/goal/accept` && method === 'POST') {
     const body = bodyOf(AcceptGoalMixRequest, await read(req));
     const review = await mixReview(body, body.amountUsd, body.goal);

@@ -44,7 +44,6 @@ export function StrategyPreview({
   pending,
   onDiscuss,
   use,
-  invest,
 }: {
   proposal: VaultStrategyPreview;
   targets?: { asset: string; targetBps: number }[];
@@ -55,13 +54,11 @@ export function StrategyPreview({
    */
   pending?: string;
   onDiscuss?: () => void;
-  /** The one action this preview leads to: buying it for a new goal, or applying it to the vault. */
-  use?: { label: string; onUse: () => void };
   /**
-   * "Invest in this plan" (the relaxed intake, RELAXED-INTAKE): shown when the reply carries the
-   * engine's sheet; the engine builds the plan and the person reviews and signs on the plan screen.
+   * The one action this preview leads to: a deposit for a new goal, which is the card's primary
+   * button, or applying it to the vault.
    */
-  invest?: { onPress: () => void; busy: boolean; error?: string };
+  use?: { label: string; onUse: () => void; primary?: boolean };
 }) {
   const [pointed, setLit] = useState<string | null>(null);
   // a row the next draft dropped cannot stay lit
@@ -335,33 +332,13 @@ export function StrategyPreview({
               })}
             </div>
           )}
-          {invest && proposal.investSheet && (
-            <div data-ui="preview-invest" className="flex flex-col items-start gap-1">
-              <Button
-                variant="primary"
-                data-action="invest-plan"
-                disabled={invest.busy || Boolean(pending)}
-                onClick={invest.onPress}
-              >
-                {invest.busy ? copy.invest.busy : copy.invest.press}
-              </Button>
-              <p className="max-w-(--tf-measure-body) text-caption text-muted-foreground">
-                {copy.invest.note}
-              </p>
-              {invest.error && (
-                <p role="alert" className="text-caption text-destructive">
-                  {invest.error}
-                </p>
-              )}
-            </div>
-          )}
           {(onDiscuss || use) && (
             <div className="flex flex-wrap gap-3">
               {use && (
                 <Button
-                  variant="secondary"
-                  size="dense"
-                  data-action="use-mix"
+                  variant={use.primary ? 'primary' : 'secondary'}
+                  size={use.primary ? 'default' : 'dense'}
+                  data-action={use.primary ? 'deposit' : 'use-mix'}
                   disabled={Boolean(pending)}
                   onClick={use.onUse}
                 >

@@ -252,13 +252,6 @@ export const en = {
         saved: 'Saved conversations',
         untitled: 'Earlier conversation',
       },
-      /** Why "Invest in this plan" did not lead to a plan. */
-      investFailed: {
-        noPlan:
-          "The engine found no plan for this split under today's rules. Adjust the split or the amount.",
-        signedOut: 'Sign in again to invest.',
-        other: 'The plan could not be built just now. Try again.',
-      },
       invitation: 'What would you like your strategy to do?',
       lead: 'Tell me your ideas, needs and limits. I can discuss an allocation with its sources and tradeoffs.',
       placeholder: 'Describe what you want to explore…',
@@ -271,9 +264,9 @@ export const en = {
       previewOnly: 'Preview only. This draft cannot be invested here yet.',
       /** In the empty preview while the first reply is on its way. */
       working: 'Working on a draft from what you said. It will appear here with its sources.',
-      /** On a proposal, over "Use this mix": the way from the draft to a buy. */
+      /** On a proposal, over "Deposit": the way from the draft to a buy. */
       draftNote:
-        'A draft from this conversation. Nothing is bought until you review the mix and sign.',
+        'A draft from this conversation. Deposit to choose an amount. Nothing is bought until you review and sign.',
       /** Under the box when the person's last words got no reply. */
       retry: 'Try again',
       elsewhere: 'See shared portfolios',
@@ -1434,12 +1427,6 @@ export const en = {
           month: 'Month',
           hint: 'Point at or tab to a month to read it.',
         },
-        /** "Invest in this plan": the engine builds the plan on this split, then the plan screen. */
-        invest: {
-          press: 'Invest in this plan',
-          busy: 'Building the plan…',
-          note: "The engine builds the plan on this split, within today's rules; you review and sign before anything is bought.",
-        },
         resume: 'Resume conversation',
         holdings: 'Holdings',
         explain: 'Explain my holdings',
@@ -1971,7 +1958,8 @@ export const en = {
   mix: {
     activity: (when: string) => `New targets for your vault · ${when}`,
     preview: {
-      use: 'Use this mix',
+      /** On a new goal's proposal: the one action it leads to, the deposit step. */
+      deposit: 'Deposit',
       apply: 'Apply to my vault',
       notes: 'How the weights were set',
       notesAlone: 'About the shares you gave',
@@ -2015,23 +2003,73 @@ export const en = {
       back: 'Change the mix',
     },
     goal: {
-      title: 'Use this mix for a new goal',
-      lead: 'Say how much and what it’s for. I check the mix at today’s prices before anything is bought.',
-      amount: 'Amount',
-      amountHint: 'In dollars, from $10 to $1,000,000.',
-      goal: 'Goal',
       goals: { grow: 'Make it grow', income: 'Monthly income', protect: 'Keep it safe' },
-      risk: 'Risk',
       risks: { low: 'Low', medium: 'Medium', high: 'High' },
       choose: 'Choose one',
-      review: 'Review this mix',
-      reviewing: 'Reviewing…',
       confirm: 'Confirm and go to buy',
       confirming: 'Confirming…',
+    },
+    deposit: {
+      title: 'Deposit into this mix',
+      /** What the person said in the conversation, as one sentence: "For growth, at higher risk." */
+      purpose: (
+        goal: 'grow' | 'income' | 'protect' | null,
+        risk: 'low' | 'medium' | 'high' | null,
+      ) => {
+        const goals = {
+          grow: 'For growth',
+          income: 'For monthly income',
+          protect: 'To keep it safe',
+        };
+        const risks = { low: 'at lower risk', medium: 'at medium risk', high: 'at higher risk' };
+        if (goal && risk) return `${goals[goal]}, ${risks[risk]}.`;
+        if (goal) return `${goals[goal]}.`;
+        return risk ? `A${risks[risk].slice(1)}.` : '';
+      },
+      /** The dollar sign before the amount, as this language writes it. */
+      currency: '$',
+      changePurpose: 'Change',
+      changePurposeLabel: 'Change the goal or the risk in the conversation',
+      askGoal: 'What is this money for?',
+      askRisk: 'How much risk can it take?',
+      askWhy:
+        'You haven’t said this in the conversation, and I don’t guess it: the goal decides which assets the plan may hold. Tap one, or say it in the conversation.',
+      limits: 'From $10 to $1,000,000.',
+      quick: 'Quick amounts',
+      quickOne: (amount: string) => `Deposit ${amount}`,
+      mix: 'What it buys',
+      edited: 'Edited by hand',
+      share: 'Share',
+      unchecked: 'not checked yet',
+      needAmount: 'Type an amount to see what goes into each asset.',
+      needPurpose: 'Choose the goal and the risk to see what goes into each asset.',
+      checking: 'Checking at today’s prices…',
+      checked: 'Checked at today’s prices. Nothing is bought yet.',
+      review: 'Review deposit',
+      reviewOf: (amount: string) => `Review deposit of ${amount}`,
+      reviewing: 'Checking…',
+      changeMix: 'Change the mix',
+      next: 'Nothing is bought or signed on this page. Next you check the review, then sign each step on the buy screen.',
+      brokenMix:
+        'The weights in the editor don’t add up yet, so there is no mix to show. Fix them below, or go back to the proposed weights.',
+      balance: 'Your wallet’s balance is checked on the buy screen.',
+      editByHand: 'Edit weights by hand',
+      editorLead:
+        'Type a weight for each asset, in percent. Whatever you leave unassigned stays in cash. The weights here are the ones I check.',
+      reset: 'Back to the proposed weights',
+      backToProposal: 'Back to the proposal',
+      backToDeposit: 'Back to the deposit',
+      invalidNext: 'Ask for a change in the conversation, or edit the weights by hand.',
+      blocked: {
+        reply: 'Wait for the reply in the conversation first.',
+        weights: 'Fix the weights in the editor first.',
+        amount: 'Type an amount first.',
+        purpose: 'Choose the goal and the risk first.',
+      },
       errors: {
-        amount: 'Type an amount from $10 to $1,000,000.',
-        goal: 'Choose what the money is for.',
-        risk: 'Choose a risk.',
+        notAmount: 'Type an amount in dollars, such as 250 or 250.50.',
+        belowMin: 'The least you can deposit is $10.',
+        aboveMax: 'The most in one deposit is $1,000,000. Type less.',
       },
     },
     vault: {
@@ -2075,7 +2113,7 @@ export const en = {
       back: 'Back to your vault',
     },
     failure: {
-      invalid: 'I can’t use this mix as it is:',
+      invalid: 'This mix can’t go ahead as it is:',
       signedOut: 'Your sign-in ran out. Sign in again and try once more.',
       noWallet: 'Your sign-in has no wallet on this chain. Add one, then try again.',
       notYours: 'This isn’t a vault of yours.',
