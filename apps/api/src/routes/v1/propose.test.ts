@@ -327,7 +327,7 @@ describe('a plan proposed from a link', () => {
     const build = await post(buyer, `/v1/orders/${placed.id}/legs/${leg.id}/build`);
     expect(build.statusCode).toBe(409);
     expect(OrderError.parse(build.json())).toMatchObject({
-      error: 'the plan this order buys is gone',
+      error: 'the plan this order deposits into is gone',
       code: 'PLAN_GONE',
     });
   });

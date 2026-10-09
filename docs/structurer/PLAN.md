@@ -1,6 +1,8 @@
 # PLAN.md — 12-day build plan, Colosseum Crypto World's Fair
 
-*Written Wed 2026-09-30 from `HANDOFF-IDEA1.md` (authoritative), `eval/FINAL.md`, `eval/FEASIBILITY.md`, `eval/IDEA1-MARKET.md`, `eval/PANEL.md`. Build runs Thu Oct 1 (D1) to Mon Oct 12 (D12). Video recorded by Sun Oct 11. Submission 11:59pm PT Oct 12.*
+> Historical: the build plan of the first product. Superseded by `docs/vault/PLAN-VAULT.md` and the ledger, `docs/vault/STATE-VAULT.md`.
+
+*Written Wed 2026-09-30 from `HANDOFF-IDEA1.md` (authoritative). Build runs Thu Oct 1 (D1) to Mon Oct 12 (D12). Video recorded by Sun Oct 11. Submission 11:59pm PT Oct 12.*
 
 Calendar: D1 Thu Oct 1 · D2 Fri Oct 2 · **D3 Sat Oct 3 · D4 Sun Oct 4** · D5 Mon Oct 5 · D6 Tue Oct 6 · D7 Wed Oct 7 · D8 Thu Oct 8 · D9 Fri Oct 9 · **D10 Sat Oct 10 · D11 Sun Oct 11** · D12 Mon Oct 12. Weekends in bold: xStocks depth is thin, so xStocks execution is scheduled on weekdays only.
 
@@ -83,7 +85,7 @@ Each entry records command or URL, value, timestamp. No number from the dossiers
 | V6 | Mint addresses and token programs | USDC, USDT, USDY, syrupUSDC, SPYx, QQQx, BRS (`BRSxQRUaGswjLs7ewcH7uXj3r7SgmfKSSLLXyCKHZtUo`), and whether each is Token or Token-2022 | `getAccountInfo` on each mint; record owner program | An unexpected token program changes the executor code path; note it for D1-PM. |
 | V7 | FX and rate data | PTAX USD/BRL, Selic and CDI series return today's value | `https://api.bcb.gov.br/dados/serie/bcdata.sgs.<id>/dados/ultimos/1?formato=json` for the PTAX, Selic and CDI ids; confirm ids | Fall back to the founder's prior macro dataset, labelled `source: prior_dataset`. |
 
-Founder-only items in §8 that are not build tasks: which chain each LOI partner pilots (feeds the D5 S1 decision); the Discord question on Solana + Base double eligibility (ask on D1, record the answer in `docs/GATES.md`); the regulatory position (drives the disclaimer wording only).
+Founder-only items in §8 that are not build tasks: which chain each distributor partner pilots (feeds the D5 S1 decision); the regulatory position (drives the disclaimer wording only).
 
 ## 4. Slot table
 
@@ -91,7 +93,7 @@ Legend: **[B2]** = a second builder can take it (default B2 scope: execution and
 
 | Slot | Workstream | Deliverable | Check (how we know it's done) | Depends on | [B2]? | Notes |
 |---|---|---|---|---|---|---|
-| **D1-AM** Thu Oct 1 | Setup + Verify | Repo scaffold per §2; `CLAUDE.md`; migrations for the 15 tables; `docs/GATES.md`, `STATE.md`, `docs/PRIOR-WORK.md`; V1–V7 run and recorded in `docs/structurer/VERIFICATION.md`; `.env.example`; CI | `pnpm typecheck && pnpm lint && pnpm test` green in CI on an Oct 1 commit; `VERIFICATION.md` has 7 entries with command, value, timestamp | — | no | This is PROMPT-BUILD 2A. Founder: ask the Discord double-eligibility question today. |
+| **D1-AM** Thu Oct 1 | Setup + Verify | Repo scaffold per §2; `CLAUDE.md`; migrations for the 15 tables; `docs/GATES.md`, `STATE.md`, `docs/PRIOR-WORK.md`; V1–V7 run and recorded in `docs/structurer/VERIFICATION.md`; `.env.example`; CI | `pnpm typecheck && pnpm lint && pnpm test` green in CI on an Oct 1 commit; `VERIFICATION.md` has 7 entries with command, value, timestamp | — | no | This is PROMPT-BUILD 2A. |
 | **D1-PM** | Exec plumbing | Demo wallet (file keypair, gitignored) funded with USDC and SOL; RPC configured; `chain-solana`: `getQuote`, `buildSwapTx` (from `swap-instructions`), `simulate`; registry seeded with mints from V6 and the abstract BRL leg; depth cron running | `simulateTransaction` succeeds for a USDC→USDY swap at a few dollars; `depth_observations` has ≥ 4 rows | D1-AM | [B2] | Founder's own funds. Weak area, front-loaded. |
 | **D2-AM** Fri Oct 2 | Exec | **First mainnet transactions:** Jupiter swap USDC→USDY, swap USDC→syrupUSDC, Kamino USDC deposit via klend-sdk; each logged in `executions` with explorer link | 3 signatures on Solscan; 3 rows in `executions` with `status = confirmed` | D1-PM | [B2] | If Kamino fails, log it and retry in D3-AM; the V3 substitute (Jupiter Lend) is the fallback. |
 | **D2-PM** | Policy spike + **decision** | Timeboxed 4h spike of mechanism A: user `approve`s a delegate (agent key) for a bounded amount; agent composes one atomic tx: delegate transfer → Jupiter swap → output to the user's ATA via `destinationTokenAccount`. Read-only assessment of Squads v4 (B). Decision written to `docs/GATES.md` by 18:00 | Either a mainnet tx where the agent key rebalanced a few dollars of the user's USDY→syrupUSDC without a user signature (→ A), or the written decision for fallback C with the reason | D2-AM, V5 | [B2] | Kamino deposits and withdrawals need the owner's signature under A; the video says so. C = the policy checks and proposes; the user signs. Custom program is rejected on time grounds. |
@@ -108,11 +110,11 @@ Legend: **[B2]** = a second builder can take it (default B2 scope: execution and
 | **D8-AM** Thu Oct 8 | FLEX-2 | See the G-Nora branch table below | per branch | D7-PM | [B2] on PASS | |
 | **D8-PM** | FLEX-3 | See the G-Nora branch table below | per branch | D8-AM | [B2] on PASS | |
 | **D9-AM** Fri Oct 9 | Hardening + acceptance | `scripts/acceptance.ts` runs every §4.5 check and writes `docs/structurer/ACCEPTANCE.md` with artifact links; hero income example capital computed from live haircut yields and reproduced in the spreadsheet; `/embed/[id]` unbranded route finished (1 h); friendly-user wallets invited with the public URL | `ACCEPTANCE.md` all ticked; capital figure matches the spreadsheet; ≥ 2 external wallets have a plan in the DB by end of day | D7-AM, FLEX | no | Last day for new code. |
-| **D9-PM** | **FREEZE** + video prep | Freeze at 18:00 BRT (tag `freeze`); video script (§8) and shot list; slides: cold-open schedule, Glider/Ondo one-slider, Nexa analog, prior-work and disclaimer; **record the weekday xStocks execution clip today** with the date on screen | `docs/structurer/VIDEO.md` script and shot list; slide PDF; xStocks clip file exists | D9-AM | no | Freeze defined in §5. |
+| **D9-PM** | **FREEZE** + video prep | Freeze at 18:00 BRT (tag `freeze`); video script (§8) and shot list; slides; **record the weekday xStocks execution clip today** with the date on screen | `docs/structurer/VIDEO.md` script and shot list; slide PDF; xStocks clip file exists | D9-AM | no | Freeze defined in §5. |
 | **D10-AM** Sat Oct 10 | Video dry run | Full hero flow recorded end to end on mainnet with a fresh wallet (income goal); explorer links captured; P0 bug list | Dry-run file plays through all shots; P0 list ≤ 3 items | D9-PM | no | Income goal only on the weekend (no xStocks). |
 | **D10-PM** | **Buffer** | Close every `slipped` row in `STATE.md` from D3–D8; fix P0s from the dry run with a test each; otherwise second dry run | `STATE.md` has no open `slipped` rows; P0 list empty | — | no | Not for new features. |
 | **D11-AM** Sun Oct 11 | **Recording** | Final 3-minute recording and voiceover; live segments recorded live on mainnet; every mock or sandbox element labelled on screen | Final MP4 ≤ 3:00; shot list fully ticked | D10 | no | Deadline for the video. |
-| **D11-PM** | Package | Edit and upload (unlisted); README with explorer link list, architecture, run instructions; `docs/PRIOR-WORK.md` final; LOI PDFs in `docs/loi/`; disclaimer check; submission form draft filled | Video URL plays; form draft complete; README links resolve | D11-AM | no | |
+| **D11-PM** | Package | Edit and upload (unlisted); README with explorer link list, architecture, run instructions; `docs/PRIOR-WORK.md` final; disclaimer check; submission form draft filled | Video URL plays; form draft complete; README links resolve | D11-AM | no | |
 | **D12-AM** Mon Oct 12 | **Buffer** | Re-cut or re-upload only; submission form review | — | — | no | No code changes. |
 | **D12-PM** | **Submission** | Submit Colosseum form and the Superteam Brasil track form by 18:00 BRT (14:00 PT); confirmation captured | Confirmation screenshot or email in `docs/submission/` | D11-PM | no | Deadline 11:59pm PT = 03:59 BRT Oct 13. Submit early. |
 
@@ -152,8 +154,8 @@ What PASS displaces: UI polish, S1, execution hardening, and the friendly-user s
 | 6 | Jupiter API key or rate limits | M | Quotes fail mid-demo; cron blocked | V2 headers; 429s in logs | Key from portal on D1; cron at 15 min and 4 notionals within the tier; cache the last good quote with its timestamp and label it | Founder | D1-AM |
 | 7 | Kamino SDK breaking change | M | Deposit leg fails | V3 dry run fails; peer conflict | Substitute Jupiter Lend USDC (same asset kind); registry swap only | Founder / B2 | D1-AM, D2-AM |
 | 8 | Time overrun on UI | H | Monitoring or plan view unfinished at freeze | D4-AM or D6-PM slips | UI front-loaded (D4-AM skeleton); plain components; FLEX FAIL branch and D10-PM buffer absorb; cut order: embed polish → charts → chat styling | Founder | D9-AM |
-| 9 | Founder's own funds too small for convincing demo numbers | M | Judges see cents | Wallet balance at D1-PM | Plan is scale-invariant: show weights and the BRL schedule at the goal's scale, execute at small notional, say "executed at demo size" on screen; friendly users add wallets | Founder | D9-AM |
-| 10 | Regulatory framing ("not licensed advice") | M | Judge reads it as unlicensed advice | Partner asks who holds the licence | Disclaimer constant on plan view, API docs, README and video end card; B2B2C framing: distributor holds the client relationship | Founder | D4-AM, D11-PM |
+| 9 | Founder's own funds too small for convincing demo numbers | M | The demo's figures look too small to mean anything | Wallet balance at D1-PM | Plan is scale-invariant: show weights and the BRL schedule at the goal's scale, execute at small notional, say "executed at demo size" on screen; friendly users add wallets | Founder | D9-AM |
+| 10 | Regulatory framing ("not licensed advice") | M | It reads as unlicensed advice | Partner asks who holds the licence | Disclaimer constant on plan view, API docs, README and video end card; B2B2C framing: distributor holds the client relationship | Founder | D4-AM, D11-PM |
 | 11 | Multi-leg execution partial failures | H | Wallet left half-executed on camera | D3-AM forced-failure test fails | Per-leg status, idempotent re-run of failed legs only, never automatic retry on mainnet | B2 / Founder | D3-AM |
 | 12 | Token-2022 or transfer-hook mints break the executor | M | xStocks or USDY leg cannot be composed | V6 token program mismatch | Executor branches on token program; if hooks block delegate transfer, that asset stays user-signed under A | B2 / Founder | D1-PM |
 | 13 | RPC instability during recording | M | Live segment fails | Timeouts in D10 dry run | Paid RPC with a second provider as fallback in env; pre-record a backup take, labelled as a recording of a real tx | Founder | D10-AM |
@@ -176,16 +178,16 @@ What PASS displaces: UI polish, S1, execution hardening, and the friendly-user s
 
 ## 8. Video plan (3 minutes)
 
-Guardrails: lead with the schedule under stress and the risk sheet; "policy in your wallet, not a fund" in the first sentence; one-slide Glider/Ondo answer; Nexa as analog, not opener; claim only what is live or signed; label mocks.
+Removed: internal planning notes.
 
 | Time | Segment | Script outline | On screen (must exist) | Produced by |
 |---|---|---|---|---|
 | 0:00–0:15 | Cold open | "R$3.000 por mês a partir de 2028. This is that goal, month by month, in reais, under a BRL devaluation and a credit gate. It runs as a policy in your own wallet, not a fund." | Schedule chart with stress rows; liquidity check pass/fail | D5-PM, D6-PM |
-| 0:15–0:40 | Why this is not Glider or Ondo | "They sell fixed model portfolios. We solve a user-specific cash-flow target in reais, haircut every quoted yield, and price the FX gap between a BRL goal and USD assets." | One slide, three columns: Glider, Ondo Intelligent Portfolios, this | D9-PM slides |
+| 0:15–0:40 | Removed: internal planning notes. | | | |
 | 0:40–1:25 | Hero flow | Type the goal in Portuguese; the constraint sheet appears and is edited; allocation with reasoning per leg; the BRL leg matched to near-term months; risk sheet with source, timestamp, haircut rule, redemption path | `/` chat, sheet editor, `/plans/[id]` | D6-AM, D6-PM |
 | 1:25–2:05 | Execution | Wallet holds USDC; execute; explorer links appear per leg. PASS: BRS mint from USDC through Nora. FAIL: "BRS via Nora: integration in progress" label. High-risk goal: xStocks buy, clip dated on screen | Execution panel; Solscan tabs; BRS mint or label; dated xStocks clip | D3-AM, D6-PM, D7-PM/D8-PM, D9-PM |
 | 2:05–2:30 | Policy and rebalance | State the mechanism honestly (A: "Jupiter legs rebalance under the limits you approved; Kamino needs your signature"; C: "the policy decides and proposes; you sign"). Monitoring page with drift; rebalance link | `/monitor`; rebalance signature | D3-PM, D7-AM |
-| 2:30–2:48 | B2B and traction | Three endpoints on the docs page; unbranded embed; LOIs from Chainless and Picnic dated in-window; Nexa analog slide (R$25M seed Jul 2025; "800+" is an issuance count; Genesis Sept 2026 with FIDC wrappers, no on-chain assets) | `/docs`, `/embed/[id]`, LOI PDFs, Nexa slide | D6-AM, D9-AM, D9-PM |
+| 2:30–2:48 | B2B | Three endpoints on the docs page; unbranded embed | `/docs`, `/embed/[id]` | D6-AM, D9-AM, D9-PM |
 | 2:48–3:00 | Close | Live numbers (wallets, deposited value, rebalances executed, all from the DB); prior work disclosed; "not licensed advice" end card | Stats card; end card | D9-AM, D11-PM |
 
 Shot rules: every live segment is recorded live on Oct 11 with the income goal; the xStocks segment is the dated weekday clip; nothing simulated is shown as real.
@@ -194,14 +196,14 @@ Shot rules: every live segment is recorded live on Oct 11 with the income goal; 
 
 - [ ] Repo public, `README.md` with one-liner, architecture, run instructions, explorer link list, video link, disclaimer.
 - [ ] Commits dated Oct 1–12 with slot prefixes (`D3-AM: …`); `prior:` commits listed in `docs/PRIOR-WORK.md`; `freeze` tag on Oct 9.
-- [ ] Prior-work disclosure text (submission form): "Prior work reused, all pre-dating the hackathon: (1) teiten, a live LatAm stablecoin analytics service covering nine EVM chains plus XRPL and Stellar with 1,454 macro series; (2) our analysis-rules and yield-haircut discipline; (3) a 13,500-contract tokenized-credit database; (4) pre-existing relationships with Nora Finance, Chainless and Picnic. Everything in this repository (goal parser, registry, solver, schedule and stress engine, risk sheet, policy and rebalance engine, Solana executors, API and UI) was written between Oct 1 and Oct 12, 2026; reused code is in commits prefixed `prior:`."
+- [ ] Prior-work disclosure text (submission form): "Prior work reused, all pre-dating the hackathon: (1) teiten, a live LatAm stablecoin analytics service covering nine EVM chains plus XRPL and Stellar with 1,454 macro series; (2) our analysis-rules and yield-haircut discipline; (3) a 13,500-contract tokenized-credit database; (4) pre-existing relationships with partners. Everything in this repository (goal parser, registry, solver, schedule and stress engine, risk sheet, policy and rebalance engine, Solana executors, API and UI) was written between Oct 1 and Oct 12, 2026; reused code is in commits prefixed `prior:`."
 - [ ] Explorer links: every execution and rebalance in the video, listed in README with dates.
-- [ ] LOIs from Chainless and Picnic as PDFs in `docs/loi/`, dated in-window; partner names on screen only with written permission (embed stays unbranded otherwise).
+- [ ] Removed: internal planning notes.
 - [ ] `docs/GATES.md` final state (policy mechanism, G-Nora, S1) matches what the video claims.
-- [ ] Discord answer on Solana + Base double eligibility recorded; enter Base track only if confirmed and S1 shipped.
+- [ ] Removed: internal planning notes.
 - [ ] Superteam Brasil track form submitted (same project, explicitly allowed).
 - [ ] "Not licensed advice" disclaimer on plan view, API docs, README and video end card.
-- [ ] `.env`, keypairs and LOIs with private data excluded from the repo; `.env.example` complete.
+- [ ] `.env`, keypairs and documents with private data excluded from the repo; `.env.example` complete.
 - [ ] Submit by 18:00 BRT Oct 12; confirmation saved in `docs/submission/`.
 
 ## 10. Open questions for the founder
@@ -216,7 +218,7 @@ Shot rules: every live segment is recorded live on Oct 11 with the income goal; 
 | 4 | Are Vercel (web) and Railway or Neon (API + Postgres) acceptable hosts? | Yes. |
 | 5 | Video language? | English narration, Portuguese goal typed on screen. |
 | 6 | If klend-sdk fails V3, may the Kamino leg be replaced by Jupiter Lend USDC? | Yes. |
-| 7 | Have Chainless or Picnic given written permission to use their name or logo in the embed? | No; embed stays unbranded, LOIs named on the traction slide only. |
+| 7 | Have the distributor partners given written permission to use their name or logo in the embed? | No; the embed stays unbranded. |
 | 8 | Which wallet do friendly users have? | Phantom; two to three users, onboarding D8-PM or D9-AM. |
 | 9 | Is Oct 9 18:00 BRT confirmed as the freeze? | Yes. |
 | 10 | If G-Nora passes early (by D4), do you want B2 (if any) to start BRS on D5-PM? | Yes if B2 exists; otherwise the block stays at D7-PM–D8-PM. |
@@ -225,7 +227,7 @@ Shot rules: every live segment is recorded live on Oct 11 with the income goal; 
 
 - (a) **Both G-Nora branches close by Oct 11:** PASS ends BRS-3 at D8-PM, FAIL ends at D8-PM; D9-AM hardening, D9-PM freeze, D10 dry run and buffer, D11-AM recording are identical in both. Confirmed.
 - (b) **No BRS-specific dev before the gate:** D1–D7-AM contain only the abstract BRL leg (registry kind `brl_stable`, parameterised cap and `MintAdapter`). BRS-1..3 appear only in the PASS column of §4a, after the gate. Confirmed.
-- (c) **No outreach tasks:** partner conversations, the Nora gate and LOIs are founder inputs; the plan contains only their technical consequences. The only founder-side action listed is the Discord rules question, which is not partner outreach. Confirmed.
+- (c) **No outreach tasks:** partner conversations, the Nora gate and partner documents are founder inputs; the plan contains only their technical consequences. Confirmed.
 - (d) **Every §8 unverified item has a D1 verification task:** live yields (V1), delegated execution (V5), xStocks depth and weekend (V4), Jupiter key and endpoint (V2), Kamino SDK version (V3); BRS minting is the gate itself; partner chains, double eligibility and the regulatory position are founder items recorded in `docs/GATES.md`. Confirmed.
 - (e) **Every §4.5 check maps to a slot:** nine checks, nine rows in §7. Confirmed.
 - (f) **First mainnet tx ≤ D3:** D2-AM. Confirmed.

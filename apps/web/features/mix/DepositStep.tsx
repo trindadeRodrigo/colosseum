@@ -1,6 +1,5 @@
 'use client';
 import type { ChainId, MixLine, MixReview, Provenance } from '@colosseum/schemas';
-import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
@@ -14,6 +13,7 @@ import { rememberPlan } from '../order/plan-store';
 import { onMock } from '../order/readiness';
 import { unitsFor } from '../order/units';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
+import { type DepositHost, DepositSign } from './DepositSign';
 import { useFailureText } from './failure';
 import { MixLines, type MixRow } from './MixLines';
 import { MixReviewCard, useTicks } from './MixReviewCard';
@@ -22,8 +22,9 @@ import { acceptGoalMix } from './mix-api';
 import { linesOf, WeightEditor, type Weights, weightsOf } from './WeightEditor';
 
 // The deposit step of a new goal (gate DEPOSIT-STEP): after the conversation proposes a mix, one
-// amount is typed and one press leads to the server's review, its ticks, and the buy screen, where the
-// order is signed. Nothing is signed here. There is no form: the mix is the conversation's and is
+// amount is typed and one press leads to the server's review and its ticks. Once the person confirms,
+// the same pane shows the steps to sign (DepositSign, gate DEPOSIT-IN-PLACE): nobody leaves the
+// conversation to deposit. There is no form: the mix is the conversation's and is
 // changed there, the amount starts from the sum the person wrote there, the goal and the risk are the
 // ones the person said there, and one they did not say is worked out by the server from the mix and
 // said as such (gate DEPOSIT-DERIVE): nothing is asked here. What the amount becomes in each asset is
@@ -56,6 +57,7 @@ export function DepositStep({
   onChangeMix,
   onClose,
   waiting = false,
+  host,
 }: {
   chain: ChainId;
   userId: string;
@@ -76,13 +78,14 @@ export function DepositStep({
   onClose: () => void;
   /** The conversation is working on a reply: the mix may be about to change, so no review starts. */
   waiting?: boolean;
+  /** Told as the deposit is approved, signed and done, so the conversation holds its box. */
+  host: DepositHost;
 }) {
   const t = useT();
   const lang = useLang();
   const d = t.mix.deposit;
   const api = useApiFetch();
   const port = useWalletPort();
-  const router = useRouter();
   const failureText = useFailureText();
   const titleId = useId();
   const editorId = useId();
@@ -94,10 +97,10 @@ export function DepositStep({
   const [changed, setChanged] = useState(false);
   const [ticked, tick] = useTicks(review);
   const [busy, setBusy] = useState(false);
-  // The plan is stored and the next screen is on its way: the button says so until the route changes.
-  const [opening, setOpening] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
+  // The plan the server stored for the confirmed review, at its amount: the steps to sign take the pane.
+  const [confirmed, setConfirmed] = useState<{ planId: string; amountUsd: number } | null>(null);
   // The amount has been still for a moment, or the field was left: only then is it said to be wrong.
   const [settled, setSettled] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -112,9 +115,14 @@ export function DepositStep({
   // From the review back to the step: the press that led there.
   const reviewing = review !== null;
   const wasReviewing = useRef(false);
+  // "Change" beside the amount on the steps to sign leads back to the field itself.
+  const toAmount = useRef(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `focus` reads a ref
   useEffect(() => {
-    if (wasReviewing.current && !reviewing) focus('[data-action="deposit-review"]');
+    if (wasReviewing.current && !reviewing) {
+      focus(toAmount.current ? '[data-ui="amount-large"] input' : '[data-action="deposit-review"]');
+      toAmount.current = false;
+    }
     wasReviewing.current = reviewing;
   }, [reviewing]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: a pause after each change of the text
@@ -251,8 +259,8 @@ export function DepositStep({
     }
     const { proposalId, proposal } = answer.value;
     rememberPlan({ id: proposalId, userId, proposal, rollUp: null });
-    setOpening(true);
-    router.push(`/plan/${encodeURIComponent(proposalId)}/buy`);
+    setBusy(false);
+    setConfirmed({ planId: proposalId, amountUsd: body.amountUsd });
   }
 
   // The goal and risk as one sentence: the server's, once it has checked this mix, which names what it
@@ -266,6 +274,26 @@ export function DepositStep({
       .join(' ');
   const purpose = live ? purposeOf(live) : d.purpose(said.goal, said.risk);
 
+  if (confirmed)
+    return (
+      <div ref={root} className="min-w-0">
+        <DepositSign
+          chain={chain}
+          planId={confirmed.planId}
+          amountUsd={confirmed.amountUsd}
+          waiting={waiting}
+          host={host}
+          // "Change" leads back to the amount: the plan stored for the old one is left unsigned.
+          onChange={() => {
+            toAmount.current = true;
+            setConfirmed(null);
+            setReview(null);
+          }}
+          onLeave={onClose}
+        />
+      </div>
+    );
+
   if (review)
     return (
       <div ref={root} data-ui="deposit-review" className="flex min-w-0 flex-col gap-4">
@@ -274,7 +302,7 @@ export function DepositStep({
           ticked={ticked}
           onTick={tick}
           confirmLabel={t.mix.goal.confirm}
-          busyLabel={opening ? t.mix.goal.opening : t.mix.goal.confirming}
+          busyLabel={t.mix.goal.confirming}
           onConfirm={confirm}
           onBack={() => setReview(null)}
           backLabel={d.backToDeposit}

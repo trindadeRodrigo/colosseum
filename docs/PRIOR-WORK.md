@@ -7,7 +7,7 @@ Per the Colosseum rules, only work done inside the window (Sep 14 – Oct 12, 20
 1. **teiten** — live LatAm stablecoin analytics service: nine EVM chains plus XRPL and Stellar, 1,454 macro series.
 2. **Analysis rules and haircut discipline** — the rule set that found naive on-chain yield and volume figures overstated by 2–5.6x.
 3. **Tokenized-credit database** — ~13,500 contracts.
-4. **Partner relationships** — pre-existing conversations with Nora Finance, Chainless and Picnic. The LOIs themselves are dated inside the window.
+4. **Partner relationships** — pre-existing conversations with partners.
 5. **solana-vault-standard (SVS)** — Superteam Brasil's open vault standard for Solana (`solanabr/solana-vault-standard`). Thom, who joined on Oct 1, is one of its main contributors. Nothing from it is in this repository yet.
 
 ## What is reused in this repository (fill in as it happens)
@@ -20,7 +20,7 @@ Per the Colosseum rules, only work done inside the window (Sep 14 – Oct 12, 20
 
 ## Submission-form text (draft)
 
-Prior work reused, all pre-dating the hackathon: (1) teiten, a live LatAm stablecoin analytics service covering nine EVM chains plus XRPL and Stellar with 1,454 macro series; (2) our analysis-rules and yield-haircut discipline; (3) a 13,500-contract tokenized-credit database; (4) pre-existing relationships with Nora Finance, Chainless and Picnic. Everything in this repository (goal parser, registry, solver, schedule and stress engine, risk sheet, policy and rebalance engine, Solana executors, API and UI) was written between Sep 30 and Oct 12, 2026; reused code is in commits prefixed `prior:`.
+Prior work reused, all pre-dating the hackathon: (1) teiten, a live LatAm stablecoin analytics service covering nine EVM chains plus XRPL and Stellar with 1,454 macro series; (2) our analysis-rules and yield-haircut discipline; (3) a 13,500-contract tokenized-credit database; (4) pre-existing relationships with partners. Everything in this repository (goal parser, registry, solver, schedule and stress engine, risk sheet, policy and rebalance engine, Solana executors, API and UI) was written between Sep 30 and Oct 12, 2026; reused code is in commits prefixed `prior:`.
 
 ## Written inside the window, outside the slot plan
 

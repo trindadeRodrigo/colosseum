@@ -1,5 +1,7 @@
 # PROMPT: the relaxed intake, a model that reads intent off the table with the fewest rules that still work
 
+> Historical: written as an experiment beside the guided intake. Since Oct 8 the relaxed intake is the goal agent behind `/goal` (gates `RELAXED-INTAKE`, `ANY-COMPOSITION` in `docs/GATES.md`), and those gates supersede this prompt.
+
 > Written 2026-10-07 by Rodrigo's session. Start a fresh Claude Code session in a new worktree and paste this whole file. It builds an experiment beside the guided intake, not in its place: the guided intake stays as it is until Rodrigo decides between them (section 8).
 
 > **Decided on 2026-10-08 (gate `RELAXED-INTAKE`, Rodrigo):** the relaxed intake is the goal agent behind `/goal`, no longer an experiment beside the guided intake; section 8's choice is made. The route and the web are ledger row `GOAL-CHAT-PORT`.
