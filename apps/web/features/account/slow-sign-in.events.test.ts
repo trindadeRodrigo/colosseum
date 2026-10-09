@@ -17,9 +17,9 @@ vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider')
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 vi.mock('next/link', () => import('../wallet/test/mock-next'));
 
-// Someone signed in is never left waiting with no word (Thom's preview, Oct 6: the bar said only "Your
-// wallet" and the goal's sheet stayed on "Reading where your plan lives…"). After a quarter of a
-// minute the bar says sign-in is slow, and its menu says which side, with "Try again" and "Sign out".
+// Someone signed in is never left waiting with no word, and slowness is never the control's label
+// (Thom, Oct 9: the bar's account control read "Sign-in is slow"). The control keeps its loading
+// look; after half a minute the help is under it: which side is slow, "Try again" and "Sign out".
 // Nothing is asked again by itself, and each "Try again" waits twice as long as the one before.
 
 const person: Person = {
@@ -53,16 +53,22 @@ const later = (ms: number) =>
   act(async () => {
     await vi.advanceTimersByTimeAsync(ms);
   });
-/** The bar: its account control says how the sign-in stands, and its menu says which side. */
+/** The bar: its account control keeps its loading look, and the help under it says which side. */
 const page = (lang: Lang) => mount(withAccount(lang, createElement(AppNav)));
+const frame = (host: HTMLElement) => find(host, '[data-ui="account-control"]');
 const control = (host: HTMLElement) => find(host, '[data-ui="account-menu-button"]');
-/** The notice in the bar's menu, which is opened to read it. */
-const SAID = '[data-ui="account-menu"] [data-ui="sign-in-slow"]';
+const said = (host: HTMLElement) => find(host, '[data-ui="account-said"]').textContent;
+/** The help under the bar's control. */
+const SAID = '[data-ui="account-control"] [data-ui="sign-in-slow"]';
 const AGAIN = `${SAID} [data-act="sign-in-again"]`;
-const TRYING = `${SAID} [data-ui="sign-in-trying"]`;
-async function open(host: HTMLElement) {
-  if (!host.querySelector('[data-ui="account-menu"]')) await click(control(host));
-}
+const trying = (host: HTMLElement) => find(host, AGAIN).getAttribute('aria-busy') === 'true';
+/** What the control can be pressed by, or read as: never the slowness. */
+const labels = (host: HTMLElement) =>
+  [
+    ...frame(host).querySelectorAll(
+      ':scope > div > a, :scope > div > button, [data-ui="account"] > button',
+    ),
+  ].map((el) => el.textContent);
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -83,25 +89,43 @@ afterEach(async () => {
 describe.each(['en', 'pt'] as const)('a sign-in that is slow, in %s', (lang) => {
   const t = dictionary(lang);
 
-  it('says so after a quarter of a minute when the wallets have not come, and not before', async () => {
+  it('keeps the loading look, and offers help under it after half a minute, not before', async () => {
     server();
     portStore.set(walletsLoading());
     const host = await page(lang);
-    await later(SLOW_MS - 1);
+    // the chip's still boxes, in a button that says nothing of slowness: it opens the way out
+    expect(frame(host).getAttribute('data-state')).toBe('loading');
+    expect(control(host).getAttribute('aria-busy')).toBe('true');
     expect(control(host).textContent).toBe(t.shell.account);
-    await open(host);
+    expect(find(host, '[data-ui="account-placeholder"]').getAttribute('data-shape')).toBe(
+      'account',
+    );
+    expect(said(host)).toBe('');
+    await later(400);
+    // said once, politely, and it stays the same words for the whole wait
+    expect(said(host)).toBe(t.shell.accountLoading);
+    expect(find(host, '[data-ui="account-said"]').getAttribute('role')).toBe('status');
+    await later(SLOW_MS - 401);
+    expect(said(host)).toBe(t.shell.accountLoading);
     expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
+    // "Sign out" is there from the start, in the button's menu, with nothing else
+    await click(control(host));
+    expect(find(host, '[data-ui="account-menu"]').textContent).toBe(t.shell.signOut);
+    await click(control(host));
 
     await later(1);
-    // the bar says it, to a screen reader too, and its menu says which side, above "Sign out"
-    expect(control(host).textContent).toBe(t.shell.slow.title);
-    expect(find(host, '[data-ui="chain-said"]').textContent).toBe(t.shell.slow.title);
-    const said = find(host, SAID);
-    expect(said.getAttribute('data-side')).toBe('wallets');
-    expect(said.textContent).toContain(t.shell.slow.wallets);
-    expect(find(said, '[data-act="sign-in-again"]').textContent).toBe(t.shell.slow.again);
-    const menu = find(host, '[data-ui="account-menu"]');
-    expect(find(menu, '[data-ui="sign-out"]').textContent).toBe(t.shell.signOut);
+    // the box is still the box; the help says which side, with "Try again" and "Sign out"
+    expect(frame(host).getAttribute('data-state')).toBe('loading');
+    expect(host.querySelector('[data-ui="account-placeholder"]')).not.toBeNull();
+    const help = find(host, SAID);
+    expect(help.getAttribute('data-side')).toBe('wallets');
+    expect(help.textContent).toContain(t.shell.slow.wallets);
+    expect(find(help, '[data-act="sign-in-again"]').textContent).toContain(t.shell.slow.again);
+    expect(find(help, '[data-act="sign-out"]').textContent).toContain(t.shell.signOut);
+    expect(said(host)).toBe(t.shell.slow.title);
+    // slowness is no control's label, and the old words are nowhere
+    expect(labels(host)).toEqual([t.shell.account]);
+    expect(host.textContent).not.toMatch(/Sign-in is slow|O login está lento/);
     // nothing was asked again by itself
     expect(restarts.count).toBe(0);
   });
@@ -111,29 +135,40 @@ describe.each(['en', 'pt'] as const)('a sign-in that is slow, in %s', (lang) => 
     portStore.set(walletsLoading());
     const host = await page(lang);
     await later(SLOW_MS);
-    await open(host);
-    await click(find(host, AGAIN));
+    const again = find(host, AGAIN);
+    again.focus();
+    await click(again);
     // the wallet provider starts again: no reload, and our server is not asked before there is a wallet
     expect(restarts.count).toBe(1);
     expect(api.asked).toHaveLength(0);
-    // as it starts, it knows nobody yet: the person is still told, and the bar keeps its control
+    // as it starts, it knows nobody yet: the help stays, and the control keeps its loading look
     await act(async () => portStore.set(fakePort({ status: 'loading' })));
-    expect(control(host).textContent).toBe(t.shell.slow.title);
-    expect(find(host, TRYING).textContent).toBe(t.shell.slow.trying);
-    expect(host.querySelector(AGAIN)).toBeNull();
+    expect(host.querySelector('[data-ui="account-placeholder"]')).not.toBeNull();
+    // the button keeps its place and its focus while it tries, with its label changed
+    expect(find(host, AGAIN)).toBe(again);
+    expect(trying(host)).toBe(true);
+    expect(again.textContent).toContain(t.shell.slow.trying);
+    expect(document.activeElement).toBe(again);
+    // a press while it tries does nothing
+    await click(again);
+    expect(restarts.count).toBe(1);
     // a sign-in service that asked for fewer requests is left alone: twice the wait, not the same
     await later(SLOW_MS);
-    expect(host.querySelector(AGAIN)).toBeNull();
+    expect(trying(host)).toBe(true);
     expect(restarts.count).toBe(1);
     await later(SLOW_MS);
-    expect(host.querySelector(AGAIN)).not.toBeNull();
+    expect(trying(host)).toBe(false);
 
-    // the wallets come, and our server answers: the chain and the address, and no notice
+    // the wallets come, and our server answers: the chain and the address, and no help
     await act(async () => portStore.set(signedInPort(EMBEDDED)));
     await api.answer();
     expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
+    expect(frame(host).getAttribute('data-state')).toBe('signed-in');
     expect(control(host).getAttribute('data-chain')).toBe('solana');
     expect(control(host).textContent).toContain('So11…1112');
+    // focus was in the help, which is gone: it is on the control that took its place
+    expect(document.activeElement).toBe(control(host));
+    expect(said(host)).toBe('');
   });
 
   it('does not start the wallets again while a step of an order is being signed, and says what to do', async () => {
@@ -141,19 +176,18 @@ describe.each(['en', 'pt'] as const)('a sign-in that is slow, in %s', (lang) => 
     portStore.set(walletsLoading());
     const host = await page(lang);
     await later(SLOW_MS);
-    await open(host);
     restarts.refuse = true;
     await click(find(host, AGAIN));
     expect(restarts.count).toBe(0);
     expect(find(host, `${SAID} [data-ui="sign-in-held"]`).textContent).toBe(t.shell.slow.held);
     expect(find(host, `${SAID} [data-ui="sign-in-held"]`).getAttribute('role')).toBe('alert');
     // the button is still there, with no longer wait counted for a press that did nothing
-    expect(host.querySelector(TRYING)).toBeNull();
+    expect(trying(host)).toBe(false);
     restarts.refuse = false;
     await click(find(host, AGAIN));
     expect(restarts.count).toBe(1);
     expect(host.querySelector('[data-ui="sign-in-held"]')).toBeNull();
-    expect(find(host, TRYING).textContent).toBe(t.shell.slow.trying);
+    expect(trying(host)).toBe(true);
   });
 
   it('says our server is the slow side when the wallets are there, asks it again, and recovers', async () => {
@@ -162,28 +196,62 @@ describe.each(['en', 'pt'] as const)('a sign-in that is slow, in %s', (lang) => 
     const host = await page(lang);
     await later(SLOW_MS);
     expect(api.asked).toHaveLength(1);
-    await open(host);
-    const said = find(host, SAID);
-    expect(said.getAttribute('data-side')).toBe('server');
-    expect(said.textContent).toContain(t.shell.slow.server);
+    const help = find(host, SAID);
+    expect(help.getAttribute('data-side')).toBe('server');
+    expect(help.textContent).toContain(t.shell.slow.server);
     // the first press asks our server alone
     await click(find(host, AGAIN));
     expect(api.asked).toHaveLength(2);
     expect(restarts.count).toBe(0);
-    expect(find(host, TRYING).textContent).toBe(t.shell.slow.trying);
+    expect(trying(host)).toBe(true);
     // the second, after its longer wait, starts the wallet provider again too: the token comes from it
     await later(2 * SLOW_MS);
     await click(find(host, AGAIN));
     expect(restarts.count).toBe(1);
     // and our server is not asked with the old provider's tokens: only once the new one is ready
     expect(api.asked).toHaveLength(2);
-    expect(find(host, TRYING).textContent).toBe(t.shell.slow.trying);
+    expect(trying(host)).toBe(true);
     await act(async () => portStore.set(signedInPort(EMBEDDED)));
     expect(api.asked).toHaveLength(3);
 
     await api.answer();
     expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
     expect(control(host).getAttribute('data-chain')).toBe('solana');
+  });
+
+  it('signs out from the help: "Sign in" takes its place, with focus, and a screen reader is told', async () => {
+    server();
+    const signOut = vi.fn(async () => {
+      portStore.set(fakePort());
+    });
+    portStore.set({ ...walletsLoading(), signOut });
+    const host = await page(lang);
+    await later(SLOW_MS);
+    const out = find(host, `${SAID} [data-act="sign-out"]`);
+    out.focus();
+    await click(out);
+    await later(0);
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(frame(host).getAttribute('data-state')).toBe('signed-out');
+    const link = find<HTMLAnchorElement>(host, 'header a[href^="/sign-in"]');
+    expect(link.textContent).toBe(t.shell.signIn);
+    expect(document.activeElement).toBe(link);
+    expect(said(host)).toBe(t.shell.signedOut);
+    expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
+  });
+
+  it('says so in the help when signing out did not work, and keeps the help', async () => {
+    server();
+    const signOut = vi.fn(async () => {
+      throw new Error('Failed to fetch');
+    });
+    portStore.set({ ...walletsLoading(), signOut });
+    const host = await page(lang);
+    await later(SLOW_MS);
+    await click(find(host, `${SAID} [data-act="sign-out"]`));
+    await later(0);
+    expect(find(host, `${SAID} [role="alert"]`).textContent).toBe(t.shell.signOutFailed);
+    expect(frame(host).getAttribute('data-state')).toBe('loading');
   });
 });
 
@@ -201,7 +269,6 @@ describe('a sign-in that is slow', () => {
       portStore.set(walletsLoading());
       const host = await page('en');
       await later(SLOW_MS);
-      await open(host);
       await click(find(host, AGAIN));
       // kept while nobody is known to have left: the provider loads again and names nobody
       await act(async () => portStore.set(fakePort({ status: 'loading' })));
@@ -221,7 +288,8 @@ describe('a sign-in that is slow', () => {
     const host = await page('en');
     await later(10 * SLOW_MS);
     expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
-    expect(host.querySelector('header a[href="/sign-in"]')).not.toBeNull();
+    expect(host.querySelector('header a[href^="/sign-in"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
   });
 
   it('is not said to someone who was ready in time', async () => {

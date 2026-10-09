@@ -1,15 +1,17 @@
 import { Mark } from '../../components/shell/Mark';
 import { ThemeToggle } from '../../components/shell/ThemeToggle';
-import { buttonClass } from '../../components/ui/button-class';
 import { cn } from '../../components/ui/cn';
 import { dictionary, type Lang } from '../../i18n';
 import { API } from '../../lib/api';
+import { LandingAccount } from './LandingAccount';
 
 // The landing's bar (IDENTITY-2, the first demonstration of the identity): static at the top, full
 // width, on the page's ground with a hairline under it. The face and the wordmark lead home; then the
-// product (Plans), Bearing, and the API's documents; the one action on the right. The action is "Sign
-// in" for a visitor (it opens the sign-in dialog over the landing: LandingSignIn.tsx) and "Open the
-// app" for a person signed in on this browser. Before it, the appearance as one icon (ThemeToggle).
+// product (Plans), Bearing, and the API's documents; the account control on the right, the same one
+// as the product's bar (Thom, Oct 9; LandingAccount.tsx): "Sign in" for a visitor, which opens the
+// sign-in dialog over the landing, and the account chip for a person signed in. There is no "Open the
+// app" in the bar: "Plans" beside it and the hero's "Start a plan" lead into the app. Before it, the
+// appearance as one icon (ThemeToggle).
 
 /** Where a signed-in person goes back into the app: the goal, where sign-in leads. */
 export const APP_HOME = '/goal';
@@ -27,9 +29,6 @@ export function LandingBar({ lang, signedIn = false }: { lang: Lang; signedIn?: 
     { label: t.bearing, href: '/analytics/stocks' },
     { label: t.docs, href: `${API}/docs` },
   ];
-  const cta = signedIn
-    ? { label: t.openApp, href: APP_HOME }
-    : { label: t.cta, href: `/sign-in?next=${APP_HOME}` };
   return (
     <header data-ui="landing-bar" className="relative z-10 border-b border-border bg-background">
       <a
@@ -60,12 +59,7 @@ export function LandingBar({ lang, signedIn = false }: { lang: Lang; signedIn?: 
           ))}
         </nav>
         <ThemeToggle className="ml-auto" />
-        <a
-          href={cta.href}
-          className={cn(buttonClass({ variant: 'secondary' }), 'inline-flex items-center')}
-        >
-          {cta.label}
-        </a>
+        <LandingAccount hinted={signedIn} />
       </div>
     </header>
   );

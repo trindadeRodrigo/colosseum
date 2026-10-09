@@ -50,7 +50,7 @@ async function signIn(page: Page) {
   await page.request.post(`${STUB}/__stub/reset`);
   // the bar's "Sign in" opens the sign-in dialog over the goal (SIGN-IN-FLOW); the person stays there
   await page.goto('/goal');
-  await page.locator('header a[href="/sign-in"]').click();
+  await page.locator('header a[href^="/sign-in"]').click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await expect(dialog).toHaveCount(0);

@@ -4,12 +4,15 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
 import { inLanguage } from '../account/test/screen';
-import { LandingSignIn } from './LandingSignIn';
+import { LandingAccount } from './LandingAccount';
 
-// The landing's sign-in panel that does not load (offline, or a deploy moved its chunk): the dialog
-// says so and leads to the page, which the landing's own click handler lets through.
+vi.mock('next/link', () => import('../wallet/test/mock-next'));
 
-vi.mock('./landing-sign-in-panel', () => {
+// The landing's wallet and sign-in panel that do not load (offline, or a deploy moved the chunk): the
+// dialog says so and leads to the page, which the landing's own click handler lets through; and a
+// person the hint names is not left with a still box for good.
+
+vi.mock('./landing-account-live', () => {
   throw new Error('Loading chunk failed');
 });
 
@@ -21,18 +24,9 @@ afterEach(async () => {
 });
 
 it('says the sign-in did not load, and leads to the sign-in page', async () => {
-  const host = await mount(
-    inLanguage(
-      'en',
-      createElement(
-        'div',
-        null,
-        createElement('a', { href: '/sign-in', 'data-ui': 'cta' }, 'Sign in'),
-        createElement(LandingSignIn),
-      ),
-    ),
-  );
-  await click(find<HTMLAnchorElement>(host, '[data-ui="cta"]'));
+  const host = await mount(inLanguage('en', createElement(LandingAccount)));
+  const way = find<HTMLAnchorElement>(host, '[data-ui="account-control"] a');
+  await click(way);
   for (let i = 0; i < 4; i += 1) await settle(10);
   const box = document.querySelector<HTMLElement>('[role="dialog"]');
   const alert = box?.querySelector('[role="alert"]');
@@ -45,4 +39,15 @@ it('says the sign-in did not load, and leads to the sign-in page', async () => {
   page?.dispatchEvent(press);
   expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
   expect(press.defaultPrevented).toBe(false);
+  // the bar's "Sign in" is still the one that was pressed
+  expect(way.isConnected).toBe(true);
+});
+
+it('gives a person the hint names "Sign in" when their wallet did not load, not a still box for good', async () => {
+  const host = await mount(inLanguage('en', createElement(LandingAccount, { hinted: true })));
+  for (let i = 0; i < 4; i += 1) await settle(10);
+  const control = find(host, '[data-ui="account-control"]');
+  expect(control.getAttribute('data-state')).toBe('signed-out');
+  expect(find(control, 'a').textContent).toBe(en.shell.signIn);
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
 });
