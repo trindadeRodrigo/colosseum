@@ -420,7 +420,8 @@ describe('the chain of a new plan, chosen on /goal', () => {
     const line = find(host, '[data-ui="goal-chain"]');
     expect(line.textContent).toContain(c.onlyWallet('Robinhood Chain'));
     expect(line.textContent).not.toContain('Solana');
-    expect(line.textContent).toContain(en.shell.testNetwork);
+    expect(find(line, '[data-ui="chain-how"]').textContent).toBe(en.shell.testNetworkLine);
+    expect(line.querySelector('[data-ui="sample-glyph"]')).toBeNull();
     // and after the first words: the badge, with nothing to change to
     await send(host, 'Consider gold');
     expect(replies).toEqual(['robinhood']);

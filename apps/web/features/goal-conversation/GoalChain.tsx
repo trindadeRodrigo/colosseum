@@ -6,7 +6,7 @@ import { ChainBadge } from '../../components/ui/ChainBadge';
 import { useT } from '../../i18n/I18nProvider';
 import { type Account, useAccount } from '../account/AccountProvider';
 import { ChainChoice } from '../account/ChainChoice';
-import { ChainMark } from '../account/ChainName';
+import { ChainHow } from '../account/ChainName';
 import { switchFailure } from '../account/ChainSwitch';
 import { SWITCHABLE } from '../account/chain-choice';
 import type { WebWalletPort } from '../wallet/port';
@@ -81,7 +81,6 @@ export function GoalChain({
 
   if (!chain) return null;
   const nameOf = (id: ChainId) => port.network(id)?.name ?? t.chain.names[id];
-  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.sampleFigure };
   const usable = plannable(account, port);
   const others = usable.filter((id) => id !== chain);
   const signedIn = account.status === 'ready';
@@ -108,7 +107,13 @@ export function GoalChain({
       {problem}
     </p>
   );
-  const mark = <ChainMark provenance={port.network(chain)?.provenance ?? 'mock'} labels={marks} />;
+  // words alone: the chain is named here and no figure is beside it (Thom, Oct 9)
+  const mark = (
+    <ChainHow
+      provenance={port.network(chain)?.provenance ?? 'mock'}
+      labels={{ testNetwork: t.shell.testNetworkLine, sample: t.shell.sample }}
+    />
+  );
 
   if (started) {
     const [other] = others;
