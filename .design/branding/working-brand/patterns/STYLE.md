@@ -150,7 +150,7 @@ It takes the Sage's structure (a grid, hairlines, tabular figures, signed deltas
 - Pills on primary or secondary buttons. Radius above 16px on anything but chips, badges and the composer (20px).
 - Font weights below 400, centred or justified body text, uppercase other than captions and column heads.
 - Text set on photographs, gradient scrims, duotones, wood-grain textures as backgrounds.
-- Circles as containers, except the composer's send button and the token identification mark (`AssetMark`, Thom, Oct 7), which are round.
+- Circles as containers, except the composer's send button, the token identification mark (`AssetMark`, Thom, Oct 7), and the portfolio board's controls (`/portfolio`, gate `PORTFOLIO-BOARD`, Rodrigo, Oct 8): its chart modes (the chosen one a pill with icon and word, the others an icon in a circle), its period drop-down and its buttons are round, and its two boxes take the app tile's 16px.
 - Bounce, spring, overshoot, confetti, counting-up figures, parallax or ambient loops.
 - The Sparkles, Wand, Rocket, Coins, TrendingUp or Shield-as-promise icons, RefreshCw for rebalance, emoji, exclamation marks, mascots, leaderboards.
 - Brand colour, patterns or photography inside the partner embed.
