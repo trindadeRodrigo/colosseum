@@ -73,7 +73,7 @@ export function GoalEntry({ portfolio }: { portfolio: PortfolioState }) {
         </label>
         <Select
           id={pickerId}
-          data-ui="goal-mode"
+          data-ui="goal-picker"
           value="current"
           width="22ch"
           className="min-w-0"

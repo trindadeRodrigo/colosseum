@@ -85,7 +85,7 @@ describe('home', () => {
       expect(switcher.open).toBe(false);
       // the conversation picker lists the same vaults, from the same one read.
       expect(
-        [...find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').options].map((o) => o.value),
+        [...find<HTMLSelectElement>(host, '[data-ui="goal-picker"]').options].map((o) => o.value),
       ).toEqual(['current', 'new', `vault:solana:${VAULT}`, `vault:solana:${SECOND_VAULT}`]);
       expect(find(switcher, 'summary').textContent).toBe(dictionary(lang).portfolio.summary.title);
       expect(find(switcher, 'summary + ul').className).not.toMatch(/grid-cols/);
