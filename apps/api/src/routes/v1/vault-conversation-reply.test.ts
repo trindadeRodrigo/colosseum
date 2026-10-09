@@ -19,7 +19,7 @@ const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
   for (const f of cleanup.splice(0).reverse()) await f();
 });
-async function setup(available = true, analytics?: AgentAnalytics) {
+async function setup(available = true, analytics?: AgentAnalytics, logs?: string[]) {
   const issuer = await testIssuer('vault-reply');
   const a = await person(issuer, 'passkey');
   const b = await person(issuer, 'passkey');
@@ -81,7 +81,9 @@ async function setup(available = true, analytics?: AgentAnalytics) {
       },
     },
   ) as Db;
-  const app = Fastify();
+  const app = Fastify(
+    logs ? { logger: { level: 'info', stream: { write: (line: string) => logs.push(line) } } } : {},
+  );
   cleanup.push(() => app.close());
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
@@ -400,6 +402,57 @@ describe('private model-led vault reply route', () => {
     );
     expect(res.body).not.toContain('12%');
     expect(s.model.read).toHaveBeenCalledTimes(2);
+  });
+  it('serves a figure stated by reference with its source, and logs counts and nothing said', async () => {
+    const logs: string[] = [];
+    const s = await setup(true, undefined, logs);
+    const stock = s.listed.find((asset) => asset.cls === 'stock');
+    if (!stock) throw new Error('catalog fixture missing a stock');
+    const id = `price:${stock.id}`;
+    vi.mocked(s.model.read).mockResolvedValueOnce({
+      reply: {
+        message: `Its reference price is {{fact:${id}}}. A made-up one is {{fact:price:nothing}}.`,
+        question: null,
+        proposal: null,
+      },
+    });
+    vi.mocked(s.model.read).mockResolvedValueOnce({
+      reply: { message: `Its reference price is {{fact:${id}}}.`, question: null, proposal: null },
+    });
+    const res = await s.post();
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    const [price] = await s.chains.get('solana').adapter.getPrices([stock.id]);
+    if (!price) throw new Error('price fixture missing');
+    expect(body.figures.facts).toEqual([
+      expect.objectContaining({
+        id,
+        assetId: stock.id,
+        value: Number(price.usdPerToken),
+        unit: 'USD',
+        source: price.source,
+        method: price.method,
+        fetchedAt: price.fetchedAt,
+        provenance: price.provenance,
+      }),
+    ]);
+    expect(body.message).toBe(`Its reference price is ${body.figures.facts[0].text}.`);
+    expect(body.message).not.toMatch(/[{}]/u);
+    expect(body.figures.prose.message).toBe(`Its reference price is {{fact:${id}}}.`);
+    expect(body).toMatchObject({ chain: 'solana', address: s.address });
+    const said = logs.join('');
+    expect(said).toContain('"figures":{"resolved":1,"missing":0,"unknown":1}');
+    for (const secret of [
+      'I would like to discuss this vault',
+      'Earlier conversation',
+      'reference price is',
+      'fact:',
+      id,
+      'price:nothing',
+      body.figures.facts[0].text,
+      price.source,
+    ])
+      expect(said, secret).not.toContain(secret);
   });
   it('rejects wrong-chain state and malformed histories before model invocation', async () => {
     const s = await setup();

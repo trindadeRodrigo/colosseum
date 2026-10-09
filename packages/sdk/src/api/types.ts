@@ -2094,6 +2094,58 @@ export type PostConversationsByChainGoalReplyResponse = {
     assetIds: string[];
     quote?: string;
   }[];
+  figures?: {
+    prose: {
+      message: string;
+      question: string | null;
+      proposal: {
+        objective: string;
+        summary: string;
+        tradeoffs: string[];
+        unknowns: string[];
+        why: {
+          [key: string]: string;
+        };
+      } | null;
+    };
+    facts: (
+      | {
+          id: string;
+          assetId?: string;
+          label?: string;
+          text: string;
+          value: number;
+          unit: string;
+          source: string;
+          method: string;
+          fetchedAt: string;
+          provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+          staleAgeSec: number | null;
+          lowerBound?: true;
+        }
+      | {
+          id: string;
+          assetId?: string;
+          label?: string;
+          text: string;
+          value: null;
+          reason:
+            | 'no_samples_in_regime'
+            | 'insufficient_samples'
+            | 'not_a_number'
+            | 'beyond_measured_size'
+            | 'no_reference_price'
+            | 'no_external_source'
+            | 'chain_not_covered'
+            | 'not_collected'
+            | 'not_imported'
+            | 'not_followed'
+            | 'gate_open'
+            | 'not_applicable'
+            | 'no_oracle';
+        }
+    )[];
+  };
   chain: 'solana' | 'base' | 'robinhood';
   /** Which agent wrote this reply: the relaxed intake (gate RELAXED-INTAKE), or the model-led conversation the server answers with when it runs with `GOAL_AGENT=model-led`. Said so that neither is ever taken for the other. */
   agent: 'relaxed' | 'model_led';
@@ -3828,6 +3880,46 @@ export type GetVaultsByChainByAddressConversationResponse = {
         id: string;
         who: 'app';
         text: string;
+        figures?: {
+          template: string;
+          facts: (
+            | {
+                id: string;
+                assetId?: string;
+                label?: string;
+                text: string;
+                value: number;
+                unit: string;
+                source: string;
+                method: string;
+                fetchedAt: string;
+                provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+                staleAgeSec: number | null;
+                lowerBound?: true;
+              }
+            | {
+                id: string;
+                assetId?: string;
+                label?: string;
+                text: string;
+                value: null;
+                reason:
+                  | 'no_samples_in_regime'
+                  | 'insufficient_samples'
+                  | 'not_a_number'
+                  | 'beyond_measured_size'
+                  | 'no_reference_price'
+                  | 'no_external_source'
+                  | 'chain_not_covered'
+                  | 'not_collected'
+                  | 'not_imported'
+                  | 'not_followed'
+                  | 'gate_open'
+                  | 'not_applicable'
+                  | 'no_oracle';
+              }
+          )[];
+        };
       }
   )[];
   checkpoint: {
@@ -3894,6 +3986,46 @@ export type PutVaultsByChainByAddressConversationBody = {
         id: string;
         who: 'app';
         text: string;
+        figures?: {
+          template: string;
+          facts: (
+            | {
+                id: string;
+                assetId?: string;
+                label?: string;
+                text: string;
+                value: number;
+                unit: string;
+                source: string;
+                method: string;
+                fetchedAt: string;
+                provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+                staleAgeSec: number | null;
+                lowerBound?: true;
+              }
+            | {
+                id: string;
+                assetId?: string;
+                label?: string;
+                text: string;
+                value: null;
+                reason:
+                  | 'no_samples_in_regime'
+                  | 'insufficient_samples'
+                  | 'not_a_number'
+                  | 'beyond_measured_size'
+                  | 'no_reference_price'
+                  | 'no_external_source'
+                  | 'chain_not_covered'
+                  | 'not_collected'
+                  | 'not_imported'
+                  | 'not_followed'
+                  | 'gate_open'
+                  | 'not_applicable'
+                  | 'no_oracle';
+              }
+          )[];
+        };
       }
   )[];
   checkpoint: {
@@ -3956,6 +4088,46 @@ export type PutVaultsByChainByAddressConversationResponse = {
         id: string;
         who: 'app';
         text: string;
+        figures?: {
+          template: string;
+          facts: (
+            | {
+                id: string;
+                assetId?: string;
+                label?: string;
+                text: string;
+                value: number;
+                unit: string;
+                source: string;
+                method: string;
+                fetchedAt: string;
+                provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+                staleAgeSec: number | null;
+                lowerBound?: true;
+              }
+            | {
+                id: string;
+                assetId?: string;
+                label?: string;
+                text: string;
+                value: null;
+                reason:
+                  | 'no_samples_in_regime'
+                  | 'insufficient_samples'
+                  | 'not_a_number'
+                  | 'beyond_measured_size'
+                  | 'no_reference_price'
+                  | 'no_external_source'
+                  | 'chain_not_covered'
+                  | 'not_collected'
+                  | 'not_imported'
+                  | 'not_followed'
+                  | 'gate_open'
+                  | 'not_applicable'
+                  | 'no_oracle';
+              }
+          )[];
+        };
       }
   )[];
   checkpoint: {
@@ -4085,6 +4257,58 @@ export type PostVaultsByChainByAddressConversationReplyResponse = {
     assetIds: string[];
     quote?: string;
   }[];
+  figures?: {
+    prose: {
+      message: string;
+      question: string | null;
+      proposal: {
+        objective: string;
+        summary: string;
+        tradeoffs: string[];
+        unknowns: string[];
+        why: {
+          [key: string]: string;
+        };
+      } | null;
+    };
+    facts: (
+      | {
+          id: string;
+          assetId?: string;
+          label?: string;
+          text: string;
+          value: number;
+          unit: string;
+          source: string;
+          method: string;
+          fetchedAt: string;
+          provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+          staleAgeSec: number | null;
+          lowerBound?: true;
+        }
+      | {
+          id: string;
+          assetId?: string;
+          label?: string;
+          text: string;
+          value: null;
+          reason:
+            | 'no_samples_in_regime'
+            | 'insufficient_samples'
+            | 'not_a_number'
+            | 'beyond_measured_size'
+            | 'no_reference_price'
+            | 'no_external_source'
+            | 'chain_not_covered'
+            | 'not_collected'
+            | 'not_imported'
+            | 'not_followed'
+            | 'gate_open'
+            | 'not_applicable'
+            | 'no_oracle';
+        }
+    )[];
+  };
   chain: 'solana' | 'base' | 'robinhood';
   address: string;
 };

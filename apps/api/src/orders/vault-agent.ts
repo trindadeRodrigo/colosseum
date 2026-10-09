@@ -14,6 +14,9 @@ import type {
 } from '@colosseum/schemas';
 import {
   type VaultAgentSource as AgentSource,
+  FIGURE_REFERENCE,
+  isStalePrice,
+  type VaultAgentFigure,
   VaultAgentModelReply,
   VaultAgentReply,
   VaultAgentRequest,
@@ -26,6 +29,13 @@ import type { VaultAgentModel, VaultAgentRepair } from '../vault-agent-model';
 import type { ChainEntry } from './chains';
 import type { PlanInputs } from './personalize';
 import { statedPurpose } from './stated-purpose';
+import {
+  type FigureReferences,
+  figureResolver,
+  NULL_REASONS,
+  vaultFacts,
+  withoutReferences,
+} from './vault-figures';
 
 type Figures = Awaited<ReturnType<PlanInputs>>;
 
@@ -130,6 +140,11 @@ type AgentContextData = {
    * (ANY-COMPOSITION); it never chooses a weight.
    */
   caps?: Record<string, number>;
+  /**
+   * What a `{{fact:<id>}}` in the vault's prose may name besides an evidence id with a value: the
+   * figures that are not measured, with why, and the stated age of one past its limit (vault-figures.ts).
+   */
+  references?: FigureReferences;
   /** Only a separately confirmed, server-owned goal change can replace existing eligibility. */
   confirmedGoal?: 'grow' | 'income' | 'protect';
 };
@@ -255,21 +270,6 @@ const REGIME_NAMES: Record<FactRegime, string> = {
   weekend: 'weekend',
   us_holiday: 'US holiday',
 };
-const NULL_REASONS: Record<FactNullReason, string> = {
-  no_samples_in_regime: 'no samples in that regime yet',
-  insufficient_samples: 'too few samples',
-  not_a_number: 'the computed figure was not a number',
-  beyond_measured_size: 'the size is beyond the measured depth',
-  no_reference_price: 'no reference prices collected',
-  no_external_source: 'no external price source',
-  chain_not_covered: 'this chain is not measured',
-  not_collected: 'not collected yet',
-  not_imported: 'not imported yet',
-  not_followed: 'not traced',
-  gate_open: 'waiting on a decision',
-  not_applicable: 'does not apply',
-  no_oracle: 'no price oracle for this asset',
-};
 const UNITS: Record<FactUnit, string> = {
   fraction: 'fraction',
   usd: 'USD',
@@ -312,13 +312,20 @@ const LOWER_BOUND = '; a lower bound, the true figure is at least this';
 function analyticsEvidence(
   analytics: AgentAnalyticsResult | null,
   listed: Map<string, BasketAsset>,
-): { evidence: AgentSource[]; prompt: NonNullable<VaultAgentPrompt['analytics']> } | null {
+): {
+  evidence: AgentSource[];
+  /** The figures that are not measured, by the id they would have had, each with why. */
+  notMeasured: FigureReferences['missing'];
+  prompt: NonNullable<VaultAgentPrompt['analytics']>;
+} | null {
   if (!analytics) return null;
   const evidence: AgentSource[] = [];
+  const notMeasured: FigureReferences['missing'] = {};
   const unknowns: string[] = [];
   if ('unavailable' in analytics)
     return {
       evidence,
+      notMeasured,
       prompt: {
         unknowns: [
           "Bearing's exit, liquidity and market analytics could not be read for this reply; those figures are unknown, not zero.",
@@ -398,6 +405,8 @@ function analyticsEvidence(
       }
       const reason =
         figure.value === null ? NULL_REASONS[figure.reason] : 'the stored figure could not be read';
+      if (figure.value === null)
+        notMeasured[id] = { assetId: asset.id, label: `${label}${twin}`, reason: figure.reason };
       const line = `${label}: unknown (${reason})`;
       missing.set(line, [...(missing.get(line) ?? []), asset.symbol]);
     }
@@ -425,6 +434,7 @@ function analyticsEvidence(
     );
   return {
     evidence,
+    notMeasured,
     prompt: {
       sizeUsd: analytics.sizeUsd,
       basis: analytics.basis,
@@ -478,8 +488,10 @@ function buildAgentContext(
       provenance: tier?.provenance ?? entry.provenance,
     });
   }
+  const references: FigureReferences = { missing: {}, staleAgeSec: {} };
   for (const price of input.prices) {
     if (!listed.has(price.asset)) continue;
+    if (isStalePrice(price)) references.staleAgeSec[`price:${price.asset}`] = price.ageSeconds;
     add({
       id: `price:${price.asset}`,
       assetId: price.asset,
@@ -589,6 +601,24 @@ function buildAgentContext(
     }
   const analytics = analyticsEvidence(input.analytics ?? null, listed);
   for (const source of analytics?.evidence ?? []) add(source);
+  Object.assign(references.missing, analytics?.notMeasured);
+  // The vault's own state, citable and referenceable: this person's, so never in the shared prompt.
+  if (state) {
+    const own = vaultFacts({
+      state,
+      prices: input.prices,
+      assets,
+      chainSource: entry.source,
+      chainProvenance: entry.provenance,
+    });
+    const taken = new Set(evidence.map((source) => source.id));
+    for (const source of own.sources) {
+      const parsed = VaultAgentSource.safeParse(source);
+      if (parsed.success && !taken.has(parsed.data.id)) evidence.push(parsed.data);
+    }
+    Object.assign(references.missing, own.references.missing);
+    Object.assign(references.staleAgeSec, own.references.staleAgeSec);
+  }
   if (
     liquidity.some(
       (item) =>
@@ -624,6 +654,7 @@ function buildAgentContext(
     unknowns,
     ...(analytics ? { analytics: analytics.prompt } : {}),
     caps,
+    references,
     ...(input.confirmedGoal ? { confirmedGoal: input.confirmedGoal } : {}),
   } as ConversationAgentContext;
 }
@@ -795,7 +826,9 @@ const REPAIR_HINTS: Record<string, string> = {
   reply_schema:
     'The reply did not match the required structure: a field was missing, had the wrong type, or was outside its length or count limits.',
   prose_figure:
-    'Prose contained a financial figure, percentage, price, yield, date or written-out number. Numbers may appear in prose only inside an exact catalog name or an exact quote of the person in attributed quotation marks. The server sets the weights. Rewrite every prose field with no digit, no percent or currency sign and no "guaranteed" or "risk-free": describe a measured figure in words and cite its id in evidenceIds instead of repeating its value.',
+    'Prose contained a financial figure, percentage, price, yield, date or written-out number. Numbers may appear in prose only inside an exact catalog name or an exact quote of the person in attributed quotation marks. The server sets the weights. Rewrite every prose field with no digit, no percent or currency sign and no "guaranteed" or "risk-free": when kind is vault, state a measured figure only as its reference, {{fact:<id>}} with an id given in this request; otherwise describe it in words and cite its id in evidenceIds. Never repeat its value.',
+  figure_reference:
+    'Prose held a figure reference the server could not resolve: a {{fact:<id>}} whose id is not an evidence id with a value given in this request (an id in evidence that carries a value, or a key of analytics.assets[].values), a brace that is not part of one well-formed reference, or a reference made into another number: two references with no word between them, a magnitude or unit word after one (million, percent, dollars), or a multiplier before one (half, double, times). When kind is new_goal no reference is allowed. Copy the id exactly, or write the sentence without the figure. Never type the number instead.',
   prose_claims_applied:
     'Prose said something was applied, created, funded, traded or approved. A proposal is only a private preview; nothing has been applied.',
   allocation_unlisted: "An allocation named an assetId that is not in this chain's catalog.",
@@ -1728,6 +1761,76 @@ export async function replyToVaultConversation(
   });
   // Sentences the repair attempt lost for stating a figure; a count for the log, never their words.
   let sentencesCut = 0;
+  // Figures by reference (vault-figures.ts): only the vault's own conversation states one.
+  const references = figureResolver({
+    enabled: context.kind !== 'new_goal',
+    sources: sourceById,
+    references: context.references,
+    lowerBound: new Set((context.analytics?.assets ?? []).flatMap((row) => row.lowerBound ?? [])),
+    language: parsed.data.language,
+  });
+  // References over both attempts that named no figure of this request; a count for the log.
+  let unknownReferences = 0;
+  type Template = Omit<VaultAgentReply, 'figures'>;
+  /**
+   * The reply as it is served: each reference replaced by its figure's text in the plain fields, and
+   * the same prose with its placeholders beside them, with what each one is. Null when a reference
+   * names nothing, which the checks before this have already refused or cut.
+   */
+  const withFigures = (
+    template: Template,
+  ): { reply: unknown; counts: { resolved: number; missing: number } } | null => {
+    const facts = new Map<string, VaultAgentFigure>();
+    const counts = { resolved: 0, missing: 0 };
+    let unresolved = false;
+    const plain = (text: string) =>
+      text.replace(FIGURE_REFERENCE, (_token, id: string) => {
+        const fact = references.figure(id);
+        if (!fact) {
+          unresolved = true;
+          return '';
+        }
+        facts.set(id, fact);
+        counts[fact.value === null ? 'missing' : 'resolved'] += 1;
+        return fact.text;
+      });
+    const { proposal } = template;
+    const reply = {
+      ...template,
+      message: plain(template.message),
+      question: template.question === null ? null : plain(template.question),
+      proposal: proposal && {
+        ...proposal,
+        objective: plain(proposal.objective),
+        summary: plain(proposal.summary),
+        tradeoffs: proposal.tradeoffs.map(plain),
+        unknowns: proposal.unknowns.map(plain),
+        allocations: proposal.allocations.map((line) => ({ ...line, why: plain(line.why) })),
+      },
+    };
+    if (unresolved) return null;
+    if (!facts.size) return { reply, counts };
+    return {
+      reply: {
+        ...reply,
+        figures: {
+          prose: {
+            message: template.message,
+            question: template.question,
+            proposal: proposal && {
+              objective: proposal.objective,
+              summary: proposal.summary,
+              tradeoffs: proposal.tradeoffs,
+              unknowns: proposal.unknowns,
+              why: Object.fromEntries(proposal.allocations.map((line) => [line.assetId, line.why])),
+            },
+          },
+          facts: [...facts.values()],
+        },
+      },
+      counts,
+    };
+  };
   // `final` is the repair attempt: a share it still reports without the person's words is ignored.
   const check = (output: Output, final = false): Checked => {
     if ('why' in output)
@@ -1749,7 +1852,11 @@ export async function replyToVaultConversation(
         .filter((row) => [...catalog.values()].some((asset) => asset.symbol === row.symbol))
         .map((row) => row.company),
     ];
-    const figure = (text: string) => hasFinancialFigure(text, personWords, catalogNames);
+    // The model's own words, with its references taken out, are read for a figure exactly as before;
+    // a reference that names nothing the server measured is an unbacked figure all the same.
+    const typed = (text: string) =>
+      hasFinancialFigure(withoutReferences(text), personWords, catalogNames);
+    const figure = (text: string) => typed(text) || references.unbacked(text).length > 0;
     const proseOf = ({ message, question, proposal: draft }: VaultAgentModelReply) => [
       message,
       question ?? '',
@@ -1766,30 +1873,47 @@ export async function replyToVaultConversation(
     // A figure is repaired once; one still there on the repair attempt costs its sentence, not the reply.
     let model = candidate.data;
     if (proseOf(model).some(figure)) {
+      const unbacked = proseOf(model).flatMap(references.unbacked);
+      unknownReferences += unbacked.length;
       const kept = final
         ? withoutFigureSentences(model, figure, catalogNames, request.language)
         : null;
-      if (!kept) return rejected('prose_figure');
+      if (!kept)
+        return proseOf(model).some(typed) || !unbacked.length
+          ? rejected('prose_figure')
+          : rejected('figure_reference', [
+              `Not resolved: ${[...new Set(unbacked)].slice(0, 5).join(', ').slice(0, 900)}.`,
+            ]);
       model = kept.reply;
       sentencesCut = kept.cut;
     }
+    // What is served, checked against the reply's limits with the figures written in.
+    const serve = (template: Template): Checked => {
+      const filled = withFigures(template);
+      if (!filled) return rejected('figure_reference');
+      const reply = VaultAgentReply.safeParse(filled.reply);
+      if (!reply.success) return rejected('reply_shape', where(reply.error.issues));
+      const stated = filled.counts.resolved + filled.counts.missing > 0;
+      return {
+        result: {
+          kind: 'reply',
+          reply: reply.data,
+          ...(stated ? { figures: { ...filled.counts, unknown: 0 } } : {}),
+        },
+      };
+    };
     const { proposal, ...conversation } = model;
     const prose = proseOf(model);
     if (prose.some(claimsApplied)) return rejected('prose_claims_applied');
     if (!proposal)
-      return {
-        result: {
-          kind: 'reply',
-          reply: {
-            version: 1,
-            messageId: request.messageId,
-            ...conversation,
-            proposal: null,
-            warnings: [],
-            weightNotes: [],
-          },
-        },
-      };
+      return serve({
+        version: 1,
+        messageId: request.messageId,
+        ...conversation,
+        proposal: null,
+        warnings: [],
+        weightNotes: [],
+      });
     const ids = new Set<string>();
     const leftOut: string[] = [];
     for (const allocation of proposal.allocations) {
@@ -2052,7 +2176,12 @@ export async function replyToVaultConversation(
       ].map((quote) => ({ code: 'share_unread' as const, assetIds: [], quote })),
     ].slice(0, 64 - outsideNotes.length);
     weightNotes.push(...outsideNotes);
-    const reply = VaultAgentReply.safeParse({
+    // The model's own fields were within their limits; the server's additions are checked in `serve`.
+    const servedSources = [...sources].flatMap((id) => {
+      const source = sourceById.get(id);
+      return source ? [source] : [];
+    });
+    const checked = serve({
       version: 1,
       messageId: request.messageId,
       ...said,
@@ -2060,19 +2189,29 @@ export async function replyToVaultConversation(
         ...preview,
         allocations: lines,
         unknowns: [...new Set([...context.unknowns, ...preview.unknowns])].slice(0, 12),
-        sources: [...sources].map((id) => sourceById.get(id)),
+        sources: servedSources,
       },
       warnings,
       weightNotes,
     });
-    return reply.success
-      ? corrected({ kind: 'reply', reply: reply.data })
-      : rejected('reply_shape', where(reply.error.issues));
+    return checked.problems ? checked : corrected(checked.result);
   };
+  /** The served result with what became of its references, when there were any. */
+  const counted = (result: VaultAgentResult): VaultAgentResult =>
+    result.kind === 'reply' && (result.figures || unknownReferences)
+      ? {
+          ...result,
+          figures: {
+            resolved: result.figures?.resolved ?? 0,
+            missing: result.figures?.missing ?? 0,
+            unknown: unknownReferences,
+          },
+        }
+      : result;
   const started = Date.now();
   const first = await ask();
   const checked = check(first);
-  if (!checked.problems || !checked.failed) return checked.result;
+  if (!checked.problems || !checked.failed) return counted(checked.result);
   const second = check(
     await ask({
       previous: first.reply,
@@ -2098,5 +2237,5 @@ export async function replyToVaultConversation(
     second.result.kind === 'failure' && checked.result.kind === 'reply'
       ? checked.result
       : second.result;
-  return { ...final, repair };
+  return counted({ ...final, repair });
 }
