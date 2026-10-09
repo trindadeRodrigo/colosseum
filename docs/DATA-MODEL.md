@@ -1,5 +1,7 @@
 # DATA-MODEL.md
 
+> Historical in part: this covers the structurer's 15 tables and the first 8 risk tables (migrations `0000` to `0005`). The vault tables came later: `packages/db/src/basket-schema.ts` and `docs/vault/DESIGN-VAULT.md` section 4; the migrations now run to `0019`.
+
 Postgres, Drizzle ORM. 23 tables in two schema files: `packages/db/src/schema.ts` (the structurer, 15 tables) and `packages/db/src/risk-schema.ts` (the risk layer, 8 tables). Migrations in `packages/db/migrations/`: `0000`–`0001` create the structurer tables, `0002`–`0005` the risk tables. Enums are declared in `schema.ts`, mirror `packages/schemas/src/enums.ts`, and `tests/db-schema.test.ts` keeps them in sync (all but `chain`, which it does not check).
 
 "Provenance columns" below means the four columns `source`, `method`, `fetched_at`, `provenance`. `provenance` is the enum `live`, `mock`, `sandbox`, `fixture`, `prior_dataset`.

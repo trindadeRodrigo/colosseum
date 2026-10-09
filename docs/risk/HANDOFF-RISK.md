@@ -2,7 +2,7 @@
 
 *Written 2026-09-30. Companion to `docs/structurer/HANDOFF-IDEA1.md`. This file is the spec a planner needs to write the build plan for the risk layer. It assumes access to this repository.*
 
-**Supporting files:** `docs/structurer/HANDOFF-IDEA1.md` (the structurer), `eval/briefs/SHARED-CONTEXT.md` §"Idea 2" (the original risk-engine concept), `eval/FEASIBILITY.md` §"Idea 2" (dependencies and half-day plan), `eval/IDEA2-MARKET.md` (evidence corrections, redemption rails, risk providers, EVM markets), `eval/FINAL.md` §6 (why Idea 1 won and the "cheap hedge" that already started), `docs/structurer/STATE.md`, `docs/GATES.md`, `docs/DATA-MODEL.md` (what exists today).
+**Supporting files:** `docs/structurer/HANDOFF-IDEA1.md` (the structurer), `docs/structurer/STATE.md`, `docs/GATES.md`, `docs/DATA-MODEL.md` (what exists today).
 
 ---
 
