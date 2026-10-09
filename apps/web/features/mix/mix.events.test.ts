@@ -192,11 +192,27 @@ const amounts = (host: HTMLElement) =>
     ]),
   );
 
-/** What a review echoes of the request it answers: the amount and the goal it was checked for. */
-const of = (body: { amountUsd: number; goal: MixReview['goal'] }) => ({
-  amountUsd: body.amountUsd,
-  goal: body.goal,
-});
+/**
+ * What a review echoes of the request it answers: the amount, and the goal and risk it was checked
+ * for. One the request left unsaid is the server's, worked out from the mix (DEPOSIT-DERIVE): here
+ * always a plan to protect at low risk, named in `fromMix`.
+ */
+const of = (body: {
+  amountUsd: number;
+  goal?: MixReview['goal'] | undefined;
+  risk?: MixReview['risk'] | null;
+}) => {
+  const fromMix = [
+    ...(body.goal ? [] : (['goal'] as const)),
+    ...(body.risk ? [] : (['risk'] as const)),
+  ];
+  return {
+    amountUsd: body.amountUsd,
+    goal: body.goal ?? 'protect',
+    risk: body.risk ?? 'low',
+    ...(fromMix.length ? { fromMix } : {}),
+  };
+};
 
 type Call = { url: string; body: Record<string, unknown> };
 beforeEach(() => {
@@ -573,7 +589,7 @@ describe('a new goal’s mix, made into a plan', () => {
     expect(press().textContent).toContain(en.mix.deposit.reviewOf('$500'));
   });
 
-  it('never fills in a goal or a risk: unsaid, each is asked by one tap and nothing is checked before', async () => {
+  it('asks nothing it was not told: sends the unsaid goal and risk as not said, and says what the server worked out from the mix', async () => {
     const calls: Call[] = [];
     portStore.setApi(async (url, init) => {
       if (!url.endsWith('/goal/accept')) return json({}, 404);
@@ -582,30 +598,24 @@ describe('a new goal’s mix, made into a plan', () => {
       return json({ status: 'review', review: reviewOf(of(body)) });
     });
     const host = await goalMix('en', { goal: null, risk: null });
+    // no question, no tap, no sentence until the server has read the mix
     expect(host.querySelector('[data-ui="deposit-purpose"]')).toBeNull();
+    expect(host.querySelector('[data-ui="deposit-goal"]')).toBeNull();
+    expect(host.querySelector('[data-ui="deposit-risk"]')).toBeNull();
     expect(host.querySelectorAll('select')).toHaveLength(0);
-    expect(host.querySelectorAll('[aria-pressed="true"]')).toHaveLength(0);
+    expect(host.querySelectorAll('[aria-pressed]')).toHaveLength(0);
     await deposit(host, '100');
-    expect(calls).toEqual([]);
-    expect(find(host, '[data-ui="deposit-check"]').textContent).toBe(en.mix.deposit.needPurpose);
-    expect(amounts(host)['solana:gldx']).toBe(`—${en.mix.deposit.unchecked}`);
-    await toReview(host);
-    expect(calls).toEqual([]);
-    expect(host.textContent).toContain(en.mix.deposit.blocked.purpose);
-    await click(find(host, '[data-ui="deposit-goal"] [data-value="income"]'));
-    await settle(CHECK_MS + 50);
-    // a goal alone is not enough: the risk is not guessed either
-    expect(calls).toEqual([]);
-    await click(find(host, '[data-ui="deposit-risk"] [data-value="high"]'));
-    await settle(CHECK_MS + 50);
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.body).toMatchObject({ goal: 'income', risk: 'high', confirm: false });
-    expect(
-      find(host, '[data-ui="deposit-goal"] [data-value="income"]').getAttribute('aria-pressed'),
-    ).toBe('true');
+    expect(calls[0]?.body).toMatchObject({ goal: null, risk: null, confirm: false });
+    // the server's goal and risk, said as worked out from the mix, never as the person's
+    const worked = `${en.mix.deposit.purpose('protect', 'low')} ${en.mix.deposit.fromMix(true, true)}`;
+    expect(find(host, '[data-ui="deposit-purpose"] span').textContent).toBe(worked);
+    expect(find(host, '[data-ui="deposit-check"]').textContent).toBe(en.mix.deposit.checked);
+    await toReview(host);
+    expect(find(host, '[data-ui="mix-review-purpose"]').textContent).toBe(worked);
   });
 
-  it('asks only what the person has not said, and says the rest as their own', async () => {
+  it('says what the person said as theirs, and only the rest as worked out from the mix', async () => {
     const calls: Call[] = [];
     portStore.setApi(async (url, init) => {
       if (!url.endsWith('/goal/accept')) return json({}, 404);
@@ -614,15 +624,14 @@ describe('a new goal’s mix, made into a plan', () => {
       return json({ status: 'review', review: reviewOf(of(body)) });
     });
     const host = await goalMix('en', { goal: 'grow', risk: null });
-    expect(find(host, '[data-ui="deposit-purpose"]').textContent).toContain(
+    expect(find(host, '[data-ui="deposit-purpose"] span').textContent).toBe(
       en.mix.deposit.purpose('grow', null),
     );
-    expect(host.querySelector('[data-ui="deposit-goal"]')).toBeNull();
     await deposit(host, '100');
-    expect(calls).toEqual([]);
-    await click(find(host, '[data-ui="deposit-risk"] [data-value="low"]'));
-    await settle(CHECK_MS + 50);
-    expect(calls[0]?.body).toMatchObject({ goal: 'grow', risk: 'low' });
+    expect(calls[0]?.body).toMatchObject({ goal: 'grow', risk: null });
+    expect(find(host, '[data-ui="deposit-purpose"] span').textContent).toBe(
+      `${en.mix.deposit.purpose('grow', 'low')} ${en.mix.deposit.fromMix(false, true)}`,
+    );
   });
 
   it('unticks a warning whose figure moved under the same id, and holds the confirm again', async () => {
@@ -790,7 +799,7 @@ describe('the deposit step, kept honest while things move', () => {
     expect(find(host, '[data-ui="mix-review-total"]').textContent).toContain('$250.00');
   });
 
-  it('locks the amount, the taps and the editor while the press is checked', async () => {
+  it('locks the amount and the editor while the press is checked', async () => {
     let release: () => void = () => {};
     const calls = accepts(async (body) => {
       await new Promise<void>((resolve) => {
@@ -799,7 +808,6 @@ describe('the deposit step, kept honest while things move', () => {
       return json({ status: 'review', review: reviewOf(of(body as never)) });
     });
     const host = await goalMix('en', { goal: 'grow', risk: null });
-    await click(find(host, '[data-ui="deposit-risk"] [data-value="low"]'));
     await openEditor(host);
     await type(amountBox(host), '200');
     // pressed before the check of the pause has gone out: the press asks, and the step is held
@@ -807,7 +815,6 @@ describe('the deposit step, kept honest while things move', () => {
     expect(amountBox(host).disabled).toBe(true);
     for (const held of [
       amountBox(host).closest('[inert]'),
-      find(host, '[data-ui="deposit-risk"]').closest('[inert]'),
       find(host, '[data-ui="weight-editor"]').closest('[inert]'),
     ])
       expect(held).not.toBeNull();
@@ -819,11 +826,11 @@ describe('the deposit step, kept honest while things move', () => {
     expect(calls.every((call) => call.body.amountUsd === 200)).toBe(true);
     expect(find(host, '[data-ui="mix-review-total"]').textContent).toContain('$200.00');
     expect(find(host, '[data-ui="mix-review-purpose"]').textContent).toBe(
-      en.mix.deposit.purpose('grow', 'low'),
+      `${en.mix.deposit.purpose('grow', 'low')} ${en.mix.deposit.fromMix(false, true)}`,
     );
   });
 
-  it('refuses a review that is not of the amount or the goal it was asked for', async () => {
+  it('refuses a review that is not of the amount, the goal or the risk it was asked for', async () => {
     let wrong: Record<string, unknown> = { amountUsd: 200 };
     accepts(async (body) =>
       json({ status: 'review', review: reviewOf({ ...of(body as never), ...wrong }) }),
@@ -832,10 +839,34 @@ describe('the deposit step, kept honest while things move', () => {
     await deposit(host, '500');
     expect(find(host, '[data-ui="deposit-refused"]').textContent).toBe(en.mix.failure.unreadable);
     expect(amounts(host)['solana:gldx']).toBe(`—${en.mix.deposit.unchecked}`);
-    wrong = { goal: 'protect' };
+    // a goal or risk the person said, changed by the server, even when it says it worked it out
+    for (const over of [
+      { goal: 'protect' },
+      { risk: 'high' },
+      { risk: 'high', fromMix: ['risk'] },
+    ]) {
+      wrong = over;
+      await toReview(host);
+      expect(host.querySelector('[data-ui="mix-review-lines"]')).toBeNull();
+      expect(find(host, '[data-ui="deposit-refused"]').textContent).toBe(en.mix.failure.unreadable);
+    }
+  });
+
+  it('refuses a goal or risk the person did not say that the server fills in without saying so', async () => {
+    let wrong: Record<string, unknown> = { fromMix: ['risk'] };
+    accepts(async (body) =>
+      json({ status: 'review', review: reviewOf({ ...of(body as never), ...wrong }) }),
+    );
+    const host = await goalMix('en', { goal: null, risk: null });
+    await deposit(host, '500');
+    expect(find(host, '[data-ui="deposit-refused"]').textContent).toBe(en.mix.failure.unreadable);
+    expect(host.querySelector('[data-ui="deposit-purpose"]')).toBeNull();
+    wrong = { fromMix: undefined };
     await toReview(host);
     expect(host.querySelector('[data-ui="mix-review-lines"]')).toBeNull();
-    expect(find(host, '[data-ui="deposit-refused"]').textContent).toBe(en.mix.failure.unreadable);
+    wrong = {};
+    await toReview(host);
+    expect(find(host, '[data-ui="mix-review-lines"]').textContent).toContain('40%');
   });
 
   it('moves focus on purpose: the amount on open, the heading of the review, the press on the way back', async () => {

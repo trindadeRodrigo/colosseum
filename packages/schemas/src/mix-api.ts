@@ -123,6 +123,16 @@ export const MixReview = z.strictObject({
   origin: MixOrigin,
   /** The goal the stock check was made against; null for a vault whose plan the server does not hold. */
   goal: z.enum(['grow', 'income', 'protect']).nullable(),
+  /** A new goal's risk, as the plan is stored with it. Left out for a vault. */
+  risk: z.enum(['low', 'medium', 'high']).optional(),
+  /**
+   * What the person did not say and the server worked out from the mix (gate DEPOSIT-DERIVE): `goal`,
+   * `risk`, both or neither. Left out: neither.
+   */
+  fromMix: z
+    .array(z.enum(['goal', 'risk']))
+    .max(2)
+    .optional(),
   /** The amount the lines split: the buy's amount, or the vault's value at the prices of `lines`. */
   amountUsd: z.number().nonnegative(),
   /** Cash first where there is any, then each asset in the order sent. They add up to 10,000. */
@@ -159,11 +169,15 @@ const confirmation = {
     .optional(),
 };
 
-/** `POST /v1/conversations/{chain}/goal/accept`: a mix for a new vault, with the goal and amount the person confirmed. */
+/**
+ * `POST /v1/conversations/{chain}/goal/accept`: a mix for a new vault, with the amount the person
+ * confirmed and the goal and risk they said. A goal or risk they did not say is null (or left out):
+ * the server works it out from the mix (gate DEPOSIT-DERIVE) and the review says which it worked out.
+ */
 export const AcceptGoalMixRequest = z.strictObject({
   ...confirmation,
-  goal: z.enum(['grow', 'income', 'protect']),
-  risk: z.enum(['low', 'medium', 'high']),
+  goal: z.enum(['grow', 'income', 'protect']).nullable().optional(),
+  risk: z.enum(['low', 'medium', 'high']).nullable().optional(),
   amountUsd: z.number().min(10).max(ORDER_LIMITS.maxAmountUsd, 'one order buys at most $1,000,000'),
   /** The goal's term. Left out: the goal has no date (`horizonOpen`). */
   horizonMonths: z.number().int().min(1).max(480).optional(),

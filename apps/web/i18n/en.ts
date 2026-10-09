@@ -2130,10 +2130,13 @@ export const en = {
       currency: '$',
       changePurpose: 'Change',
       changePurposeLabel: 'Change the goal or the risk in the conversation',
-      askGoal: 'What is this money for?',
-      askRisk: 'How much risk can it take?',
-      askWhy:
-        'You haven’t said this in the conversation, and I don’t guess it: the goal decides which assets the plan may hold. Tap one, or say it in the conversation.',
+      /** After the purpose: which of the two the server worked out from the mix, not the person's words. */
+      fromMix: (goal: boolean, risk: boolean): string =>
+        goal && risk
+          ? 'Both worked out from the mix you chose.'
+          : goal
+            ? 'The goal is worked out from the mix you chose.'
+            : 'The risk is worked out from the mix you chose.',
       limits: 'From $10 to $1,000,000.',
       quick: 'Quick amounts',
       quickOne: (amount: string) => `Deposit ${amount}`,
@@ -2142,7 +2145,6 @@ export const en = {
       share: 'Share',
       unchecked: 'not checked yet',
       needAmount: 'Type an amount to see what goes into each asset.',
-      needPurpose: 'Choose the goal and the risk to see what goes into each asset.',
       checking: 'Checking at today’s prices…',
       checked: 'Checked at today’s prices. Nothing is bought yet.',
       review: 'Review deposit',
@@ -2164,7 +2166,6 @@ export const en = {
         reply: 'Wait for the reply in the conversation first.',
         weights: 'Fix the weights in the editor first.',
         amount: 'Type an amount first.',
-        purpose: 'Choose the goal and the risk first.',
       },
       errors: {
         notAmount: 'Type an amount in dollars, such as 250 or 250.50.',

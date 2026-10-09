@@ -105,6 +105,7 @@ export {
   shelfLabelsOf,
 } from './matched-theme';
 export { RISKS } from './mix';
+export { purposeOfMix } from './mix-purpose';
 export { INTAKE_LIMITS, PERSONAL_PARAMS, PERSONAL_PARAMS_STATUS } from './params';
 export { matchedName, readBack, type TermSaid, type ThemeNames } from './readback';
 export {
