@@ -30,6 +30,7 @@ export function GoalChain({
   busy,
   refocus,
   onChoose,
+  on,
 }: {
   /** The conversation has words: the chain is no longer a free choice. */
   started: boolean;
@@ -39,11 +40,17 @@ export function GoalChain({
   refocus: RefObject<boolean>;
   /** Moves a new plan to `chain`: stores it, and opens an empty conversation there. */
   onChoose: (chain: ChainId) => Promise<void>;
+  /**
+   * The chain of the conversation on screen, where it is not the account's: a deposit open on the pane
+   * keeps its conversation on its own chain whatever moves the account's.
+   */
+  on?: ChainId | null;
 }) {
   const t = useT();
   const c = t.chain.choice;
   const port = useWalletPort();
-  const { account, chain } = useAccount();
+  const { account, chain: current } = useAccount();
+  const chain = on ?? current;
   const root = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState<ChainId | null>(null);
   const sending = useRef(false);

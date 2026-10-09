@@ -13,9 +13,12 @@ export type SharedRefusal = {
   changed: boolean;
 };
 
-/** The asset our server names at the start of "<asset> cannot be bought on <chain>", or none. */
+/**
+ * The asset our server names at the start of "<asset> is not available on <chain>" (or, from a
+ * server before WORDS-VAULT-DEPOSIT, "<asset> cannot be bought on <chain>"), or none.
+ */
 const namedAsset = (error: string): string | null =>
-  /^([a-z0-9-]+:[A-Za-z0-9._-]+) cannot be bought\b/.exec(error)?.[1] ?? null;
+  /^([a-z0-9-]+:[A-Za-z0-9._-]+) (?:is not available|cannot be bought)\b/.exec(error)?.[1] ?? null;
 
 /**
  * The refusal in this app's words, or null where it has none and the server's sentence stands (a

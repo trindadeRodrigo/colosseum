@@ -675,10 +675,10 @@ describe('what the page says of recordings, whichever job wrote them', () => {
   it('the liquidity caption reads as one sentence, from a recording or from a live read, in both', () => {
     const [en, pt] = [bearingDictionary('en').dex.liquidity, bearingDictionary('pt').dex.liquidity];
     expect(en.note(en.recordedAt('2026-10-03 15:02 UTC'))).toBe(
-      'held within ±30% of the price, from the pool’s newest recording, 2026-10-03 15:02 UTC; the asset waits above the price (sold into as it rises), the quote below (bought with as it falls); + and − zoom',
+      'held within ±30% of the price, from the pool’s newest recording, 2026-10-03 15:02 UTC; the asset waits above the price (sold into as it rises), the quote below (spent on the asset as it falls); + and − zoom',
     );
     expect(en.note(en.liveAt('15:02'))).toBe(
-      'held within ±30% of the price, from a live read at 15:02 UTC; the asset waits above the price (sold into as it rises), the quote below (bought with as it falls); + and − zoom',
+      'held within ±30% of the price, from a live read at 15:02 UTC; the asset waits above the price (sold into as it rises), the quote below (spent on the asset as it falls); + and − zoom',
     );
     // Portuguese joins the preposition to the article: “do registro”, “da leitura”, not “de o”
     expect(pt.note(pt.recordedAt('3 de out. de 2026, 15:02 UTC'))).toBe(

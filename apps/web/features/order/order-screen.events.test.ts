@@ -774,7 +774,7 @@ describe('what the executor answers', () => {
         ],
         [
           'nothing is left',
-          { error: 'this order has nothing left to buy', code: 'NOTHING_LEFT' },
+          { error: 'this order has nothing left to do', code: 'NOTHING_LEFT' },
           o.finishNothing,
         ],
         [
@@ -809,8 +809,8 @@ describe('what the executor answers', () => {
         // the words alone decide nothing: a sentence that reads like a known refusal, with no code
         [
           'known words and no code',
-          { error: 'this order has nothing left to buy' },
-          o.finishRefused('this order has nothing left to buy'),
+          { error: 'this order has nothing left to do' },
+          o.finishRefused('this order has nothing left to do'),
         ],
       ])('is said in this app’s words and makes no record: %s', async (_, body, sentence) => {
         server({ route: true, made: () => json(body, 409) });

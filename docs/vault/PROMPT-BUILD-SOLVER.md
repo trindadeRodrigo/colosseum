@@ -1,5 +1,7 @@
 # PROMPT (build): the new solver, from the research and the decisions of Oct 5
 
+> Historical: the prompt that drove ENG-3. Its guided intake in English and Portuguese is superseded on `/goal` by the relaxed intake (gate `RELAXED-INTAKE`) and by gate `ENGLISH-ONLY`; the engine it specifies is current.
+
 > Written 2026-10-05 by Rodrigo's session, after `docs/vault/research/portfolio-method.md` and the decisions of Oct 5 (`docs/GATES.md`: `SOLVER`, `SOLVER-PARAMS`, `SLEEVES`, `THEMES`, `THREE-PLANS`, `GUIDED-INTAKE`, `NO-FREEZE`). Run it in a fresh Claude Code session started at the repo root, on a checkout that has pulled `staging` with those decisions merged.
 
 ---
