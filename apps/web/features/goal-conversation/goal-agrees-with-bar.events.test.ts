@@ -68,11 +68,17 @@ describe('the goal page and the bar', () => {
     // someone signed in here before, and the wallet has not said anything yet
     hint(true);
     const host = await page();
-    await later(10 * WAY_IN_MS);
+    await later(2 * WAY_IN_MS);
     expect(bar(host).getAttribute('data-state')).toBe('loading');
-    const waiting = find(conversation(host), '[data-ui="lattice-status"]');
+    const waiting = find(conversation(host), '[data-ui="goal-account-loading"]');
     expect(waiting.textContent).toBe(copy.loadingAccount);
-    expect(waiting.getAttribute('role')).toBe('status');
+    // the wait is announced once, by the bar's control: the page's line is no second live region
+    expect(waiting.getAttribute('role')).toBeNull();
+    expect(waiting.closest('[role="status"], [aria-live]')).toBeNull();
+    const announced = [...host.querySelectorAll('[role="status"], [aria-live]')].filter((el) =>
+      el.textContent?.includes(en.shell.accountLoading),
+    );
+    expect(announced).toEqual([find(bar(host), '[data-ui="account-said"]')]);
     expect(host.textContent).not.toContain(copy.signIn);
     expect(host.querySelector('a[href^="/sign-in"]')).toBeNull();
     expect(find<HTMLTextAreaElement>(host, 'textarea').disabled).toBe(true);
@@ -92,7 +98,7 @@ describe('the goal page and the bar', () => {
     // one address, one label: the page's way in is the bar's
     expect(mine.getAttribute('href')).toBe(theirs.getAttribute('href'));
     expect(mine.textContent).toBe(theirs.textContent);
-    expect(host.querySelector('[data-ui="lattice-status"]')).toBeNull();
+    expect(host.querySelector('[data-ui="goal-account-loading"]')).toBeNull();
   });
 
   it.each([
