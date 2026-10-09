@@ -197,8 +197,8 @@ describe('the rebalancing page, for a person with steps on two chains', () => {
     expect(part(s, 'step-why')).toBe('You made this step yourself.');
     // the trades in plain words, the asset by its name
     expect(trades(s).map((trade) => part(trade, 'trade-sentence'))).toEqual([
-      'Bought USDY (Ondo) with cash (USDC).',
-      'Bought SGOV (iShares) with cash (USDC).',
+      'Swapped cash (USDC) into USDY (Ondo).',
+      'Swapped cash (USDC) into SGOV (iShares).',
     ]);
     const [usdy, sgov] = trades(s) as [Element, Element];
     expect(rows(usdy)).toEqual([
@@ -267,7 +267,7 @@ describe('the rebalancing page, for a person with steps on two chains', () => {
     );
     const [trade] = trades(s) as [Element];
     // nothing was bought: the sentence says it was tried, and the amount is the step's, not "paid"
-    expect(part(trade, 'trade-sentence')).toBe('Tried to buy SPYx with cash (USDC).');
+    expect(part(trade, 'trade-sentence')).toBe('Tried to swap cash (USDC) into SPYx.');
     expect(rows(trade)).toEqual(['Amount in the step: 1,000 USDC']);
     // its quote was not kept, so no cost is written and nothing is said about one
     expect(s.querySelector('[data-row="quoted"]')).toBeNull();
@@ -492,7 +492,7 @@ describe('the figures of the rebalancing page', () => {
     const host = await page();
     const s = step(host, RH_SILENT, 0);
     const [trade] = trades(s) as [Element];
-    expect(part(trade, 'trade-sentence')).toBe('Bought SPY with cash (tUSDG).');
+    expect(part(trade, 'trade-sentence')).toBe('Swapped cash (tUSDG) into SPY.');
     // a quote that reads zero says why it can
     expect(rows(trade)).toEqual([
       'Paid: 24 tUSDG',

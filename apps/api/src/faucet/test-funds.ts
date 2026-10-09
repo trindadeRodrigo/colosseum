@@ -162,13 +162,13 @@ export function createTestFunds(options: {
       const cashRaw = withMargin(BigInt(read.cash.missingRaw), limits.cashMarginBps);
       const gasRaw = withMargin(BigInt(read.gas.missingRaw), limits.gasMarginBps);
       if (cashRaw === 0n && gasRaw === 0n)
-        throw new Refusal(409, 'the wallet already has what this buy needs');
+        throw new Refusal(409, 'the wallet already has what this deposit needs');
       const maxCash = BigInt(limits.maxCashUsd) * 10n ** BigInt(read.cash.decimals);
       const maxGas = limits.maxGasRaw[entry.chain] ?? 0n;
       if (cashRaw > maxCash || gasRaw > maxGas)
         throw new Refusal(
           422,
-          `this buy needs more than the test faucet sends at once ($${limits.maxCashUsd.toLocaleString('en-US')} in test dollars)`,
+          `this deposit needs more than the test faucet sends at once ($${limits.maxCashUsd.toLocaleString('en-US')} in test dollars)`,
           { fix: 'Choose a smaller amount, then ask again.', details: { retryable: false } },
         );
 

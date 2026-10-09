@@ -297,7 +297,7 @@ test('the invest card by keyboard, at 375 and 1440 px', async ({ page }) => {
   const accept = page.getByLabel(en.trust.accept);
   await accept.focus();
   await page.keyboard.press('Space');
-  const press = card.getByRole('button', { name: /^Invest / });
+  const press = card.getByRole('button', { name: en.invest.press('$40') });
   await expect(press).not.toHaveAttribute('aria-disabled', 'true');
   await page.setViewportSize({ width: 1440, height: 900 });
   const result = await new AxeBuilder({ page })
