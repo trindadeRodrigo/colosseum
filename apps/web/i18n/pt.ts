@@ -2008,6 +2008,8 @@ export const pt: Dictionary = {
         if (goal) return `${goals[goal]}.`;
         return risk ? `C${risks[risk].slice(1)}.` : '';
       },
+      /** The dollar sign before the amount, as this language writes it. */
+      currency: 'US$',
       changePurpose: 'Mudar',
       changePurposeLabel: 'Mudar o objetivo ou o risco na conversa',
       askGoal: 'Para que é este dinheiro?',

@@ -51,8 +51,8 @@ export function AmountField({
               said ? 'border-destructive' : 'border-input',
             )}
           >
-            <span aria-hidden="true" className="text-h4 text-muted-foreground">
-              $
+            <span aria-hidden="true" className="shrink-0 text-h4 text-muted-foreground">
+              {t.mix.deposit.currency}
             </span>
             <input
               {...control}

@@ -2112,6 +2112,8 @@ export const en = {
         if (goal) return `${goals[goal]}.`;
         return risk ? `A${risks[risk].slice(1)}.` : '';
       },
+      /** The dollar sign before the amount, as this language writes it. */
+      currency: '$',
       changePurpose: 'Change',
       changePurposeLabel: 'Change the goal or the risk in the conversation',
       askGoal: 'What is this money for?',

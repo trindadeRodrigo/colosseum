@@ -282,7 +282,9 @@ export function DepositStep({
       : key !== null
         ? d.checking
         : amount === null
-          ? d.needAmount
+          ? amountError
+            ? null
+            : d.needAmount
           : !goal || !risk
             ? d.needPurpose
             : null;
@@ -313,160 +315,170 @@ export function DepositStep({
   );
 
   return (
-    <Card
-      as="section"
-      aria-labelledby={titleId}
-      data-ui="deposit-step"
-      mock={provenance !== null && provenance !== 'live'}
-      mockLabels={{
-        announce: provenance === 'mock' ? t.shell.mockAnnounce : t.shell.testNetworkLine,
-      }}
-    >
-      <CardHeader id={titleId} title={d.title} level={2} meta={t.chain.names[chain]} />
-      <CardBody className="flex min-w-0 flex-col gap-5">
-        {(said.goal || said.risk) && (
-          <p data-ui="deposit-purpose" className="flex flex-wrap items-baseline gap-x-3 text-body">
-            <span>{d.purpose(said.goal, said.risk)}</span>
-            <Button variant="link" aria-label={d.changePurposeLabel} onClick={onChangeMix}>
-              {d.changePurpose}
-            </Button>
-          </p>
-        )}
-        {(!said.goal || !said.risk) && (
-          <div className="flex min-w-0 flex-col gap-3">
-            {!said.goal && choice('goal', d.askGoal, GOALS, t.mix.goal.goals, picked.goal ?? null)}
-            {!said.risk && choice('risk', d.askRisk, RISKS, t.mix.goal.risks, picked.risk ?? null)}
-            <p className="max-w-(--tf-measure-body) text-caption text-muted-foreground">
-              {d.askWhy}
-            </p>
-          </div>
-        )}
-
-        <div className="flex min-w-0 flex-col gap-2">
-          <AmountField
-            large
-            text={amountText}
-            onText={onAmountText}
-            hint={d.limits}
-            value={amount}
-            {...(cash && units?.tokens[cash] ? { unit: units.tokens[cash].symbol } : {})}
-            {...(amountError ? { error: amountError } : {})}
-          />
-          <ul aria-label={d.quick} data-ui="deposit-quick" className="flex flex-wrap gap-2">
-            {QUICK_USD.map((usd) => (
-              <li key={usd}>
-                <Button
-                  variant="chip"
-                  aria-label={d.quickOne(dollars(usd, lang))}
-                  onClick={() => onAmountText(String(usd))}
-                >
-                  {dollars(usd, lang)}
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="flex min-w-0 flex-col gap-2">
-          <h3 className="flex flex-wrap items-baseline gap-x-3 text-caption font-medium">
-            {d.mix}
-            {edited && (
-              <span data-ui="deposit-edited" className="font-normal text-muted-foreground">
-                {d.edited}
-              </span>
-            )}
-          </h3>
-          <MixLines rows={rows} caption={d.mix} amounts />
-          {status && (
-            <p role="status" data-ui="deposit-check" className="text-caption text-muted-foreground">
-              {status}
+    <div data-ui="deposit-step" className="min-w-0">
+      <Card
+        as="section"
+        aria-labelledby={titleId}
+        mock={provenance !== null && provenance !== 'live'}
+        mockLabels={{
+          announce: provenance === 'mock' ? t.shell.mockAnnounce : t.shell.testNetworkLine,
+        }}
+      >
+        <CardHeader id={titleId} title={d.title} level={2} meta={t.chain.names[chain]} />
+        <CardBody className="flex min-w-0 flex-col gap-5">
+          {(said.goal || said.risk) && (
+            <p
+              data-ui="deposit-purpose"
+              className="flex flex-wrap items-baseline gap-x-3 text-body"
+            >
+              <span>{d.purpose(said.goal, said.risk)}</span>
+              <Button variant="link" aria-label={d.changePurposeLabel} onClick={onChangeMix}>
+                {d.changePurpose}
+              </Button>
             </p>
           )}
-          {refused && (
-            <div
-              role="alert"
-              data-ui="deposit-refused"
-              className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm text-destructive"
-            >
-              <StatusMark status="off-track" size={12} className="mt-1.5" />
-              <p className="whitespace-pre-line">
-                {refused.failure}
-                {refused.invalid && `\n${d.invalidNext}`}
+          {(!said.goal || !said.risk) && (
+            <div className="flex min-w-0 flex-col gap-3">
+              {!said.goal &&
+                choice('goal', d.askGoal, GOALS, t.mix.goal.goals, picked.goal ?? null)}
+              {!said.risk &&
+                choice('risk', d.askRisk, RISKS, t.mix.goal.risks, picked.risk ?? null)}
+              <p className="max-w-(--tf-measure-body) text-caption text-muted-foreground">
+                {d.askWhy}
               </p>
             </div>
           )}
-        </div>
 
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-            <Button
-              variant="primary"
-              data-action="deposit-review"
-              busy={busy}
-              busyLabel={d.reviewing}
-              disabled={blocked !== null}
-              aria-describedby={blocked !== null && tried ? reasonId : undefined}
-              onDisabledClick={() => setTried(true)}
-              onClick={toReview}
-            >
-              {amount === null ? d.review : d.reviewOf(dollars(amount, lang))}
-            </Button>
-            <Button variant="secondary" data-action="change-mix" onClick={onChangeMix}>
-              {d.changeMix}
-            </Button>
+          <div className="flex min-w-0 flex-col gap-2">
+            <AmountField
+              large
+              text={amountText}
+              onText={onAmountText}
+              hint={d.limits}
+              value={amount}
+              {...(cash && units?.tokens[cash] ? { unit: units.tokens[cash].symbol } : {})}
+              {...(amountError ? { error: amountError } : {})}
+            />
+            <ul aria-label={d.quick} data-ui="deposit-quick" className="flex flex-wrap gap-2">
+              {QUICK_USD.map((usd) => (
+                <li key={usd}>
+                  <Button
+                    variant="chip"
+                    aria-label={d.quickOne(dollars(usd, lang))}
+                    onClick={() => onAmountText(String(usd))}
+                  >
+                    {dollars(usd, lang)}
+                  </Button>
+                </li>
+              ))}
+            </ul>
           </div>
-          {blocked !== null && tried && (
-            <p id={reasonId} role="status" className="text-body-sm">
-              {blocked}
-            </p>
-          )}
-          <p className="max-w-(--tf-measure-body) text-caption text-muted-foreground">{d.next}</p>
-        </div>
 
-        {cash && (
-          <div className="flex min-w-0 flex-col gap-3 border-t border-border pt-4">
-            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-              <Button
-                variant="link"
-                data-action="edit-by-hand"
-                aria-expanded={editing}
-                aria-controls={editorId}
-                onClick={() => setEditing((open) => !open)}
-              >
-                {d.editByHand}
-              </Button>
+          <div className="flex min-w-0 flex-col gap-2">
+            <h3 className="flex flex-wrap items-baseline gap-x-3 text-caption font-medium">
+              {d.mix}
               {edited && (
-                <Button variant="link" data-action="reset-mix" onClick={() => setWeights(null)}>
-                  {d.reset}
-                </Button>
+                <span data-ui="deposit-edited" className="font-normal text-muted-foreground">
+                  {d.edited}
+                </span>
               )}
-              <Button variant="link" onClick={onClose}>
-                {d.backToProposal}
+            </h3>
+            <MixLines rows={rows} caption={d.mix} amounts />
+            {status && (
+              <p
+                role="status"
+                data-ui="deposit-check"
+                className="text-caption text-muted-foreground"
+              >
+                {status}
+              </p>
+            )}
+            {refused && (
+              <div
+                role="alert"
+                data-ui="deposit-refused"
+                className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm text-destructive"
+              >
+                <StatusMark status="off-track" size={12} className="mt-1.5" />
+                <p className="whitespace-pre-line">
+                  {refused.failure}
+                  {refused.invalid && `\n${d.invalidNext}`}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+              <Button
+                variant="primary"
+                data-action="deposit-review"
+                busy={busy}
+                busyLabel={d.reviewing}
+                disabled={blocked !== null}
+                aria-describedby={blocked !== null && tried ? reasonId : undefined}
+                onDisabledClick={() => setTried(true)}
+                onClick={toReview}
+              >
+                {amount === null ? d.review : d.reviewOf(dollars(amount, lang))}
+              </Button>
+              <Button variant="secondary" data-action="change-mix" onClick={onChangeMix}>
+                {d.changeMix}
               </Button>
             </div>
-            <div id={editorId} hidden={!editing} className="flex min-w-0 flex-col gap-3">
-              {editing && (
-                <>
-                  <p className="max-w-(--tf-measure-body) text-body-sm">{d.editorLead}</p>
-                  <WeightEditor
-                    plain
-                    chain={chain}
-                    mock={mock}
-                    cash={cash}
-                    value={shown}
-                    onChange={setWeights}
-                    names={Object.fromEntries(
-                      allocations.flatMap((line) =>
-                        line.symbol ? [[line.assetId, line.symbol]] : [],
-                      ),
-                    )}
-                  />
-                </>
-              )}
-            </div>
+            {blocked !== null && tried && (
+              <p id={reasonId} role="status" className="text-body-sm">
+                {blocked}
+              </p>
+            )}
+            <p className="max-w-(--tf-measure-body) text-caption text-muted-foreground">{d.next}</p>
           </div>
-        )}
-      </CardBody>
-    </Card>
+
+          {cash && (
+            <div className="flex min-w-0 flex-col gap-3 border-t border-border pt-4">
+              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                <Button
+                  variant="link"
+                  data-action="edit-by-hand"
+                  aria-expanded={editing}
+                  aria-controls={editorId}
+                  onClick={() => setEditing((open) => !open)}
+                >
+                  {d.editByHand}
+                </Button>
+                {edited && (
+                  <Button variant="link" data-action="reset-mix" onClick={() => setWeights(null)}>
+                    {d.reset}
+                  </Button>
+                )}
+                <Button variant="link" onClick={onClose}>
+                  {d.backToProposal}
+                </Button>
+              </div>
+              <div id={editorId} hidden={!editing} className="flex min-w-0 flex-col gap-3">
+                {editing && (
+                  <>
+                    <p className="max-w-(--tf-measure-body) text-body-sm">{d.editorLead}</p>
+                    <WeightEditor
+                      plain
+                      chain={chain}
+                      mock={mock}
+                      cash={cash}
+                      value={shown}
+                      onChange={setWeights}
+                      names={Object.fromEntries(
+                        allocations.flatMap((line) =>
+                          line.symbol ? [[line.assetId, line.symbol]] : [],
+                        ),
+                      )}
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </CardBody>
+      </Card>
+    </div>
   );
 }

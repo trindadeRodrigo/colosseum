@@ -433,6 +433,128 @@ describe('private strategy exploration for a new goal', () => {
   });
 });
 
+describe('the deposit step of a new goal', () => {
+  const accept = '/v1/conversations/solana/goal/accept';
+  const strategy = (host: HTMLElement) => find(host, '[data-ui="goal-strategy"]');
+  const amount = (host: HTMLElement) =>
+    find<HTMLInputElement>(host, '[data-ui="amount-large"] input');
+  /** Replies in turn; a null is a reply that failed. */
+  const replies = (...turns: (Record<string, unknown> | null)[]) => {
+    let n = 0;
+    portStore.setApi(async (url, init) => {
+      if (init?.method !== 'POST') return baseApi(url);
+      const body = JSON.parse(String(init.body));
+      calls.push({ path: url, body });
+      if (url === accept) return json({}, 502);
+      const turn = turns[Math.min(n++, turns.length - 1)];
+      return turn ? json({ ...response(body.messageId), ...turn }) : json({}, 500);
+    });
+  };
+
+  it('opens from the proposal with the goal and risk the person said, and no form', async () => {
+    replies({ goal: 'grow', risk: 'high' });
+    const host = await show();
+    await send(host, 'Stocks to grow, I can take high risk');
+    await click(find(host, '[data-action="use-mix"]'));
+    const step = find(host, '[data-ui="deposit-step"]');
+    expect(find(step, '[data-ui="deposit-purpose"]').textContent).toContain(
+      en.mix.deposit.purpose('grow', 'high'),
+    );
+    expect(step.querySelectorAll('select')).toHaveLength(0);
+    expect(step.querySelectorAll('input')).toHaveLength(1);
+    // the same rows the preview drew, read only
+    for (const line of preview.allocations)
+      expect(step.querySelector(`[data-asset="${line.assetId}"]`)).not.toBeNull();
+    // nothing is signed or ordered from /goal
+    expect(calls.map((call) => call.path)).toEqual([path]);
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('asks by a tap what an older server or the person left unsaid, never a default', async () => {
+    // a reply with no goal or risk at all, and one with a value this app does not know
+    replies({}, { goal: 'speculate', risk: 'medium' });
+    const host = await show();
+    await send(host, 'Some stocks');
+    await click(find(host, '[data-action="use-mix"]'));
+    expect(host.querySelector('[data-ui="deposit-purpose"]')).toBeNull();
+    expect(host.querySelectorAll('[data-ui="deposit-goal"] button')).toHaveLength(3);
+    expect(host.querySelectorAll('[data-ui="deposit-risk"] button')).toHaveLength(3);
+    expect(host.querySelectorAll('[aria-pressed="true"]')).toHaveLength(0);
+    await send(host, 'medium risk please');
+    await click(find(host, '[data-action="use-mix"]'));
+    expect(find(host, '[data-ui="deposit-purpose"]').textContent).toContain(
+      en.mix.deposit.purpose(null, 'medium'),
+    );
+    expect(host.querySelectorAll('[data-ui="deposit-goal"] button')).toHaveLength(3);
+    expect(host.querySelector('[data-ui="deposit-risk"]')).toBeNull();
+  });
+
+  it('changes the mix in the conversation: the box takes focus, and the proposal and amount stay', async () => {
+    const more = {
+      ...preview,
+      objective: 'More of one, less of the other',
+      allocations: preview.allocations.map((line, i) => ({
+        ...line,
+        weightBps: i === 0 ? line.weightBps + 100 : i === 1 ? line.weightBps - 100 : line.weightBps,
+      })),
+    };
+    replies(
+      { goal: 'grow', risk: 'high' },
+      null,
+      { goal: 'grow', risk: 'low', proposal: null, message: 'Lower risk it is.' },
+      { goal: 'grow', risk: 'low', proposal: more },
+    );
+    const host = await show();
+    await send(host, 'Stocks to grow, high risk');
+    await click(find(host, '[data-action="use-mix"]'));
+    await type(amount(host), '250');
+    await click(find(host, '[data-action="change-mix"]'));
+    expect(document.activeElement).toBe(find(host, 'textarea'));
+    expect(host.querySelector('[data-ui="deposit-step"]')).not.toBeNull();
+
+    // the chat fails: its error says so by the box, and the deposit step keeps the mix and the amount
+    await send(host, 'more of the first, less of the second');
+    expect(find(host, '[data-ui="goal-chat"]').textContent).toContain(en.goal.explore.failed);
+    expect(find(host, '[data-ui="goal-retry"]').textContent).toContain(en.goal.explore.retry);
+    expect(amount(host).value).toBe('250');
+    expect(
+      strategy(host).querySelector(`[data-asset="${preview.allocations[0]?.assetId}"]`),
+    ).not.toBeNull();
+
+    // a reply that only talks changes what was said, not the mix
+    await send(host, 'actually low risk');
+    expect(find(host, '[data-ui="deposit-purpose"]').textContent).toContain(
+      en.mix.deposit.purpose('grow', 'low'),
+    );
+    expect(amount(host).value).toBe('250');
+
+    // another proposal is read as a preview first; using it finds the amount where it was
+    await send(host, 'more of the first, less of the second');
+    expect(host.querySelector('[data-ui="deposit-step"]')).toBeNull();
+    expect(strategy(host).textContent).toContain('More of one, less of the other');
+    await click(find(host, '[data-action="use-mix"]'));
+    expect(amount(host).value).toBe('250');
+    expect(calls.filter((call) => call.path === path).at(-1)?.body.messages).toEqual(
+      expect.arrayContaining([{ who: 'person', text: 'more of the first, less of the second' }]),
+    );
+  });
+
+  it('starts over with no mix, no amount and no deposit step', async () => {
+    replies({ goal: 'grow', risk: 'high' });
+    const host = await show();
+    await send(host, 'Stocks to grow, high risk');
+    await click(find(host, '[data-action="use-mix"]'));
+    await type(amount(host), '250');
+    await click(
+      [...host.querySelectorAll('button')].find(
+        (button) => button.textContent === en.talk.startOver,
+      ) as HTMLElement,
+    );
+    expect(host.querySelector('[data-ui="deposit-step"]')).toBeNull();
+    expect(host.querySelector('[data-ui="goal-empty-preview"]')).not.toBeNull();
+  });
+});
+
 describe('existing entry handoffs', () => {
   it('prefills actual landing words in Explore across sign-in, then consumes once on accepted words even if reply fails', async () => {
     portStore.set(fakePort());
