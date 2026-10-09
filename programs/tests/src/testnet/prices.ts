@@ -5,7 +5,7 @@ import { decodeAssets } from '../basket';
 import { REPO_ROOT } from '../env';
 import { decodeRouter, routerAddress, writePriceInstruction } from '../mock-router';
 import type { AccountView, Chain } from './chain';
-import { decide, HOLD_AVERAGE_AFTER_S, HOLD_PRICE_AFTER_S } from './hold';
+import { decide, HOLD_AVERAGE_AFTER_S, HOLD_PRICE_AFTER_S, written } from './hold';
 import type { Deployment } from './setup';
 
 // The job that copies real prices onto a test network (TNET-5). It reads mainnet read only and
@@ -319,31 +319,39 @@ export async function copyRound(
       continue;
     }
     // A held entry keeps its value and takes the cluster's time; one left alone is written back as
-    // the account holds it.
-    const next = (decision: typeof price, source: Entry, standing: Entry): Entry =>
-      decision === 'copy'
-        ? source
-        : decision === 'hold'
-          ? { ...standing, unixTimestamp: now }
-          : standing;
+    // the account holds it (`written` in hold.ts).
+    const nextPrice = written(
+      price,
+      reading.price,
+      heldPrice,
+      now,
+      options.holdLast ? HOLD_PRICE_AFTER_S : null,
+    );
+    const nextTwap = written(
+      twap,
+      reading.twap,
+      heldTwap,
+      now,
+      options.holdLast ? HOLD_AVERAGE_AFTER_S : null,
+    );
     writes.push({
       id: asset.id,
       symbol: asset.symbol,
       args: {
         priceIndex: asset.priceIndex,
         twapIndex: asset.twapIndex,
-        price: next(price, reading.price, heldPrice),
-        twap: next(twap, reading.twap, heldTwap),
+        price: nextPrice.entry,
+        twap: nextTwap.entry,
       },
       holds: [
-        ...(price === 'hold'
+        ...(nextPrice.held
           ? [
-              `${asset.symbol} at ${dollars(heldPrice)} (source last posted ${posted(reading.price)})`,
+              `${asset.symbol} at ${dollars(nextPrice.entry)} (source last posted ${posted(reading.price)})`,
             ]
           : []),
-        ...(twap === 'hold'
+        ...(nextTwap.held
           ? [
-              `${asset.symbol} average at ${dollars(heldTwap)} (source last posted ${posted(reading.twap)})`,
+              `${asset.symbol} average at ${dollars(nextTwap.entry)} (source last posted ${posted(reading.twap)})`,
             ]
           : []),
       ],

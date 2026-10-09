@@ -5,6 +5,7 @@ import {
   HOLD_PRICE_AFTER_S,
   HOLD_SOURCE_MAX_AGE_S,
   type Stamped,
+  written,
 } from '../programs/tests/src/testnet/hold';
 
 // What the Solana price copier does with one entry (TNET-5), with and without `--hold-last`. The
@@ -55,6 +56,30 @@ describe('the Solana price copier, one entry', () => {
     );
     // A long weekend, Friday 20:00 to Tuesday 13:30 UTC, is inside it.
     expect(HOLD_SOURCE_MAX_AGE_S).toBeGreaterThan(322_200n);
+  });
+
+  it("writes a copy with the source's time, unless that time is already past the hold limit", () => {
+    const standing = at(100n, NOW - 10n);
+    const fresh = at(101n, NOW - 40n);
+    expect(written('copy', fresh, standing, NOW, HOLD_PRICE_AFTER_S)).toEqual({
+      entry: fresh,
+      held: false,
+    });
+    // A value that arrives 70 s old would be held next round anyway: it takes the cluster's time now.
+    const late = at(101n, NOW - 70n);
+    expect(written('copy', late, standing, NOW, HOLD_PRICE_AFTER_S)).toEqual({
+      entry: at(101n, NOW),
+      held: true,
+    });
+    // Without the flag a time is never made up, and nor for a source silent for four days.
+    expect(written('copy', late, standing, NOW, null)).toEqual({ entry: late, held: false });
+    const dead = at(101n, NOW - HOLD_SOURCE_MAX_AGE_S - 1n);
+    expect(written('copy', dead, standing, NOW, HOLD_PRICE_AFTER_S).entry).toEqual(dead);
+    expect(written('hold', fresh, standing, NOW, HOLD_PRICE_AFTER_S)).toEqual({
+      entry: at(100n, NOW),
+      held: true,
+    });
+    expect(written('unchanged', fresh, standing, NOW, HOLD_PRICE_AFTER_S).entry).toEqual(standing);
   });
 
   it('leaves a stale entry alone without the flag', () => {

@@ -39,3 +39,26 @@ export function decide(
   if (now - source.unixTimestamp > HOLD_SOURCE_MAX_AGE_S) return 'unchanged';
   return now - held.unixTimestamp > holdAfterS ? 'hold' : 'unchanged';
 }
+
+/**
+ * What is written for an entry, and whether its time is the cluster's and not the source's (a line
+ * in the log either way). A copy keeps the source's own time, with one exception while holding: a
+ * source whose stamp is already older than `holdAfterS` when its value arrives (a chain of entries
+ * is stamped with its oldest, and a lending rate moves every few minutes) would be copied this round
+ * and held the next, a round nearer the limit for nothing, so it takes the cluster's time at once.
+ */
+export function written(
+  decision: Decision,
+  source: Stamped,
+  standing: Stamped,
+  now: bigint,
+  holdAfterS: bigint | null,
+): { entry: Stamped; held: boolean } {
+  if (decision === 'unchanged') return { entry: standing, held: false };
+  if (decision === 'hold') return { entry: { ...standing, unixTimestamp: now }, held: true };
+  const age = now - source.unixTimestamp;
+  const late = holdAfterS !== null && age > holdAfterS && age <= HOLD_SOURCE_MAX_AGE_S;
+  return late
+    ? { entry: { ...source, unixTimestamp: now }, held: true }
+    : { entry: source, held: false };
+}
