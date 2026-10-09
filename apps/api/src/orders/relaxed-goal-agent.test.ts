@@ -721,8 +721,12 @@ describe('relaxed intake: caps', () => {
     );
     expect(weights(reply)).toEqual({ SOL: 6000, USDY: 4000 });
     const first = reply.proposal?.tradeoffs[0] ?? '';
-    expect(first).toContain("Above the vault's cap today: SOL at 60% (cap 15%)");
-    expect(reply.proposal?.summary).toMatch(/^⚠ Above the vault's cap today/);
+    expect(first).toContain('Above the cap listed today: SOL at 60% (cap 15%)');
+    // what the deposit step does with it (`goal/accept`): a warning to confirm, never a refusal
+    expect(first).toContain('The vault accepts any composition');
+    expect(first).toContain('asks you to confirm it before anything is bought');
+    expect(JSON.stringify(reply)).not.toMatch(/would refuse|cap is lifted/);
+    expect(reply.proposal?.summary).toMatch(/^⚠ Above the cap listed today/);
   });
 });
 

@@ -189,13 +189,13 @@ What you are free to do: read intent, including people, companies, themes, nickn
 
 Four rules, which the code after you also enforces:
 1. You may only name holdings that appear on the table, by their exact id. If a thing they named is not there (a private company, a stock not on this chain), say so instead of substituting.
-2. You never choose weights yourself. When the person gives a share for a pot or for a holding ("80% in yield", "all of the income part in syrupUSDC", "20% in big tech"), you pass it on as that pot's or that line's "share" (0 to 1, of the pot for a line, of the money for a pot). The code applies a share only where it reads the same number in the person's own words beside the same holding or kind of holding; a share you report that it does not find there is not applied, so never describe a share as applied unless the person stated it plainly. Lines with no share stated split equally. Each holding has a cap on the table: the most of the money the vault lets it hold today. A cap never stops you: if the person asks for more, pass their share on as asked; the code applies it and shows a warning that the vault would refuse that split until the cap is lifted. Mention it in one short sentence, no more.
+2. You never choose weights yourself. When the person gives a share for a pot or for a holding ("80% in yield", "all of the income part in syrupUSDC", "20% in big tech"), you pass it on as that pot's or that line's "share" (0 to 1, of the pot for a line, of the money for a pot). The code applies a share only where it reads the same number in the person's own words beside the same holding or kind of holding; a share you report that it does not find there is not applied, so never describe a share as applied unless the person stated it plainly. Lines with no share stated split equally. Each holding has a cap on the table: the share above which the deposit step warns today. A cap never stops you: if the person asks for more, pass their share on as asked; the vault accepts any composition, and the deposit step shows a warning with the measured figure behind it, which the person confirms before anything is bought. Mention it in one short sentence, no more.
 3. You never compute or estimate a return, a projection, a price or how long money lasts, and you never promise a return. Write no figure in "say", in a "why" or in a pot's name: no digit, no percent or currency sign, no price, yield, return or date, not as words either ("five percent"), and never "guaranteed" or "risk-free". The code cuts every sentence that does. The person's numbers go in the sheet ("stated", "share"), where the code reads them and shows them; to repeat what they said, quote them exactly: You said “...”. A holding's yield is on the plan beside your message, with its source; point to it instead of stating it. The code computes every projection from the table's readings and prints it under your message as soon as the amount and the date or the monthly withdrawals are in the sheet; refer to it ("the projection below") instead of doing sums. A holding with no yield on the table earns nothing in that projection.
 4. Nothing is built until the person confirms. Before that, you need: the amount for any plan; when they will need the money for a plan to grow or to protect; the monthly income they want for an income plan; the shares for a split, if not stated. Ask for what is missing while you work, never for what they already said, and never guess a number. Propose lines as soon as you know enough of the intent; the person sees the plan build beside the chat.
 
 Shapes: "pick" for named things, equal split; "grow", "income" or "protect" when the words call for it; "split" when they want part of the money doing one thing and part another (for example a liquid reserve and a growth pot), one pot per bucket with its own shape (a bucket with no shape takes the plan's). A plan or pot to protect holds cash, dollar-yield rows and gold: no stock tokens, no crypto. A plan or pot to pay income holds cash and dollar-yield rows: no stock tokens, no crypto, no gold. The code holds to the asset registry on this and leaves out what does not fit. A stock token goes into a plan to protect or pay income only when the person plainly asked for that stock, or for stocks, in their own words; the code reads their words itself and warns them. Never add one on your own.
 
-Direct instructions: when the person tells you what to hold or how to split ("make all the income part syrupUSDC", "put 80% in the highest yield"), do it in this turn. Do not ask permission and do not argue. A cap does not stop it: do exactly what they asked and add one short sentence that the vault caps that holding today, so this split would need the cap lifted to be bought. Only the rule on what a plan to protect or pay income may hold still applies: if that stops part of the instruction, do the closest version and say why in one sentence. Do not offer alternatives unless they ask. Ask at most one question per turn, and only for something rule 4 still needs, at the end of your message.
+Direct instructions: when the person tells you what to hold or how to split ("make all the income part syrupUSDC", "put 80% in the highest yield"), do it in this turn. Do not ask permission and do not argue. A cap does not stop it: do exactly what they asked and add one short sentence that this holding is above its cap today, so the deposit step will warn about it and ask them to confirm. Only the rule on what a plan to protect or pay income may hold still applies: if that stops part of the instruction, do the closest version and say why in one sentence. Do not offer alternatives unless they ask. Ask at most one question per turn, and only for something rule 4 still needs, at the end of your message.
 
 Every turn you answer with the JSON object the API holds you to:
 - "say": the message the person reads. Your words, your reasoning, your questions. One short paragraph, or two when there is a lot to say. Mention holdings by name, not by id. Do not list weights; the code shows the lines beside your message.
@@ -206,7 +206,7 @@ Every turn you answer with the JSON object the API holds you to:
 
 Today is ${today}.
 
-A holding's cap is the most of the money the vault lets it hold today. When you choose holdings yourself (no share stated), pick enough for each pot to stay within the caps. When the person states a share above a cap, follow them.
+A holding's cap is the share above which the deposit step warns today. When you choose holdings yourself (no share stated), pick enough for each pot to stay within the caps. When the person states a share above a cap, follow them.
 
 TABLE (id | symbol | what it is | class | tier | issuer | cap | yield | more)
 ${table}`;
@@ -736,16 +736,18 @@ export function createRelaxedGoalAgent(options: {
         if (!tooMany.success) return { kind: 'failure', reason: 'invalid' };
         return { kind: 'reply', reply: tooMany.data };
       }
-      // Lines above the cap the vault holds them to today: kept as asked, and said plainly.
+      // Lines above their cap today: kept as asked and said plainly. The vault contract accepts any
+      // composition (ANY-COMPOSITION, as amended): `goal/accept` warns (`OVER_LISTED_CAP`, the exit
+      // ceiling with its measured figure) and the person confirms; nothing is refused for it.
       const overCap = lines.filter((l) => l.bps > (caps.get(l.asset.id) ?? 0));
       const capWarning = overCap.length
-        ? `Above the vault's cap today: ${overCap
+        ? `Above the cap listed today: ${overCap
             .map(
               (l) => `${l.asset.symbol} at ${pct(l.bps)} (cap ${pct(caps.get(l.asset.id) ?? 0)})`,
             )
             .join(
               ', ',
-            )}. The vault would refuse this split as it stands; it can be bought only once the cap is lifted.`
+            )}. The vault accepts any composition: the deposit step shows this as a warning, with the measured figure behind it, and asks you to confirm it before anything is bought.`
         : null;
       if (capWarning) notes.unshift(capWarning);
       // A stock outside the goal that the person asked for: kept, and warned (ANY-COMPOSITION).
