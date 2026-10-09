@@ -284,12 +284,12 @@ export const en = {
       lead: 'Tell me your ideas, needs and limits. I’ll draft a vault with its sources and tradeoffs.',
       placeholder: 'Describe what you want to explore…',
       starters: ['Explore technology stocks', 'Earn a monthly income', 'Protect my savings'],
-      local: 'This browser · private draft conversation',
+      local: 'A private draft, kept in this browser.',
       signIn: 'Sign in to start a vault.',
       readingAccount: 'Your account and chain must be ready before I can get a reply.',
       empty:
         'The draft and its sources appear here after a reply.',
-      previewOnly: 'Preview only. This draft cannot be invested here yet.',
+      previewOnly: 'A draft only. Nothing is created or deposited until you review and sign.',
       /** The preview card while the first reply is on its way: its heading, and the line under it. */
       building: 'Working on your first draft',
       working:
@@ -783,7 +783,7 @@ export const en = {
   talk: {
     workbench: {
       title: 'Invest',
-      strategy: 'Strategy preview',
+      strategy: 'Your vault’s draft',
     },
     startOver: 'Start over',
     hideChat: 'Hide chat',
