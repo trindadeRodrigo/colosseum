@@ -960,6 +960,7 @@ describe('no /v1 route can make the server sign', () => {
       'plugins/paths.ts',
       'portfolio/exposure.ts',
       'portfolio/history.ts',
+      'portfolio/numbers.ts',
       'portfolio/plans.ts',
       'portfolio/rebalances-snapshots.ts',
       'portfolio/rebalances.ts',
