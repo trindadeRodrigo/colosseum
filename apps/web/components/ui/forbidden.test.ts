@@ -79,7 +79,13 @@ const DRAWINGS = new Set([
 
 /** The only places the popover's shadow may sit: popovers, and the composer. */
 // Hint.tsx holds the one popover surface: the pin's popover and every tooltip are drawn by it.
-const SHADOWED = new Set(['components/ui/Hint.tsx', 'components/ui/Composer.tsx']);
+const SHADOWED = new Set([
+  'components/ui/Hint.tsx',
+  'components/ui/Composer.tsx',
+  // the list behind "More" on a vault's own page: a disclosure of links and buttons that opens on a
+  // press and stays, which the hover card (Hint) is not
+  'features/shared/MoreMenu.tsx',
+]);
 
 /** Uppercase is for captions and column heads at 12px or less (STYLE.md): it sits beside that size. */
 const CAPTION =

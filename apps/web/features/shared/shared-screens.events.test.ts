@@ -1440,7 +1440,7 @@ describe('a vault’s public page', () => {
     for (let i = 0; i < 3; i += 1) await settle(50);
     expect(asked).toBe(1);
     const ways = [...host.querySelectorAll('a')].map((link) => link.getAttribute('href'));
-    expect(ways).toEqual(['/shelf', '/monitor']);
+    expect(ways).toEqual(['/shelf', '/portfolio']);
   });
 });
 
@@ -1488,7 +1488,9 @@ describe('auto-follow on a vault’s page, after a withdrawal switched it off', 
     const at = (name: string) => cells[heads.indexOf(name)];
     expect(at(en.shared.vault.columns.price)).toBe('—');
     expect(at(en.shared.vault.columns.weight)).toBe('—');
-    expect(at(en.shared.vault.columns.drift)).toBe('—');
+    // the difference is the delta under a share (VaultHoldings): with no share there is none to draw
+    expect(row.querySelector('[data-ui="holding-drift"]')).toBeNull();
+    expect(heads).not.toContain(en.shared.vault.columns.drift);
     // what it is meant to be is the plan's own number, and is still said
     expect(at(en.shared.vault.columns.target)).toMatch(/40/);
   });
@@ -1519,10 +1521,12 @@ describe('auto-follow on a vault’s page, after a withdrawal switched it off', 
     const priced = await page({ owner: OTHER });
     expect(priced.querySelector('[data-ui="vault-unpriced"]')).toBeNull();
     await unmountAll();
-    // the owner is told on their own card: the fold under it does not say it again
+    // the owner is told the same, once, on the holdings it leaves out
     const owner = await page({ valueUsd: '50', positions: [paxg] });
-    expect(owner.textContent).toContain(en.portfolio.vault.unpriced(1));
-    expect(owner.querySelector('[data-ui="vault-unpriced"]')).toBeNull();
+    expect(owner.querySelectorAll('[data-ui="vault-unpriced"]')).toHaveLength(1);
+    expect(find(owner, '[data-ui="vault-unpriced"]').textContent).toBe(
+      en.portfolio.vault.unpriced(1),
+    );
   });
 
   it('tells the owner where to switch it on again, with the way there', async () => {
@@ -1602,17 +1606,23 @@ describe('the chain, on the shelf and on a vault’s page', () => {
         return json({ error: 'not found' }, 404);
       });
       const host = await show(createElement(VaultScreen, { chain, address }));
-      expect(badges(host)).toEqual([chain]);
+      // the chain is said once, as a quiet label beside the value: no badge repeats it
+      expect(badges(host)).toEqual([]);
+      expect(find(host, '[data-ui="vault-chain"]').textContent).toBe(
+        chain === 'solana' ? 'Solana' : 'Robinhood Chain',
+      );
       // cash is a holding like any other, named as the plan and the portfolio name it
       const rows = [...find(host, 'table').querySelectorAll('tbody tr')].map((tr) =>
         [...tr.children].map((cell) => cell.textContent?.trim()),
       );
-      expect(rows.at(-1)?.slice(0, 2)).toEqual([`Cash (${name})`, '5']);
+      // (the row's first cell opens with the token's mark, then its name)
+      expect(rows.at(-1)?.[0]).toMatch(new RegExp(`Cash \\(${name}\\)$`));
+      expect(rows.at(-1)?.[1]).toBe('5');
       // and the page leads back to the portfolio
       const back = [...host.querySelectorAll('a')].find(
         (a) => a.textContent === en.shared.vault.back,
       );
-      expect(back?.getAttribute('href')).toBe('/monitor');
+      expect(back?.getAttribute('href')).toBe('/portfolio');
       if (chain === 'robinhood') expect(host.textContent).not.toMatch(/usdc/i);
     },
   );
@@ -1659,13 +1669,13 @@ describe('the flow audit’s findings on these screens (34, 38, 42)', () => {
     const back = [...host.querySelectorAll('a')].find(
       (a) => a.textContent === en.shared.vault.back,
     );
-    expect(back?.getAttribute('href')).toBe('/monitor');
+    expect(back?.getAttribute('href')).toBe('/portfolio');
     const explorer = find<HTMLAnchorElement>(host, '[data-ui="vault-explorer"]');
     expect(explorer.textContent).toBe(en.shared.vault.explorer('Solscan'));
     expect(explorer.getAttribute('href')).toBe(explorerAddressUrlFor('solana', VAULT, false));
     expect(explorer.getAttribute('href')).toContain(`/account/${VAULT}`);
     expect(explorer.getAttribute('target')).toBe('_blank');
-    expect(find(host, 'header [data-ui="chain-badge"]').textContent).toBe('Solana');
+    expect(find(host, 'header [data-ui="vault-chain"]').textContent).toBe('Solana');
     // the portfolio's formats: cents in full, shares to one decimal at most, six places on a token
     const text = host.textContent ?? '';
     expect(text).toContain('$377.40');

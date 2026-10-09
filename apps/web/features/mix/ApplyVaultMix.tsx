@@ -28,12 +28,15 @@ export function ApplyVaultMix({
   lines,
   origin,
   onBack,
+  onOrder,
 }: {
   chain: ChainId;
   vault: { address: string; owner: string; basketId: string };
   lines: readonly MixLine[];
   origin: MixOrigin;
   onBack: () => void;
+  /** A host that shows the order's steps itself (the vault's own page): handed the order, no page is opened. */
+  onOrder?: (orderId: string) => void;
 }) {
   const t = useT();
   const lang = useLang();
@@ -121,6 +124,10 @@ export function ApplyVaultMix({
     if (!kept) {
       setBusy(false);
       return setFailure(t.mix.failure.noStore);
+    }
+    if (onOrder) {
+      setBusy(false);
+      return onOrder(order.id);
     }
     router.push(`/orders/${encodeURIComponent(order.id)}`);
   }

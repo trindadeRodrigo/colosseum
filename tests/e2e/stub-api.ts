@@ -422,6 +422,47 @@ async function placeWithdraw(body: Body): Promise<OrderDetail> {
   });
 }
 
+/**
+ * POST /v1/orders with `vault`: more money into a vault the person has, as apps/api plans it
+ * (`planVaultBuy`): the deposit, then a swap per target in the order the vault lists its positions.
+ * With auto-follow on it is the deposit alone.
+ */
+async function placeVaultAdd(body: Body & { amountUsd: number }, owner: string) {
+  const { adapter } = world;
+  const named = body.vault as { address?: unknown };
+  const state = await adapter.getVault(String(named.address));
+  if (!state || state.owner !== owner)
+    throw new ApiRefusal(404, { error: 'no vault of yours at that address' });
+  const deposit = cashOf(Number(body.amountUsd));
+  const targets = state.positions
+    .filter((p) => p.targetBps > 0)
+    .map((p) => ({ asset: p.asset, weightBps: p.targetBps }));
+  const trades = state.autoFollow ? [] : tradesFor(targets, deposit);
+  return doubleFor(owner).place({
+    type: 'buy',
+    summary: `Add money to your vault on ${CHAIN_NAME}`,
+    depositRaw: String(deposit),
+    needsConsent: [],
+    steps: [
+      {
+        kind: 'deposit',
+        description: 'Deposit into your vault',
+        cashRaw: String(deposit),
+        trades: [],
+      },
+      ...trades.map((t) => ({ kind: 'swap' as const, description: 'Buy', trades: [t] })),
+    ],
+    build: async (leg) =>
+      leg.kind === 'deposit'
+        ? adapter.buildDeposit({
+            vault: state.address,
+            amountRaw: String(deposit),
+            slippageBps: 100,
+          })
+        : adapter.buildOwnerSwap({ vault: state.address, trades: leg.trades, slippageBps: 100 }),
+  });
+}
+
 /** POST /v1/orders for a publish, a buy of a shared portfolio, or a follow. */
 async function placeShared(body: Body): Promise<OrderDetail> {
   if (body.type === 'withdraw') return placeWithdraw(body);
@@ -1195,6 +1236,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       return send(res, 200, await placeShared(body));
     const owner = ownerIn(body.owner);
     if (!owner) return send(res, 422, { error: 'a buy names its owner' });
+    if (body.vault !== undefined) return send(res, 200, await placeVaultAdd(body, owner));
     return send(res, 200, await doubleFor(owner).buy(body.amountUsd));
   }
   if (path === '/v1/shelf') {

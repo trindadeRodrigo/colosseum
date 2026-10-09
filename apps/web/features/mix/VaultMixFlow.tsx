@@ -24,6 +24,7 @@ export function VaultMixFlow({
   provenance,
   names,
   onClose,
+  onOrder,
 }: {
   chain: ChainId;
   vault: { address: string; owner: string; basketId: string; cash: { asset: string } };
@@ -35,6 +36,8 @@ export function VaultMixFlow({
   names?: Readonly<Record<string, string>>;
   /** Leaves the editor, where there is something to go back to. */
   onClose?: () => void;
+  /** A host that shows the order's steps itself: handed the order once the review is confirmed. */
+  onOrder?: (orderId: string) => void;
 }) {
   const t = useT();
   const e = t.mix.editor;
@@ -56,6 +59,7 @@ export function VaultMixFlow({
         lines={mixOf(reviewing, cash)}
         origin={from === 'model' && sameMix(reviewing, start) ? 'model' : 'person'}
         onBack={() => setReviewing(null)}
+        onOrder={onOrder}
       />
     );
   return (
