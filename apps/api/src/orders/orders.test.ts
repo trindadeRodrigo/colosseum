@@ -938,6 +938,9 @@ describe('no /v1 route can make the server sign', () => {
       'orders/personalize.ts',
       'orders/plan-join.ts',
       'orders/prepare.ts',
+      'orders/relaxed-goal-agent.ts',
+      'orders/relaxed-limits.ts',
+      'orders/relaxed-projection.ts',
       'orders/shared.ts',
       'orders/store.ts',
       'orders/thread.ts',
@@ -1005,8 +1008,10 @@ describe('no /v1 route can make the server sign', () => {
     ]);
     // jose is used to verify and nowhere to sign; node:crypto to hash and to make ids.
     expect([...(packages.get('jose') ?? [])]).toEqual(['plugins/auth.ts']);
+    // the model's client, for the intake, the vault conversation and the relaxed goal agent
     expect([...(packages.get('@anthropic-ai/sdk') ?? [])]).toEqual([
       'llm.ts',
+      'orders/relaxed-goal-agent.ts',
       'vault-agent-model.ts',
     ]);
     for (const file of files) {

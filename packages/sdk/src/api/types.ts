@@ -2058,6 +2058,22 @@ export type PostConversationsByChainGoalReplyResponse = {
       value?: number | null;
       unit?: string;
     }[];
+    projection?: {
+      currency: string;
+      rate: number;
+      step: 1 | 12;
+      months: {
+        month: string;
+        balance: number;
+        earned: number;
+        withdrawn: number;
+      }[];
+      basis: string;
+      sourceIds: string[];
+    };
+    investSheet?: {
+      [key: string]: unknown;
+    };
   } | null;
   warnings: {
     code: 'over_exit_capacity' | 'outside_goal_requested';
@@ -4025,6 +4041,22 @@ export type PostVaultsByChainByAddressConversationReplyResponse = {
       value?: number | null;
       unit?: string;
     }[];
+    projection?: {
+      currency: string;
+      rate: number;
+      step: 1 | 12;
+      months: {
+        month: string;
+        balance: number;
+        earned: number;
+        withdrawn: number;
+      }[];
+      basis: string;
+      sourceIds: string[];
+    };
+    investSheet?: {
+      [key: string]: unknown;
+    };
   } | null;
   warnings: {
     code: 'over_exit_capacity' | 'outside_goal_requested';

@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { Refusal, refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { type PlanInputs, preparePersonalInputs } from '../../orders/personalize';
+import type { RelaxedGoalAgent } from '../../orders/relaxed-goal-agent';
 import {
   type AgentAnalytics,
   analyticsGap,
@@ -38,6 +39,9 @@ export function registerGoalConversationReplyRoute(
   model: VaultAgentModel | null,
   inputs: PlanInputs = async () => ({}),
   analytics?: AgentAnalytics,
+  // The relaxed intake (gate RELAXED-INTAKE): the goal agent behind /goal whenever it is configured.
+  // Null leaves the model-led conversation (`replyToVaultConversation`) to answer.
+  relaxed: RelaxedGoalAgent | null = null,
 ) {
   const path = '/v1/conversations/:chain/goal/reply';
   scope.addHook('onSend', async (req, reply, payload) => {
@@ -80,7 +84,7 @@ export function registerGoalConversationReplyRoute(
           403,
           'Sign in with a wallet for this chain before discussing a new goal.',
         );
-      if (!model) {
+      if (!model && !relaxed) {
         req.log.warn(
           { reason: 'unavailable', detail: 'no_model', chain },
           'the new-goal conversation has no model configured',
@@ -123,7 +127,9 @@ export function registerGoalConversationReplyRoute(
           person: principal.userId as string,
         });
       });
-      const result = await replyToVaultConversation(req.body, context, model);
+      const result = relaxed
+        ? await relaxed.reply(req.body, context)
+        : await replyToVaultConversation(req.body, context, model);
       if (result.kind === 'failure') {
         // The reason and which check failed: never the person's words or the model's reply.
         req.log.warn(
@@ -131,6 +137,7 @@ export function registerGoalConversationReplyRoute(
             reason: result.reason,
             detail: result.detail ?? null,
             repair: result.repair ?? null,
+            agent: relaxed ? 'relaxed' : 'model_led',
             chain,
           },
           'the new-goal conversation returned no reply',

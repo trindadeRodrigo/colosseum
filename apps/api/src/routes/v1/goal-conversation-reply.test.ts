@@ -6,6 +6,11 @@ import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createChainRegistry } from '../../orders/chains';
 import { Refusal } from '../../orders/errors';
+import {
+  createRelaxedGoalAgent,
+  type RelaxedGoalAgent,
+  relaxedGoalAgentFromEnv,
+} from '../../orders/relaxed-goal-agent';
 import type { AgentAnalytics } from '../../orders/vault-agent';
 import { registerAuth } from '../../plugins/auth';
 import { person, testIssuer } from '../../testing/harness';
@@ -16,7 +21,11 @@ const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
 });
-async function setup(available = true, analytics?: AgentAnalytics) {
+async function setup(
+  available = true,
+  analytics?: AgentAnalytics,
+  relaxed: RelaxedGoalAgent | null = null,
+) {
   const issuer = await testIssuer('goal-reply');
   const owner = await person(issuer, 'solana');
   const other = await person(issuer, 'solana');
@@ -90,6 +99,7 @@ async function setup(available = true, analytics?: AgentAnalytics) {
     available ? model : null,
     inputs as unknown as Parameters<typeof registerGoalConversationReplyRoute>[3],
     analytics,
+    relaxed,
   );
   const body = {
     version: 1,
@@ -509,4 +519,82 @@ describe('new-goal model preview route', () => {
       expect(s.model.read).toHaveBeenCalledTimes(2);
     },
   );
+});
+
+describe('the goal agent behind /goal (gate RELAXED-INTAKE)', () => {
+  const relaxedReply = (messageId: string) => ({
+    version: 1 as const,
+    messageId,
+    message: 'You want to grow this money; how much will you put in?',
+    question: null,
+    warnings: [],
+    weightNotes: [],
+    proposal: null,
+  });
+  it('is the relaxed intake whenever a model key is set and GOAL_AGENT is unset or relaxed', () => {
+    for (const env of [
+      { ANTHROPIC_API_KEY: 'placeholder' },
+      { ANTHROPIC_API_KEY: 'placeholder', GOAL_AGENT: 'relaxed' },
+      { ANTHROPIC_API_KEY: 'placeholder', GOAL_AGENT: '  ' },
+    ])
+      expect(relaxedGoalAgentFromEnv(env)?.id).toBe('claude-sonnet-5-5');
+    expect(
+      relaxedGoalAgentFromEnv({ ANTHROPIC_API_KEY: 'placeholder', RELAXED_MODEL: 'claude-x' })?.id,
+    ).toBe('claude-x');
+  });
+  it('leaves the model-led conversation to answer only on the explicit opt-out, or with no key', () => {
+    expect(
+      relaxedGoalAgentFromEnv({ ANTHROPIC_API_KEY: 'placeholder', GOAL_AGENT: 'model-led' }),
+    ).toBeNull();
+    expect(relaxedGoalAgentFromEnv({})).toBeNull();
+    expect(relaxedGoalAgentFromEnv({ GOAL_AGENT: 'relaxed' })).toBeNull();
+  });
+  it('refuses a GOAL_AGENT value it does not know, so a misspelt opt-out is never ignored', () => {
+    expect(() =>
+      relaxedGoalAgentFromEnv({ ANTHROPIC_API_KEY: 'placeholder', GOAL_AGENT: 'vault' }),
+    ).toThrow(/GOAL_AGENT/);
+  });
+  it('answers through the relaxed intake when it is there, and never calls the model-led one', async () => {
+    const reply = vi.fn(async (request: { messageId: string }) => ({
+      kind: 'reply' as const,
+      reply: relaxedReply(request.messageId),
+    }));
+    const s = await setup(true, undefined, { id: 'relaxed-double', reply } as RelaxedGoalAgent);
+    const res = await s.post();
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({ messageId: 'goal-person', chain: 'solana', proposal: null });
+    expect(reply).toHaveBeenCalledWith(
+      s.body,
+      expect.objectContaining({ kind: 'new_goal', chain: 'solana' }),
+    );
+    expect(s.model.read).not.toHaveBeenCalled();
+  });
+  it('answers through the relaxed intake with no model-led model configured', async () => {
+    const reply = vi.fn(async (request: { messageId: string }) => ({
+      kind: 'reply' as const,
+      reply: relaxedReply(request.messageId),
+    }));
+    const s = await setup(false, undefined, { id: 'relaxed-double', reply } as RelaxedGoalAgent);
+    expect((await s.post()).statusCode).toBe(200);
+    expect(reply).toHaveBeenCalledOnce();
+  });
+  it('answers 503 unavailable with neither agent, as before', async () => {
+    const s = await setup(false, undefined, null);
+    const res = await s.post();
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toMatchObject({ code: 'GOAL_AGENT_UNAVAILABLE', reason: 'unavailable' });
+  });
+  it('serves the relaxed failure as the route’s 503 with its reason, and logs which agent failed', async () => {
+    const s = await setup(true, undefined, {
+      id: 'relaxed-double',
+      reply: async () => ({ kind: 'failure', reason: 'timeout' }),
+    } as RelaxedGoalAgent);
+    const res = await s.post();
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toMatchObject({ code: 'GOAL_AGENT_UNAVAILABLE', reason: 'timeout' });
+    expect(s.logs.join('\n')).toContain('"agent":"relaxed"');
+  });
+  it('is made with no network call: the client is built, nothing is sent until a reply is asked', () => {
+    expect(createRelaxedGoalAgent({ apiKey: 'placeholder' }).id).toBe('claude-sonnet-5-5');
+  });
 });

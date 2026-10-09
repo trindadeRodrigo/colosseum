@@ -81,12 +81,42 @@ export const VaultAgentSource = Sourced.extend({
   unit: prose(80).optional(),
 });
 export type VaultAgentSource = z.infer<typeof VaultAgentSource>;
+/**
+ * The month-by-month balance a plan with sourced yield lines is projected to (the relaxed intake, gate
+ * RELAXED-INTAKE), worked out by the server from those readings. Past-rate arithmetic, never a promise: `basis` says so and
+ * names the readings, and `sourceIds` point at them in `sources`. Empty `months`: no amount yet.
+ */
+export const VaultAgentProjection = z.strictObject({
+  currency: prose(8),
+  rate: z.number().finite(),
+  step: z.union([z.literal(1), z.literal(12)]),
+  months: z
+    .array(
+      z.strictObject({
+        month: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        balance: z.number().finite(),
+        earned: z.number().finite(),
+        withdrawn: z.number().finite(),
+      }),
+    )
+    .max(121),
+  basis: prose(1200),
+  sourceIds: z.array(prose(160)).max(64),
+});
+export type VaultAgentProjection = z.infer<typeof VaultAgentProjection>;
 export const VaultAgentProposal = VaultAgentModelProposal.omit({ stated: true }).extend({
   allocations: z
     .array(VaultAgentAllocation.extend({ symbol: prose(80) }))
     .min(1)
     .max(64),
   sources: z.array(VaultAgentSource).max(1024),
+  projection: VaultAgentProjection.optional(),
+  /**
+   * The relaxed intake's engine sheet for this plan (goal, amount, date, the split as a mix), for
+   * "Invest in this plan": the existing personalize route sizes it and the existing buy runs it.
+   * Checked against the engine's PersonalSheet by the server that sends it and again by personalize.
+   */
+  investSheet: z.record(z.string(), z.unknown()).optional(),
 });
 /**
  * Server-written notes on a proposal the person may still choose (gate ANY-COMPOSITION). The code names

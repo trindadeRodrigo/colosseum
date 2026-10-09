@@ -116,6 +116,8 @@ type AgentContextData = {
   evidence: AgentSource[];
   currentGoals: readonly unknown[];
   stockAttributes: Figures['stocks'] | null;
+  /** The chain's curated theme lists, for the relaxed intake's investable sheet (RELAXED-INTAKE). */
+  themes?: NonNullable<Figures['themes']>;
   liquidity: Array<{ assetId: string; observation: unknown | null }>;
   unknowns: string[];
   /** Bearing's analytics behind the evidence, for the model: their size and what is not measured. */
@@ -607,6 +609,7 @@ function buildAgentContext(
     evidence,
     currentGoals: input.currentGoals ?? [],
     stockAttributes: prepared.figures.stocks ?? null,
+    ...(prepared.figures.themes ? { themes: prepared.figures.themes } : {}),
     liquidity,
     unknowns,
     ...(analytics ? { analytics: analytics.prompt } : {}),

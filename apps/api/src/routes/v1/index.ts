@@ -40,6 +40,7 @@ import {
 import { Refusal, refusalFromChainError } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import type { PlanInputs } from '../../orders/personalize';
+import { type RelaxedGoalAgent, relaxedGoalAgentFromEnv } from '../../orders/relaxed-goal-agent';
 import type { AgentAnalytics } from '../../orders/vault-agent';
 import { authFromEnv, enforceSignIn, identify, type TokenIssuer } from '../../plugins/auth';
 import { type Limits, registerLimits, requireDeclared } from '../../plugins/limits';
@@ -114,6 +115,9 @@ export type V1Deps = {
   intakeModel?: IntakeModel | null;
   /** Private, non-executable vault dialogue. Uses the configured intake model and shared quota. */
   vaultAgentModel?: VaultAgentModel | null;
+  /** The goal agent behind /goal (gate RELAXED-INTAKE). Default: the relaxed intake when a model key is
+   * set and `GOAL_AGENT` does not opt out; null leaves the model-led conversation to answer. */
+  relaxedGoalAgent?: RelaxedGoalAgent | null;
   /** The rate limits. Default: `LIMITS`, the ones a server runs with. */
   limits?: Limits;
   /** The daily cap and the keeping time of plans made from a link. Default: `LINKED_PLANS`. */
@@ -209,6 +213,8 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
           })
         : null
       : deps.vaultAgentModel;
+  const relaxedGoalAgent =
+    deps.relaxedGoalAgent === undefined ? relaxedGoalAgentFromEnv(env) : deps.relaxedGoalAgent;
 
   // The test faucet. Its key-holding file is loaded only here, only when a faucet key is set for a
   // chain on a test network (DESIGN-VAULT section 2, rule 5): otherwise it is never in the process.
@@ -307,6 +313,7 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
       vaultAgentModel,
       deps.planInputs,
       deps.agentAnalytics,
+      relaxedGoalAgent,
     );
     registerMixRoutes(scope, orderDeps, deps.planInputs);
     // Out of the route table altogether unless a chain runs on the mock.
