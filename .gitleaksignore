@@ -15,3 +15,14 @@
 # The public mint address of the JupUSD token on Solana, written after the words "spl-token" in the
 # research note on the yield shelf (Oct 6). A mint is public chain data, read from the issuer's own API.
 db40ae2ccd48e69b0feea91fe2cae88ff7a37441:docs/vault/research/yield-shelf/solana.md:generic-api-key:149
+
+# The two token addresses of each swap in the guard's route vectors (Oct 9): public contract addresses on
+# Robinhood Chain and its test network, under the keys `tokenIn` and `tokenOut`.
+4c2ef1ca4a3a7a3edb08fa4d29f29ef0137ecdbc:packages/sdk/test/fixtures/evm-route-vectors.json:generic-api-key:19
+4c2ef1ca4a3a7a3edb08fa4d29f29ef0137ecdbc:packages/sdk/test/fixtures/evm-route-vectors.json:generic-api-key:20
+4c2ef1ca4a3a7a3edb08fa4d29f29ef0137ecdbc:packages/sdk/test/fixtures/evm-route-vectors.json:generic-api-key:28
+4c2ef1ca4a3a7a3edb08fa4d29f29ef0137ecdbc:packages/sdk/test/fixtures/evm-route-vectors.json:generic-api-key:29
+4c2ef1ca4a3a7a3edb08fa4d29f29ef0137ecdbc:packages/sdk/test/fixtures/evm-route-vectors.json:generic-api-key:37
+4c2ef1ca4a3a7a3edb08fa4d29f29ef0137ecdbc:packages/sdk/test/fixtures/evm-route-vectors.json:generic-api-key:38
+4c2ef1ca4a3a7a3edb08fa4d29f29ef0137ecdbc:packages/sdk/test/fixtures/evm-route-vectors.json:generic-api-key:46
+4c2ef1ca4a3a7a3edb08fa4d29f29ef0137ecdbc:packages/sdk/test/fixtures/evm-route-vectors.json:generic-api-key:47
