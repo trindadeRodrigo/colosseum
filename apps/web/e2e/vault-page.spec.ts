@@ -201,6 +201,58 @@ test('the owner’s vault page: a deposit, then a withdrawal, signed in place', 
   await expect(screen.locator('[data-ui="vault-more-list"]')).toContainText(p.editWeights);
   await check(page, 'more');
   await page.keyboard.press('Escape');
+  // The list is never cut off: at each size every row's box is inside the window and is what a
+  // pointer at its centre meets, with the rename form open on a short screen too.
+  const rowsShown = async (at: string) => {
+    await more.scrollIntoViewIfNeeded();
+    await more.click();
+    await expect(more).toHaveAttribute('aria-expanded', 'true');
+    const rows = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-ui="vault-more-list"] > li > *')].map((row) => {
+        const box = row.getBoundingClientRect();
+        const met = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return {
+          text: row.textContent,
+          inside:
+            box.top >= 0 &&
+            box.left >= 0 &&
+            box.bottom <= window.innerHeight &&
+            box.right <= document.documentElement.clientWidth,
+          met: met !== null && row.contains(met),
+          height: Math.round(box.height),
+        };
+      }),
+    );
+    // the sample chain has no explorer, so its row is not here: the weights by hand and sharing are
+    expect(
+      rows.map((row) => row.text),
+      at,
+    ).toEqual([p.editWeights, en.shared.publish.shareStrategy]);
+    for (const row of rows) {
+      expect(row.inside, `${at}: ${row.text} is inside the window`).toBe(true);
+      expect(row.met, `${at}: ${row.text} is not covered`).toBe(true);
+      expect(row.height, `${at}: ${row.text} is a full row`).toBeGreaterThanOrEqual(40);
+    }
+  };
+  for (const size of [{ width: 1440, height: 900 }, { width: 1280, height: 650 }, PHONE]) {
+    await page.setViewportSize(size);
+    await rowsShown(`${size.width}x${size.height}`);
+    if (SHOTS && size.width === 1440) {
+      await inTheme(page, 'dark');
+      await page.screenshot({ path: `${SHOTS}/vault-more-menu-fixed-1440-dark.png` });
+      await inTheme(page, 'light');
+    }
+    await page.keyboard.press('Escape');
+  }
+  // the head at its tallest: the rename form open at 1280x650
+  await page.setViewportSize({ width: 1280, height: 650 });
+  await screen.getByRole('button', { name: en.portfolio.actions.rename }).click();
+  await rowsShown('1280x650, renaming');
+  await page.keyboard.press('Escape');
+  await screen.getByRole('button', { name: en.portfolio.actions.cancel }).click();
+  await page.setViewportSize(PHONE);
+  await more.click();
+  await page.keyboard.press('Escape');
   await expect(more).toHaveAttribute('aria-expanded', 'false');
   await expect(more).toBeFocused();
   await screen.locator('[data-ui="vault-details"] > summary').click();
