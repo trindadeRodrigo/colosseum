@@ -123,7 +123,7 @@ export const withoutMark = (text: string): string => text.replaceAll(MARK, '');
 export const cleanProse = (text: string): string =>
   text
     // biome-ignore lint/suspicious/noControlCharactersInRegex: these are the characters taken out
-    .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]|\p{Cf}/gu, '')
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]|\ufe0e|\ufe0f|\p{Cf}/gu, '')
     // The marks a model sets a figure in bold or italics with: the screen shows plain text, and the
     // figure has its own drawing.
     .replace(EMPHASISED, '$2');
@@ -146,23 +146,28 @@ const EMPHASISED = /(\*\*|__|\*|_|`)(\{\{fact:[^{}\s]{1,160}\}\})\1/gu;
 //    tax, a fee, over- or undervalued), with any figure. Missing a harmless sentence is the accepted
 //    cost.
 //
-// After the second review of #216:
+// After the second review of #216 and the review of #227:
 //
-// 4. The words are read with what stands around the sentence: the sentence before it in the same field
-//    and, for the first sentence of a field, the end of the field shown just above it (a question under
-//    its message, a summary under its objective, a list item under the item before). "What does it
-//    return in a year? About X." is one statement. A rate or return word of a sentence that carries a
-//    figure of its own belongs to that figure and is not carried forward.
-// 5. A yield is served by an allow-list, not by what it avoids: its sentence must say it is a
-//    measurement (quoted, measured, observed, current, past, so far, at the last reading, historical)
-//    and hold no promise or forecast word. Any other sentence with a yield is cut.
-// 6. A referenced sentence says what its figure is: it has two words of its own at least, every
-//    letter of it and of the sentence before is Latin, and neither holds a code point that is not
-//    shown (a look-alike or a hidden letter inside a listed word reads as that word to a person).
+// 4. A sentence says what its figure is. It names the kind of each figure it holds (worth or value, of
+//    the vault, target, price, cost or sell, drawdown, volatility and so on: `KINDS`), or at least an
+//    asset; one that does neither is not served. One that names the kind of every figure stands on its
+//    own. One that only names an asset ("Nvidia: about X too.") takes its meaning from the sentence
+//    before it, or for a field's first sentence from the end of the field shown above it, and is read
+//    with those words: a rate, a period, a rise or a fall, a magnitude, arithmetic, a forecast, a claim.
+//    The product's goal words there (grow, income) are not such words.
+// 5. A yield is served by a grammar, not by what it avoids (`YIELD_CLAUSES`): a clause that says a
+//    measured yield is the figure, and then ends the sentence. Its word of measurement governs the
+//    figure ("its quoted yield is Y a year", "the reserve currently yields Y a year", "its yield is Y a
+//    year, based on the latest quote"), and nothing follows the figure but a period, a word for now and
+//    where it was read. Anything else with a yield is cut, and so is a yield with a promise word in its
+//    sentence or in the one before or after it.
+// 6. Neither a referenced sentence nor the one it is read with holds a letter that is not Latin or a
+//    code point that is not shown (a look-alike or a hidden letter inside a listed word reads as that
+//    word to a person).
 // (a second reference may open a bracket after the first: "X (Y of the vault)")
 const BEFORE = /(?:^\s*|[\p{Script=Latin}'’,;:.!?…)\]”"]\s+)[([]?$|\}\}\s+[([]$/u;
 const AFTER =
-  /^(?:[)\]]?[.!?…]+[)\]”"]*(?:\s|$)|[)\]]?[,;:]?(?:[^\S\n]*(?:\n|$)|\s+(?=[\p{Script=Latin}([“"])))/u;
+  /^(?:[)\]]?[.!?…]+[)\]”"]*(?:\s|$)|[)\]]?[,;:]?(?:[^\S\n]*(?:\n|$)|\s+(?:[—–]\s+)?(?=[\p{Script=Latin}([“"])))/u;
 // A word on its own: not part of a longer one, and not what follows an apostrophe ("I'm").
 const lone = (words: string) =>
   new RegExp(`(?<![\\p{L}\\p{N}'’])(?:${words})(?![\\p{L}\\p{N}])`, 'iu');
@@ -180,44 +185,117 @@ const BESIDE = new RegExp(
   'iu',
 );
 const RETURN = lone(
-  'returns?|returned|returning|apy|apr|earn\\p{L}*|gain\\p{L}*|profit\\p{L}*|interest|dividends?|pays?|paid|paying|payout|payouts|income|grow\\p{L}*|appreciat\\p{L}*|rates?|upside|retorn\\p{L}*|rend[ae]\\p{L}*|rendiment\\p{L}*|rentabilidade|juros|taxas?|cdi|selic|ipca|dividendos?|ganh\\p{L}*|lucr\\p{L}*|valoriz\\p{L}*|cresc\\p{L}*|pag[ao]\\p{L}*',
+  'returns?|returned|returning|yields?|yielded|yielding|rind\\p{L}*|rapport\\p{L}*|apy|apr|earn\\p{L}*|gain\\p{L}*|profit\\p{L}*|interest|dividends?|pays?|paid|paying|payout|payouts|income|grow\\p{L}*|appreciat\\p{L}*|rates?|upside|retorn\\p{L}*|rend[ae]\\p{L}*|rendiment\\p{L}*|rentabilidade|juros|taxas?|cdi|selic|ipca|dividendos?|ganh\\p{L}*|lucr\\p{L}*|valoriz\\p{L}*|cresc\\p{L}*|pag[ao]\\p{L}*',
 );
 const PERIOD = lone(
-  'a\\s+year|per\\s+year|each\\s+year|every\\s+year|yearly|annual\\p{L}*|per\\s+annum|p\\.a|a\\s+month|per\\s+month|each\\s+month|every\\s+month|monthly|a\\s+week|per\\s+week|weekly|a\\s+day|per\\s+day|daily|ao\\s+ano|por\\s+ano|anual\\p{L}*|a\\.a|ao\\s+m[eê]s|por\\s+m[eê]s|mensal\\p{L}*|por\\s+semana|semanal\\p{L}*|ao\\s+dia|por\\s+dia|di[aá]ri[oa]\\p{L}*',
+  'a\\s+year|per\\s+year|each\\s+year|every\\s+year|yearly|annual\\p{L}*|per\\s+annum|al\\s+a[nñ]o|por\\s+a[nñ]o|al\\s+mes|par\\s+an|par\\s+mois|p\\.a|a\\s+month|per\\s+month|each\\s+month|every\\s+month|monthly|a\\s+week|per\\s+week|weekly|a\\s+day|per\\s+day|daily|ao\\s+ano|por\\s+ano|anual\\p{L}*|a\\.a|ao\\s+m[eê]s|por\\s+m[eê]s|mensal\\p{L}*|por\\s+semana|semanal\\p{L}*|ao\\s+dia|por\\s+dia|di[aá]ri[oa]\\p{L}*',
 );
-// "yield" as a word of its own: not inside a hyphenated name ("dollar-yield reserve", "yield-bearing").
-const YIELD_WORD = /(?<![\p{L}\p{N}'’\-‑–])yield(?:s|ed|ing)?(?![\p{L}\p{N}\-‑–])/iu;
 const MOVE = lone(
-  'rise[sn]?|rose|rising|fell|falls?|fallen|falling|drop\\p{L}*|los[te]|loses|losing|loss|losses|downside|drawdowns?|declin\\p{L}*|decreas\\p{L}*|increas\\p{L}*|jump\\p{L}*|sub(?:ir|iu|a|indo)|sobe|ca(?:ir|iu|ia|indo)|cai|perd\\p{L}*|quedas?|desvaloriz\\p{L}*|aument\\p{L}*|diminu\\p{L}*',
+  'up|down|climb\\p{L}*|sank|sink\\p{L}*|sunk|soar\\p{L}*|surg\\p{L}*|plung\\p{L}*|tumbl\\p{L}*|slid|slide[sd]?|sliding|slump\\p{L}*|rall(?:y|ies|ied|ying)|tick(?:s|ed|ing)|edg(?:es|ed|ing)|rise[sn]?|rose|rising|fell|falls?|fallen|falling|drop\\p{L}*|los[te]|loses|losing|loss|losses|downside|drawdowns?|declin\\p{L}*|decreas\\p{L}*|increas\\p{L}*|jump\\p{L}*|sub(?:ir|iu|a|indo)|sobe|ca(?:ir|iu|ia|indo)|cai|perd\\p{L}*|quedas?|desvaloriz\\p{L}*|aument\\p{L}*|diminu\\p{L}*',
 );
 const FORECAST = new RegExp(
   `${lone("will|won'?t|shall|going\\s+to|gonna|expect\\p{L}*|forecast\\p{L}*|project(?:ed|s|ion|ions)|predict\\p{L}*|guarante\\p{L}*|promis\\p{L}*|vai|v[aã]o|ir[aá]|ir[aã]o|garant\\p{L}*|promet\\p{L}*|prev[eê]\\p{L}*|previs\\p{L}*|esper\\p{L}*").source}|['’]ll(?![\\p{L}\\p{N}])|\\p{L}{2,}(?:ará|erá|irá|arão|erão|irão)(?![\\p{L}\\p{N}])`,
   'iu',
 );
-// "up" and "down" as a move: after a verb of being or moving, or beside the figure. "Makes up" and
-// "up to date" are neither.
-const UP_DOWN = new RegExp(
-  `(?<![\\p{L}\\p{N}])(?:is|are|was|were|be|been|went|goes|go|gone|going|moved?|moves|came|comes?|ended|ends|closed|closes|traded|trades|trading|back|now|still)\\s+(?:up|down)(?!\\s+to(?![\\p{L}\\p{N}]))(?![\\p{L}\\p{N}])|(?<!ma(?:ke|kes|de|king)\\s)(?<![\\p{L}\\p{N}])(?:up|down)\\s+(?:by\\s+)?(?:about\\s+|around\\s+|roughly\\s+|some\\s+)?${MARK}|${MARK}\\s+(?:up|down)(?![\\p{L}\\p{N}])`,
-  'iu',
-);
-/** A claim none of the figures measures: a gain made, a chance, a tax, a fee, a valuation. */
+// What a word rule must not read as its word: the class name "dollar-yield reserve", "makes up", and
+// "up to date". Each is replaced by a word no list holds.
+const HARMLESS: Array<[RegExp, string]> = [
+  [/dollar[-‑\s]yield(?=\s+(?:reserves?|assets?|tokens?)(?![\p{L}\p{N}]))/giu, 'dollar'],
+  [/(?<![\p{L}\p{N}])(ma(?:ke|kes|de|king))\s+up(?![\p{L}\p{N}])/giu, 'forms'],
+  [/(?<![\p{L}\p{N}])up\s+to\s+date(?![\p{L}\p{N}])/giu, 'fresh'],
+];
+const plainly = (text: string) =>
+  HARMLESS.reduce((words, [pattern, word]) => words.replace(pattern, word), text);
+/** The product's own goal words: in the sentence before a figure they say what the plan is for. */
+const GOAL_WORDS = /(?<![\p{L}\p{N}])(?:grow\p{L}*|income|cresc\p{L}*|renda)(?![\p{L}\p{N}])/giu;
+/** A claim none of the figures measures: a gain made, a chance, a tax, a fee, a valuation, a past level. */
 const CLAIM = lone(
-  'ma(?:ke|kes|de|king)(?!\\s+up(?![\\p{L}\\p{N}]))|chances?|odds|probabilit\\p{L}*|likel\\p{L}*|tax|taxes|taxed|fees?|owe[sd]?|owing|overvalued|undervalued|overpriced|underpriced|safe|safely|risk[-\\s]free|beat|beats|beating|beaten|outperform\\p{L}*|worth\\s+(?:more|less)|in\\s+the\\s+(?:red|black)|what\\s+you\\s+(?:put\\s+in|paid|invested)|probabilidades?|impostos?|tarifas?|sobrevalorizad\\p{L}*|subvalorizad\\p{L}*|no\\s+vermelho|no\\s+azul|vale\\s+(?:mais|menos)|super[ao]\\p{L}*',
+  `ma(?:ke|kes|de|king)\\s+(?:you|me|us|money)|stand\\s+to\\s+make|ma(?:ke|kes|de|king)\\s+(?:about\\s+|around\\s+|roughly\\s+)?${MARK}|chances?|odds|probabilit\\p{L}*|likel\\p{L}*|tax|taxes|taxed|fees?|owe[sd]?|owing|overvalued|undervalued|overpriced|underpriced|safe|safely|risk[-\\s]free|beat|beats|beating|beaten|outperform\\p{L}*|worth\\s+(?:more|less)|(?:cheaper|pricier|higher|lower|better|worse)\\s+than|than\\s+(?:before|last)|in\\s+the\\s+(?:red|black)|what\\s+you\\s+(?:put\\s+in|paid|invested)|probabilidades?|impostos?|tarifas?|sobrevalorizad\\p{L}*|subvalorizad\\p{L}*|no\\s+vermelho|no\\s+azul|vale\\s+(?:mais|menos)|super[ao]\\p{L}*`,
 );
-/** What makes a sentence with a yield a statement about a measurement. Without one it is not served. */
-const FRAME = lone(
-  'quoted|measured|observed|current|currently|past|so\\s+far|last\\s+reading|historical|historically|cotad[oa]s?|medid[oa]s?|observad[oa]s?|atual|atuais|atualmente|passad[oa]s?|at[eé]\\s+agora|[uú]ltima\\s+leitura|hist[oó]ric[oa]s?|historicamente',
-);
-/** A second line behind the frame: with a yield, none of these, framed or not. */
+/** With a yield, none of these in its sentence or in the one before or after it. */
 const PROMISE = lone(
-  "should|would|ought|must|always|sure|surely|certain\\p{L}*|definitely|safe|safely|secure\\p{L}*|count(?:s|ing)?\\s+on|at\\s+least|never\\s+less|not\\s+(?:pay\\s+)?less|next\\s+(?:year|month|week)|lock\\p{L}*|steady|steadily|fixed|reliab\\p{L}*|no\\s+matter|clockwork|every\\s+(?:time|year|month|week|day)|each\\s+and\\s+every|as\\s+long\\s+as|risk|collect\\p{L}*|can\\s*not|can'?t|deve|devem|dever[aá]|deveria|sempre|cert[oa]|certeza|certamente|segur[oa]\\p{L}*|cont[ae]r?\\s+com|pelo\\s+menos|nunca\\s+menos|(?:ano|m[eê]s)\\s+que\\s+vem|pr[oó]xim[oa]\\s+(?:ano|m[eê]s)|trav\\p{L}*|est[aá]vel|est[aá]veis|fix[oa]s?|confi[aá]ve\\p{L}*",
+  "should|would|ought|must|always|sure|surely|certain\\p{L}*|definitely|safe|safely|secure\\p{L}*|protected|count(?:s|ing)?\\s+on|bank(?:s|ing)?\\s+on|rely\\p{L}*|relies|relied|depend\\p{L}*|at\\s+least|never\\s+less|not\\s+(?:pay\\s+)?less|next\\s+(?:year|month|week)|from\\s+(?:now|here)(?:\\s+on)?|going\\s+forward|here\\s+to\\s+stay|forever|for\\s+life|for\\s+good|keeps?|kept|lock\\p{L}*|steady|steadily|fixed|reliab\\p{L}*|no\\s+matter|without\\s+fail|rain|clockwork|every\\s+(?:time|year|month|week|day)|each\\s+and\\s+every|as\\s+long\\s+as|risk|downside|collect\\p{L}*|take\\s+home|pocket|set\\s+for|nothing\\s+can|can\\s*not|can'?t|does\\s+not\\s+change|doesn['’]?t\\s+change|deve|devem|dever[aá]|deveria|sempre|cert[oa]|certeza|certamente|segur[oa]\\p{L}*|cont[ae]r?\\s+com|pelo\\s+menos|nunca\\s+menos|(?:ano|m[eê]s)\\s+que\\s+vem|pr[oó]xim[oa]\\s+(?:ano|m[eê]s)|todo\\s+(?:ano|m[eê]s|dia)|todos\\s+os\\s+(?:anos|meses)|n[aã]o\\s+muda|daqui\\s+(?:para|pra)\\s+frente|risco|livre\\s+de|trav\\p{L}*|est[aá]vel|est[aá]veis|fix[oa]s?|confi[aá]ve\\p{L}*",
 );
+
+// The yield grammar. `Y` stands where a yield reference stood. A clause starts the sentence or follows
+// another clause, and ends the sentence.
+const Y = '\u0002';
+const YIELD_CLAUSES = (() => {
+  const approx = '(?:(?:about|around|roughly|cerca\\s+de|aproximadamente)\\s+)?';
+  const per = '(?:\\s+(?:a|per)\\s+(?:year|month)|\\s+annually|\\s+(?:ao|por)\\s+(?:ano|m[eê]s))?';
+  const now =
+    '(?:right\\s+now|now|today|currently|at\\s+the\\s+moment|so\\s+far|hoje|agora|no\\s+momento|atualmente|at[eé]\\s+agora)';
+  const framed = '(?:quoted|measured|observed|current|past|latest|historical)';
+  const framedPt = '(?:cotad[oa]|medid[oa]|observad[oa]|atual|passad[oa]|hist[oó]ric[oa])';
+  const noun = '(?:dollar\\s+)?(?:yield|rate)';
+  const nounPt = '(?:rendimento|taxa)';
+  const owner = "(?:(?:its|the|their|your)\\s+)?(?:\\p{L}+(?:’s|'s)\\s+)?";
+  const ofOwner = '(?:\\s+(?:of|on|for|from)\\s+(?:the\\s+|your\\s+)?[\\p{L}-]+)?';
+  const is = '(?:is|was|stands\\s+at|stood\\s+at)';
+  const isPt = '(?:é|era|foi|está\\s+em|é\\s+de|foi\\s+de)';
+  const source =
+    '(?:,?\\s+(?:measured|quoted|observed|based|taken)\\s+(?:from|at|on)\\s+(?:past\\s+rates|the\\s+last\\s+reading|the\\s+latest\\s+(?:quote|reading))|,?\\s+at\\s+the\\s+last\\s+reading|,?\\s+(?:segundo|conforme)\\s+a\\s+[uú]ltima\\s+(?:cota[cç][aã]o|leitura))';
+  const start = '(^\\s*(?:[-*•–—]\\s+)?|[,;:]\\s+(?:and\\s+|e\\s+)?|\\s+and\\s+|\\s+e\\s+)';
+  const leadIn = `(?:(?:after\\s+the\\s+haircut|ap[oó]s\\s+o\\s+desconto|${now}),?\\s+)?`;
+  const end = '\\s*[.!?]?\\s*$';
+  const subject = '(?:it|the\\s+reserve|a\\s+reserva|ela|\\p{L}+)';
+  const verb = '(?:yields|yielded|has\\s+yielded|pays|paid|has\\s+paid|rende|rendeu|paga|pagou)';
+  return [
+    // "its quoted yield is Y a year", "the quoted yield of the reserve is currently Y"
+    `${leadIn}${owner}${framed}\\s+${noun}${ofOwner}\\s+(?:${is}\\s+|of\\s+|at\\s+)(?:${now}\\s+)?${approx}${Y}${per}(?:\\s+${now})?${source}?${ofOwner}`,
+    // "its yield is currently Y a year", "its yield is Y a year right now", "… , based on the latest quote"
+    `${leadIn}${owner}${noun}${ofOwner}\\s+${is}\\s+(?:${now}\\s+${approx}${Y}${per}${source}?|${approx}${Y}${per}\\s+${now}${source}?|${approx}${Y}${per}${source})`,
+    // "its yield at the last reading was Y"
+    `${leadIn}${owner}${noun}${ofOwner}\\s+at\\s+the\\s+last\\s+reading\\s+${is}\\s+${approx}${Y}${per}`,
+    // "the reserve currently yields Y a year", "so far the reserve has paid Y a year"
+    `(?:${now},?\\s+${subject}(?:\\s+${now})?\\s+${verb}\\s+${approx}${Y}${per}(?:\\s+${now})?${source}?|${subject}\\s+${now}\\s+${verb}\\s+${approx}${Y}${per}(?:\\s+${now})?${source}?|${subject}\\s+${verb}\\s+${approx}${Y}${per}(?:\\s+${now}${source}?|${source}))`,
+    // "the reserve has a quoted yield of Y a year"
+    `${subject}\\s+(?:has|had)\\s+a\\s+${framed}\\s+${noun}\\s+of\\s+${approx}${Y}${per}(?:\\s+${now})?${source}?`,
+    // "o rendimento cotado é Y ao ano"
+    `${leadIn}(?:(?:o|a|seu|sua)\\s+)?${nounPt}\\s+${framedPt}(?:\\s+d[ao]\\s+[\\p{L}-]+)?\\s+${isPt}\\s+(?:${now}\\s+)?${approx}${Y}${per}(?:\\s+${now})?${source}?`,
+  ].map((clause) => new RegExp(`${start}(?:${clause})${end}`, 'iu'));
+})();
+
+// The kind of a figure, by its id, and the words that name it in a sentence.
+const KINDS: Array<[RegExp, RegExp]> = [
+  [
+    /^(?:vault:value|holding:.*:value)$/u,
+    lone(
+      'worth|values?|valued|total|totals|altogether|in\\s+all|vale|valem|valor|no\\s+total|ao\\s+todo',
+    ),
+  ],
+  [
+    /^holding:.*:(?:share|target)$/u,
+    lone(
+      'of\\s+(?:the|your|this)\\s+vault|shares?|target|targets|portion|d[oe]\\s+(?:seu\\s+)?cofre|parcela|participa[cç][aã]o|alvo|meta',
+    ),
+  ],
+  [
+    /^holding:.*:amount$/u,
+    lone('units?|tokens?|hold|holds|holding|amount|unidades?|quantidade|possui|tem'),
+  ],
+  [/^price:/u, lone('price[sd]?|trades?|trading|pre[cç]os?|cota[cç][aã]o|negocia\\p{L}*')],
+  [
+    /^(?:exit|lpexit|liquidity|capacity):/u,
+    lone(
+      'costs?|sell|sells|selling|sold|sale|exit|capacity|custo|custa|custaria|vender|venda|sa[ií]da|capacidade',
+    ),
+  ],
+  [/^drawdown:/u, lone('drawdowns?|fall|fell|fallen|drop\\p{L}*|declin\\p{L}*|quedas?|caiu')],
+  [/^vol:/u, lone('volatil\\p{L}*')],
+  [/^weekend:/u, lone('weekends?|fi(?:m|ns)\\s+de\\s+semana')],
+  [/^lp:/u, lone('providers?|liquidity|provedor\\p{L}*|liquidez')],
+  [/^capvar:/u, lone('var(?:y|ies|ied|iation|iations)|varia\\p{L}*')],
+  [/^volume:/u, lone('volume|trades?|traded|negociad\\p{L}*')],
+];
+const kindNamed = (id: string, words: string) =>
+  KINDS.some(([of, named]) => of.test(id) && named.test(words));
+
 // A sentence is not ended by the stop of an abbreviation, nor by an ellipsis that runs on.
 const ABBREVIATED =
   /(?<![\p{L}\p{N}])(?:approx|e\.g|i\.e|vs|est|etc|cf|ca|aprox|p\.\s?ex|ex)\.\s*$/iu;
 const RUNS_ON = /(?:…|\.{3})\s*$/u;
 const NOT_LATIN = /[^\P{L}\p{Script=Latin}]|\p{Default_Ignorable_Code_Point}/u;
-const LATIN_WORDS = /\p{Script=Latin}+/gu;
 
 /** What makes a sentence with a reference in it one the server will not serve, in words for the model. */
 const SAID = {
@@ -235,8 +313,8 @@ const SAID = {
   claim:
     'a claim no figure measures (a gain made, a chance, a tax, a fee, over- or undervalued) in or just before a sentence with a reference',
   frame:
-    'a yield: reference in a sentence that does not say it is a measurement (quoted, measured, observed, current, past, so far, at the last reading)',
-  bare: 'a reference in a sentence with fewer than two words of its own to say what it is',
+    'a yield: reference in a sentence that is more than its measurement: say only that the quoted, measured or current yield is the figure, with at most a period ("a year"), a word for now and where it was read, and end the sentence there',
+  bare: 'a reference in a sentence that names neither what the figure is (worth, of the vault, target, price, cost to sell, drawdown, volatility) nor an asset',
   script:
     'a letter that is not Latin, or a character that is not shown, in or just before a sentence with a reference',
   asset: "a sentence that names one asset and references another asset's figure",
@@ -335,45 +413,67 @@ export function figureResolver(input: {
     return joined;
   };
   /** Rule 3 to 6, for one sentence that holds a reference, with the sentence that stands before it. */
-  const worded = (sentence: string, before: string): Array<keyof typeof SAID> => {
+  const worded = (sentence: string, before: string, next: string): Array<keyof typeof SAID> => {
     const ids = idsIn(sentence);
-    const own = withoutReferences(sentence);
-    const lead = withoutReferences(before);
-    const words = `${lead} ${own}`;
-    // a rate word of a sentence with a figure of its own belongs to that figure
-    const rated = lead.includes(MARK) ? own : words;
-    const every = (...kinds: string[]) => ids.every((id) => kinds.some((k) => id.startsWith(k)));
-    const some = (kind: string) => ids.some((id) => id.startsWith(kind));
-    const oneAsset = new Set(ids.map((id) => figure(id)?.assetId)).size === 1;
+    // the figures that are not yields; an id that names no figure is refused where ids are read
+    const others = ids.filter((id) => !id.startsWith('yield:') && figure(id) !== undefined);
+    const yields = ids.some((id) => id.startsWith('yield:'));
+    const all = plainly(withoutReferences(sentence));
+    const lead = plainly(withoutReferences(before));
     const found: Array<keyof typeof SAID> = [];
-    if (NOT_LATIN.test(words)) found.push('script');
-    if ((own.match(LATIN_WORDS) ?? []).length < 2) found.push('bare');
-    if (MAGNITUDE.test(words)) found.push('magnitude');
-    if (ARITHMETIC.test(words)) found.push('arithmetic');
-    if (BESIDE.test(words)) found.push('beside');
-    if (CLAIM.test(words)) found.push('claim');
-    if (
-      ((RETURN.test(rated) || YIELD_WORD.test(rated)) && !every('yield:')) ||
-      (PERIOD.test(rated) &&
-        !every('yield:', 'vol:') &&
-        !(oneAsset && some('vol:') && every('vol:', 'drawdown:')))
-    )
-      found.push('rate');
-    if (
-      (MOVE.test(rated) || UP_DOWN.test(rated)) &&
-      !every('drawdown:') &&
-      !(oneAsset && some('drawdown:') && every('vol:', 'drawdown:'))
-    )
-      found.push('move');
-    if (FORECAST.test(words)) found.push('forecast');
-    if (some('yield:')) {
-      if (!FRAME.test(own)) found.push('frame');
-      if (PROMISE.test(words)) found.push('forecast');
+    // Rule 5: each yield in a clause of the grammar, which is then set aside; what is left of the
+    // sentence is read for its other figures.
+    let own = all;
+    if (yields) {
+      let rest = plainly(
+        sentence.replace(FIGURE_REFERENCE, (_whole, id: string) =>
+          id.startsWith('yield:') ? Y : MARK,
+        ),
+      );
+      for (let more = true; more; ) {
+        more = false;
+        for (const clause of YIELD_CLAUSES) {
+          const cut = rest.replace(clause, '$1');
+          if (cut !== rest) {
+            rest = cut;
+            more = true;
+          }
+        }
+      }
+      if (rest.includes(Y)) found.push('frame');
+      if (PROMISE.test(`${lead} ${all} ${plainly(withoutReferences(next))}`))
+        found.push('forecast');
+      own = rest.replaceAll(Y, MARK);
+    }
+    // Rule 4: a sentence that names the kind of every figure stands on its own; one that only names an
+    // asset is read with the sentence before it; one that does neither is not served.
+    const here = input.named?.(all);
+    const namesHere = (here?.own.length ?? 0) + (here?.classes.length ?? 0) > 0;
+    const described = others.every((id) => kindNamed(id, own));
+    if (others.length && !namesHere && !others.some((id) => kindNamed(id, own))) found.push('bare');
+    const carried = described ? '' : lead.replace(GOAL_WORDS, ' ');
+    const whole = `${carried} ${all}`;
+    const read = `${carried} ${own}`;
+    if (NOT_LATIN.test(`${lead} ${all}`)) found.push('script');
+    if (MAGNITUDE.test(whole)) found.push('magnitude');
+    if (ARITHMETIC.test(whole)) found.push('arithmetic');
+    if (BESIDE.test(whole)) found.push('beside');
+    if (CLAIM.test(whole)) found.push('claim');
+    if (FORECAST.test(whole)) found.push('forecast');
+    if (others.length) {
+      const every = (...kinds: string[]) =>
+        others.every((id) => kinds.some((kind) => id.startsWith(kind)));
+      const some = (kind: string) => others.some((id) => id.startsWith(kind));
+      const oneAsset = new Set(others.map((id) => figure(id)?.assetId)).size === 1;
+      const both = oneAsset && every('vol:', 'drawdown:');
+      if (RETURN.test(read) || (PERIOD.test(read) && !every('vol:') && !(both && some('vol:'))))
+        found.push('rate');
+      if (MOVE.test(read) && !every('drawdown:') && !(both && some('drawdown:')))
+        found.push('move');
     }
     // A sentence that names assets and references a figure of an asset it does not name; one that
     // names none ("It trades at…") speaks of what the sentence before named.
-    const here = input.named?.(own);
-    const told = here && here.own.length + here.classes.length > 0 ? here : input.named?.(lead);
+    const told = namesHere ? here : input.named?.(lead);
     const names = new Set([...(told?.own ?? []), ...(told?.classes ?? [])]);
     if (
       names.size > 0 &&
@@ -423,7 +523,7 @@ export function figureResolver(input: {
         if (nameTouches.some((touches) => touches.test(marked))) found.add('name');
         const before =
           index > 0 ? (read[index - 1] ?? '') : (split(lead).at(-1) ?? '').normalize('NFKC');
-        for (const why of worded(mine, before)) found.add(why);
+        for (const why of worded(mine, before, read[index + 1] ?? '')) found.add(why);
       }
       return { sentence, why: [...bad, ...[...found].map((why) => SAID[why])] };
     });

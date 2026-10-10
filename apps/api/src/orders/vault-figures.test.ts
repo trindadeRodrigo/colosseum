@@ -931,6 +931,9 @@ describe('a figure is read with what stands around it', () => {
     CS: ref(`holding:${cash.id}:share`),
     Y: ref(`yield:${reserve.id}:0:quoted`),
     RV: ref(`holding:${reserve.id}:value`),
+    RS: ref(`holding:${reserve.id}:share`),
+    TS: ref(`holding:${tesla.id}:share`),
+    YH: ref(`yield:${reserve.id}:0:haircut`),
   };
   const fill = (text: string) =>
     text.replace(/\[(\w+)\]/g, (whole, key: string) => F[key] ?? whole);
@@ -1024,7 +1027,7 @@ describe('a figure is read with what stands around it', () => {
           { assetId: stock.id, why: fill('Nvidia. [NS].'), evidenceIds: [`price:${stock.id}`] },
         ],
         stated: [],
-        tradeoffs: ['Yearly return on Nvidia you can count on:', fill('It is [NS] of the vault.')],
+        tradeoffs: ['Yearly return on Nvidia you can count on:', fill('Nvidia: about [NS].')],
         unknowns: [],
       },
     });
@@ -1037,7 +1040,7 @@ describe('a figure is read with what stands around it', () => {
     // the question is shown under the message
     const asked = await ask({
       message: 'What does Nvidia return in a year?',
-      question: fill('Is [NS] of the vault enough for you?'),
+      question: fill('Nvidia about [NS], is that enough?'),
       proposal: null,
     });
     expect(served(asked.out).reply.question).toBeNull();
@@ -1144,6 +1147,244 @@ describe('a figure is read with what stands around it', () => {
     );
     expect(served(out).reply.figures?.prose.message).toBe(
       fill('Your Nvidia position: [NV] and [NS] of the vault.'),
+    );
+  });
+
+  // The review of #227.
+  /** The served message of a reply that is `text` alone, or the code it was refused with. */
+  const shown = async (text: string) => {
+    const { out } = await ask(said(fill(text)));
+    return out.kind === 'reply' ? out.reply.message : `refused: ${out.detail}`;
+  };
+
+  it.each([
+    'Its quoted yield is [Y] a year. Nvidia: about [NS] too.',
+    'Its quoted yield is [Y] a year. Nvidia about [NS] as well.',
+    'Its quoted yield is [Y] a year. For Nvidia it is [NS].',
+    'Its quoted yield is [Y] a year. Nvidia does [NS].',
+    'Its quoted yield is [Y] a year. Nvidia comes in at [NS], Tesla at [TS].',
+    'Nvidia’s largest measured drawdown was [ND]. Tesla: about [TS] too.',
+    'Nvidia’s annualised volatility is [NVOL]. Tesla: about [TS] too.',
+    'What does Nvidia return in a year? Good question. About [NS], roughly speaking.',
+    'Yearly return on Nvidia.\n\nHere it is.\n\nAbout [NS] by my read.',
+  ])('does not let a share read as the rate of the sentence before: %s', async (text) => {
+    expect(await shown(text)).not.toContain('28.57%');
+  });
+
+  it.each([
+    'Its quoted yield is [Y] a year. Your reserve is worth [RV].',
+    'Its quoted yield is [Y] a year. It is [RS] of your vault.',
+    'Nvidia’s largest measured drawdown was [ND]. Nvidia is worth [NV].',
+    'Your goal is to grow this money. Right now Nvidia is worth [NV].',
+    'You told me you want growth. Nvidia is [NS] of your vault today.',
+    'I can’t predict returns. What I can say is that your vault is worth [W] today.',
+    'Nobody can promise a return. Your vault is worth [W] right now.',
+    'Stocks can fall a lot. Nvidia is [NS] of your vault.',
+    'Here’s the breakdown:\n- Nvidia: [NV]\n- Tesla: [TV]\n- Reserve: [RV]\n- Cash: [CV]\n\nAltogether the vault is worth [W].',
+    'Your Nvidia position is worth [NV] at the latest reference price of [NP] per unit. That makes it [NS] of the vault, against a target of [NT].',
+    'Nvidia and Tesla make up [NS] and [TS] of the vault.',
+    'Your Nvidia \u2014 worth [NV] \u2014 is your largest stock.',
+    'The reserve has a quoted yield of [Y] a year. Nvidia is [NS] of your vault.',
+    '⚠️ Selling Nvidia would cost about [NX].',
+    'Good news ❤️. Your vault is worth [W].',
+    'You have [CV] in cash — that’s [CS] of the vault.',
+    'Selling everything today wouldn’t be free. In the worst conditions Bearing has measured, Nvidia would cost about [NX] of the amount sold and Tesla about [TX]. There’s no measured exit cost for the reserve or for cash.',
+    'I don’t have weekend figures for Nvidia yet: its weekend capacity is [NW]. On weekdays, the worst measured exit cost is [NX].',
+    'The reserve is the steadier part of your vault. It’s worth [RV], and its quoted yield is currently [Y] a year. That’s a measured rate, not a promise.',
+    'Tesla is the more expensive one to sell: about [TX] in the worst measured regime, compared with [NX] for Nvidia. Both figures are for the reference size, not your exact amount.',
+  ])(
+    'serves whole a value that says what it is, whatever the sentence before: %s',
+    async (text) => {
+      const message = await shown(text);
+      expect(message).not.toContain(FIGURE_CUT);
+      expect(message).not.toMatch(/^refused|[{}]/u);
+    },
+  );
+
+  it.each([
+    'Nvidia is a high-yield holding at [NS].',
+    'Nvidia is yield-bearing at [NS].',
+    'Nvidia has a dollar-yield of [NS].',
+    'The yield-to-date on Nvidia is [NS].',
+    'Your dollar-yield reserve yields [RS].',
+    'Nvidia is down to [NV].',
+    'Nvidia went down to [NV].',
+    'Nvidia shot up to [NV].',
+    'Nvidia is now down to [NS] of the vault.',
+    'Nvidia: up a solid [NS].',
+    'Nvidia has been heading up, by [NS].',
+    'Nvidia is way up: [NV] now.',
+    'Nvidia climbed [NS] this week.',
+    'Nvidia sank [NS].',
+    'Nvidia rallied [NS].',
+    'Nvidia is [NV] cheaper than before.',
+    'Nvidia is [NS] higher than last week.',
+    'Nvidia rinde [NS] al año.',
+    'Nvidia rapporte [NS] par an.',
+    'You make [NV] each on Nvidia.',
+    'Nvidia, year after year, makes about [NS].',
+    'Roughly [NV], give or take.',
+    'About [NS], roughly speaking, I would say.',
+  ])('cuts what the last round let back in: %s', async (sentence) => {
+    expect(await left(sentence)).toBe(CUT);
+  });
+
+  it.each([
+    'Its current yield of [Y] is yours every year.',
+    'Measured at [Y], and that is what you will get.',
+    'So far it has paid [Y] and it keeps paying.',
+    'Currently [Y], risk-free.',
+    'Its current yield is [Y], and you get that.',
+    'Its current yield is [Y], yours to keep.',
+    'You earn the current [Y] a year on your reserve.',
+    'The past is the past: from now on the reserve pays [Y] a year.',
+    'Its quoted yield is [Y] a year, and that holds going forward.',
+    'The current yield is [Y] a year, and it is here to stay.',
+    'Quoted at [Y] a year, and you can bank on it.',
+    'The current [Y] a year is what you take home.',
+    'Unlike past rates, [Y] a year is what the reserve pays from here.',
+    'Currently [Y] a year, for life.',
+    'At the current [Y] a year you are set for retirement.',
+    'The reserve currently pays you [Y] a year on every dollar.',
+    'Its quoted yield is [Y] a year, forever.',
+    'Its quoted yield is [Y] a year, come rain or shine.',
+    'Its quoted yield is [Y] a year, and it does not change.',
+    'Its quoted yield is [Y] a year, and nothing can take that away.',
+    'Its quoted yield is [Y] a year, with zero downside.',
+    'Its quoted yield is [Y] a year, and your money is protected.',
+    'Its quoted yield is [Y] a year, without fail.',
+    'Its quoted yield is [Y] a year, so you may rely on it.',
+    'Its quoted yield is [Y] a year, and you can depend on that.',
+    'Its quoted yield is [Y] a year, sem risco.',
+    'O rendimento atual é [Y] ao ano, e isso não muda.',
+    'Rende [Y] ao ano atualmente, sem risco.',
+    'O rendimento cotado é [Y] ao ano, livre de risco.',
+    'O rendimento cotado é [Y] ao ano, e pode contar com isso.',
+    'O rendimento cotado é [Y] ao ano, todo ano.',
+    'O rendimento cotado é [Y] ao ano, para sempre.',
+    'The reserve yields [Y] a year.',
+    'Right now the reserve yields about [Y] a year, and more to come.',
+    'Its quoted yield is [Y] a year and Nvidia is [NS] of the vault.',
+  ])('cuts a yield whose sentence is more than the measurement: %s', async (sentence) => {
+    expect(await left(sentence)).toBe(CUT);
+  });
+
+  it.each([
+    ['Its quoted yield is [Y] a year. You may rely on it.'],
+    ['You can rely on it. Its quoted yield is [Y] a year.'],
+  ])('cuts a yield promised by the sentence beside it: %s', async (text) => {
+    expect(await shown(text)).not.toContain('5%');
+  });
+
+  it.each([
+    ['The reserve’s quoted yield is [Y] a year.', 'The reserve’s quoted yield is 5% a year.'],
+    ['Its quoted yield is [Y].', 'Its quoted yield is 5%.'],
+    [
+      'The quoted yield of the reserve is [Y] a year.',
+      'The quoted yield of the reserve is 5% a year.',
+    ],
+    ['The reserve’s yield is [Y] a year right now.', 'The reserve’s yield is 5% a year right now.'],
+    [
+      'The reserve’s yield is [Y] a year, based on the latest quote.',
+      'The reserve’s yield is 5% a year, based on the latest quote.',
+    ],
+    ['Its yield is currently [Y] a year.', 'Its yield is currently 5% a year.'],
+    [
+      'The reserve currently yields about [Y] a year.',
+      'The reserve currently yields about 5% a year.',
+    ],
+    ['Right now the reserve yields [Y] a year.', 'Right now the reserve yields 5% a year.'],
+    [
+      'Its measured yield was [Y] a year, measured from past rates.',
+      'Its measured yield was 5% a year, measured from past rates.',
+    ],
+    ['O rendimento cotado é [Y] ao ano.', 'O rendimento cotado é 5% ao ano.'],
+    [
+      'A reserva rende [Y] ao ano, segundo a última cotação.',
+      'A reserva rende 5% ao ano, segundo a última cotação.',
+    ],
+    [
+      'After the haircut its quoted yield is [YH] a year.',
+      'After the haircut its quoted yield is 4% a year.',
+    ],
+  ])(
+    'serves a yield whose sentence is the measurement and nothing more: %s',
+    async (sentence, expected) => {
+      expect(await left(sentence)).toBe(`${expected} A new line follows.`);
+    },
+  );
+
+  it('reads every field with the one shown above it', async () => {
+    const plan = (over: Record<string, unknown>, message = 'Here is the plan.') =>
+      ask({
+        message,
+        question: null,
+        proposal: {
+          objective: 'Keep the vault as it is.',
+          summary: 'No change.',
+          allocations: [
+            {
+              assetId: stock.id,
+              why: 'A stock you asked for.',
+              evidenceIds: [`price:${stock.id}`],
+            },
+          ],
+          stated: [],
+          tradeoffs: [],
+          unknowns: [],
+          ...over,
+        },
+      });
+    const why = (text: string) => [
+      { assetId: stock.id, why: fill(text), evidenceIds: [`price:${stock.id}`] },
+    ];
+    const told = (result: Awaited<ReturnType<typeof plan>>) =>
+      JSON.stringify(served(result.out).reply.proposal);
+    // a pick's reason under the summary, the objective under the message, the first tradeoff under
+    // the summary, the first unknown under the last tradeoff
+    for (const result of [
+      await plan({
+        summary: 'Expected yearly return of each pick, as a forecast:',
+        allocations: why('Nvidia about [NS].'),
+      }),
+      await plan({ objective: fill('Nvidia about [NS].') }, 'What will Nvidia return a year?'),
+      await plan({
+        summary: 'Expected yearly returns follow.',
+        tradeoffs: [fill('Nvidia about [NS].')],
+      }),
+      await plan({
+        tradeoffs: ['Expected yearly return on Nvidia:'],
+        unknowns: [fill('Nvidia about [NS].')],
+      }),
+    ])
+      expect(told(result)).not.toContain('28.57%');
+    // and what the product's own goal words must not cost
+    for (const result of [
+      await plan({
+        objective: 'Grow the money over the years.',
+        summary: fill('Nvidia stays at [NT] of the vault.'),
+      }),
+      await plan({
+        objective: 'Keep a steady income from the vault.',
+        summary: fill('The reserve stays at [RS] of the vault.'),
+      }),
+      await plan({
+        tradeoffs: [
+          'Stocks can fall a lot in a bad month.',
+          fill('Nvidia is [NS] of the vault, above its target of [NT].'),
+        ],
+      }),
+    ]) {
+      expect(result.calls).toBe(1);
+      expect(told(result)).not.toContain('left out');
+    }
+    const asked = await ask({
+      message: 'I can’t promise any return on it.',
+      question: fill('Do you want to keep Nvidia at its target of [NT]?'),
+      proposal: null,
+    });
+    expect(served(asked.out).reply.question).toBe(
+      'Do you want to keep Nvidia at its target of 30%?',
     );
   });
 });

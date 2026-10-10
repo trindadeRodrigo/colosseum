@@ -778,8 +778,9 @@ export function trimFigureSentences(
  * tradeoffs or unknowns that lost an item or part of one holds it once. A question left empty is
  * dropped; an objective, a summary or a pick's reason left empty is the server's `FIGURE_REMOVED`,
  * never words made up for the model. Null when nothing of the message is left, or no room for the note.
- * Fields shown together are read together: the question under the message, the summary under the
- * objective, a list item under the item before.
+ * Fields shown together are read together: the question and the objective under the message, the
+ * summary under the objective, a pick's reason and the first tradeoff under the summary, a list item
+ * under the item before, the first unknown under the last tradeoff.
  */
 function withoutFigureSentences(
   reply: VaultAgentModelReply,
@@ -793,9 +794,9 @@ function withoutFigureSentences(
     cut += left.cut;
     return left.text;
   };
-  const list = (items: string[]): string[] => {
+  const list = (items: string[], above: string): string[] => {
     const before = cut;
-    const kept = items.map((item, at) => trim(item, items[at - 1] ?? '')).filter(Boolean);
+    const kept = items.map((item, at) => trim(item, items[at - 1] ?? above)).filter(Boolean);
     return cut === before ? kept : [...kept.slice(0, 11), FIGURE_CUT[language]];
   };
   const message = trim(reply.message);
@@ -808,13 +809,13 @@ function withoutFigureSentences(
       question: (reply.question === null ? null : trim(reply.question, reply.message)) || null,
       proposal: proposal && {
         ...proposal,
-        objective: trim(proposal.objective) || FIGURE_REMOVED[language],
+        objective: trim(proposal.objective, reply.message) || FIGURE_REMOVED[language],
         summary: trim(proposal.summary, proposal.objective) || FIGURE_REMOVED[language],
-        tradeoffs: list(proposal.tradeoffs),
-        unknowns: list(proposal.unknowns),
+        tradeoffs: list(proposal.tradeoffs, proposal.summary),
+        unknowns: list(proposal.unknowns, proposal.tradeoffs.at(-1) ?? proposal.summary),
         allocations: proposal.allocations.map((allocation) => ({
           ...allocation,
-          why: trim(allocation.why, '') || FIGURE_REMOVED[language],
+          why: trim(allocation.why, proposal.summary) || FIGURE_REMOVED[language],
         })),
       },
     },
@@ -832,7 +833,7 @@ const REPAIR_HINTS: Record<string, string> = {
   prose_figure:
     'Prose contained a financial figure, percentage, price, yield, date or written-out number. Numbers may appear in prose only inside an exact catalog name or an exact quote of the person in attributed quotation marks. The server sets the weights. Rewrite every prose field with no digit, no percent or currency sign and no "guaranteed" or "risk-free": when kind is vault, state a measured figure only as its reference, {{fact:<id>}} with an id given in this request; otherwise describe it in words and cite its id in evidenceIds. Never repeat its value.',
   figure_reference:
-    'Prose held a figure reference, {{fact:<id>}}, that the server will not serve. Either its id is not one given in this request with a value (an id in evidence that carries a value, or a key of analytics.assets[].values; when kind is new_goal no reference is allowed), or it does not stand alone as the figure it is. A reference stands alone when: it is outside quotation marks; a space and a word, or plain sentence punctuation, is on each side of it, so no sign, symbol, letter or digit touches it and two references have a word between them; and its sentence has no magnitude or percent word (hundred, thousand, million, k, percent), no multiplier, fraction, sign or arithmetic in words (double, half, a fifth, times, minus, sum), no number or currency word beside it, no rate or return word unless every reference in the sentence is a yield: figure (return, yield, APY, earn, pays, a year, monthly), no rise or fall unless it is a drawdown: figure, no forecast (will, expected), no claim a figure does not measure (made, chance, tax, fee, overvalued), and names no other asset than the one the figure is of; a yield: figure needs a word that says it is a measurement (quoted, measured, observed, current, past, so far) and no promise (should, always, at least, count on, steady, fixed). The sentence before a reference, and the field shown above it, are read with it. Rewrite the sentence so the reference stands alone, or write it without the figure. Never type the number instead.',
+    'Prose held a figure reference, {{fact:<id>}}, that the server will not serve. Either its id is not one given in this request with a value (an id in evidence that carries a value, or a key of analytics.assets[].values; when kind is new_goal no reference is allowed), or it does not stand alone as the figure it is. A reference stands alone when: it is outside quotation marks; a space and a word, or plain sentence punctuation, is on each side of it, so no sign, symbol, letter or digit touches it and two references have a word between them; and its sentence has no magnitude or percent word (hundred, thousand, million, k, percent), no multiplier, fraction, sign or arithmetic in words (double, half, a fifth, times, minus, sum), no number or currency word beside it, no rate or return word unless every reference in the sentence is a yield: figure (return, yield, APY, earn, pays, a year, monthly), no rise or fall unless it is a drawdown: figure, no forecast (will, expected), no claim a figure does not measure (made, chance, tax, fee, overvalued), and names no other asset than the one the figure is of; a yield: figure is said only as its measurement, in a sentence that ends after it ("Its quoted yield is {{fact:<id>}} a year."), with no promise beside it (should, always, at least, count on, rely on, steady, fixed, forever). The sentence of every other figure says what it is (worth, of the vault, target, price, cost to sell, drawdown, volatility) or names its asset; one that only names an asset is read with the sentence before it and the field shown above it. Rewrite the sentence so the reference stands alone, or write it without the figure. Never type the number instead.',
   prose_claims_applied:
     'Prose said something was applied, created, funded, traded or approved. A proposal is only a private preview; nothing has been applied.',
   allocation_unlisted: "An allocation named an assetId that is not in this chain's catalog.",
@@ -1892,11 +1893,17 @@ export async function replyToVaultConversation(
         [question ?? '', message],
         ...(draft
           ? [
-              [draft.objective, ''],
+              [draft.objective, message],
               [draft.summary, draft.objective],
-              ...draft.tradeoffs.map((item, at) => [item, draft.tradeoffs[at - 1] ?? '']),
-              ...draft.unknowns.map((item, at) => [item, draft.unknowns[at - 1] ?? '']),
-              ...draft.allocations.map((allocation) => [allocation.why, '']),
+              ...draft.tradeoffs.map((item, at) => [
+                item,
+                draft.tradeoffs[at - 1] ?? draft.summary,
+              ]),
+              ...draft.unknowns.map((item, at) => [
+                item,
+                draft.unknowns[at - 1] ?? draft.tradeoffs.at(-1) ?? draft.summary,
+              ]),
+              ...draft.allocations.map((allocation) => [allocation.why, draft.summary]),
             ]
           : []),
       ] as Array<[string, string]>;
