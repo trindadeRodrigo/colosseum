@@ -170,3 +170,17 @@ export async function shot(page: Page, name: string) {
   const width = page.viewportSize()?.width ?? 0;
   await page.screenshot({ path: `${SHOTS}/${name}-${width}.png`, fullPage: true });
 }
+
+/**
+ * The Solana address of the wallet signed in, as the Account menu lists it: the bar's sheet holds
+ * that block at any width, so nothing is opened to read it.
+ */
+export async function walletAddress(page: Page): Promise<string> {
+  const shown = page
+    .locator(
+      '[data-ui="compact-nav-sheet"] [data-ui="account-wallet"][data-chain="solana"] [data-ui="account-address"]',
+    )
+    .first();
+  await expect(shown).toHaveAttribute('title', /.+/);
+  return (await shown.getAttribute('title')) ?? '';
+}

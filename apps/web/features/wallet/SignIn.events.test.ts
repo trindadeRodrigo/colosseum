@@ -728,6 +728,37 @@ describe('the sign-in panel: when sign-in is off', () => {
     expect(find(host, '[role="status"]').textContent).toBe(en.loading);
     expect(host.querySelectorAll('button')).toHaveLength(0);
   });
+
+  it('waits as its two ways in, in outline: a card each, bars where the buttons will be, said once', async () => {
+    portStore.set(fakePort({ status: 'loading' }));
+    const host = await screen();
+    const outline = find(host, '[data-ui="sign-in-outline"]');
+    // hidden from a screen reader: the one status line under it is what is said
+    expect(outline.getAttribute('aria-hidden')).toBe('true');
+    expect(host.querySelectorAll('[role="status"]')).toHaveLength(1);
+    expect(outline.contains(find(host, '[role="status"]'))).toBe(false);
+    // the grid the two cards sit in, and a card each under its own title
+    expect(outline.className).toContain('min-[820px]:grid-cols-2');
+    const cards = [...outline.children];
+    expect(cards.map((card) => card.querySelector('p')?.textContent)).toEqual([
+      en.passkey.title,
+      en.wallet.title,
+    ]);
+    // bars the height of a button: two for a passkey (create, continue), one for a wallet
+    expect(cards.map((card) => card.querySelectorAll('[data-ui="skeleton"].h-10').length)).toEqual([
+      2, 1,
+    ]);
+    // nothing to press, and nothing that moves
+    expect(outline.querySelectorAll('a, button, input, [tabindex]')).toHaveLength(0);
+    expect(outline.querySelector('[class*="animate"]')).toBeNull();
+    // the outline is the wait for the wallet's code alone: someone already signed in gets none
+    await act(async () => portStore.set(fakePort({ status: 'ready', userId: 'did:privy:test' })));
+    expect(host.querySelector('[data-ui="sign-in-outline"]')).toBeNull();
+    // once the wallet is there the real cards take their place
+    await act(async () => portStore.set(fakePort({ found: FOUND })));
+    expect(host.querySelector('[data-ui="sign-in-outline"]')).toBeNull();
+    expect(find(host, '[data-ui="sign-in"]').getAttribute('data-state')).toBe('ready');
+  });
 });
 
 describe('the sign-in panel: the throwaway wallet of development', () => {

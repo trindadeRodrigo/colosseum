@@ -3,7 +3,6 @@ import type { FundingFigure } from '@colosseum/schemas';
 import { Wait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { DataTable } from '../../components/ui/DataTable';
-import { SkeletonRows } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -11,6 +10,7 @@ import { utc } from '../portfolio/figures';
 import { formatRaw } from './amounts';
 import type { FundingOutcome, TestFundsOutcome } from './order-api';
 import type { TokenUnits, unitsFor } from './units';
+import { FundsWait } from './waits';
 
 // The funds step of a buy: what the wallet needs on the plan's chain in one line, the way to fill it
 // (test funds from our server on a test network, sample cash on the mock, or the address to send to),
@@ -170,7 +170,7 @@ export function FundingStep({
     <div data-ui="funding-step" className="flex flex-col gap-4">
       <div aria-live="polite" className="flex flex-col gap-3">
         {funding.kind === 'reading' || funding.kind === 'idle' ? (
-          <Wait label={t.buy.funding.reading} skeleton={<SkeletonRows rows={2} columns={4} />} />
+          <Wait label={t.buy.funding.reading} skeleton={<FundsWait />} />
         ) : null}
         {read && (
           <p data-ui="funding-line" className="max-w-(--tf-measure-body) text-body">

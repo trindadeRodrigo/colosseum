@@ -3,13 +3,12 @@ import { ChainId, chainFamily, type SharedFamily, type Target } from '@colosseum
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
-import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Field, Input, Select, Textarea } from '../../components/ui/Field';
 import { PAGE_TITLE } from '../../components/ui/heading';
-import { SkeletonText } from '../../components/ui/Skeleton';
+import { SkeletonLine, SkeletonListRow } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -26,6 +25,7 @@ import { type PublishVaultRead, readPublishVault } from './publish-vault';
 import { placeShared, readFamily } from './shared-api';
 import type { SharedTerms } from './terms';
 import { useSharedPerson } from './use-person';
+import { PublishWait } from './waits';
 
 // Publish an owner-proved vault's strategy through the existing reviewed order/signature contract.
 // Assets and weights are immutable here. A fresh chain read must still match the displayed snapshot
@@ -243,12 +243,7 @@ export function PublishScreen() {
     };
   }, [apiFetch, slug, chain, owner, identity]);
 
-  if (person.kind === 'loading')
-    return (
-      <Card>
-        <CardWait label={t.chain.reading} skeleton={<SkeletonText lines={4} />} />
-      </Card>
-    );
+  if (person.kind === 'loading') return <PublishWait />;
   if (person.kind !== 'ready' || !chain)
     return (
       <section className="flex flex-col items-start gap-4">
@@ -512,6 +507,21 @@ export function PublishScreen() {
                 {chainName} · {source.address}
               </p>
             )}
+            {/* While the vaults are read the two lines a chosen vault brings keep their place: the
+                way back to its conversation and its address. A read that failed ends the wait: the
+                sentence under the button says so. */}
+            {!source && !vaults && !sourceFailure && (
+              <span
+                aria-hidden="true"
+                data-ui="publish-source-wait"
+                className="flex flex-col gap-4"
+              >
+                <SkeletonLine className="text-body" width="w-56" />
+                {/* an address breaks over two lines on a phone */}
+                <SkeletonLine className="font-mono text-source sm:hidden" lines={2} />
+                <SkeletonLine className="font-mono text-source max-sm:hidden" width="w-96" />
+              </span>
+            )}
             <p className="max-w-(--tf-measure-body) text-body-sm">{p.privacy}</p>
           </CardBody>
         </Card>
@@ -633,6 +643,15 @@ export function PublishScreen() {
                 </li>
               ))}
             </ul>
+            {/* The strategy's rows while the vaults, then the chosen vault's strategy, are read. The
+                sentence under the form's button says which; no share is drawn before it is read. */}
+            {((!vaults && !sourceFailure) || (source && !sourceRead)) && (
+              <span aria-hidden="true" data-ui="publish-rows-wait" className="flex flex-col gap-3">
+                {[0, 1, 2].map((i) => (
+                  <SkeletonListRow key={i} mark={false} type="text-body" />
+                ))}
+              </span>
+            )}
             {sourceRead?.kind === 'read' && (
               <>
                 <p className="font-mono text-source text-muted-foreground">

@@ -73,8 +73,6 @@ export function SimWait() {
 export function SimPage() {
   const { base } = useBearing();
   const b = useAnswer(() => base(), [base]);
-  const words = useWords();
-  const reading = words.sim.reading;
   if (!b) return <SimWait />;
   if (!b.assets.ok)
     return (

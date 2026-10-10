@@ -698,7 +698,9 @@ export function GoalConversation({
           <div
             data-ui="goal-empty-preview"
             data-state={busy ? 'building' : 'empty'}
-            className="flex min-w-0 flex-col items-start justify-center gap-3 rounded-lg border border-border bg-card p-4 sm:min-h-60"
+            // while the first draft is built the card has the draft card's own padding, so the
+            // outline's boxes are where the draft's will be
+            className={`flex min-w-0 flex-col items-start gap-3 rounded-lg border border-border bg-card sm:min-h-60 ${busy ? 'shrink-0 justify-start p-6' : 'justify-center p-4'}`}
           >
             {busy ? (
               // the first draft is being worked on: said at heading size, with the rows it will fill

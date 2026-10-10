@@ -65,7 +65,7 @@ import { chainReady, explorerUrlFor, onMock } from './readiness';
 import { planNumberOf, type RunOutcome, useOrderRunner } from './run-order';
 import { TrustNotice } from './TrustNotice';
 import { type ChainUnits, unitsFor } from './units';
-import { OrderScreenWait } from './waits';
+import { OrderScreenWait, StepsWait } from './waits';
 import { useStayed } from './withdraw-stayed';
 
 // The order: the review of every step, then signing it, then each step's status as it lands. The
@@ -463,9 +463,10 @@ export function OrderScreen({
   )
     // In the card: one quiet line while the order is read, not a card inside the card.
     return (
-      <p data-ui="invest-reading" className="text-body-sm text-muted-foreground">
-        {t.invest.preparing}
-      </p>
+      <div data-ui="invest-reading" className="flex flex-col gap-4">
+        <p className="text-body-sm text-muted-foreground">{t.invest.preparing}</p>
+        <StepsWait />
+      </div>
     );
   if (port.status === 'loading' || account.status === 'loading' || record === undefined)
     return <OrderScreenWait />;

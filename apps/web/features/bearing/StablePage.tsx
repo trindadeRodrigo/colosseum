@@ -69,8 +69,6 @@ function StableOnSolana() {
   const { base, lending } = useBearing();
   const b = useAnswer(() => base(), [base]);
   const all = useAnswer(() => lending(), [lending]);
-  const words = useWords();
-  const reading = words.stable.reading;
   if (!b || !all) return <StableWait />;
   if (!b.lendList.ok)
     return (

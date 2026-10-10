@@ -328,6 +328,8 @@ describe('who is signed in, in the bar', () => {
     expect(menuButton(host).hasAttribute('data-ready')).toBe(false);
     const menu = await openMenu(host);
     expect(menu.querySelectorAll('[data-ui="account-wallet"]')).toHaveLength(2);
+    // the wallets are known: no row waits in their place
+    expect(menu.querySelector('[data-ui="account-wallets-wait"]')).toBeNull();
     expect([...menu.querySelectorAll('button')].at(-1)?.textContent).toBe(en.signOut);
   });
 
@@ -387,7 +389,16 @@ describe('who is signed in, in the bar', () => {
     expect(button.querySelector('[data-ui="account-label"]')).toBeNull();
     // the way out without waiting for the help
     expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
-    expect((await openMenu(host)).textContent).toBe(en.signOut);
+    const menu = await openMenu(host);
+    expect(menu.textContent).toBe(en.signOut);
+    // while the wallets are read a wallet's row keeps its place in the menu: still boxes, hidden
+    // from a screen reader, nothing to press, and the menu as wide as it always is
+    const row = find(menu, '[data-ui="account-wallets-wait"]');
+    expect(row.getAttribute('aria-hidden')).toBe('true');
+    expect(row.textContent).toBe('');
+    expect(row.querySelectorAll('[data-ui="skeleton"]').length).toBeGreaterThan(2);
+    expect(row.querySelectorAll('a, button, [tabindex]')).toHaveLength(0);
+    expect(menu.className).toContain('w-80');
   });
 
   it('puts focus on "Sign in" after a sign-out, and tells a screen reader the person is out', async () => {

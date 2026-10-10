@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { LatticeStatus } from '../../components/ui/Lattice';
-import { LatticeLoader } from '../../components/ui/Skeleton';
+import { LatticeLoader, Skeleton } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { useWaitPhase } from '../../components/ui/wait';
 import { useT } from '../../i18n/I18nProvider';
@@ -175,7 +175,31 @@ export function SignIn({ onAttempt, onFailed, onSignedIn, silent }: SignInProps)
 
   if (port.status !== 'signed-out')
     return (
-      <div data-ui="sign-in" data-state={silent ? 'silent' : 'loading'}>
+      <div
+        data-ui="sign-in"
+        data-state={silent ? 'silent' : 'loading'}
+        className="flex flex-col gap-4"
+      >
+        {/* The two ways in, in outline, while the wallet's own code loads: each card under its own
+            title with bars the height of its buttons, so the buttons land where the bars were. The
+            words that say what is awaited are under them, once. */}
+        {!silent && port.status === 'loading' && (
+          <div
+            aria-hidden="true"
+            data-ui="sign-in-outline"
+            className="grid gap-6 min-[820px]:grid-cols-2"
+          >
+            {[t.signIn.passkey.title, t.signIn.wallet.title].map((title, i) => (
+              <div key={title} className="rounded-lg border border-border bg-card">
+                <p className="p-6 text-h4 font-semibold">{title}</p>
+                <div className="flex flex-col gap-4 border-t border-border p-6">
+                  <Skeleton className="h-10 w-full rounded-md" />
+                  {i === 0 && <Skeleton className="h-10 w-full rounded-md" />}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {silent ?? <LatticeStatus label={t.signIn.loading} />}
       </div>
     );

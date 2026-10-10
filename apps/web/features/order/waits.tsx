@@ -226,3 +226,48 @@ export function OrderScreenWait({
     />
   );
 }
+
+/**
+ * What the wallet holds against a deposit, while it is read (FundingStep): the line that says what is
+ * needed, the note under it, and the two ways on. `label` says what is awaited where that first line
+ * will be, so the step lands on it and nothing under it moves. No amount is drawn: none is known yet.
+ */
+export function FundsWait({ label }: { label?: string }) {
+  return (
+    <div data-ui="funds-wait" className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3">
+        {label ? (
+          <p className="max-w-(--tf-measure-body) text-body text-muted-foreground">{label}</p>
+        ) : (
+          <SkeletonLine className="max-w-(--tf-measure-body) text-body" width="w-full" />
+        )}
+        <SkeletonLine className="max-w-(--tf-measure-body) text-body-sm" width="w-4/5" />
+      </div>
+      <div aria-hidden="true" className="flex flex-wrap gap-3">
+        <Skeleton className="h-9 w-44 rounded-md" />
+        <Skeleton className="h-9 w-36 rounded-md" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * An order's steps while the order is made or read, inside the pane or the card that holds them: the
+ * three figures over them, then a line a step. No card of its own (the host is one), and no amount.
+ */
+export function StepsWait({ steps = 3 }: { steps?: number }) {
+  return (
+    <div aria-hidden="true" data-ui="steps-wait" className="flex flex-col gap-4">
+      <SkeletonStats count={3} />
+      <div className="flex flex-col divide-y divide-border">
+        {Array.from({ length: steps }, (_, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: still boxes with no identity of their own
+          <div key={i} className="flex flex-col gap-1 py-3">
+            <SkeletonLine className="text-body" width={i % 2 ? 'w-72' : 'w-80'} />
+            {i > 0 && <SkeletonLine className="text-body-sm" width="w-4/5" />}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

@@ -13,7 +13,6 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
-import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card } from '../../components/ui/Card';
@@ -22,8 +21,8 @@ import { DataTable } from '../../components/ui/DataTable';
 import { utcMinute } from '../../components/ui/ExecutionList';
 import { Hint } from '../../components/ui/Hint';
 import { PAGE_TITLE } from '../../components/ui/heading';
-import { SkeletonRows } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
+import { ScreenWait } from '../../components/waits/ScreenWait';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { ChainChoice } from '../account/ChainChoice';
@@ -49,7 +48,7 @@ import { SourceMark } from './SourceMark';
 import { placeShared, readFamily, readPortfolio, readVersions } from './shared-api';
 import type { FollowTerms, SharedTerms } from './terms';
 import { type SharedPerson, shortAddress, useSharedPerson } from './use-person';
-import { FamilyWait } from './waits';
+import { FamilyWait, MyVaultsWait } from './waits';
 
 // A shared portfolio's page (DESIGN-VAULT section 11): its name and creator, each recipe a wallet of
 // the person's signs on (one at a time: a portfolio with a recipe on both chains asks which, gate
@@ -996,7 +995,7 @@ function VaultsPanel({
         {v.title}
       </h2>
       {vaults === null ? (
-        <CardWait label={t.shared.vault.loading} skeleton={<SkeletonRows rows={2} columns={3} />} />
+        <ScreenWait label={t.shared.vault.loading} skeleton={<MyVaultsWait />} />
       ) : vaults === 'failed' ? (
         <p className="text-body-sm">{v.failure}</p>
       ) : (

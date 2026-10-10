@@ -101,7 +101,6 @@ export function DexPage({ page }: { page: 'stocks' | 'commodities' }) {
   const dd = useAnswer(() => (ids ? dex(ids) : null), [key, dex]);
   const router = useRouter();
   const state = usePageState(page);
-  const t = useWords();
 
   // /analytics/stocks?asset=TSLAx (where /risk/tslax now leads): that asset alone, on its page.
   const [asked, setAsked] = useState<string | null>(null);
@@ -121,7 +120,6 @@ export function DexPage({ page }: { page: 'stocks' | 'commodities' }) {
     else state.setSel({ assets: [symbol], pools: null });
   }, [asked, b, page, router, state, chain]);
 
-  const k = t.dex.kpi;
   if (!b || (b.assets.ok && !dd)) return <DexWait />;
   if (!b.assets.ok)
     return (

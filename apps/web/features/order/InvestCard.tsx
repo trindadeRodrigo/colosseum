@@ -28,6 +28,7 @@ import { displayName } from './plain';
 import { gasUnitsFor } from './readiness';
 import { TrustNotice } from './TrustNotice';
 import { unitsFor } from './units';
+import { FundsWait } from './waits';
 
 // Investing, on one card with one press (gate INVEST-ONE-PRESS): what is bought and for how much; what
 // the wallet is missing, shown only when it is short; the trust notice, here the first time only;
@@ -537,9 +538,11 @@ export function InvestCard({
           )}
 
           {!started && owner && amount !== null && heard.kind === 'reading' && (
-            <p data-ui="invest-funds-reading" className="text-body-sm text-muted-foreground">
-              {t.invest.checkingFunds}
-            </p>
+            // said in words where the check's own first line will be, over the outline of the
+            // rest: the step lands on it
+            <div data-ui="invest-funds-reading">
+              <FundsWait label={t.invest.checkingFunds} />
+            </div>
           )}
           {!started &&
             heard.kind !== 'idle' &&
