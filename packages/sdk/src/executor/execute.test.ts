@@ -782,6 +782,41 @@ describe('the executor: what the API can answer', () => {
     });
   });
 
+  it('run again after the API refused a later step: that step is built, and no step that landed is built or signed again', async () => {
+    const s = scene('solana');
+    const order = await s.double.buy(100);
+    const [first, second] = order.legs;
+    if (!first || !second) throw new Error('the order has two steps at least');
+    let refuse = true;
+    const api: OrderApi = {
+      ...s.double.api,
+      buildLeg: (orderId, legId) => {
+        if (legId === second.id && refuse)
+          return Promise.reject(
+            new ApiRefusal(409, {
+              error: 'the vault holds less than the trade sells',
+              details: { chainCode: 'SpentTooMuch', retryable: false },
+            }),
+          );
+        return s.double.api.buildLeg(orderId, legId);
+      },
+    };
+    const stopped = await execute(order, { ...s.deps, api });
+    expect(stopped).toMatchObject({ status: 'error', legId: second.id });
+    expect(stopped.order.legs[0]?.status).toBe('confirmed');
+    expect(s.wallet.sign).toHaveBeenCalledTimes(1);
+
+    // "Try again": the same order, from the step that stopped.
+    refuse = false;
+    const again = await execute(order, { ...s.deps, api });
+    expect(again.status).toBe('done');
+    expect(again.order.id).toBe(order.id);
+    expect(s.double.calls.filter((c) => c === `build ${first.id}`)).toHaveLength(1);
+    expect(again.order.attempts.filter((a) => a.legId === first.id)).toHaveLength(1);
+    expect(s.wallet.asked.filter((tx) => tx.legId === first.id)).toHaveLength(1);
+    expect(s.wallet.sign).toHaveBeenCalledTimes(order.legs.length);
+  });
+
   it('stops between steps when asked to, and leaves no signature unreported', async () => {
     const s = scene('solana');
     const order = await s.double.buy(100);
