@@ -852,37 +852,55 @@ const REPAIR_HINTS: Record<string, string> = {
     'The proposal did not fit the final preview limits once the server added its own unknowns and sources: keep fields shorter and lists smaller.',
 };
 
+// Words a model adds to or leaves out of a question without asking anything else: "Would you like me
+// to start a draft?" is "Would you like a draft?". A closed list; any other word and it is another question.
+const QUESTION_FILLER = new Set(
+  'me to i you would like so please now then just also too well ok okay start make prepare create write a an the that this'.split(
+    ' ',
+  ),
+);
+
 /**
  * A reply's message without its last sentence when that sentence asks what `question` asks: the model
  * often ends its message with the question it also sends on its own, in other words, and the page shows
- * both. The two are the same question only when both end in a question mark and one is the other with
- * a few words added or left out; two questions that each hold a word the other lacks (another asset,
- * another choice) are two questions, and both are kept. A message that is the question alone stays,
- * and nothing is asked beside it.
+ * both. Kept unless it is surely the same question: the sentence is the last of the message's last
+ * line, that line is no list item, both end in a question mark, and one is the other, word for word and
+ * in order, with only filler words added (`QUESTION_FILLER`). A "not", an "or", another asset or the
+ * same words in another order make two questions, and both are kept. A message that is the question
+ * alone stays, and nothing is asked beside it.
  */
 export function withoutRepeatedQuestion(
   message: string,
   question: string | null,
   catalogNames: string[],
 ): { message: string; question: string | null } {
-  if (!question) return { message, question };
+  const kept = { message, question };
+  if (!question) return kept;
   const bare = (text: string) => text.replace(/["'“”‘’«»*_`()[\]]/gu, '').trim();
-  const sentences = sentencesOf(message, catalogNames);
-  const last = bare(sentences.at(-1) ?? '');
-  if (!last.endsWith('?') || !bare(question).endsWith('?')) return { message, question };
-  const words = (text: string) => new Set(text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []);
-  const [a, b] = [words(last), words(question)];
-  const shared = [...a].filter((one) => b.has(one)).length;
-  const same =
-    shared > 0 &&
-    shared === Math.min(a.size, b.size) &&
-    shared / (a.size + b.size - shared) >= REPEATED_QUESTION;
-  if (!same) return { message, question };
-  const rest = sentences.slice(0, -1).join('').trim();
+  const from = message.lastIndexOf('\n') + 1;
+  const line = message.slice(from);
+  if (/^\s*(?:[-*•–—]|\p{N}+[.)])\s/u.test(line)) return kept;
+  const sentences = sentencesOf(line, catalogNames);
+  const last = sentences.at(-1) ?? '';
+  if (!bare(last).endsWith('?') || !bare(question).endsWith('?')) return kept;
+  // A number keeps its decimals and its percent sign: "30%" is not "3%".
+  const words = (text: string) =>
+    bare(text)
+      .toLowerCase()
+      .match(/[\p{L}\p{N}]+(?:[.,]\p{N}+)*%?/gu) ?? [];
+  const [short = [], long = []] = [words(last), words(question)].sort(
+    (a, b) => a.length - b.length,
+  );
+  let at = 0;
+  const added: string[] = [];
+  for (const word of long)
+    if (word === short[at]) at += 1;
+    else added.push(word);
+  if (!short.length || at < short.length || !added.every((word) => QUESTION_FILLER.has(word)))
+    return kept;
+  const rest = (message.slice(0, from) + sentences.slice(0, -1).join('')).trim();
   return rest ? { message: rest, question } : { message, question: null };
 }
-/** How much of the two questions' words must be shared for them to be one question. */
-const REPEATED_QUESTION = 0.75;
 
 /**
  * The draft the person asked for, in the server's own words, when the model drafted nothing for it on
@@ -1076,6 +1094,16 @@ export function requestedStocks(
   assets: BasketAsset[],
   companies: Map<string, string[]>,
 ): Set<string> {
+  return stockAsks(messages, language, assets, companies).asked;
+}
+
+/** `requestedStocks`, and beside it the stocks whose latest mention refuses them. */
+function stockAsks(
+  messages: VaultAgentRequest['messages'],
+  language: 'en' | 'pt',
+  assets: BasketAsset[],
+  companies: Map<string, string[]>,
+): { asked: Set<string>; refused: Set<string> } {
   const stocks = assets.filter(isStock);
   const general = word(STOCK_WORDS.join('|'), 'iu');
   const named: Array<[string, RegExp[]]> = [
@@ -1151,24 +1179,25 @@ export function requestedStocks(
   // The latest affirmative (true) or refusing (false) mention of each stock, and of stocks in general.
   const latest = new Map<string, { at: number; asked: boolean }>();
   let at = 0;
-  // A sentence that is one of the fixed forms start to end names what it asks for, with no asking
-  // word: the whole vault in one name ("all in GOOGLx"), only that name, or a share beside its asset
-  // as `personShares` applies it ("100% Alphabet", "70/30 TSLA and NVDA"). A share that is a ceiling
-  // or nothing asks for nothing.
+  // A message that is one request and nothing else (`oneRequest`) names what it asks for with no
+  // asking word: the whole vault in one name ("all in GOOGLx"), only that name, or shares beside their
+  // assets that `personShares` applies ("100% Alphabet"). A ceiling or a share of nothing asks for
+  // nothing. Never read from a piece, a sentence or a line of a longer message.
   const namer = assetNamer(assets, companies);
   const stockIds = new Set(stocks.map((asset) => asset.id));
   const asksFor = (ids: string[]) => {
+    at += 1;
     for (const id of ids) if (stockIds.has(id)) latest.set(id, { at, asked: true });
-  };
-  const sharesAsk = (text: string): boolean => {
-    const shares = plainShares(text, namer);
-    for (const share of shares) if (share.kind !== 'max' && share.bps > 0) asksFor(share.assetIds);
-    return shares.length > 0;
   };
   for (const message of messages) {
     if (message.who !== 'person') continue;
     const text = message.text.trim();
     if (/^["“‘']/u.test(text)) continue;
+    const one = oneRequest(text, namer);
+    if (one && one.kind !== 'shares') {
+      asksFor(one.name.ids);
+      continue;
+    }
     const questioned = text.includes('?');
     const sentences = text
       // A stop or a comma between digits is part of a number ("0.5%", "0,5%").
@@ -1180,15 +1209,6 @@ export function requestedStocks(
         ),
       );
     for (const sentence of sentences) {
-      if (!questioned && !NOT_THEIRS.test(sentence)) {
-        at += 1;
-        const whole = wholeAsk(sentence.trim(), namer);
-        if (whole) {
-          asksFor(whole.name.ids);
-          continue;
-        }
-        if (!refuses(sentence) && sharesAsk(sentence.trim())) continue;
-      }
       // What a bare list of names continues: an ask (true), a refusal (false) or neither.
       let carried: boolean | null = null;
       let wanted = false;
@@ -1217,10 +1237,6 @@ export function requestedStocks(
           continue;
         }
         const asks = [...piece.matchAll(ASKS_OR_MORE)];
-        if (!asks.length && sharesAsk(piece)) {
-          carried = null;
-          continue;
-        }
         if (!asks.length) {
           // "I want no stocks, just AAPL": the exception to a refusal the person wanted is asked for.
           const except = wanted ? piece.replace(EXCEPT, '') : piece;
@@ -1252,17 +1268,22 @@ export function requestedStocks(
         carried = !unclear && thing ? true : null;
       }
     }
+    // The shares of a message that is nothing but shares, where the server applied them.
+    if (one)
+      asksFor(
+        personShares([message], language, assets, companies)
+          .read.filter((share) => share.kind !== 'max' && share.bps > 0)
+          .flatMap((share) => share.assetIds),
+      );
   }
-  return new Set(
-    stocks
-      .filter((asset) => {
-        const own = latest.get(asset.id);
-        const all = latest.get('*');
-        const last = !own ? all : !all || own.at >= all.at ? own : all;
-        return last?.asked === true;
-      })
-      .map((asset) => asset.id),
-  );
+  const last = (asset: BasketAsset) => {
+    const own = latest.get(asset.id);
+    const all = latest.get('*');
+    return !own ? all : !all || own.at >= all.at ? own : all;
+  };
+  const ids = (asked: boolean) =>
+    new Set(stocks.filter((asset) => last(asset)?.asked === asked).map((asset) => asset.id));
+  return { asked: ids(true), refused: ids(false) };
 }
 
 /**
@@ -1301,10 +1322,11 @@ const NUMBER = new RegExp(
 // "70/30", read only with the two assets it splits written beside it, in order.
 const RATIO = /(?<![\p{L}\p{N}.,/])(\d{1,3})\s*\/\s*(\d{1,3})(?![\p{N}.,/%])/gu;
 // What may stand between a number and the asset after it ("70% in TSLA", "70% da carteira em TSLA"),
-// between an asset and the number after it ("TSLA at 70%"), and between two assets of a ratio.
+// between an asset and the number after it ("TSLA at 70%"), and between two assets of a ratio. Never a
+// minus or a plus sign: "TSLA -30%" is a price move.
 const NUMBER_THEN_ASSET =
   /^\s*(?:(?:of\s+(?:my|the)\s+(?:vault|portfolio|money|savings)|d[ao]\s+(?:meu\s+|minha\s+)?(?:cofre|carteira|dinheiro))\s+)?(?:(?:in|into|to|em|no|na|nos|nas|de|para|pra)\s+)?$/iu;
-const ASSET_THEN_NUMBER = /^\s*(?:(?:at|to|a|em|com|=|:|-)\s*)?$/iu;
+const ASSET_THEN_NUMBER = /^\s*(?:(?:at|to|a|em|com|=|:)\s*)?$/iu;
 const JOINS = /^\s*(?:and|e|&|\+|\/)\s*$/iu;
 // A share of the vault is never a return, a yield, a price move, a fee or a loss: a clause with one
 // of these words sets no share ("10% a year", "TSLA fell 30%", "90% do CDI").
@@ -1562,40 +1584,85 @@ function plainShares(text: string, named: (text: string) => Named[]): Found[] {
     : [];
 }
 
-// The whole vault in one asset, or only one asset, said in a sentence that holds nothing else (gate
-// ANY-COMPOSITION): "all in GOOGLx", "put everything in Google", "swap it all to tGOOGLx", "only
-// GOOGLx". An allow-list read start to end: leads, a first-person subject, one verb, the whole, a
-// preposition, the one name, a courtesy. Any other word ("not all in", "all in X is risky", "my friend
-// said") and it is not read. English only; the Portuguese forms are said back as unread, as before.
-const WHOLE_LEAD = '(?:(?:ok|okay|yes|so|then|now|actually|just|please|and)[\\s,:]+)*';
-const WHOLE_SUBJECT = "(?:(?:i|we)\\s+want(?:\\s+to)?|i(?:'d|\\s+would)\\s+like(?:\\s+to)?)";
-const WHOLE_VERB = '(?:put|move|swap|switch|change|convert|place|invest|go)';
-const WHOLE_OF_IT =
-  '(?:it\\s+all|all\\s+of\\s+it|all\\s+(?:of\\s+)?(?:my|the)\\s+(?:money|vault|funds|savings|portfolio)|all|everything|the\\s+whole\\s+(?:vault|thing))';
+// The whole vault in one asset, or only one asset (gate ANY-COMPOSITION, amended Oct 9), read only from
+// a message that is that one request (`oneRequest`). An allow-list matched start to end, English only:
+//   [I want (to) | I'd like (to) | I would like (to)] [put | place | invest | go]
+//     all | it all | all of it | everything | all (of) my money   in | into | in on   NAME
+//   [the same subject] move | swap | switch | change | convert   the same whole   to | into | in   NAME
+//   [the same subject] [hold | keep | have] only NAME
+// Any other word and it is not read: "not all in", "all in X is risky", "I put everything in X last
+// year", "we put", "all to X".
+const WHOLE_SUBJECT = "(?:i\\s+want(?:\\s+to)?|i(?:'d|\\s+would)\\s+like(?:\\s+to)?)";
+const WHOLE_OF_IT = '(?:it\\s+all|all\\s+of\\s+it|all\\s+(?:of\\s+)?my\\s+money|all|everything)';
 const WHOLE_BEFORE = new RegExp(
-  `^\\s*${WHOLE_LEAD}(?:${WHOLE_SUBJECT}\\s+)?(?:${WHOLE_VERB}\\s+)?${WHOLE_OF_IT}\\s+(?:in\\s+on|in|into|to|on)\\s+$`,
+  `^(?:${WHOLE_SUBJECT}\\s+)?(?:(?:(?:put|place|invest|go)\\s+)?${WHOLE_OF_IT}\\s+(?:in\\s+on|into|in)|(?:move|swap|switch|change|convert)\\s+${WHOLE_OF_IT}\\s+(?:to|into|in))\\s+$`,
   'iu',
 );
 const ONLY_BEFORE = new RegExp(
-  `^\\s*${WHOLE_LEAD}(?:${WHOLE_SUBJECT}\\s+)?(?:(?:hold|keep|have)\\s+)?only\\s+$`,
+  `^(?:${WHOLE_SUBJECT}\\s+)?(?:(?:hold|keep|have)\\s+)?only\\s+$`,
   'iu',
 );
-const WHOLE_AFTER = /^(?:[\s,]+(?:please|now|then|instead))*\s*$/iu;
 
 /**
- * The one name a sentence asks for in one of those forms, and whether it asks for the whole vault
- * (`share`) or only names what to hold. Null for any other sentence, and for one that names two things.
+ * The one name a text asks for in one of those forms, start to end, and whether it asks for the whole
+ * vault (`share`) or only names what to hold. Null for any other text, and for one that names two things.
  */
 function wholeAsk(
-  sentence: string,
+  text: string,
   named: (text: string) => Named[],
 ): { name: Named; share: boolean } | null {
-  const [name, ...others] = named(sentence);
-  if (!name || others.length || !WHOLE_AFTER.test(sentence.slice(name.end))) return null;
-  const before = sentence.slice(0, name.start);
+  const [name, ...others] = named(text);
+  if (!name || others.length || name.end !== text.length) return null;
+  const before = text.slice(0, name.start);
   if (WHOLE_BEFORE.test(before)) return { name, share: true };
   return ONLY_BEFORE.test(before) ? { name, share: false } : null;
 }
+
+// A courtesy before or after the request is not part of it: "ok, all in X", "all in X, please."
+const COURTESIES = 'please|ok|okay|thanks|thank\\s+you|hi|hello|hey|yes';
+// One mark at most beside a courtesy or at the end: "all in X..." trails off, and is not read.
+const COURTESY_BEFORE = new RegExp(
+  `^(?:(?:${COURTESIES})(?![\\p{L}\\p{N}])\\s*[,:.!]?\\s*)+`,
+  'iu',
+);
+const COURTESY_AFTER = new RegExp(
+  `(?:\\s*[,.!]?\\s*(?<![\\p{L}\\p{N}])(?:${COURTESIES}))*\\s*(?:\\.|!+)?\\s*$`,
+  'iu',
+);
+
+/** A message that is one request and nothing else: the whole vault in a name, only a name, or shares. */
+type OneRequest = { quote: string } & (
+  | { kind: 'whole' | 'only'; name: Named }
+  | { kind: 'shares' }
+);
+
+/**
+ * The new readings (the whole vault in one name, "only X", a share with no asking verb, and the draft
+ * the server writes) hold only for a message that is that one request, whole: after its courtesies it
+ * is a single sentence, with no question mark, no second sentence, no line break and no quotation, and
+ * it matches one of the allow-listed shapes from its first word to its last. A side of "but", a piece
+ * between commas, a line of a list or a sentence among others is never read this way: such a message
+ * is read as it always was. Shares are the shapes `personShares` applies, each piece between commas a
+ * plain ask on its own ("30% GOOGLx", "60% jlUSDC, 40% GOOGLx").
+ */
+function oneRequest(text: string, named: (text: string) => Named[]): OneRequest | null {
+  const whole = text.trim();
+  if (/[?\n\r]/u.test(whole) || /^["“‘']/u.test(whole)) return null;
+  const quote = whole.replace(COURTESY_BEFORE, '').replace(COURTESY_AFTER, '');
+  // A stop between digits is part of a number ("99.5%"); any other ends a sentence.
+  if (!quote || /[;!?"“”]|\.(?!\d)|(?<!\d)\./u.test(quote)) return null;
+  const one = wholeAsk(quote, named);
+  if (one) return { kind: one.share ? 'whole' : 'only', name: one.name, quote };
+  const pieces = quote.split(/(?<!\d),|,(?!\d)/u).map((piece) => piece.trim());
+  return pieces.every((piece) => plainShares(piece, named).length > 0)
+    ? { kind: 'shares', quote }
+    : null;
+}
+/** A share of the whole vault leaves no room for a floor or a share on assets it does not cover. */
+const noRoomFor = (earlier: PersonShare, whole: PersonShare) =>
+  earlier.kind !== 'max' &&
+  earlier.bps > 0 &&
+  !earlier.assetIds.some((id) => whole.assetIds.includes(id));
 
 /** "Make that at least 10%": the one share that stands, with the new number and nothing else. */
 function amendedShare(piece: string, only: PersonShare): Found[] {
@@ -1721,23 +1788,26 @@ export function personShares(
     rest = [];
     const text = message.text.trim();
     const quoted = /^["“‘']/u.test(text);
+    // A message that is one request for the whole vault: an exact share of all of it. It, and "100%
+    // X" as such a message, withdraws the earlier shares it leaves no room for.
+    const one = oneRequest(text, named);
+    const before = standing;
+    const wholeOf = (share: PersonShare) => share.kind === 'exact' && share.bps === 10_000;
+    if (one?.kind === 'whole') {
+      const share: PersonShare = {
+        assetIds: one.name.ids,
+        kind: 'exact',
+        bps: 10_000,
+        quote: one.quote.slice(0, 400),
+      };
+      withdraw((earlier) => noRoomFor(earlier, share));
+      standing = [...standing.filter((earlier) => !replaces(share, earlier)), share];
+      read.push(share);
+      continue;
+    }
     for (const [, sentence = '', end = ''] of text.matchAll(
       /((?:[^.;!?\n]|(?<=\d)\.(?=\d))+)([.;!?\n]*)/gu,
     )) {
-      // The whole vault in one name: an exact share of all of it, which leaves room for no other.
-      const whole = !quoted && !end.includes('?') ? wholeAsk(sentence.trim(), named) : null;
-      if (whole?.share) {
-        const share: PersonShare = {
-          assetIds: whole.name.ids,
-          kind: 'exact',
-          bps: 10_000,
-          quote: sentence.trim().slice(0, 400),
-        };
-        withdraw((earlier) => !sameAssets(earlier, share));
-        standing = [share];
-        read.push(share);
-        continue;
-      }
       if (!quoted && !end.includes('?') && withdraws(sentence.trim())) {
         const said = sentence.trim().slice(0, 400);
         if (noticed(said) && !unread.includes(said)) unread.push(said);
@@ -1810,9 +1880,6 @@ export function personShares(
           if (applies && part.found.length) {
             const shares = part.found.map(({ start: _start, end: _end, ...share }) => share);
             read.push(...shares);
-            // All of the vault in one share leaves room for no other: the earlier ones are withdrawn.
-            if (shares.some((share) => share.kind === 'exact' && share.bps === 10_000))
-              withdraw((earlier) => !shares.some((next) => replaces(next, earlier)));
             standing = [
               ...standing.filter((earlier) => !shares.some((next) => replaces(next, earlier))),
               ...shares,
@@ -1821,6 +1888,12 @@ export function personShares(
             unread.push(part.piece.slice(0, 400));
         }
       }
+    }
+    if (one?.kind === 'shares') {
+      const wholes = standing.filter((share) => !before.includes(share) && wholeOf(share));
+      withdraw(
+        (earlier) => before.includes(earlier) && wholes.some((whole) => noRoomFor(earlier, whole)),
+      );
     }
   }
   return { standing, read, withdrawn, unread, rest };
@@ -1873,32 +1946,53 @@ export async function replyToVaultConversation(
     for (const asset of catalog.values())
       if (asset.symbol === row.symbol) companies.set(asset.id, [row.company]);
   // Read once, from the person's messages alone: the same shares whatever the model replies.
-  const person = personShares(
-    parsed.data.messages,
-    parsed.data.language,
-    [...catalog.values()],
-    companies,
-  );
-  const requested = requestedStocks(
-    parsed.data.messages,
-    parsed.data.language,
-    [...catalog.values()],
-    companies,
-  );
+  const shelf = [...catalog.values()];
+  const { messages, language } = parsed.data;
+  const stated = personShares(messages, language, shelf, companies);
+  const { asked: requested, refused } = stockAsks(messages, language, shelf, companies);
   // What a plan for the goal cannot hold, by the rule the review of a mix reads (`eligibleForGoal`).
   const outside = new Set(
-    goal
-      ? [...catalog.values()].filter((asset) => !eligibleForGoal(asset, goal)).map(({ id }) => id)
-      : [],
+    goal ? shelf.filter((asset) => !eligibleForGoal(asset, goal)).map(({ id }) => id) : [],
   );
+  // A share on stocks the goal cannot hold stands only while the person asks for them: once their
+  // latest word on those stocks is a refusal ("No stocks."), the share is withdrawn with the request,
+  // and said on the turn that refused. A share on any other class the goal bars is not a stock's and
+  // stays, with the goal as the reason it cannot be met.
+  const givenUp = (share: PersonShare, by: Set<string>) =>
+    share.kind !== 'max' &&
+    share.bps > 0 &&
+    share.assetIds.every((id) => outside.has(id) && by.has(id));
+  const lastPerson = messages.map((message) => message.who).lastIndexOf('person');
+  const refusedBefore = stockAsks(
+    messages.slice(0, Math.max(lastPerson, 0)),
+    language,
+    shelf,
+    companies,
+  ).refused;
+  const person = {
+    ...stated,
+    standing: stated.standing.filter((share) => !givenUp(share, refused)),
+    withdrawn: [
+      ...stated.withdrawn,
+      ...stated.standing.filter(
+        (share) => givenUp(share, refused) && !givenUp(share, refusedBefore),
+      ),
+    ],
+  };
   // What the latest message asked the draft to hold, with a share, in the person's own words: a stock
   // outside the goal that the server read as asked for there. A reply that drafts nothing, or leaves
   // it out, is not what the person asked (ANY-COMPOSITION), so the model is asked once more, and for
   // the whole vault in one such stock the server writes the draft itself.
-  const latestTurn = parsed.data.messages.slice(-1);
-  const askedNow =
+  // Only where that message is the one request and nothing else (`oneRequest`): in any longer message
+  // the model read the context, and its reply stands.
+  const latestTurn = messages.slice(-1);
+  const oneNow =
     latestTurn[0]?.who === 'person'
-      ? personShares(latestTurn, parsed.data.language, [...catalog.values()], companies)
+      ? oneRequest(latestTurn[0].text, assetNamer(shelf, companies))
+      : null;
+  const askedNow =
+    oneNow && oneNow.kind !== 'only'
+      ? personShares(latestTurn, language, shelf, companies)
           .standing.filter(
             (share) => share.kind !== 'max' && share.bps > 0 && share.assetIds.length === 1,
           )
