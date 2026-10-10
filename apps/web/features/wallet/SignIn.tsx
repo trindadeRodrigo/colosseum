@@ -183,7 +183,7 @@ export function SignIn({ onAttempt, onFailed, onSignedIn, silent }: SignInProps)
         {/* The two ways in, in outline, while the wallet's own code loads: each card under its own
             title with bars the height of its buttons, so the buttons land where the bars were. The
             words that say what is awaited are under them, once. */}
-        {!silent && (
+        {!silent && port.status === 'loading' && (
           <div
             aria-hidden="true"
             data-ui="sign-in-outline"

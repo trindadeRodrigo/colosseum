@@ -91,7 +91,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
         load.read.chain !== known.data ||
         !sameAddress(load.read.chain, load.read.vault.address, address)))
   )
-    return <VaultWait />;
+    return <VaultWait visitor={port.status === 'signed-out'} />;
   if (load.kind !== 'read')
     return (
       <section aria-labelledby={titleId} className="flex flex-col items-start gap-4">

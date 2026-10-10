@@ -234,3 +234,51 @@ for (const width of WIDTHS) {
     });
   });
 }
+
+test('a vault page read by someone signed out waits as its head and holdings: no conversation, no action', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const address = await withVault(page);
+  const h = await hold(page, /\/v1\/vaults\//);
+  // a load of the address itself: the throwaway wallet lives in the page, so this reader is signed out
+  await page.goto(`/vaults/solana/${address}`);
+  const wait = page.locator('[data-ui="vault-wait"]');
+  await expect(wait).toHaveAttribute('data-visitor', 'true');
+  await expect(wait.locator('[data-wait="holdings"]')).toBeVisible();
+  // nothing of the owner's workbench is promised to them
+  await expect(wait.locator('[data-wait="chat"]')).toHaveCount(0);
+  await expect(wait.locator('[data-ui="skeleton"].h-10')).toHaveCount(0);
+  await expect(page.locator('main [data-workbench]')).toHaveCount(0);
+  await expectAnnouncedOnce(page);
+  await axe(page, 'vault waiting, signed out');
+  h.release();
+  await expect(page.locator('main [data-ui="waiting"]')).toHaveCount(0, { timeout: 60_000 });
+  // and the page that lands has neither
+  await expect(page.locator('main textarea')).toHaveCount(0);
+  await expect(
+    page.locator('[data-action="vault-deposit"], [data-action="vault-withdraw"]'),
+  ).toHaveCount(0);
+  await h.drop();
+});
+
+test('the publish form stops waiting when its vaults cannot be read, and says so', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await withVault(page);
+  const h = await hold(page, /\/v1\/(portfolio|vaults)/, () => 'fail');
+  await push(page, '/publish');
+  const form = page.locator('[data-ui="publish-screen"] form');
+  await expect(form.locator('[data-ui="publish-rows-wait"]')).toBeVisible();
+  await expect(form.locator('[data-ui="publish-source-wait"]')).toBeVisible();
+  h.release();
+  // the read failed: the sentence says so, and no outline runs on in the place of what never came
+  await expect(page.locator('[data-ui="publish-screen"]')).toContainText(
+    en.shared.publish.sourceUnavailable,
+  );
+  await expect(form.locator('[data-ui="publish-rows-wait"]')).toHaveCount(0);
+  await expect(form.locator('[data-ui="publish-source-wait"]')).toHaveCount(0);
+  await expect(form.locator('[data-ui="skeleton"]:visible')).toHaveCount(0);
+  await h.drop();
+});

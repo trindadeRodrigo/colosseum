@@ -508,8 +508,9 @@ export function PublishScreen() {
               </p>
             )}
             {/* While the vaults are read the two lines a chosen vault brings keep their place: the
-                way back to its conversation and its address. */}
-            {!source && !vaults && (
+                way back to its conversation and its address. A read that failed ends the wait: the
+                sentence under the button says so. */}
+            {!source && !vaults && !sourceFailure && (
               <span
                 aria-hidden="true"
                 data-ui="publish-source-wait"
@@ -644,7 +645,7 @@ export function PublishScreen() {
             </ul>
             {/* The strategy's rows while the vaults, then the chosen vault's strategy, are read. The
                 sentence under the form's button says which; no share is drawn before it is read. */}
-            {(!vaults || (source && !sourceRead)) && (
+            {((!vaults && !sourceFailure) || (source && !sourceRead)) && (
               <span aria-hidden="true" data-ui="publish-rows-wait" className="flex flex-col gap-3">
                 {[0, 1, 2].map((i) => (
                   <SkeletonListRow key={i} mark={false} type="text-body" />

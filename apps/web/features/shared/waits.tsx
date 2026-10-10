@@ -15,6 +15,7 @@ import {
 import { ScreenWait } from '../../components/waits/ScreenWait';
 import { useT } from '../../i18n/I18nProvider';
 import { PlanViewWait } from '../order/waits';
+import { useWalletPort } from '../wallet/WalletProvider';
 
 // The shelf and a shared portfolio's page while they are read, in their own outlines: the shelf's
 // cards in the shelf's grid, each with its bar of holdings; a portfolio's head over the plan pane it
@@ -309,14 +310,75 @@ export function PublishWait() {
   );
 }
 
+/** What a vault holds, in outline: the card with one bar, a label a holding and their table. */
+function VaultHoldingsWait({ className }: { className?: string }) {
+  const t = useT();
+  const v = t.shared.vault;
+  return (
+    <div
+      aria-hidden="true"
+      data-wait="holdings"
+      className={`min-w-0 rounded-lg border border-border bg-card ${className ?? ''}`}
+    >
+      <p className="p-6 text-h4 font-semibold">{v.page.holdings}</p>
+      <div className="flex min-w-0 flex-col gap-5 border-t border-border p-6">
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-3 w-full rounded-full" />
+          {[0, 1].map((i) => (
+            <div key={i} className="flex h-6 items-center gap-2">
+              <Skeleton className="size-2.5 rounded-none" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+          ))}
+        </div>
+        <SkeletonTable
+          framed={false}
+          rows={3}
+          columns={[
+            { track: 'minmax(0,2fr)' },
+            { align: 'end' },
+            { align: 'end' },
+            { align: 'end' },
+            { align: 'end' },
+          ]}
+        />
+      </div>
+    </div>
+  );
+}
+
 /**
  * A vault's own page (VaultScreen), as its workbench: the way back, its name and value with its
  * actions; the conversation beside what it holds, which is a card with one bar, a label a holding
  * and the table of them. The name, the value and every holding are still bars: none is drawn.
  */
-export function VaultWait() {
+export function VaultWait({ visitor = false }: { visitor?: boolean }) {
   const t = useT();
   const v = t.shared.vault;
+  // Someone signed out owns no vault here: the page they get has no conversation and no action, so
+  // its wait draws neither. That is known before the vault is read.
+  if (visitor)
+    return (
+      <ScreenWait
+        label={v.loading}
+        skeleton={
+          <div data-ui="vault-wait" data-visitor className="flex min-w-0 flex-col gap-6">
+            <div className="flex min-w-0 flex-col gap-2">
+              <p className="text-caption">
+                <Link href="/portfolio" className={buttonClass({ variant: 'link' })}>
+                  {v.back}
+                </Link>
+              </p>
+              <div aria-hidden="true" className="flex flex-col gap-2">
+                <SkeletonLine className={WORKSPACE_TITLE} width="w-40" />
+                <SkeletonLine className="font-display text-h3" width="w-36" />
+              </div>
+            </div>
+            <VaultHoldingsWait />
+          </div>
+        }
+      />
+    );
   return (
     <ScreenWait
       label={v.loading}
@@ -368,35 +430,7 @@ export function VaultWait() {
               <SkeletonLine className="text-caption/8" width="w-48" />
             </div>
           </div>
-          <div
-            aria-hidden="true"
-            data-wait="holdings"
-            className="min-w-0 self-start rounded-lg border border-border bg-card md:col-span-7 md:mr-2"
-          >
-            <p className="p-6 text-h4 font-semibold">{v.page.holdings}</p>
-            <div className="flex min-w-0 flex-col gap-5 border-t border-border p-6">
-              <div className="flex flex-col gap-3">
-                <Skeleton className="h-3 w-full rounded-full" />
-                {[0, 1].map((i) => (
-                  <div key={i} className="flex h-6 items-center gap-2">
-                    <Skeleton className="size-2.5 rounded-none" />
-                    <Skeleton className="h-3 w-24" />
-                  </div>
-                ))}
-              </div>
-              <SkeletonTable
-                framed={false}
-                rows={3}
-                columns={[
-                  { track: 'minmax(0,2fr)' },
-                  { align: 'end' },
-                  { align: 'end' },
-                  { align: 'end' },
-                  { align: 'end' },
-                ]}
-              />
-            </div>
-          </div>
+          <VaultHoldingsWait className="self-start md:col-span-7 md:mr-2" />
         </div>
       }
     />
@@ -408,4 +442,10 @@ export function AddMoneyRouteWait() {
   const { chain } = useParams<{ chain?: string }>();
   const known = ChainId.safeParse(chain);
   return <AddMoneyWait chain={known.success ? known.data : null} />;
+}
+
+/** A vault page's wait before the page runs (its `loading.tsx`): a visitor's, or the owner's. */
+export function VaultRouteWait() {
+  const port = useWalletPort();
+  return <VaultWait visitor={port.status === 'signed-out'} />;
 }

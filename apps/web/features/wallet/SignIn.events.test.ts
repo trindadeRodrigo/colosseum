@@ -751,6 +751,9 @@ describe('the sign-in panel: when sign-in is off', () => {
     // nothing to press, and nothing that moves
     expect(outline.querySelectorAll('a, button, input, [tabindex]')).toHaveLength(0);
     expect(outline.querySelector('[class*="animate"]')).toBeNull();
+    // the outline is the wait for the wallet's code alone: someone already signed in gets none
+    await act(async () => portStore.set(fakePort({ status: 'ready', userId: 'did:privy:test' })));
+    expect(host.querySelector('[data-ui="sign-in-outline"]')).toBeNull();
     // once the wallet is there the real cards take their place
     await act(async () => portStore.set(fakePort({ found: FOUND })));
     expect(host.querySelector('[data-ui="sign-in-outline"]')).toBeNull();

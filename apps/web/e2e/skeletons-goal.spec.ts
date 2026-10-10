@@ -99,8 +99,18 @@ for (const width of WIDTHS) {
       await page.getByRole('button', { name: en.mix.goal.confirm }).click();
       const pane = page.locator('[data-ui="deposit-sign"]');
       const reading = pane.locator('[data-ui="invest-funds-reading"]');
-      await expect(reading).toContainText(en.invest.checkingFunds);
-      await hiddenAndBlank(page, '[data-ui="funds-wait"]');
+      // its words stand where the check's own first line will, over the outline of the rest
+      await expect(reading.locator('p')).toHaveText(en.invest.checkingFunds);
+      expect(
+        await reading.evaluate(
+          (el) =>
+            [...el.querySelectorAll('[data-ui="skeleton"]')].filter(
+              (box) => !box.closest('[aria-hidden="true"]'),
+            ).length,
+        ),
+        'outline boxes a screen reader would meet',
+      ).toBe(0);
+      expect(await reading.innerText()).not.toMatch(/[\d%$]/);
       await axe(page, `funds check waiting, ${width}px`);
       await inTheme(page, 'dark');
       const fundsWait = await boxOf(page, '[data-ui="funds-wait"]');
@@ -110,10 +120,10 @@ for (const width of WIDTHS) {
       await settled(page);
       await inTheme(page, 'dark');
       const step = await boxOf(page, '[data-ui="deposit-sign"] [data-ui="funding-step"]');
-      // what is needed lands where its outline was, a line lower at most: the words over the
-      // outline give way to it
-      expect.soft([step.x, step.width], 'the funding step').toEqual([fundsWait.x, fundsWait.width]);
-      expect.soft(Math.abs(step.y - fundsWait.y), 'the funding step’s top').toBeLessThanOrEqual(34);
+      // what is needed lands exactly where the outline was: its first line takes the words' place
+      expect
+        .soft([step.x, step.y, step.width], 'the funding step')
+        .toEqual([fundsWait.x, fundsWait.y, fundsWait.width]);
       await shot(page, 'deposit-funds-loaded');
       await funds.drop();
 

@@ -229,16 +229,21 @@ export function OrderScreenWait({
 
 /**
  * What the wallet holds against a deposit, while it is read (FundingStep): the line that says what is
- * needed, the note under it, and the two ways on. No amount is drawn: it is not known yet.
+ * needed, the note under it, and the two ways on. `label` says what is awaited where that first line
+ * will be, so the step lands on it and nothing under it moves. No amount is drawn: none is known yet.
  */
-export function FundsWait() {
+export function FundsWait({ label }: { label?: string }) {
   return (
-    <div aria-hidden="true" data-ui="funds-wait" className="flex flex-col gap-4">
+    <div data-ui="funds-wait" className="flex flex-col gap-4">
       <div className="flex flex-col gap-3">
-        <SkeletonLine className="max-w-(--tf-measure-body) text-body" width="w-full" />
+        {label ? (
+          <p className="max-w-(--tf-measure-body) text-body text-muted-foreground">{label}</p>
+        ) : (
+          <SkeletonLine className="max-w-(--tf-measure-body) text-body" width="w-full" />
+        )}
         <SkeletonLine className="max-w-(--tf-measure-body) text-body-sm" width="w-4/5" />
       </div>
-      <div className="flex flex-wrap gap-3">
+      <div aria-hidden="true" className="flex flex-wrap gap-3">
         <Skeleton className="h-9 w-44 rounded-md" />
         <Skeleton className="h-9 w-36 rounded-md" />
       </div>

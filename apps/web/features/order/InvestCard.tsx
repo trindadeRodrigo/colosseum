@@ -538,11 +538,10 @@ export function InvestCard({
           )}
 
           {!started && owner && amount !== null && heard.kind === 'reading' && (
-            // said in words, over the outline of what the check brings: what is needed and the
-            // ways to add it
-            <div data-ui="invest-funds-reading" className="flex flex-col gap-3">
-              <p className="text-body-sm text-muted-foreground">{t.invest.checkingFunds}</p>
-              <FundsWait />
+            // said in words where the check's own first line will be, over the outline of the
+            // rest: the step lands on it
+            <div data-ui="invest-funds-reading">
+              <FundsWait label={t.invest.checkingFunds} />
             </div>
           )}
           {!started &&
