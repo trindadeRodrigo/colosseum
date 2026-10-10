@@ -976,7 +976,6 @@ describe("the person's stated shares, as their words hold them", () => {
     ['I want a third in TSLA.', 'I want a third in TSLA'],
     ['I want two thirds TSLA.', 'I want two thirds TSLA'],
     ['I want a quarter in gold.', 'I want a quarter in gold'],
-    ['All in TSLA.', 'All in TSLA'],
     ['I want 60% stocks (40% TSLA).', 'I want 60% stocks (40% TSLA)'],
     ['I want TSLA (70%) and NVDA (30%).', 'I want TSLA (70%) and NVDA (30%)'],
     ['I want 70% TSLA and 30% in NVDA and GLD.', 'I want 70% TSLA and 30% in NVDA and GLD'],
@@ -1004,6 +1003,29 @@ describe("the person's stated shares, as their words hold them", () => {
     );
     expect(after.weights).toEqual([4000, 4000, 2000]);
     expect(unreadOf(after)).toContain(quote);
+  });
+
+  // Until Oct 9 "All in TSLA." was a row of the table above: said back as unread, with an equal split.
+  // That was the refusal Rodrigo met on the hosted app ("all in tGOOGLx"). The whole vault in one name
+  // is an exact share of all of it, and the shares stated before it are withdrawn and said.
+  it('reads "All in TSLA." as the whole vault in TSLA, in place of the shares before it', async () => {
+    const out = await served(['All in TSLA.'], tng, []);
+    expect(out.weights).toEqual([10_000]);
+    expect(out.notes).toEqual([
+      { code: 'stated', assetIds: [symbol('TSLA')], quote: 'All in TSLA' },
+      { code: 'pick_dropped', assetIds: [symbol('NVDA')] },
+      { code: 'pick_dropped', assetIds: [symbol('GLD')] },
+    ]);
+    const after = await served(['I want 20% gold.', noted, 'All in TSLA.'], tng, []);
+    expect(after.weights).toEqual([10_000]);
+    expect(after.notes).toContainEqual({
+      code: 'share_withdrawn',
+      assetIds: assets.filter((asset) => asset.cls === 'gold').map((asset) => asset.id),
+      quote: '20% gold',
+    });
+    // Portuguese is not read yet: said back, as before.
+    const pt = await served(['Quero tudo em TSLA.'], tng, [], 'pt');
+    expect(unreadOf(pt)).toContain('Quero tudo em TSLA');
   });
 
   // Fifth review of #189: what stands before the first share is matched start to end, so an asking
