@@ -1047,6 +1047,9 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
         'VaultExists',
         // Added with the keeper path: an owner's trade sent after its deadline.
         'Expired',
+        // Added with the mainnet setup: the guardian's stop on new money, and the deposit caps.
+        'DepositsPaused',
+        'DepositCapReached',
       ].sort(),
     );
   });
