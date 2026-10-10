@@ -86,6 +86,60 @@ function chain(ctx: KeeperContext) {
 }
 const sign = async () => ({ wire: '', txId: '' });
 
+describe('a dry run on a chain that prices each asset by a feed and an average', () => {
+  const evm = (more: object): KeeperContext => {
+    const ctx = context(vault(), 0);
+    ctx.positions = [{ ...ctx.positions[0], ...more }] as KeeperPosition[];
+    return ctx;
+  };
+
+  it('says each position’s spot, its average and their gap, and why the average’s feed refuses', async () => {
+    const priced = chain(
+      evm({ price: { usdPerToken: '230.36242923' }, average: { usdPerToken: '229.96583443' } }),
+    );
+    const [line] = await runRound({ adapter: priced.adapter, sign, dryRun: true });
+    expect(line?.prices).toEqual([
+      {
+        asset: SPYX,
+        spot: '230.36242923',
+        average: '229.96583443',
+        gapBps: 17.2,
+        feedRefusal: null,
+        reference: null,
+      },
+    ]);
+
+    const refusing = chain(
+      evm({
+        price: { usdPerToken: '230.36242923' },
+        average: null,
+        averageRefusal: { reason: 'ThinPool', poolAverage: '229.96583443' },
+        reference: 'AssetNotPriced',
+      }),
+    );
+    const [refused] = await runRound({ adapter: refusing.adapter, sign, dryRun: true });
+    expect(refused?.prices?.[0]).toMatchObject({
+      average: '229.96583443',
+      gapBps: 17.2,
+      feedRefusal: 'ThinPool',
+      reference: 'AssetNotPriced',
+    });
+    expect(refused?.outcome).toBe('skipped');
+  });
+
+  it('adds nothing outside a dry run, and nothing on a chain that prices from one account', async () => {
+    const priced = chain(evm({ price: { usdPerToken: '100' }, average: { usdPerToken: '100' } }));
+    const [live] = await runRound({ adapter: priced.adapter, sign });
+    expect(live && 'prices' in live).toBe(false);
+    const [solana] = await runRound({
+      adapter: chain(context(vault(), 0)).adapter,
+      sign,
+      dryRun: true,
+    });
+    expect(solana && 'prices' in solana).toBe(false);
+  });
+});
+
 describe("the keeper's round, on a vault read from the chain", () => {
   it('skips a vault at its loss cap, with an alert, and alerts on every line past half the budget', async () => {
     const atCap = chain(context(vault({ lossUsedBps: 100 }), 0));

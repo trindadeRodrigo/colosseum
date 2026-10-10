@@ -13,6 +13,8 @@ description = "The EVM deploy configs, the test network kit's record and the EVM
 targetRules = ["generic-api-key"]
 paths = [
   '''^contracts/script/config/[0-9]+\.json$''',
+  # The pool-average feeds' file (DeployPoolFeeds.s.sol): the same public addresses under `token` and `quoteToken`.
+  '''^contracts/script/config/pool-feeds/[0-9]+\.json$''',
   '''^contracts/script/testnet/deployed/[0-9]+\.json$''',
   '''^deployments/(robinhood|base)-(testnet|local)\.json$''',
 ]

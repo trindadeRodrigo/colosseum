@@ -240,6 +240,13 @@ export const CONTRACT_ERROR_CODE = {
   // VaultBeacon
   /** The beacon's key cannot be given up: there is no such step. */
   RenounceDisabled: 'NotSupported',
+  // PoolAverageFeed and TickPrice (contracts/src/price): an asset's one-hour average from its pool
+  /** The feed gives no answer, with its reason; the vault reads that as its own AssetNotPriced. */
+  NotPriced: 'AssetNotPriced',
+  /** The pool's average tick is past the ticks the maths takes: no price can be stated. */
+  TickOutOfRange: 'AssetNotPriced',
+  /** A feed deployed with a window, a floor, a band, tokens or decimals it cannot work with. */
+  InvalidSetup: 'ParamOutOfBounds',
 } as const satisfies Record<string, ChainErrorCode>;
 
 /**

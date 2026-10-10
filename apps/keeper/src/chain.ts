@@ -17,6 +17,11 @@ export type KeeperPositionView = {
   trade: string | null;
   /** EVM: false for an asset taken off the factory's list, which can be sold and never bought. */
   listed?: boolean;
+  /** EVM: the feed's price and its average as the vault reads them; null when one does not answer. */
+  price?: { usdPerToken: string } | null;
+  average?: { usdPerToken: string } | null;
+  /** EVM: why a pool-average feed gives no answer, and the pool's average where it still has one. */
+  averageRefusal?: { reason: string; poolAverage: string | null } | null;
 };
 
 /** A vault as the chain's keeper path would find it now, all of it read at one moment. */

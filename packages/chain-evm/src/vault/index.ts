@@ -14,6 +14,7 @@ export {
 } from './generated/abi';
 export * from './keeper';
 export { dayOf, marketAt } from './market';
+export * from './pool-average';
 export * from './reader';
 export * from './routes';
 export { createEvmRpc, type EvmRpc, isRevert } from './rpc';
