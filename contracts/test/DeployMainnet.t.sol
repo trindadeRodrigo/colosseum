@@ -401,12 +401,10 @@ contract DeployMainnetTest is Test {
         assertEq(owners.length, 3);
     }
 
-    /// While the cap is small, a mainnet file names who may create a vault, or says that anyone may.
-    function test_mainnet_namesWhoMayCreateAVault_orSaysAnyoneMay() public {
+    /// Naming who may create a vault is optional: with nobody named, anyone may. A file that names
+    /// creators and also says anyone may contradicts itself.
+    function test_mainnet_namingCreatorsIsOptional_andAFileMayNotSayBoth() public {
         Deploy.Config memory cfg = _good();
-        cfg.creators = new address[](0);
-        _refused(cfg, "no creator is named while openToAll is false");
-        cfg = _good();
         cfg.openToAll = true;
         _refused(cfg, "creators are named while openToAll is true");
         cfg = _good();
@@ -416,7 +414,15 @@ contract DeployMainnetTest is Test {
         cfg = _good();
         cfg.creators = new address[](0);
         cfg.openToAll = true;
+        uint256 snap = vm.snapshotState();
         Deploy.Deployed memory d = script.deploy(cfg, deployer);
+        assertFalse(VaultFactory(d.factory).creationRestricted());
+        assertTrue(VaultFactory(d.factory).mayCreate(keeper));
+
+        // Saying nothing at all is the same as saying anyone may.
+        vm.revertToState(snap);
+        cfg.openToAll = false;
+        d = script.deploy(cfg, deployer);
         assertFalse(VaultFactory(d.factory).creationRestricted());
         assertTrue(VaultFactory(d.factory).mayCreate(keeper));
     }
@@ -488,19 +494,48 @@ contract DeployMainnetTest is Test {
         _refused(cfg, "a keeper asset's price range is wider than about 15% either side");
     }
 
-    function test_mainnet_refusesNoCaps_aZeroCap_andACapOver10000Dollars() public {
+    /// Deposit caps are optional on a mainnet as everywhere (gate `NO-DEPOSIT-CAP`): a file with none, and
+    /// with nobody named to create vaults, deploys with deposits open, unlimited, and creation open to all.
+    function test_mainnet_aFileWithNoCapsAndNoCreators_deploysOpenAndUnlimited() public {
         Deploy.Config memory cfg = _good();
         cfg.hasCaps = false;
-        _refused(cfg, "no deposit caps");
-        cfg = _good();
         cfg.vaultCap = 0;
-        _refused(cfg, "a deposit cap of zero");
-        cfg = _good();
+        cfg.totalCap = 0;
+        cfg.creators = new address[](0);
+        Deploy.Deployed memory d = script.deploy(cfg, deployer);
+        VaultFactory factory = VaultFactory(d.factory);
+        (uint256 perVault, uint256 total) = factory.depositCaps();
+        assertEq(perVault, 0, "none");
+        assertEq(total, 0, "none");
+        assertFalse(factory.depositsPaused());
+        assertFalse(factory.creationRestricted());
+
+        // Anyone creates a vault, and any amount comes in and goes out.
+        Dollar6(USDG).mint(keeper, 5_000_000 * USD);
+        vm.startPrank(keeper);
+        BasketVault vault =
+            BasketVault(payable(factory.createVault(keccak256("plan"), new Weight[](0), bytes32(0), 0, false)));
+        Dollar6(USDG).approve(address(vault), type(uint256).max);
+        vault.deposit(5_000_000 * USD);
+        vault.withdrawAll();
+        vm.stopPrank();
+        assertEq(Dollar6(USDG).balanceOf(keeper), 5_000_000 * USD);
+    }
+
+    /// A file that does set caps is held to one thing: where both are set, one vault's is at most the
+    /// total. No amount is too high, and zero for either is "none" for that one.
+    function test_mainnet_capsWhereSet_holdOnlyTheVaultCapUnderTheTotal() public {
+        Deploy.Config memory cfg = _good();
         cfg.vaultCap = cfg.totalCap + 1;
         _refused(cfg, "the cap of one vault is above the total");
+
         cfg = _good();
-        cfg.totalCap = 10_000 * USD + 1;
-        _refused(cfg, "the total cap is over 10,000 dollars before an audit");
+        cfg.vaultCap = 0;
+        cfg.totalCap = 50_000_000 * USD;
+        Deploy.Deployed memory d = script.deploy(cfg, deployer);
+        (uint256 perVault, uint256 total) = VaultFactory(d.factory).depositCaps();
+        assertEq(perVault, 0);
+        assertEq(total, 50_000_000 * USD);
     }
 
     function test_mainnet_refusesAnotherCashToken_aSequencerFeed_andAnotherRouter() public {
@@ -749,8 +784,8 @@ contract DeployMainnetTest is Test {
         assertEq(cfg.timelockDelay, 48 hours);
         assertEq(cfg.publishDelay, 172_800);
         assertEq(cfg.cashToken, USDG);
-        assertEq(cfg.vaultCap, 10_000 * USD);
-        assertEq(cfg.totalCap, 10_000 * USD);
+        assertFalse(cfg.hasCaps, "no deposit cap");
+        assertEq(cfg.creators.length, 0, "anyone may create a vault");
         assertEq(cfg.routers.length, 1);
         assertEq(cfg.routers[0].router, UNIVERSAL_ROUTER);
         for (uint256 i; i < cfg.assets.length; ++i) {
@@ -766,8 +801,6 @@ contract DeployMainnetTest is Test {
         _refused(cfg, "no guardian");
         cfg.guardian = guardian;
         assertEq(cfg.safeMinThreshold, 2);
-        assertFalse(cfg.openToAll);
-        _refused(cfg, "a creator is the zero address");
     }
 
     /// With its placeholders filled, and stand-ins at the addresses it names, the committed file deploys.
@@ -777,7 +810,6 @@ contract DeployMainnetTest is Test {
         cfg.placeholders = false;
         cfg.timelockOwner = safe;
         cfg.guardian = guardian;
-        cfg.creators[0] = person;
         vm.etch(cfg.assets[1].token, address(stock).code);
         vm.etch(cfg.assets[1].config.feed, address(feed).code);
         vm.store(cfg.assets[1].config.feed, bytes32(0), vm.load(address(feed), bytes32(0)));
@@ -822,6 +854,20 @@ contract DeployMainnetTest is Test {
         Deploy.Deployed memory d = script.deploy(cfg, deployer);
         assertEq(VaultFactory(d.factory).admin(), d.timelock);
         assertEq(TimelockController(payable(d.timelock)).getMinDelay(), 300);
+    }
+
+    /// `"caps": "none"` is the same as leaving `depositCaps` out; any other word, or both at once, is a
+    /// file that does not say what it means.
+    function test_parseConfig_capsNone_isNoCaps_andNothingElseIsAccepted() public {
+        string memory file = vm.readFile("script/config/4663.json");
+        assertFalse(script.parseConfig(file).hasCaps);
+        string memory other = vm.replace(file, '"caps": "none"', '"caps": "ten thousand"');
+        vm.expectRevert(abi.encodeWithSelector(Deploy.ValueDoesNotFit.selector, ".caps", 0, 0));
+        script.parseConfig(other);
+        string memory both =
+            vm.replace(file, '"caps": "none"', '"caps": "none", "depositCaps": { "perVault": 1, "total": 1 }');
+        vm.expectRevert(abi.encodeWithSelector(Deploy.ValueDoesNotFit.selector, ".caps", 0, 0));
+        script.parseConfig(both);
     }
 
     function test_parseConfig_readsTheMainnetFieldsOfTheExample() public view {

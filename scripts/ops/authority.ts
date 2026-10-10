@@ -49,8 +49,7 @@ export const SELECTORS = {
   // Safe
   getThreshold: ['getThreshold()', '0xe75235b8'],
   getOwners: ['getOwners()', '0xa0e67e2b'],
-  // ERC-20
-  decimals: ['decimals()', '0x313ce567'],
+  getModulesPaginated: ['getModulesPaginated(address,uint256)', '0xcc2f8452'],
   // TestPriceFeed: the mark of a price one key writes
   writer: ['writer()', '0x453a2abc'],
 } as const satisfies Record<string, readonly [string, string]>;
@@ -86,11 +85,8 @@ export const IMPLEMENTATION_SLOT =
 export const ZERO_ADDRESS = `0x${'0'.repeat(40)}`;
 /** 48 hours: the least a mainnet's timelock and publish delay may be (`MIN_MAINNET_DELAY`). */
 export const MIN_MAINNET_DELAY = 172_800n;
-const MAX_UINT256 = (1n << 256n) - 1n;
 /** The least signatures a mainnet's Safe may need, unless the record asks for more. */
 export const MIN_SAFE_THRESHOLD = 2;
-/** `UNAUDITED_TOTAL_CAP_DOLLARS` of the deploy script: the most all vaults may take in before an audit. */
-export const TOTAL_CAP_CEILING_DOLLARS = 10_000n;
 /** The chains that are not held to the mainnet rules: local, Robinhood Chain's test network, Base Sepolia. */
 export const TEST_CHAIN_IDS = [31337, 46630, 84532];
 
@@ -142,14 +138,15 @@ const Record_ = z.object({
       launched: z.boolean(),
       publishDelay: Uint,
       keeperEnabled: z.boolean(),
-      depositCaps: z.object({ perVault: Uint, total: Uint }),
+      /**
+       * The most one vault and all vaults may take in, in the cash token's units; zero is no cap.
+       * No cap is required anywhere: stated, it is compared with the chain; absent, the chain's is printed.
+       */
+      depositCaps: z.object({ perVault: Uint, total: Uint }).optional(),
       /** The least signatures a role holder's Safe needs. Absent is 2; under 2 is refused on a mainnet. */
       safeMinThreshold: z.number().int().nonnegative().optional(),
-      /** The most the total cap may be, in whole dollars of the cash token. Absent is 10,000. */
-      totalCapCeilingDollars: Uint.optional(),
-      /** Who may create a vault while creation is restricted, and whether it is meant to be open. */
+      /** Who may create a vault while creation is restricted. Optional: none listed, none checked. */
       creators: z.array(Address).optional(),
-      openToAll: z.boolean().optional(),
     })
     .optional(),
 });
@@ -371,10 +368,16 @@ export async function checkAuthority(
       : 'the mainnet rules are not applied on this chain',
   });
   /** A read that is only printed: a failure on a mainnet, a warning elsewhere. */
-  async function info(what: string, to: string, data: string, show: (out: string) => string) {
+  async function info(
+    what: string,
+    to: string,
+    data: string,
+    show: (out: string) => string,
+    atLeast = 1,
+  ) {
     try {
       const out = await reader.call(to, data);
-      if (words(out) < 1) throw new CallReverted();
+      if (words(out) < atLeast) throw new CallReverted();
       say({ status: 'INFO', what, live: show(out) });
       return out;
     } catch (e) {
@@ -510,7 +513,6 @@ export async function checkAuthority(
 
   // ---- what the record expects
   const needLaunch = expected !== undefined;
-  const needCaps = expected !== undefined || mainnet;
   const bool = (out: string) => String(asUint(wordAt(out, 0)) !== 0n);
   if (needLaunch) {
     const launched = await callUint('factory.launched()', contracts.factory, sel('launched'));
@@ -536,27 +538,29 @@ export async function checkAuthority(
       live: `${publishDelay}`,
       note: 'the publish delay is under 172,800 s',
     });
-  let caps: { perVault: bigint; total: bigint } | undefined;
+  // A cap of zero is no cap, and no cap is required on any chain: only "as the record says" is held.
+  const cap = (v: bigint) => (v === 0n ? 'none' : `${v}`);
   const showCaps = (out: string) =>
-    `perVault ${asUint(wordAt(out, 0))}, total ${asUint(wordAt(out, 1))}`;
-  if (needCaps) {
+    `perVault ${cap(asUint(wordAt(out, 0)))}, total ${cap(asUint(wordAt(out, 1)))}`;
+  if (expected?.depositCaps) {
     const out = await callWords('factory.depositCaps()', contracts.factory, sel('depositCaps'), 2);
-    if (out !== undefined)
-      caps = { perVault: asUint(wordAt(out, 0)), total: asUint(wordAt(out, 1)) };
-    if (caps && expected) {
+    if (out !== undefined) {
       compare(
         'factory.depositCaps().perVault',
-        `${caps.perVault}`,
-        `${expected.depositCaps.perVault}`,
+        cap(asUint(wordAt(out, 0))),
+        cap(expected.depositCaps.perVault),
       );
-      compare('factory.depositCaps().total', `${caps.total}`, `${expected.depositCaps.total}`);
+      compare(
+        'factory.depositCaps().total',
+        cap(asUint(wordAt(out, 1))),
+        cap(expected.depositCaps.total),
+      );
     }
-  } else await info('factory.depositCaps()', contracts.factory, sel('depositCaps'), showCaps);
+  } else await info('factory.depositCaps()', contracts.factory, sel('depositCaps'), showCaps, 2);
 
-  const cashOut = await info('factory.cashToken()', contracts.factory, sel('cashToken'), (out) =>
+  await info('factory.cashToken()', contracts.factory, sel('cashToken'), (out) =>
     asAddress(wordAt(out, 0)),
   );
-  const cash = cashOut === undefined ? undefined : asAddress(wordAt(cashOut, 0));
   const restrictedOut = await info(
     'factory.creationRestricted()',
     contracts.factory,
@@ -565,6 +569,8 @@ export async function checkAuthority(
   );
   const restricted =
     restrictedOut === undefined ? undefined : asUint(wordAt(restrictedOut, 0)) !== 0n;
+
+  await checkCreation();
 
   // ---- the timelock
   if (timelock) await checkTimelock(timelock);
@@ -612,21 +618,6 @@ export async function checkAuthority(
           note: 'keeperEnabled with no keeper',
         });
     }
-    if (caps) {
-      const live = `perVault ${caps.perVault}, total ${caps.total}`;
-      const broken =
-        caps.perVault === MAX_UINT256 || caps.total === MAX_UINT256
-          ? 'a deposit cap of 2^256-1 is no cap'
-          : caps.perVault === 0n || caps.total === 0n
-            ? 'a deposit cap of zero'
-            : caps.perVault > caps.total
-              ? 'the cap of one vault is above the total'
-              : undefined;
-      if (broken) say({ status: 'FAIL', what: 'factory.depositCaps()', live, note: broken });
-      else say({ status: 'OK', what: 'factory.depositCaps()', live, note: 'capped' });
-      await checkCeiling(caps.total);
-    }
-    await checkCreation();
     await checkAssets(expected?.keeperEnabled);
   } else {
     const list = await info('factory.assets()', contracts.factory, sel('assets'), (out) =>
@@ -675,55 +666,20 @@ export async function checkAuthority(
     }
   }
 
-  /** The total cap against the ceiling before an audit, in the cash token's own units. */
-  async function checkCeiling(total: bigint) {
-    const what = 'total cap ceiling';
-    if (cash === undefined) return; // factory.cashToken() already failed
-    const out = await probe(`${what}: cash token decimals()`, cash, sel('decimals'), 1);
-    if (out === undefined) return;
-    const decimals = out === 'none' ? undefined : asUint(wordAt(out, 0));
-    if (decimals === undefined || decimals > 36n) {
-      say({
-        status: 'FAIL',
-        what,
-        live: cash,
-        note: "the cash token's decimals() could not be read: the cap cannot be held to a ceiling",
-      });
-      return;
-    }
-    const dollars = expected?.totalCapCeilingDollars ?? TOTAL_CAP_CEILING_DOLLARS;
-    const ceiling = dollars * 10n ** decimals;
-    say({
-      status: total > ceiling ? 'FAIL' : 'OK',
-      what,
-      live: `total ${total}`,
-      expected: `at most ${ceiling} (${dollars} dollars, ${decimals} decimals)`,
-      note: total > ceiling ? `the total cap is over ${dollars} dollars` : undefined,
-    });
-  }
-
   /** Who may create a vault, against what the record says of it. */
   async function checkCreation() {
+    // Listing creators is the record's choice, on any chain: listed, creation must be restricted and
+    // each of them let through.
     const creators = expected?.creators ?? [];
-    const closed = expected?.openToAll === false;
-    if (!closed && creators.length === 0) return;
+    if (creators.length === 0) return;
     if (restricted === false)
       say({
         status: 'FAIL',
         what: 'factory.creationRestricted()',
         live: 'false',
         expected: 'true',
-        note: closed
-          ? 'anyone may create a vault while the record says openToAll is false'
-          : 'anyone may create a vault while the record lists creators',
+        note: 'anyone may create a vault while the record lists creators',
       });
-    if (closed && creators.length === 0)
-      say({
-        status: 'FAIL',
-        what: 'record.expected.creators',
-        note: 'empty while openToAll is false: nobody could create a vault',
-      });
-    if (!closed) return;
     for (const creator of creators) {
       const what = `factory.mayCreate(${creator})`;
       const may = await callUint(what, contracts.factory, sel('mayCreate', creator));
@@ -775,9 +731,41 @@ export async function checkAuthority(
     }
     const threshold = asUint(wordAt(t, 0));
     const owners = Array.from({ length: count }, (_, i) => asAddress(wordAt(o, 2 + i)));
-    const live = `${threshold} of ${owners.length}: ${owners.join(', ')}`;
+    // A module may make the Safe act with no signature of its owners. Up to ten are read, from the
+    // list's sentinel; one is enough to fail a mainnet.
+    const m = await probe(
+      `${what} getModulesPaginated()`,
+      account,
+      sel('getModulesPaginated', `0x${'0'.repeat(39)}1`, '0xa'),
+      3,
+    );
+    let modules: string[] | undefined;
+    if (m !== undefined && m !== 'none') {
+      const at = Number(asUint(wordAt(m, 0)) / 32n);
+      const n = Number(asUint(wordAt(m, at)));
+      if (words(m) >= at + 1 + n)
+        modules = Array.from({ length: n }, (_, i) => asAddress(wordAt(m, at + 1 + i)));
+    }
+    const moduleWords =
+      modules === undefined ? 'not answered' : modules.length ? modules.join(', ') : 'none';
+    const live = `${threshold} of ${owners.length}: ${owners.join(', ')}; modules: ${moduleWords}`;
     say({ status: 'INFO', what, live, note: 'compare the owners with the people who hold them' });
     if (!mainnet) return;
+    if (modules === undefined) {
+      // A node that did not answer was already reported as a failure by the probe.
+      if (m !== undefined)
+        say({
+          status: 'WARN',
+          what: `${what} modules`,
+          note: 'getModulesPaginated() is not answered (an older Safe?): its modules cannot be ruled out',
+        });
+    } else if (modules.length > 0)
+      say({
+        status: 'FAIL',
+        what: `${what} modules`,
+        live: modules.join(', '),
+        note: 'a module can move the Safe without its signers',
+      });
     const least = BigInt(expected?.safeMinThreshold ?? MIN_SAFE_THRESHOLD);
     if (threshold < least)
       say({ status: 'FAIL', what, live, note: `the threshold is under ${least}` });

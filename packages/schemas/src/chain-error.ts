@@ -80,7 +80,7 @@ const CONTRACT_ONLY_ERRORS = [
   'GasTooLow',
   /** The guardian stopped new money on the chain: no deposit until the admin lifts it. Withdrawing works. */
   'DepositsPaused',
-  /** The deposit would pass the most one vault, or all vaults together, may take in before an audit. */
+  /** The deposit would pass a cap the admin set on one vault or on all vaults together. None is set by default. */
   'DepositCapReached',
   /** Creating a vault is limited to a list the admin keeps, and this wallet is not on it. */
   'CreationNotOpen',

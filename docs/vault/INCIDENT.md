@@ -37,9 +37,11 @@ For the EVM vault contracts. Who holds which key is in `SECURITY.md`. Every tran
 
 There is no call that stops a withdrawal.
 
-## Known limit: no fast stop for a fault in the vault itself
+## Known limits: no fast stop for a fault in the vault itself, and a fix takes 48 hours
 
-If the vault's own code is what is wrong, nothing stops it quickly. The guardian can stop the keeper and new deposits; it cannot stop an owner's swap, and it cannot change code. The only fix is an upgrade, and an upgrade waits the timelock's 48 hours like everything else. This is accepted for the first step, knowingly, because of what bounds it: deposits are capped, one known person may create a vault, there is no keeper, and the owner's own calls are the only ones that move tokens.
+If the vault's own code is what is wrong, nothing stops it quickly. The guardian can stop the keeper and new deposits; it cannot stop an owner's swap, and it cannot change code. The only fix is an upgrade, and an upgrade waits the timelock's 48 hours like everything else.
+
+Both are limits the product owner accepted (Thom, 2026-10-10). No deposit cap stands beside them: what a vault holds while a fault is open is whatever its owner put in.
 
 What an owner can always do in that time: `withdraw(token, amount)` for each token, or `withdrawAll()`, which take the tokens out as they are and depend on nothing but the token. Tell owners to withdraw in kind, then schedule the fix.
 

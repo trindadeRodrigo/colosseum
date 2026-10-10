@@ -83,7 +83,8 @@ contract Deploy is Script {
         uint256 timelockDelay;
         /// Whether this deploy means the keeper to run. False: no keeper address and no asset's switch.
         bool keeperEnabled;
-        /// The deposit caps, in raw units of the cash token. `hasCaps` false leaves the factory with none.
+        /// The deposit caps, in raw units of the cash token; zero is no cap. Optional on every network:
+        /// `hasCaps` false leaves the factory with none.
         bool hasCaps;
         uint256 vaultCap;
         uint256 totalCap;
@@ -95,7 +96,8 @@ contract Deploy is Script {
         /// The fewest signatures the timelock's owner, a Safe, must need. 2 when the file does not say; a
         /// mainnet file may raise it and may not lower it.
         uint256 safeMinThreshold;
-        /// Whether anyone may create a vault. False with `creators` named restricts creation to them.
+        /// Anyone may create a vault unless `creators` are named, which restricts creation to them.
+        /// `openToAll` true only says so in words; it may not sit beside named creators.
         bool openToAll;
         address[] creators;
         /// The file still holds the word TODO somewhere: a value nobody has confirmed.
@@ -119,9 +121,6 @@ contract Deploy is Script {
     /// fix is not a week away; what cannot wait is the guardian's, which has no delay and can only stop.
     uint256 public constant MIN_MAINNET_DELAY = 48 hours;
     uint256 public constant MAX_MAINNET_DELAY = 30 days;
-    /// Before an audit: the most all vaults of a mainnet factory may take in, in whole dollars. Raising it
-    /// is a change to this file, reviewed, and then a call through the timelock.
-    uint256 public constant UNAUDITED_TOTAL_CAP_DOLLARS = 10_000;
     /// A mainnet's keeper limits, tighter than the contract's own hard bounds (M2 of the review): what a
     /// stolen keeper key can cost a vault is the weekly cap at once and twice it in seven days.
     uint16 public constant MAINNET_MAX_TOLERANCE_BPS = 150;
@@ -426,11 +425,8 @@ contract Deploy is Script {
             );
         }
 
-        // Who may create a vault. The total cap can be used up by anyone who can create one, so while it is
-        // small the file either names who may, or says in so many words that anyone may.
-        require(
-            cfg.openToAll || cfg.creators.length != 0, MainnetRefused("no creator is named while openToAll is false")
-        );
+        // Who may create a vault: anyone, unless the file names creators. Naming them and saying anyone
+        // may is a file that contradicts itself.
         require(
             !cfg.openToAll || cfg.creators.length == 0, MainnetRefused("creators are named while openToAll is true")
         );
@@ -438,10 +434,12 @@ contract Deploy is Script {
             require(cfg.creators[i] != address(0), MainnetRefused("a creator is the zero address"));
         }
 
-        // The caps before an audit.
-        require(cfg.hasCaps, MainnetRefused("no deposit caps"));
-        require(cfg.vaultCap != 0 && cfg.totalCap != 0, MainnetRefused("a deposit cap of zero"));
-        require(cfg.vaultCap <= cfg.totalCap, MainnetRefused("the cap of one vault is above the total"));
+        // Deposit caps are optional everywhere (gate `NO-DEPOSIT-CAP`): a file with none deploys with
+        // deposits open and unlimited. Where both are given, one vault's is at most the total.
+        require(
+            !cfg.hasCaps || cfg.totalCap == 0 || cfg.vaultCap <= cfg.totalCap,
+            MainnetRefused("the cap of one vault is above the total")
+        );
 
         // The cash token and the routers.
         require(cfg.cashToken != address(0), MainnetRefused("no cash token"));
@@ -474,10 +472,6 @@ contract Deploy is Script {
             );
             if (a.token == cfg.cashToken) {
                 cashListed = true;
-                require(
-                    cfg.totalCap <= UNAUDITED_TOTAL_CAP_DOLLARS * 10 ** decimals,
-                    MainnetRefused("the total cap is over 10,000 dollars before an audit")
-                );
             }
             if (a.config.pauseProbe != address(0)) {
                 (ok,) = _word(a.config.pauseProbe, a.config.pauseSelector);
@@ -685,6 +679,14 @@ contract Deploy is Script {
         for (uint256 i; i < creators; ++i) {
             cfg.creators[i] = json.readAddress(string.concat(".creators[", vm.toString(i), "]"));
         }
+        // `"caps": "none"` says in words what leaving `depositCaps` out says: no cap. Both at once is refused.
+        if (vm.keyExistsJson(json, ".caps")) {
+            require(
+                keccak256(bytes(json.readString(".caps"))) == keccak256("none")
+                    && !vm.keyExistsJson(json, ".depositCaps"),
+                ValueDoesNotFit(".caps", 0, 0)
+            );
+        }
         if (vm.keyExistsJson(json, ".depositCaps")) {
             cfg.hasCaps = true;
             cfg.vaultCap = json.readUint(".depositCaps.perVault");
@@ -830,8 +832,12 @@ contract Deploy is Script {
         console2.log("closed days set:", cfg.closedDays.length);
         console2.log("publish delay, seconds:", uint256(cfg.publishDelay));
         (uint256 perVault, uint256 total) = VaultFactory(d.factory).depositCaps();
-        console2.log("deposit cap, one vault:", perVault);
-        console2.log("deposit cap, all vaults:", total);
+        if (perVault == 0 && total == 0) {
+            console2.log("deposit caps: none");
+        } else {
+            console2.log("deposit cap, one vault (0 is none):", perVault);
+            console2.log("deposit cap, all vaults (0 is none):", total);
+        }
         if (d.timelock != address(0)) {
             console2.log("timelock (admin and beacon owner):", d.timelock);
             console2.log("timelock delay, seconds:", cfg.timelockDelay);
