@@ -9,9 +9,25 @@ import {MockRoundFeed} from "./mocks/Feeds.sol";
 import {MockV3Pool} from "./mocks/Pools.sol";
 import {MockToken} from "./mocks/Tokens.sol";
 
-/// A v3 factory that names one pool per pair and fee.
+/// A v3 factory as Uniswap's makes pools: at the CREATE2 address of the pair and the fee, from one creation
+/// code that takes no argument and reads what it is from the factory.
 contract MockPoolFactory {
     mapping(bytes32 => address) internal pools;
+    address public token0;
+    address public token1;
+    int24 public tick;
+    uint128 public liquidity;
+
+    function create(address a, address b, uint24 fee, int24 tick_, uint128 liquidity_)
+        external
+        returns (address pool)
+    {
+        (token0, token1) = a < b ? (a, b) : (b, a);
+        tick = tick_;
+        liquidity = liquidity_;
+        pool = address(new FactoryMadePool{salt: keccak256(abi.encode(token0, token1, fee))}());
+        pools[_key(a, b, fee)] = pool;
+    }
 
     function set(address a, address b, uint24 fee, address pool) external {
         pools[_key(a, b, fee)] = pool;
@@ -25,6 +41,17 @@ contract MockPoolFactory {
         (address low, address high) = a < b ? (a, b) : (b, a);
         return keccak256(abi.encode(low, high, fee));
     }
+}
+
+contract FactoryMadePool is MockV3Pool {
+    constructor()
+        MockV3Pool(
+            MockPoolFactory(msg.sender).token0(),
+            MockPoolFactory(msg.sender).token1(),
+            MockPoolFactory(msg.sender).tick(),
+            MockPoolFactory(msg.sender).liquidity()
+        )
+    {}
 }
 
 /// The script that deploys the pool-average feeds, run inside a test: what it deploys, what it refuses and
@@ -49,6 +76,7 @@ contract DeployPoolFeedsTest is Test {
     function _config(uint256 assets) internal view returns (DeployPoolFeeds.Config memory cfg) {
         cfg.chainId = block.chainid;
         cfg.v3Factory = address(poolFactory);
+        cfg.poolInitCodeHash = keccak256(type(FactoryMadePool).creationCode);
         cfg.quoteToken = address(dollar);
         cfg.quoteDecimals = 6;
         cfg.window = 3600;
@@ -59,8 +87,9 @@ contract DeployPoolFeedsTest is Test {
     /// An asset with a pool the factory names, at `liquidity`, and a floor of half the usual.
     function _asset(string memory symbol, uint128 liquidity) internal returns (DeployPoolFeeds.Asset memory a) {
         MockToken token = new MockToken(18);
-        MockV3Pool pool = new MockV3Pool(address(dollar), address(token), 230_270, liquidity);
-        poolFactory.set(address(token), address(dollar), 500, address(pool));
+        // $100.0002 for the token, whichever of the two comes first in the pool.
+        int24 tick = address(dollar) < address(token) ? int24(230_270) : int24(-230_270);
+        MockV3Pool pool = MockV3Pool(poolFactory.create(address(token), address(dollar), 500, tick, liquidity));
         a.symbol = symbol;
         a.token = address(token);
         a.tokenDecimals = 18;
@@ -111,21 +140,31 @@ contract DeployPoolFeedsTest is Test {
         assertEq(out[3].refused, "held: rounds-unread");
     }
 
-    /// A person's word in the file lifts a hold, and the floor at deployment too.
-    function test_accepted_liftsAHold() public {
-        DeployPoolFeeds.Config memory cfg = _config(2);
+    /// A person's word in the file lifts a hold and nothing else: a pool under its floor, or one that keeps
+    /// too few observations for the window, is refused all the same.
+    function test_accepted_liftsAHold_andNothingElse() public {
+        DeployPoolFeeds.Config memory cfg = _config(4);
         cfg.assets[0] = _asset("GOLD", LIQUIDITY);
         _held(cfg.assets[0], "feed-from-pools");
         cfg.assets[0].accepted = true;
         cfg.assets[1] = _asset("THIN", 1);
         cfg.assets[1].accepted = true;
+        cfg.assets[2] = _asset("SHORT", LIQUIDITY);
+        cfg.assets[2].accepted = true;
+        MockV3Pool(cfg.assets[2].pool).setCardinality(1801);
+        // At one more slot than the window has seconds it is enough.
+        cfg.assets[3] = _asset("ENOUGH", LIQUIDITY);
+        MockV3Pool(cfg.assets[3].pool).setCardinality(3601);
         DeployPoolFeeds.Outcome[] memory out = script.deploy(cfg);
         assertTrue(out[0].averageFeed != address(0));
-        assertTrue(out[1].averageFeed != address(0));
-        // A feed over a pool under its floor gives no answer: accepting it deploys it, it does not price it.
-        vm.warp(block.timestamp + 1 hours);
-        (,,,,, PoolAverageFeed.Reason reason) = PoolAverageFeed(out[1].averageFeed).check();
-        assertEq(uint8(reason), uint8(PoolAverageFeed.Reason.ThinPool));
+        assertEq(out[1].averageFeed, address(0));
+        assertEq(out[1].refused, "the pool holds 1 in range, under the floor of 3500000000000000000");
+        assertEq(out[2].averageFeed, address(0));
+        assertEq(
+            out[2].refused,
+            "the pool keeps 1801 observations and the window needs more than 3600: grow it first with increaseObservationCardinalityNext"
+        );
+        assertTrue(out[3].averageFeed != address(0));
     }
 
     function test_anAssetWithNoPool_isRefused() public {
@@ -152,6 +191,7 @@ contract DeployPoolFeedsTest is Test {
         // A pool the factory does not name for the pair and the fee.
         address real = cfg.assets[0].pool;
         address other = address(new MockV3Pool(address(dollar), cfg.assets[0].token, 230_270, LIQUIDITY));
+        assertEq(script.poolAddress(cfg, cfg.assets[0]), real, "the factory's CREATE2 address is the pool");
         cfg.assets[0].pool = other;
         vm.expectRevert(abi.encodeWithSelector(DeployPoolFeeds.NotTheFactorysPool.selector, "AAA", other, real));
         script.deploy(cfg);
@@ -160,6 +200,21 @@ contract DeployPoolFeedsTest is Test {
         vm.expectRevert(abi.encodeWithSelector(DeployPoolFeeds.NotTheFactorysPool.selector, "AAA", real, address(0)));
         script.deploy(cfg);
         cfg.assets[0].fee = 500;
+
+        // A pool the factory names that was not made from the creation code the file states: the factory
+        // is told of a pool deployed some other way.
+        poolFactory.set(cfg.assets[0].token, address(dollar), 500, other);
+        cfg.assets[0].pool = other;
+        vm.expectRevert(abi.encodeWithSelector(DeployPoolFeeds.NotUniswapsPoolCode.selector, "AAA", other, real));
+        script.deploy(cfg);
+        poolFactory.set(cfg.assets[0].token, address(dollar), 500, real);
+        cfg.assets[0].pool = real;
+        // Or the file states another hash.
+        cfg.poolInitCodeHash = keccak256("other code");
+        address elsewhere = script.poolAddress(cfg, cfg.assets[0]);
+        vm.expectRevert(abi.encodeWithSelector(DeployPoolFeeds.NotUniswapsPoolCode.selector, "AAA", real, elsewhere));
+        script.deploy(cfg);
+        cfg.poolInitCodeHash = keccak256(type(FactoryMadePool).creationCode);
 
         // A feed that says it prices something else.
         cfg.assets[0].feedDescription = "OTHER / USD";
@@ -175,6 +230,8 @@ contract DeployPoolFeedsTest is Test {
         DeployPoolFeeds.Config memory cfg = script.readConfig("script/config/pool-feeds/4663.json");
         assertEq(cfg.chainId, 4663);
         assertEq(cfg.quoteToken, 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168);
+        // Uniswap v3's published pool creation code hash (v3-periphery's `POOL_INIT_CODE_HASH`).
+        assertEq(cfg.poolInitCodeHash, 0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54);
         assertEq(cfg.quoteDecimals, 6);
         assertEq(cfg.window, 3600);
         assertEq(cfg.maxRounds, 12);
@@ -231,20 +288,34 @@ contract DeployPoolFeedsTest is Test {
         }
         assertEq(deployed, 3);
 
-        // With every hold accepted, each of the eleven can be deployed and read: the mechanics hold for
-        // all of them, and what each answers at this block is printed.
+        // With every hold accepted: the eight pools that keep 7,200 observations are deployed and read,
+        // and META, SGOV and GLD, which keep about 1,800, are still refused until someone grows them.
+        // Every one of the eleven pools sits at the address Uniswap's creation code gives (or the run
+        // would have stopped).
         for (uint256 i; i < cfg.assets.length; ++i) {
             cfg.assets[i].accepted = true;
         }
         out = script.deploy(cfg);
+        deployed = 0;
         for (uint256 i; i < out.length; ++i) {
+            console2.log(out[i].symbol);
+            if (out[i].averageFeed == address(0)) {
+                console2.log(string.concat("  refused, ", out[i].refused));
+                bytes32 symbol = keccak256(bytes(out[i].symbol));
+                assertTrue(
+                    symbol == keccak256("META") || symbol == keccak256("SGOV") || symbol == keccak256("GLD"),
+                    out[i].symbol
+                );
+                continue;
+            }
+            ++deployed;
             (uint256 average, uint256 spot,, uint128 liquidity, uint128 mean, PoolAverageFeed.Reason reason) =
                 PoolAverageFeed(out[i].averageFeed).check();
-            console2.log(out[i].symbol);
             console2.log("  pool average, Chainlink:", average, spot);
             console2.log("  gap in bps:", (average > spot ? average - spot : spot - average) * 10_000 / average);
             console2.log("  liquidity now, the hour's average:", liquidity, mean);
             console2.log("  reason (0 is none):", uint8(reason));
         }
+        assertEq(deployed, 8);
     }
 }

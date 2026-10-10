@@ -12,6 +12,9 @@ interface IPoolFactory {
 
 interface IPoolLiquidity {
     function liquidity() external view returns (uint128);
+    function token0() external view returns (address);
+    function token1() external view returns (address);
+    function slot0() external view returns (uint160, int24, uint16, uint16, uint16, uint8, bool);
 }
 
 interface IFeedDescription {
@@ -30,13 +33,25 @@ interface IFeedDescription {
 /// and what it refuses. Sending is `--broadcast`, and a person does that, never an agent.
 ///
 /// What it refuses, asset by asset, and deploys the rest:
+///   - an asset whose pool keeps no more observations than the window has seconds. Anyone may grow a
+///     pool's history first, and a person sends it: `increaseObservationCardinalityNext(7200)` on the pool,
+///     for example `cast send <pool> "increaseObservationCardinalityNext(uint16)" 7200`. The new slots
+///     count once the pool has written its way into them, which takes as many trades as it has slots now;
+///   - an asset whose pool holds less in range than the file's floor at the moment it runs;
 ///   - an asset the file marks with a hold (`holds`): the reasons the design keeps it owner-signed, such as
-///     a Chainlink feed that is itself made from pools, or a feed whose round history nobody has read;
-///   - an asset whose pool holds less in range than the file's floor at the moment it runs.
-/// Either is lifted by `accepted: true` in the file, which a person sets after deciding.
+///     a Chainlink feed that is itself made from pools, or a feed whose round history nobody has read.
+/// Only a hold is lifted by `accepted: true` in the file, which a person sets after deciding. The other
+/// two are the pool's own state and nothing in the file lifts them.
 ///
 /// What stops the whole run, because the file is then wrong: another chain, a pool that is not the one the
-/// v3 factory names for the pair and the fee, and a feed that does not describe itself as the file says.
+/// v3 factory names for the pair and the fee, a pool that is not Uniswap's own code, and a feed that does
+/// not describe itself as the file says.
+///
+/// Uniswap's own code: a v3 pool's deployed code carries its two tokens, its fee and its factory, so no two
+/// pools have the same code hash. What every pool of a factory shares is the code that created it. The
+/// factory creates a pool at the address CREATE2 gives for its own address, the pair and fee, and the hash
+/// of that creation code; the file states the hash (`poolInitCodeHash`, Uniswap v3's published one), and a
+/// pool whose address is not the one it gives was not made from that code.
 contract DeployPoolFeeds is Script {
     using stdJson for string;
 
@@ -57,6 +72,7 @@ contract DeployPoolFeeds is Script {
     struct Config {
         uint256 chainId;
         address v3Factory;
+        bytes32 poolInitCodeHash;
         address quoteToken;
         uint8 quoteDecimals;
         uint32 window;
@@ -75,6 +91,7 @@ contract DeployPoolFeeds is Script {
     error WrongChain(uint256 configIsFor, uint256 runningOn);
     error NotTheFactorysPool(string symbol, address inTheFile, address factorySays);
     error NotTheFeedDescribed(string symbol, string inTheFile, string feedSays);
+    error NotUniswapsPoolCode(string symbol, address pool, address fromTheInitCode);
     error ValueDoesNotFit(string key, uint256 value, uint256 most);
 
     function run() external returns (Outcome[] memory out) {
@@ -124,9 +141,20 @@ contract DeployPoolFeeds is Script {
                 NotTheFeedDescribed(a.symbol, a.feedDescription, says)
             );
         }
-        if (a.accepted) return "";
-        if (a.holds.length != 0) return string.concat("held: ", a.holds[0]);
         if (a.pool == address(0)) return "no v3 pool against the dollar token";
+        address made = poolAddress(cfg, a);
+        require(made == a.pool, NotUniswapsPoolCode(a.symbol, a.pool, made));
+        if (!a.accepted && a.holds.length != 0) return string.concat("held: ", a.holds[0]);
+        (,,, uint16 cardinality,,,) = IPoolLiquidity(a.pool).slot0();
+        if (cardinality <= cfg.window) {
+            return string.concat(
+                "the pool keeps ",
+                vm.toString(uint256(cardinality)),
+                " observations and the window needs more than ",
+                vm.toString(uint256(cfg.window)),
+                ": grow it first with increaseObservationCardinalityNext"
+            );
+        }
         uint128 inRange = IPoolLiquidity(a.pool).liquidity();
         if (inRange < a.minLiquidity) {
             return string.concat(
@@ -139,6 +167,17 @@ contract DeployPoolFeeds is Script {
         return "";
     }
 
+    /// Where the factory's CREATE2 puts the pool of this pair and fee, made from the creation code whose
+    /// hash the file states.
+    function poolAddress(Config memory cfg, Asset memory a) public pure returns (address) {
+        (address token0, address token1) =
+            a.token < cfg.quoteToken ? (a.token, cfg.quoteToken) : (cfg.quoteToken, a.token);
+        bytes32 salt = keccak256(abi.encode(token0, token1, a.fee));
+        return address(
+            uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), cfg.v3Factory, salt, cfg.poolInitCodeHash))))
+        );
+    }
+
     function readConfig(string memory path) public view returns (Config memory cfg) {
         return parseConfig(vm.readFile(path));
     }
@@ -146,6 +185,7 @@ contract DeployPoolFeeds is Script {
     function parseConfig(string memory json) public view returns (Config memory cfg) {
         cfg.chainId = json.readUint(".chainId");
         cfg.v3Factory = json.readAddress(".v3Factory");
+        cfg.poolInitCodeHash = json.readBytes32(".poolInitCodeHash");
         cfg.quoteToken = json.readAddress(".quoteToken");
         cfg.quoteDecimals = uint8(_fit(json, ".quoteDecimals", type(uint8).max));
         cfg.window = uint32(_fit(json, ".window", type(uint32).max));

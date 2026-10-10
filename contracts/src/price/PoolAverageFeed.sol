@@ -9,6 +9,18 @@ interface IOraclePool {
     function token0() external view returns (address);
     function token1() external view returns (address);
     function liquidity() external view returns (uint128);
+    function slot0()
+        external
+        view
+        returns (
+            uint160 sqrtPriceX96,
+            int24 tick,
+            uint16 observationIndex,
+            uint16 observationCardinality,
+            uint16 observationCardinalityNext,
+            uint8 feeProtocol,
+            bool unlocked
+        );
     function observe(uint32[] calldata secondsAgos)
         external
         view
@@ -44,7 +56,9 @@ interface IDecimals {
 ///   - the pool's liquidity in range is at least `minLiquidity`, now and as the average of the window
 ///     (`ThinPool`). The average is the one the pool's own oracle keeps, which a deposit made for one block
 ///     cannot lift, and which a second spent at a price where the pool holds nothing brings to nearly zero;
-///   - the pool has `window` seconds of history (`ShortHistory`);
+///   - the pool has `window` seconds of history (`ShortHistory`). It is deployed only over a pool that
+///     keeps more observations than the window has seconds, so trading the pool every second cannot
+///     cause this;
 ///   - the average is a price this contract can state (`PriceOutOfRange`);
 ///   - Chainlink's own rounds of the last `window` can be read, at most `maxRounds` of them
 ///     (`FeedRounds`), and their time-weighted average is within `jumpBps` of the latest (`FeedJumped`):
@@ -129,6 +143,12 @@ contract PoolAverageFeed {
         address token1 = IOraclePool(pool_).token1();
         bool base0 = token0 == base_ && token1 == quote_;
         require(base0 || (token0 == quote_ && token1 == base_), InvalidSetup("pool tokens"));
+        // The pool keeps at most one observation a second, in as many slots as its cardinality, and the
+        // number only grows. With more slots than the window has seconds, nobody can shorten its history
+        // under the window by trading every second. Anyone may grow it first
+        // (`increaseObservationCardinalityNext`); the new slots count once the pool has written into them.
+        (,,, uint16 cardinality,,,) = IOraclePool(pool_).slot0();
+        require(cardinality > window_, InvalidSetup("pool cardinality"));
         // The decimals are stated, as everywhere in these contracts, and here they are also held to what
         // the tokens say.
         require(baseDecimals_ <= MAX_DECIMALS && quoteDecimals_ <= MAX_DECIMALS, InvalidSetup("decimals"));

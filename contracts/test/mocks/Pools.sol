@@ -20,6 +20,8 @@ contract MockV3Pool {
     uint160 internal perLiquidityStart;
     bool internal broken;
     bool internal short;
+    /// The slots the pool keeps observations in. This mock keeps every step whatever the number says.
+    uint16 public cardinality = 7200;
 
     constructor(address token0_, address token1_, int24 tick, uint128 liquidity_) {
         token0 = token0_;
@@ -52,6 +54,14 @@ contract MockV3Pool {
     function setTokens(address token0_, address token1_) external {
         token0 = token0_;
         token1 = token1_;
+    }
+
+    function setCardinality(uint16 cardinality_) external {
+        cardinality = cardinality_;
+    }
+
+    function slot0() external view returns (uint160, int24, uint16, uint16, uint16, uint8, bool) {
+        return (0, steps[steps.length - 1].tick, 0, cardinality, cardinality, 0, true);
     }
 
     function setBroken(bool on) external {

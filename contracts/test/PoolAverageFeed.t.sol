@@ -512,6 +512,17 @@ contract PoolAverageFeedTest is Test {
         _expectSetup("pool tokens");
         _new(p, other, d, c, 18, 6, WINDOW, FLOOR, 150, 12);
         // Decimals that are not the tokens' own.
+        // A pool with no more observation slots than the window has seconds: 3,600 for an hour is one short.
+        pool.setCardinality(3600);
+        _expectSetup("pool cardinality");
+        _new(p, s, d, c, 18, 6, WINDOW, FLOOR, 150, 12);
+        pool.setCardinality(1801);
+        _expectSetup("pool cardinality");
+        _new(p, s, d, c, 18, 6, WINDOW, FLOOR, 150, 12);
+        // 1,801 is enough for half an hour, and 3,601 for the hour.
+        _new(p, s, d, c, 18, 6, 1800, FLOOR, 150, 12);
+        pool.setCardinality(3601);
+        _new(p, s, d, c, 18, 6, WINDOW, FLOOR, 150, 12);
         _expectSetup("base decimals");
         _new(p, s, d, c, 8, 6, WINDOW, FLOOR, 150, 12);
         _expectSetup("quote decimals");

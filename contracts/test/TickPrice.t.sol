@@ -68,6 +68,29 @@ contract TickPriceTest is Test {
         _check(-443_636, 0, 0);
     }
 
+    /// Four thousand vectors across the whole range and every scale, worked in exact arithmetic by
+    /// `node script/tick-table.mjs --fixture`. The off-chain copy of this maths
+    /// (`packages/chain-evm/test/pool-average.test.ts`) is held to the same file.
+    function test_priceAt_againstTheCommittedVectors() public view {
+        string memory json = vm.readFile("test/fixtures/tick-price-vectors.json");
+        string[] memory vectors = vm.parseJsonStringArray(json, ".vectors");
+        assertEq(vectors.length, 4000);
+        uint256 mostUnder;
+        for (uint256 i; i < vectors.length; ++i) {
+            string[] memory parts = vm.split(vectors[i], " ");
+            int256 tick = vm.parseInt(parts[0]);
+            int256 scale = vm.parseInt(parts[1]);
+            uint256 exact = vm.parseUint(parts[2]);
+            uint256 got =
+                lib.priceAt(tick, scale >= 0 ? 10 ** uint256(scale) : 1, scale >= 0 ? 1 : 10 ** uint256(-scale));
+            assertLe(got, exact, vectors[i]);
+            assertLe(exact - got, 1 + (exact >> 58), vectors[i]);
+            // Where the answer has no more digits than 2^58, it is the exact whole part or one under.
+            if (exact < 1 << 58 && exact - got > mostUnder) mostUnder = exact - got;
+        }
+        assertLe(mostUnder, 1);
+    }
+
     /// Small answers are exactly the whole part of the true value.
     function test_priceAt_smallAnswers_areExact() public view {
         assertEq(lib.priceAt(0, 1e20, 1), 1e20);

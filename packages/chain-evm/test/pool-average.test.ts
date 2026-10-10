@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { ContractFunctionRevertedError } from 'viem';
 import { describe, expect, it } from 'vitest';
 import {
@@ -42,6 +43,27 @@ describe('the tick maths, as TickPrice has it', () => {
       expect(got <= want).toBe(true);
       expect(want - got <= 1n + (want >> 58n)).toBe(true);
     }
+  });
+  it('is held to the same committed vectors as the contract: four thousand, across the range', () => {
+    // contracts/test/TickPrice.t.sol reads this file too: `node contracts/script/tick-table.mjs --fixture`.
+    const { vectors } = JSON.parse(
+      readFileSync(
+        new URL('../../../contracts/test/fixtures/tick-price-vectors.json', import.meta.url),
+        'utf8',
+      ),
+    ) as { vectors: string[] };
+    expect(vectors).toHaveLength(4000);
+    const bad: string[] = [];
+    for (const vector of vectors) {
+      const [tick, scale, whole] = vector.split(' ').map(BigInt) as [bigint, bigint, bigint];
+      const got = tickPrice(
+        tick,
+        scale >= 0n ? 10n ** scale : 1n,
+        scale >= 0n ? 1n : 10n ** -scale,
+      );
+      if (got === null || got > whole || whole - got > 1n + (whole >> 58n)) bad.push(vector);
+    }
+    expect(bad).toEqual([]);
   });
   it('takes no tick past its range', () => {
     expect(tickPrice(443_637n, 1n, 1n)).toBeNull();
