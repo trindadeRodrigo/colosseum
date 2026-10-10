@@ -20,7 +20,7 @@ import { sameAddress } from '../portfolio/vault-name';
 import { conversationNetwork } from '../vault-conversation/storage';
 import { VaultConversation } from '../vault-conversation/VaultConversation';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
-import { MoreMenu } from './MoreMenu';
+import { MORE_ROW, MoreMenu } from './MoreMenu';
 import { readVault } from './shared-api';
 import {
   type ActionKind,
@@ -144,18 +144,22 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
       <span data-ui="vault-chain">{chainName}</span>
     </p>
   );
-  const explorerLink = explorer && (
-    <a
-      data-ui="vault-explorer"
-      href={explorer}
-      target="_blank"
-      rel="noopener"
-      className={buttonClass({ variant: 'link' })}
-    >
-      {v.explorer(t.chain.explorers[read.chain])}
-      <Icon name="ArrowUpRight" size={16} />
-    </a>
-  );
+  /** The vault on its chain's explorer: a link in a visitor's head, a row in the owner's "More". */
+  const explorerLinkAs = (className: string) =>
+    explorer && (
+      <a
+        data-ui="vault-explorer"
+        href={explorer}
+        target="_blank"
+        rel="noopener"
+        className={className}
+      >
+        {v.explorer(t.chain.explorers[read.chain])}
+        <Icon name="ArrowUpRight" size={16} />
+      </a>
+    );
+  const explorerLink = explorerLinkAs(buttonClass({ variant: 'link' }));
+  const explorerRow = explorerLinkAs(MORE_ROW);
   const back = (
     <Link href="/portfolio" data-ui="vault-back" className={buttonClass({ variant: 'link' })}>
       {v.back}
@@ -178,7 +182,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
         shareHref={`/publish?vault=${encodeURIComponent(vault.address)}&chain=${read.chain}`}
         value={value}
         back={back}
-        explorerLink={explorerLink}
+        explorerLink={explorerRow}
         onReadAgain={() => setRound((n) => n + 1)}
       />
     );
@@ -422,22 +426,19 @@ function OwnVault({
                   )}
                   <MoreMenu label={p.more} ui="vault-more">
                     <li>
-                      <Button
-                        variant="link"
+                      <button
+                        type="button"
+                        className={MORE_ROW}
                         data-action="vault-edit-weights"
                         onClick={() => start('weights', '[data-ui="vault-more"]')}
                       >
                         {p.editWeights}
-                      </Button>
+                      </button>
                     </li>
                     {/* a strategy is its targets: a vault with none has nothing to share */}
                     {canShare && targeted && (
                       <li>
-                        <Link
-                          data-ui="vault-share-strategy"
-                          href={shareHref}
-                          className={buttonClass({ variant: 'link' })}
-                        >
+                        <Link data-ui="vault-share-strategy" href={shareHref} className={MORE_ROW}>
                           {t.shared.publish.shareStrategy}
                         </Link>
                       </li>
