@@ -1789,6 +1789,10 @@ export async function replyToVaultConversation(
     language: parsed.data.language,
     sentences: (text) => sentencesOf(text, catalogNames),
     digitNames: catalogNames,
+    namesOf: (assetId) => {
+      const asset = catalog.get(assetId);
+      return asset ? [...new Set([asset.symbol, asset.underlying])].filter(Boolean) : [];
+    },
     // A name that is one asset's, and a word for cash, gold or the reserve, which names every listed
     // asset of that class. "Stocks" and "crypto" name too many to say whose a figure is.
     named: (text) => {

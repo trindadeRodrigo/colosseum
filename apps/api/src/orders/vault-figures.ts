@@ -155,7 +155,7 @@ const EMPHASISED = /(\*\*|__|\*|_|`)(\{\{fact:[^{}\s]{1,160}\}\})\1/gu;
 //    before it, or for a field's first sentence from the end of the field shown above it, and is read
 //    with those words: a rate, a period, a rise or a fall, a magnitude, arithmetic, a forecast, a claim.
 //    The product's goal words there (grow, income) are not such words.
-// 5. A yield is served by a grammar, not by what it avoids (`YIELD_CLAUSES`): a clause that says a
+// 5. A yield is served by a grammar, not by what it avoids (`yieldClauses`): a clause that says a
 //    measured yield is the figure, and then ends the sentence. Its word of measurement governs the
 //    figure ("its quoted yield is Y a year", "the reserve currently yields Y a year", "its yield is Y a
 //    year, based on the latest quote"), and nothing follows the figure but a period, a word for now and
@@ -220,29 +220,41 @@ const PROMISE = lone(
 // The yield grammar. `Y` stands where a yield reference stood. A clause starts the sentence or follows
 // another clause, and ends the sentence.
 const Y = '\u0002';
-const YIELD_CLAUSES = (() => {
+/**
+ * The clauses for a yield of an asset with these names. Only the reserve, by that word or by one of
+ * `names`, may be what yields: any other subject or owner is a stranger to the figure.
+ */
+const yieldClauses = (names: readonly string[]): RegExp[] => {
+  const named = [
+    'the\\s+reserve',
+    'a\\s+reserva',
+    ...names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+  ].join('|');
   const approx = '(?:(?:about|around|roughly|cerca\\s+de|aproximadamente)\\s+)?';
-  const per = '(?:\\s+(?:a|per)\\s+(?:year|month)|\\s+annually|\\s+(?:ao|por)\\s+(?:ano|m[eê]s))?';
+  // the figure is a yearly one
+  const per = '(?:\\s+(?:a|per)\\s+year|\\s+annually|\\s+(?:ao|por)\\s+ano)?';
   const now =
     '(?:right\\s+now|now|today|currently|at\\s+the\\s+moment|so\\s+far|hoje|agora|no\\s+momento|atualmente|at[eé]\\s+agora)';
   const framed = '(?:quoted|measured|observed|current|past|latest|historical)';
   const framedPt = '(?:cotad[oa]|medid[oa]|observad[oa]|atual|passad[oa]|hist[oó]ric[oa])';
   const noun = '(?:dollar\\s+)?(?:yield|rate)';
   const nounPt = '(?:rendimento|taxa)';
-  const owner = "(?:(?:its|the|their|your)\\s+)?(?:\\p{L}+(?:’s|'s)\\s+)?";
-  const ofOwner = '(?:\\s+(?:of|on|for|from)\\s+(?:the\\s+|your\\s+)?[\\p{L}-]+)?';
+  const owner = `(?:(?:its|the)\\s+|(?:${named})(?:’s|'s)\\s+)?`;
+  const ofOwner = `(?:\\s+(?:of|on|for|from)\\s+(?:${named}))?`;
+  const ofOwnerPt = `(?:\\s+d[ao]\\s+(?:reserva|${names.length ? named : 'reserva'}))?`;
   const is = '(?:is|was|stands\\s+at|stood\\s+at)';
   const isPt = '(?:é|era|foi|está\\s+em|é\\s+de|foi\\s+de)';
   const source =
     '(?:,?\\s+(?:measured|quoted|observed|based|taken)\\s+(?:from|at|on)\\s+(?:past\\s+rates|the\\s+last\\s+reading|the\\s+latest\\s+(?:quote|reading))|,?\\s+at\\s+the\\s+last\\s+reading|,?\\s+(?:segundo|conforme)\\s+a\\s+[uú]ltima\\s+(?:cota[cç][aã]o|leitura))';
   const start = '(^\\s*(?:[-*•–—]\\s+)?|[,;:]\\s+(?:and\\s+|e\\s+)?|\\s+and\\s+|\\s+e\\s+)';
   const leadIn = `(?:(?:after\\s+the\\s+haircut|ap[oó]s\\s+o\\s+desconto|${now}),?\\s+)?`;
+  // the clause ends at the figure, its period, a word for now or a listed source: nothing after it
   const end = '\\s*[.!?]?\\s*$';
-  const subject = '(?:it|the\\s+reserve|a\\s+reserva|ela|\\p{L}+)';
+  const subject = `(?:it|ela|${named})`;
   const verb = '(?:yields|yielded|has\\s+yielded|pays|paid|has\\s+paid|rende|rendeu|paga|pagou)';
   return [
     // "its quoted yield is Y a year", "the quoted yield of the reserve is currently Y"
-    `${leadIn}${owner}${framed}\\s+${noun}${ofOwner}\\s+(?:${is}\\s+|of\\s+|at\\s+)(?:${now}\\s+)?${approx}${Y}${per}(?:\\s+${now})?${source}?${ofOwner}`,
+    `${leadIn}${owner}${framed}\\s+${noun}${ofOwner}\\s+(?:${is}\\s+|of\\s+|at\\s+)(?:${now}\\s+)?${approx}${Y}${per}(?:\\s+${now})?${source}?`,
     // "its yield is currently Y a year", "its yield is Y a year right now", "… , based on the latest quote"
     `${leadIn}${owner}${noun}${ofOwner}\\s+${is}\\s+(?:${now}\\s+${approx}${Y}${per}${source}?|${approx}${Y}${per}\\s+${now}${source}?|${approx}${Y}${per}${source})`,
     // "its yield at the last reading was Y"
@@ -252,9 +264,9 @@ const YIELD_CLAUSES = (() => {
     // "the reserve has a quoted yield of Y a year"
     `${subject}\\s+(?:has|had)\\s+a\\s+${framed}\\s+${noun}\\s+of\\s+${approx}${Y}${per}(?:\\s+${now})?${source}?`,
     // "o rendimento cotado é Y ao ano"
-    `${leadIn}(?:(?:o|a|seu|sua)\\s+)?${nounPt}\\s+${framedPt}(?:\\s+d[ao]\\s+[\\p{L}-]+)?\\s+${isPt}\\s+(?:${now}\\s+)?${approx}${Y}${per}(?:\\s+${now})?${source}?`,
+    `${leadIn}(?:o\\s+|a\\s+)?${nounPt}\\s+${framedPt}${ofOwnerPt}\\s+${isPt}\\s+(?:${now}\\s+)?${approx}${Y}${per}(?:\\s+${now})?${source}?`,
   ].map((clause) => new RegExp(`${start}(?:${clause})${end}`, 'iu'));
-})();
+};
 
 // The kind of a figure, by its id, and the words that name it in a sentence.
 const KINDS: Array<[RegExp, RegExp]> = [
@@ -288,6 +300,7 @@ const KINDS: Array<[RegExp, RegExp]> = [
   [/^capvar:/u, lone('var(?:y|ies|ied|iation|iations)|varia\\p{L}*')],
   [/^volume:/u, lone('volume|trades?|traded|negociad\\p{L}*')],
 ];
+const VAULT_WORD = lone('vault|cofre');
 const kindNamed = (id: string, words: string) =>
   KINDS.some(([of, named]) => of.test(id) && named.test(words));
 
@@ -350,6 +363,8 @@ export function figureResolver(input: {
   sentences?: (text: string) => string[];
   digitNames?: readonly string[];
   named?: (text: string) => { own: string[]; classes: string[] };
+  /** The names an asset goes by in prose: its symbol and what it tracks. */
+  namesOf?: (assetId: string) => string[];
 }): FigureResolver {
   const { sources, references, lowerBound, language } = input;
   const figure = (id: string): VaultAgentFigure | undefined => {
@@ -430,9 +445,15 @@ export function figureResolver(input: {
           id.startsWith('yield:') ? Y : MARK,
         ),
       );
+      const clauses = yieldClauses(
+        ids.flatMap((id) => {
+          const of = id.startsWith('yield:') ? figure(id)?.assetId : undefined;
+          return of === undefined ? [] : (input.namesOf?.(of) ?? []);
+        }),
+      );
       for (let more = true; more; ) {
         more = false;
-        for (const clause of YIELD_CLAUSES) {
+        for (const clause of clauses) {
           const cut = rest.replace(clause, '$1');
           if (cut !== rest) {
             rest = cut;
@@ -440,7 +461,9 @@ export function figureResolver(input: {
           }
         }
       }
-      if (rest.includes(Y)) found.push('frame');
+      // What is left beside the clauses is nothing, or another figure that is judged on its own
+      // words: free text there would say of the yield what the clause may not.
+      if (rest.includes(Y) || (!rest.includes(MARK) && /\p{L}/u.test(rest))) found.push('frame');
       if (PROMISE.test(`${lead} ${all} ${plainly(withoutReferences(next))}`))
         found.push('forecast');
       own = rest.replaceAll(Y, MARK);
@@ -449,7 +472,13 @@ export function figureResolver(input: {
     // asset is read with the sentence before it; one that does neither is not served.
     const here = input.named?.(all);
     const namesHere = (here?.own.length ?? 0) + (here?.classes.length ?? 0) > 0;
-    const described = others.every((id) => kindNamed(id, own));
+    // It stands on its own when it names the kind of every figure and that figure's subject: an asset,
+    // or the vault for the vault's own value.
+    const described = others.every(
+      (id) =>
+        kindNamed(id, own) &&
+        (figure(id)?.assetId === undefined ? VAULT_WORD.test(own) : namesHere),
+    );
     if (others.length && !namesHere && !others.some((id) => kindNamed(id, own))) found.push('bare');
     const carried = described ? '' : lead.replace(GOAL_WORDS, ' ');
     const whole = `${carried} ${all}`;

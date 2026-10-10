@@ -313,7 +313,8 @@ describe('the vault conversation states a measured figure by reference', () => {
         ],
         stated: [] as VaultAgentStatedShare[],
         tradeoffs: [`Its largest fall so far was ${ref(drawdown)}.`],
-        unknowns: [`Weekend capacity is ${ref(`weekend:${stock.id}`)}.`],
+        // under the tradeoff about a fall, it names its own subject
+        unknowns: [`${stock.symbol} weekend capacity is ${ref(`weekend:${stock.id}`)}.`],
       },
     });
     const out = served(await replyToVaultConversation(request(), built(), model));
@@ -331,7 +332,7 @@ describe('the vault conversation states a measured figure by reference', () => {
     );
     expect(plain.proposal?.tradeoffs).toEqual(['Its largest fall so far was at least 35%.']);
     expect(plain.proposal?.unknowns.at(-1)).toBe(
-      'Weekend capacity is not measured (no samples in that regime yet).',
+      `${stock.symbol} weekend capacity is not measured (no samples in that regime yet).`,
     );
     // The same prose with each figure a placeholder, field by field, and each placeholder a fact.
     expect(figures?.prose.message).toBe(`Your holding is worth about ${ref(value)}.`);
@@ -1027,7 +1028,7 @@ describe('a figure is read with what stands around it', () => {
           { assetId: stock.id, why: fill('Nvidia. [NS].'), evidenceIds: [`price:${stock.id}`] },
         ],
         stated: [],
-        tradeoffs: ['Yearly return on Nvidia you can count on:', fill('Nvidia: about [NS].')],
+        tradeoffs: ['Yearly return on Nvidia you can count on:', fill('It is [NS] of the vault.')],
         unknowns: [],
       },
     });
@@ -1040,7 +1041,7 @@ describe('a figure is read with what stands around it', () => {
     // the question is shown under the message
     const asked = await ask({
       message: 'What does Nvidia return in a year?',
-      question: fill('Nvidia about [NS], is that enough?'),
+      question: fill('Is [NS] of the vault enough for you?'),
       proposal: null,
     });
     expect(served(asked.out).reply.question).toBeNull();
@@ -1173,7 +1174,6 @@ describe('a figure is read with what stands around it', () => {
 
   it.each([
     'Its quoted yield is [Y] a year. Your reserve is worth [RV].',
-    'Its quoted yield is [Y] a year. It is [RS] of your vault.',
     'Nvidia’s largest measured drawdown was [ND]. Nvidia is worth [NV].',
     'Your goal is to grow this money. Right now Nvidia is worth [NV].',
     'You told me you want growth. Nvidia is [NS] of your vault today.',
@@ -1313,6 +1313,120 @@ describe('a figure is read with what stands around it', () => {
       expect(await left(sentence)).toBe(`${expected} A new line follows.`);
     },
   );
+
+  // The re-check of #227.
+  it.each([
+    ['What will you earn in a year? In all, [W].', '3,500'],
+    ['What does Nvidia return in a year? A share of about [NS].', '28.57%'],
+    ['Next year’s gain on Nvidia. Target: [NT].', '30%'],
+    ['What does it pay a year? Total: [W].', '3,500'],
+    ['Quanto rende ao ano? No total, [W].', '3,500'],
+    ['Yearly return you can count on. It is [NS] of the vault.', '28.57%'],
+    ['Your cut of the gains each year. A portion of [NS].', '28.57%'],
+    ['What is the yearly profit? The amount is [NA].', '10'],
+    ['How much does it pay a year? The cost is [NX].', '0.4%'],
+    ['What will it return in a year?\n\nWorth [NV].', '1,000'],
+    ['Its quoted yield is [Y] a year. It is [RS] of your vault.', '14.29%'],
+  ])(
+    'reads a sentence with no subject of its own with the one before: %s',
+    async (text, figure) => {
+      expect(await shown(text)).not.toContain(figure);
+    },
+  );
+
+  it.each([
+    'Yearly return on Nvidia. Nvidia is [NS] of the vault.',
+    'What will you earn in a year? The vault is worth [W].',
+    'How much will Nvidia gain this year? Nvidia’s target is [NT].',
+  ])('lets a sentence that names its kind and its subject stand: %s', async (text) => {
+    const message = await shown(text);
+    expect(message).not.toContain(FIGURE_CUT);
+    expect(message).not.toMatch(/^refused/u);
+  });
+
+  it.each([
+    'Its current yield is [Y] a year from tomorrow.',
+    'Its current yield is [Y] a year from January.',
+    'Its quoted yield is [Y] a year for decades.',
+    'Its quoted yield is [Y] a year for ever.',
+    'Its quoted yield is [Y] a year for eternity.',
+    'Its current yield is [Y] a year for you.',
+    'Its current yield is [Y] a year of profit.',
+    'Its current yield is [Y] a year on autopilot.',
+    'Its current yield is [Y] a year for free.',
+    'The current rate of return is [Y] a year.',
+    'The current yield of waiting is [Y] a year.',
+    'The current yield on your money is [Y] a year.',
+    'The current rate for you is [Y] a year.',
+    'The latest yield for holders is now [Y] a year right now at the last reading for everyone.',
+    'Your current yield is [Y] a year.',
+    'Your current rate is now about [Y] a year.',
+    'Its current yield is [Y] a month.',
+    'A taxa atual é de [Y] ao mês.',
+    'O rendimento atual do seu-dinheiro é [Y] ao ano.',
+    // any word as the subject
+    'Tenonfi now pays [Y] a year.',
+    'Bearing now pays [Y] a year.',
+    'Saving now pays [Y] a year.',
+    'Patience now pays [Y] a year.',
+    'Everyone now pays [Y] a year.',
+    'Money now pays [Y] a year.',
+    'Now, retirement pays [Y] a year.',
+    'Risklessly pays [Y] a year now.',
+    'Hoje, tudo rende [Y] ao ano.',
+    'Agora poupar paga [Y] ao ano.',
+    'This now pays [Y] a month.',
+    // free text beside the clause
+    'There is no way to lose, and its current yield is [Y] a year.',
+    'It never goes down, and its quoted yield is currently [Y] a year.',
+    'This is free money: its current rate is [Y] a year.',
+    'Your money is insured, and its current yield is [Y] a year.',
+    'You can retire on it, and its quoted yield is currently [Y] a year.',
+    'Year after year without exception: its current yield is [Y] a year.',
+    'Yours to enjoy in perpetuity: its current yield is [Y] a year.',
+    'Sit back and relax: the reserve now pays [Y] a year.',
+    'It is the smart choice, and its current yield is [Y] a year.',
+    'The reserve is the steadier part of your vault, and its quoted yield is currently [Y] a year.',
+    'Você não perde nada, e a reserva hoje rende [Y] ao ano.',
+    'Fique tranquilo: o rendimento atual é [Y] ao ano.',
+    'Dinheiro fácil: a reserva hoje rende [Y] ao ano.',
+  ])(
+    'cuts a yield clause with a word after the figure, a stranger as its subject, or free text beside it: %s',
+    async (sentence) => {
+      expect(await left(sentence)).toBe(CUT);
+    },
+  );
+
+  it.each([
+    ['The reserve now pays [Y] a year.', 'The reserve now pays 5% a year.'],
+    ['It pays [Y] a year now.', 'It pays 5% a year now.'],
+    [
+      `${reserve.symbol} currently yields [Y] a year.`,
+      `${reserve.symbol} currently yields 5% a year.`,
+    ],
+    [
+      `The current yield of ${reserve.symbol} is [Y] a year.`,
+      `The current yield of ${reserve.symbol} is 5% a year.`,
+    ],
+    [
+      'The quoted yield on the reserve is [Y] a year.',
+      'The quoted yield on the reserve is 5% a year.',
+    ],
+    [
+      'O rendimento atual da reserva é de cerca de [Y] ao ano.',
+      'O rendimento atual da reserva é de cerca de 5% ao ano.',
+    ],
+    [
+      'It’s worth [RV], and its quoted yield is currently [Y] a year.',
+      'It’s worth $500.00, and its quoted yield is currently 5% a year.',
+    ],
+    [
+      'Its current rate is now about [Y] a year at the last reading.',
+      'Its current rate is now about 5% a year at the last reading.',
+    ],
+  ])('still serves the measurement itself: %s', async (sentence, expected) => {
+    expect(await left(sentence)).toBe(`${expected} A new line follows.`);
+  });
 
   it('reads every field with the one shown above it', async () => {
     const plan = (over: Record<string, unknown>, message = 'Here is the plan.') =>
