@@ -956,6 +956,8 @@ describe('no /v1 route can make the server sign', () => {
       'orders/vault-figures.ts',
       'orders/withdraw.ts',
       'plugins/auth.ts',
+      // a walk over an answer for numbers that are not finite: it imports Fastify's types alone
+      'plugins/finite.ts',
       'plugins/limits.ts',
       'plugins/loggable.ts',
       'plugins/paths.ts',
