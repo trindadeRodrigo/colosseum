@@ -1918,11 +1918,17 @@ export const en = {
       steps: 'Steps',
       expires: 'Sign before',
       spend: (amount: string, asset: string) => `Spend ${amount} on ${asset}`,
+      /** A trade that sells what the vault holds: the amount with its token's name. */
+      sell: (amount: string) => `Sell ${amount}`,
+      /** A sale of a token this app has no units for: no raw count is shown. */
+      sellUnnamed: (asset: string) => `Sell ${asset}, amount not shown`,
       /** Where this app has no units for the token: how far under the quote the step may land. */
       atMostUnder: (pct: string) => `at most ${pct} under the quote`,
       atLeastWhole: (amount: string) => `receive at least ${amount}`,
       /** The most a token costs at that minimum: what is spent over the least received. */
       atMostEach: (price: string) => `at most ${price} each`,
+      /** The least a token sold brings in at that minimum: the least received over what is sold. */
+      atLeastEach: (price: string) => `at least ${price} each`,
       under: (pct: string) => `${pct} under the quote`,
       noTrades: 'No trade in this step.',
       warnings: 'Our server warns',

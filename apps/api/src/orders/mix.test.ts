@@ -4,6 +4,8 @@ import {
   type BasketAsset,
   type BasketProposal,
   type BuiltTx,
+  BuiltTx as BuiltTxSchema,
+  Order,
   type Principal,
   BasketProposal as ProposalSchema,
   parseChainConfigs,
@@ -12,6 +14,7 @@ import {
 } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
 import { fixtureLiquidity } from '../../../../packages/engine/src/personal/testing';
+import { nonFinitePaths } from '../plugins/finite';
 import { createChainRegistry } from './chains';
 import { Refusal } from './errors';
 import {
@@ -664,5 +667,86 @@ describe('planRetarget: a vault the person owns, to its new targets', () => {
       buildRetarget(request, first, s.entry, mockAddress('solana', 'stranger'), undefined),
     );
     expect(r.status).toBe(404);
+  });
+
+  it('on an EVM chain: a vault of one 18-decimal stock into another, the sale and the purchase in one step', async () => {
+    // The product owner's vault of Oct 9: all TSLA, no cash, retargeted to all of another stock.
+    const s = await setup('robinhood');
+    const { entry, mock, cash } = s;
+    const owner = mockAddress('robinhood', 'one-stock');
+    mock.fund(owner, { gasRaw: '1000000000000000000', assets: { [cash]: '100000000' } });
+    await mock.send(
+      await entry.adapter.buildApprove({ owner, basketId: '12', amountRaw: '100000000' }),
+    );
+    await mock.send(
+      await entry.adapter.buildCreateVault({
+        owner,
+        basketId: '12',
+        targets: [{ asset: 'robinhood:tsla', weightBps: 10_000 }],
+        autoFollow: false,
+        depositRaw: '100000000',
+        trades: [{ sell: cash, buy: 'robinhood:tsla', amountInRaw: '100000000' }],
+        slippageBps: 100,
+      }),
+    );
+    const [vault] = await entry.adapter.getVaults(owner);
+    if (!vault) throw new Error('no vault');
+    expect(vault.cash.raw).toBe('0');
+    const tsla = vault.positions.find((p) => p.asset === 'robinhood:tsla');
+    // 18 decimals: a fraction of a token is a count of seventeen digits or more
+    expect(tsla?.raw.length).toBeGreaterThan(16);
+
+    const checked = await checkMix(
+      s.ctx,
+      [{ assetId: 'robinhood:nvda', weightBps: 10_000 }],
+      vault,
+    );
+    const { order, request } = await planRetarget(s.ctx, vault, checked, {
+      slippageBps: 100,
+      now: NOW,
+      owner,
+    });
+    // What goes out validates, and no number in it is Infinity or NaN.
+    expect(Order.safeParse(order).error).toBeUndefined();
+    expect(nonFinitePaths(order)).toEqual([]);
+    expect(order.legs.map((l) => l.kind)).toEqual(['set_targets', 'swap']);
+    const [targets, swap] = order.legs;
+    if (!targets || !swap) throw new Error('no steps');
+    // The sale reads as a sale: the stock in, in its own raw units, and cash out; then the purchase.
+    expect(swap.description).toBe('Sell TSLA for cash, Swap into NVDA');
+    expect(swap.trades).toHaveLength(2);
+    const [sale, purchase] = swap.trades;
+    expect(sale).toEqual({ sell: 'robinhood:tsla', buy: cash, amountInRaw: tsla?.raw });
+    expect(purchase).toMatchObject({ sell: cash, buy: 'robinhood:nvda' });
+    expect(swap.expected.map((e) => e.inRaw)).toEqual(swap.trades.map((t) => t.amountInRaw));
+    for (const e of swap.expected) {
+      expect(BigInt(e.minOutRaw)).toBeGreaterThan(0n);
+      expect(Number.isFinite(e.costBps)).toBe(true);
+    }
+    // The purchase spends no more than the least the sale brings in.
+    expect(BigInt(purchase?.amountInRaw ?? '0')).toBeLessThanOrEqual(
+      BigInt(swap.expected[0]?.minOutRaw ?? '0'),
+    );
+
+    // Each step built for the order's owner, in order, and what the bytes hold each trade to is
+    // what the order stated: the sale's asset, amount in and least out among them.
+    for (const leg of order.legs) {
+      const tx = BuiltTxSchema.parse(await buildRetarget(request, leg, entry, owner, undefined));
+      expect(nonFinitePaths(tx)).toEqual([]);
+      expect(tx.preview.minimums).toEqual(
+        leg.trades.map((t, i) => ({
+          sell: t.sell,
+          buy: t.buy,
+          inRaw: t.amountInRaw,
+          minOutRaw: leg.expected[i]?.minOutRaw,
+        })),
+      );
+      await mock.send(tx);
+    }
+    const after = await entry.adapter.getVault(vault.address);
+    expect(after?.positions.find((p) => p.asset === 'robinhood:tsla')?.raw ?? '0').toBe('0');
+    expect(
+      BigInt(after?.positions.find((p) => p.asset === 'robinhood:nvda')?.raw ?? '0'),
+    ).toBeGreaterThanOrEqual(BigInt(swap.expected[1]?.minOutRaw ?? '0'));
   });
 });

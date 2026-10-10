@@ -27,7 +27,7 @@ import { utc } from '../portfolio/figures';
 import { readPersonPlans, recordsOfPlans } from '../portfolio/server-plans';
 import { SharedReview } from '../shared/SharedReview';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
-import { formatBps, formatRaw, shortfallBps, shownRaw, tokenName } from './amounts';
+import { formatBps, formatRaw, shownRaw, tokenName } from './amounts';
 import { landedSentence, type OrderEmbed, progressOf } from './invest-words';
 import {
   addMoneyPath,
@@ -64,6 +64,7 @@ import { targetsOfPlan } from './plan-terms';
 import { chainReady, explorerUrlFor, onMock } from './readiness';
 import { planNumberOf, type RunOutcome, useOrderRunner } from './run-order';
 import { TrustNotice } from './TrustNotice';
+import { tradeLine } from './trade-line';
 import { type ChainUnits, unitsFor } from './units';
 import { OrderScreenWait, StepsWait } from './waits';
 import { useStayed } from './withdraw-stayed';
@@ -1302,16 +1303,6 @@ function Step({
     shownRaw(BigInt(raw), multipliers?.[asset] ?? '1').toString();
   /** A token by the symbol this repository committed for it, or its id on the chain where none is. */
   const symbol = (asset: string) => units?.tokens[asset]?.symbol ?? tokenName(asset);
-  /** The most one token costs when the least is received: what is spent over that minimum. */
-  const each = (spentRaw: string, minOutRaw: string, asset: string) => {
-    const cash = units?.tokens[units.cash];
-    const token = units?.tokens[asset];
-    const least = Number(minOutRaw);
-    if (!cash || !token || !(least > 0)) return null;
-    const price = Number(spentRaw) / 10 ** cash.decimals / (least / 10 ** token.decimals);
-    // A minimum too small to mean a price (a dust amount) gets none.
-    return Number.isFinite(price) && price < 1e9 ? money(price) : null;
-  };
   const status = phase
     ? t.order.phase[phase as keyof Dictionary['order']['phase']]
     : t.order.status[now.status];
@@ -1382,33 +1373,12 @@ function Step({
       )}
       {leg.trades.length === 0 ? null : (
         <ul className="flex flex-col gap-0.5 text-body-sm text-muted-foreground">
-          {leg.trades.map((trade, i) => {
-            const expected = leg.expected[i];
-            const under = expected ? shortfallBps(expected.outRaw, expected.minOutRaw) : null;
-            return (
-              <li key={`${trade.sell}>${trade.buy}:${trade.amountInRaw}`} className="tabular-nums">
-                {t.order.review.spend(spend(trade.amountInRaw), symbol(trade.buy))}
-                {/* In the token's own units where this app has them. Where it has none (the mock's
-                    tokens), a raw count would read as billions: the step says how far under the
-                    quote it may land, and no figure it cannot name (the flow audit, finding 23). */}
-                {expected && whole(expected.minOutRaw, trade.buy) !== null && (
-                  <>
-                    {' · '}
-                    {t.order.review.atLeastWhole(whole(expected.minOutRaw, trade.buy) as string)}
-                    {each(trade.amountInRaw, expected.minOutRaw, trade.buy) !== null &&
-                      ` (${t.order.review.atMostEach(
-                        each(trade.amountInRaw, expected.minOutRaw, trade.buy) as string,
-                      )})`}
-                    {under !== null && ` · ${t.order.review.under(formatBps(under, locale))}`}
-                  </>
-                )}
-                {expected &&
-                  whole(expected.minOutRaw, trade.buy) === null &&
-                  under !== null &&
-                  ` · ${t.order.review.atMostUnder(formatBps(under, locale))}`}
-              </li>
-            );
-          })}
+          {leg.trades.map((trade, i) => (
+            <li key={`${trade.sell}>${trade.buy}:${trade.amountInRaw}`} className="tabular-nums">
+              {/* Each side in its own token's units: a sale reads as a sale (trade-line.ts). */}
+              {tradeLine({ trade, expected: leg.expected[i], units, t, locale, money })}
+            </li>
+          ))}
         </ul>
       )}
     </li>
