@@ -32,11 +32,13 @@ import { statedPurpose } from './stated-purpose';
 import {
   cleanProse,
   type FigureReferences,
+  type FigureResolver,
   figureResolver,
   NULL_REASONS,
   vaultFacts,
   withoutMark,
   withoutReferences,
+  withoutUnserved,
 } from './vault-figures';
 
 type Figures = Awaited<ReturnType<PlanInputs>>;
@@ -303,7 +305,8 @@ const MEASURES: Record<AnalyticsFigure['metric'], { id: string; says: string }> 
   volatility: { id: 'vol:<asset>', says: 'Annualised price volatility' },
   drawdown: { id: 'drawdown:<asset>', says: 'Largest price drawdown' },
 };
-const LOWER_BOUND = '; a lower bound, the true figure is at least this';
+/** Ends the label of a figure whose true value is at least what is measured. */
+export const LOWER_BOUND = '; a lower bound, the true figure is at least this';
 
 /**
  * Bearing's analytics as evidence: each measured figure an id the model may cite, with a label that says
@@ -2096,36 +2099,15 @@ export async function replyToVaultConversation(
       .map((row) => row.company),
   ].map(withoutMark);
   // Figures by reference (vault-figures.ts): only the vault's own conversation states one.
-  const namer = assetNamer([...catalog.values()], companies);
-  const references = figureResolver({
+  const references = conversationFigures({
     enabled: context.kind !== 'new_goal',
+    catalog,
+    companies,
+    catalogNames,
     sources: sourceById,
     references: context.references,
     lowerBound: new Set((context.analytics?.assets ?? []).flatMap((row) => row.lowerBound ?? [])),
     language: parsed.data.language,
-    sentences: (text) => sentencesOf(text, catalogNames),
-    digitNames: catalogNames,
-    namesOf: (assetId) => {
-      const asset = catalog.get(assetId);
-      return asset ? [...new Set([asset.symbol, asset.underlying])].filter(Boolean) : [];
-    },
-    // A name that is one asset's, and a word for cash, gold or the reserve, which names every listed
-    // asset of that class. "Stocks" and "crypto" name too many to say whose a figure is.
-    named: (text) => {
-      const spans = namer(text);
-      const isClass = (span: Named) => CLASS_NAME.test(text.slice(span.start, span.end));
-      const narrow = (span: Named) =>
-        span.ids.every((id) => ['cash', 'gold'].includes(catalog.get(id)?.cls ?? ''));
-      return {
-        own: spans.flatMap((span) => (span.ids.length === 1 && !isClass(span) ? span.ids : [])),
-        classes: [
-          ...spans.flatMap((span) => (isClass(span) && narrow(span) ? span.ids : [])),
-          ...(RESERVE_NAME.test(text)
-            ? [...catalog.values()].filter((a) => a.cls === 'dollar_yield').map((a) => a.id)
-            : []),
-        ],
-      };
-    },
   });
   // References over both attempts that named no figure of this request; a count for the log.
   let unknownReferences = 0;
@@ -2232,19 +2214,7 @@ export async function replyToVaultConversation(
     const figured = (reply: VaultAgentModelReply) =>
       proseOf(reply).some(typed) || unbackedIn(reply).length > 0;
     /** One text without the sentences that type a figure or hold a reference that cannot be served. */
-    const trimmed = (text: string, lead: string) => {
-      const parts = references.parts(text, lead);
-      const kept = parts.filter((part) => !part.why.length && !typed(part.sentence));
-      if (kept.length === parts.length && !typed(text)) return { text, cut: 0 };
-      const rest = kept
-        .map((part) => part.sentence)
-        .join('')
-        .trim();
-      // a figure that only shows across two sentences leaves nothing of the text
-      return typed(rest)
-        ? { text: '', cut: parts.length }
-        : { text: rest, cut: parts.length - kept.length };
-    };
+    const trimmed = (text: string, lead: string) => withoutUnserved(references, typed, text, lead);
     const proseOf = ({ message, question, proposal: draft }: VaultAgentModelReply) => [
       message,
       question ?? '',
@@ -2661,4 +2631,71 @@ export async function replyToVaultConversation(
       ? checked.result
       : second.result;
   return counted({ ...final, repair });
+}
+
+/**
+ * The resolver of a conversation's references (vault-figures.ts) over one chain's catalog: how its
+ * prose is cut into sentences, which catalog names hold digits, and which assets a text names. Shared
+ * by the vault's conversation and the relaxed intake, so both read a sentence the same way.
+ */
+export function conversationFigures(input: {
+  enabled: boolean;
+  catalog: ReadonlyMap<string, BasketAsset>;
+  companies: Map<string, string[]>;
+  catalogNames: string[];
+  sources: ReadonlyMap<string, AgentSource>;
+  references: FigureReferences | undefined;
+  lowerBound: ReadonlySet<string>;
+  language: 'en' | 'pt';
+  /** The two rules of a conversation that is handed ids without values (vault-figures.ts). */
+  kindRequired?: boolean;
+  noComparison?: boolean;
+}): FigureResolver {
+  const { catalog, catalogNames } = input;
+  const namer = assetNamer([...catalog.values()], input.companies);
+  return figureResolver({
+    enabled: input.enabled,
+    sources: input.sources,
+    references: input.references,
+    lowerBound: input.lowerBound,
+    language: input.language,
+    ...(input.kindRequired ? { kindRequired: true } : {}),
+    ...(input.noComparison ? { noComparison: true } : {}),
+    sentences: (text) => sentencesOf(text, catalogNames),
+    digitNames: catalogNames,
+    namesOf: (assetId) => {
+      const asset = catalog.get(assetId);
+      return asset ? [...new Set([asset.symbol, asset.underlying])].filter(Boolean) : [];
+    },
+    // A name that is one asset's, and a word for cash, gold or the reserve, which names every listed
+    // asset of that class. "Stocks" and "crypto" name too many to say whose a figure is.
+    named: (text) => {
+      const spans = namer(text);
+      const isClass = (span: Named) => CLASS_NAME.test(text.slice(span.start, span.end));
+      const narrow = (span: Named) =>
+        span.ids.every((id) => ['cash', 'gold'].includes(catalog.get(id)?.cls ?? ''));
+      return {
+        own: spans.flatMap((span) => (span.ids.length === 1 && !isClass(span) ? span.ids : [])),
+        classes: [
+          ...spans.flatMap((span) => (isClass(span) && narrow(span) ? span.ids : [])),
+          ...(RESERVE_NAME.test(text)
+            ? [...catalog.values()].filter((a) => a.cls === 'dollar_yield').map((a) => a.id)
+            : []),
+        ],
+      };
+    },
+  });
+}
+
+/**
+ * The listed assets a text names, one entry per name: a single asset by its symbol, what it tracks or
+ * its company, and every asset of a class by the class word ("stocks", "gold"). For choosing what
+ * evidence a request carries, never for a share or a weight.
+ */
+export function assetsNamedIn(
+  assets: BasketAsset[],
+  companies: Map<string, string[]>,
+): (text: string) => string[][] {
+  const namer = assetNamer(assets, companies);
+  return (text) => namer(text).map((span) => span.ids);
 }

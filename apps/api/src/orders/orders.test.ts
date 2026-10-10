@@ -942,6 +942,7 @@ describe('no /v1 route can make the server sign', () => {
       'orders/personalize.ts',
       'orders/plan-join.ts',
       'orders/prepare.ts',
+      'orders/relaxed-figures.ts',
       'orders/relaxed-goal-agent.ts',
       'orders/relaxed-limits.ts',
       'orders/relaxed-projection.ts',
