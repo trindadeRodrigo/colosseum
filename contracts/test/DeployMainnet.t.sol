@@ -84,6 +84,22 @@ contract ChainlinkLikeFeed {
     }
 }
 
+/// What a pool-average feed says of itself (`src/price/PoolAverageFeed.sol`): the token it averages, the
+/// cash it is priced in, the Chainlink feed it is checked against, and its decimals.
+contract PoolAverageLike {
+    address public base;
+    address public quote;
+    address public feed;
+    uint8 public decimals;
+
+    constructor(address base_, address quote_, address feed_, uint8 decimals_) {
+        base = base_;
+        quote = quote_;
+        feed = feed_;
+        decimals = decimals_;
+    }
+}
+
 /// Stands for the Safe, and for a router: an address with code.
 contract Anything {}
 
@@ -103,7 +119,7 @@ contract DeployMainnetTest is Test {
     address internal keeper = makeAddr("keeper");
     Stock18 internal stock;
     ChainlinkLikeFeed internal feed;
-    ChainlinkLikeFeed internal average;
+    PoolAverageLike internal average;
 
     function setUp() public {
         script = new Deploy();
@@ -111,7 +127,7 @@ contract DeployMainnetTest is Test {
         safe = address(new Anything());
         stock = new Stock18();
         feed = new ChainlinkLikeFeed(8, "RHNVDA / USD", address(new Aggregator()));
-        average = new ChainlinkLikeFeed(8, "RHNVDA / USD 1h", address(new Aggregator()));
+        average = new PoolAverageLike(address(stock), USDG, address(feed), 8);
         vm.etch(USDG, address(new Dollar6()).code);
         vm.etch(UNIVERSAL_ROUTER, address(new Anything()).code);
         vm.etch(PERMIT2, address(new MockPermit2()).code);
@@ -468,6 +484,87 @@ contract DeployMainnetTest is Test {
         cfg.keeper = keeper;
         cfg.priceDevBps = 150;
         _refused(cfg, "an asset with no feed has an average or the keeper's switch");
+    }
+
+    // ---- an average feed is held to the asset it is listed for
+
+    /// A pool-average feed built for another token, another feed or another cash token is a wrong paste.
+    /// It would list, and the keeper would then refuse the asset with nothing to say why; the script stops.
+    function test_mainnet_refusesAnAverageFeedBuiltForAnotherAsset() public {
+        address other = address(new Stock18());
+        Deploy.Config memory cfg = _goodWithKeeper();
+        address wrong = address(new PoolAverageLike(other, USDG, address(feed), 8));
+        cfg.assets[1].config.averageFeed = wrong;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Deploy.AverageFeedMismatch.selector, address(stock), wrong, "base() is not the asset's token"
+            )
+        );
+        script.deploy(cfg, deployer);
+
+        wrong = address(new PoolAverageLike(address(stock), USDG, other, 8));
+        cfg.assets[1].config.averageFeed = wrong;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Deploy.AverageFeedMismatch.selector, address(stock), wrong, "feed() is not the asset's feed"
+            )
+        );
+        script.deploy(cfg, deployer);
+
+        wrong = address(new PoolAverageLike(address(stock), other, address(feed), 8));
+        cfg.assets[1].config.averageFeed = wrong;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Deploy.AverageFeedMismatch.selector, address(stock), wrong, "quote() is not the cash token"
+            )
+        );
+        script.deploy(cfg, deployer);
+    }
+
+    /// On a mainnet the average must be a pool-average feed: a contract that does not name its asset, a
+    /// Chainlink-style feed included, is not one.
+    function test_mainnet_refusesAnAverageFeedThatDoesNotNameItsAsset() public {
+        Deploy.Config memory cfg = _goodWithKeeper();
+        cfg.assets[1].config.averageFeed = address(new ChainlinkLikeFeed(8, "RHNVDA / USD", address(new Aggregator())));
+        _refused(cfg, "an asset's average feed does not name its token, feed and cash: not a pool-average feed");
+    }
+
+    /// On a test network the same check runs for a feed that names its asset, and a test price contract,
+    /// which names nothing, is listed as before.
+    function test_testNetwork_holdsAPoolAverageFeedToItsAsset_andLeavesATestPriceContractAlone() public {
+        vm.chainId(31_337);
+        Deploy.Config memory cfg = _goodWithKeeper();
+        cfg.chainId = 31_337;
+        Deploy.Asset memory a = cfg.assets[1];
+        assertTrue(script.checkAverageFeed(a, USDG));
+
+        address wrong = address(new PoolAverageLike(address(stock), USDG, address(feed), 18));
+        a.config.averageFeed = wrong;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Deploy.AverageFeedMismatch.selector,
+                address(stock),
+                wrong,
+                "decimals() are not the asset's feedDecimals"
+            )
+        );
+        script.checkAverageFeed(a, USDG);
+        // The deploy itself stops on it, before the asset is listed.
+        cfg.assets[1].config.averageFeed = wrong;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Deploy.AverageFeedMismatch.selector,
+                address(stock),
+                wrong,
+                "decimals() are not the asset's feedDecimals"
+            )
+        );
+        script.deploy(cfg, deployer);
+
+        a.config.averageFeed = address(new TestPriceFeed(8, "tNVDA / USD 1h", address(this), address(this)));
+        assertFalse(script.checkAverageFeed(a, USDG));
+        a.config.averageFeed = address(0);
+        assertFalse(script.checkAverageFeed(a, USDG));
     }
 
     // ---- no test-only contract can be reached from a mainnet

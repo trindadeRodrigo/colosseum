@@ -2976,6 +2976,13 @@ const RULES = [
     replace: 'calls[5] = abi.encodeCall(timelock.getMinDelay, ());',
     expect: 'test_mainnet_endsWithTheTimelockHoldingBothKeys_andTheDeployerHoldingNothing',
   },
+  {
+    id: 'setup-deploy-average-feed-is-the-assets',
+    file: 'script/Deploy.s.sol',
+    find: 'checkAverageFeed(a, cfg.cashToken);\n            factory.setAsset(a.token, a.config);',
+    replace: 'factory.setAsset(a.token, a.config);',
+    expect: 'test_testNetwork_holdsAPoolAverageFeedToItsAsset_andLeavesATestPriceContractAlone',
+  },
 ];
 
 // Fewer fuzz and invariant runs than the default: a removed rule fails on the first runs or not at all.

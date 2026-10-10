@@ -135,6 +135,9 @@ contract Deploy is Script {
     error NoAdmin();
     /// The file breaks a rule a mainnet deploy is held to. `rule` says which, in words.
     error MainnetRefused(string rule);
+    /// An asset's average feed is for another token, another feed, another cash token or other decimals:
+    /// a wrong paste. `what` says which.
+    error AverageFeedMismatch(address token, address averageFeed, string what);
     /// After the hand-over to the timelock, something is not where it must be.
     error HandoverIncomplete(string what);
     /// A number in the file is too large for its field, or a selector is not four bytes long.
@@ -310,6 +313,39 @@ contract Deploy is Script {
         );
     }
 
+    /// Holds an asset's average feed to the asset, before it is listed. A pool-average feed
+    /// (`src/price/PoolAverageFeed.sol`) names what it averages: `base()` the token, `feed()` the Chainlink
+    /// feed it is checked against, `quote()` the cash token, and its `decimals()`. One built for another
+    /// asset would list without complaint, and the keeper would then refuse every trade in the asset with
+    /// nothing to say why. A feed that names none of this (a test network's price contract) is left to
+    /// `setAsset`, and is refused on a mainnet by `checkMainnet`. Returns whether the feed named its asset.
+    function checkAverageFeed(Asset memory a, address cashToken) public view returns (bool named) {
+        address average = a.config.averageFeed;
+        if (average == address(0)) return false;
+        (bool hasBase, uint256 base) = _word(average, bytes4(keccak256("base()")));
+        (bool hasFeed, uint256 feed) = _word(average, bytes4(keccak256("feed()")));
+        (bool hasQuote, uint256 quote) = _word(average, bytes4(keccak256("quote()")));
+        if (!hasBase && !hasFeed && !hasQuote) return false;
+        require(
+            hasBase && base == uint160(a.token),
+            AverageFeedMismatch(a.token, average, "base() is not the asset's token")
+        );
+        require(
+            hasFeed && feed == uint160(a.config.feed),
+            AverageFeedMismatch(a.token, average, "feed() is not the asset's feed")
+        );
+        require(
+            hasQuote && quote == uint160(cashToken),
+            AverageFeedMismatch(a.token, average, "quote() is not the cash token")
+        );
+        (bool ok, uint256 decimals) = _word(average, 0x313ce567);
+        require(
+            ok && decimals == a.config.feedDecimals,
+            AverageFeedMismatch(a.token, average, "decimals() are not the asset's feedDecimals")
+        );
+        return true;
+    }
+
     // ---- what a mainnet file is held to
 
     /// A chain id that is not a known test network is treated as a mainnet: the local chain, Robinhood
@@ -456,6 +492,12 @@ contract Deploy is Script {
                     ok && decimals == a.config.feedDecimals,
                     MainnetRefused("an average feed's decimals are not the feed's")
                 );
+                require(
+                    checkAverageFeed(a, cfg.cashToken),
+                    MainnetRefused(
+                        "an asset's average feed does not name its token, feed and cash: not a pool-average feed"
+                    )
+                );
             }
             if (a.config.flags & 1 != 0) {
                 require(
@@ -512,6 +554,7 @@ contract Deploy is Script {
         }
         for (uint256 i; i < cfg.assets.length; ++i) {
             Asset memory a = cfg.assets[i];
+            checkAverageFeed(a, cfg.cashToken);
             factory.setAsset(a.token, a.config);
             _tx(
                 to,
