@@ -177,6 +177,19 @@ export const BASKET_VAULT_ABI = [
   },
   {
     type: 'function',
+    name: 'netDeposited',
+    inputs: [],
+    outputs: [
+      {
+        name: '',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     name: 'owner',
     inputs: [],
     outputs: [
@@ -1726,6 +1739,56 @@ export const VAULT_FACTORY_ABI = [
   },
   {
     type: 'function',
+    name: 'depositCaps',
+    inputs: [],
+    outputs: [
+      {
+        name: 'perVault',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+      {
+        name: 'total',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'depositedOf',
+    inputs: [
+      {
+        name: 'vault',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
+    outputs: [
+      {
+        name: '',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'depositsPaused',
+    inputs: [],
+    outputs: [
+      {
+        name: '',
+        type: 'bool',
+        internalType: 'bool',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     name: 'extendClosedUntil',
     inputs: [
       {
@@ -1909,6 +1972,19 @@ export const VAULT_FACTORY_ABI = [
   },
   {
     type: 'function',
+    name: 'noteDeposit',
+    inputs: [
+      {
+        name: 'netDeposited',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
     name: 'params',
     inputs: [],
     outputs: [
@@ -1944,6 +2020,13 @@ export const VAULT_FACTORY_ABI = [
       },
     ],
     stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'pauseDeposits',
+    inputs: [],
+    outputs: [],
+    stateMutability: 'nonpayable',
   },
   {
     type: 'function',
@@ -2071,6 +2154,19 @@ export const VAULT_FACTORY_ABI = [
         name: '',
         type: 'address',
         internalType: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'sessionPriceAge',
+    inputs: [],
+    outputs: [
+      {
+        name: '',
+        type: 'uint32',
+        internalType: 'uint32',
       },
     ],
     stateMutability: 'view',
@@ -2209,6 +2305,24 @@ export const VAULT_FACTORY_ABI = [
         name: 'until',
         type: 'uint64',
         internalType: 'uint64',
+      },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'setDepositCaps',
+    inputs: [
+      {
+        name: 'perVault',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+      {
+        name: 'total',
+        type: 'uint256',
+        internalType: 'uint256',
       },
     ],
     outputs: [],
@@ -2357,6 +2471,52 @@ export const VAULT_FACTORY_ABI = [
         internalType: 'address',
       },
     ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'setSessionPriceAge',
+    inputs: [
+      {
+        name: 'age',
+        type: 'uint32',
+        internalType: 'uint32',
+      },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'syncDeposits',
+    inputs: [
+      {
+        name: 'vaults',
+        type: 'address[]',
+        internalType: 'address[]',
+      },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'totalDeposited',
+    inputs: [],
+    outputs: [
+      {
+        name: '',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'unpauseDeposits',
+    inputs: [],
     outputs: [],
     stateMutability: 'nonpayable',
   },
@@ -2729,6 +2889,69 @@ export const VAULT_FACTORY_ABI = [
   },
   {
     type: 'event',
+    name: 'DepositCapsSet',
+    inputs: [
+      {
+        name: 'perVault',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
+      {
+        name: 'total',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'DepositCounted',
+    inputs: [
+      {
+        name: 'vault',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'counted',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
+      {
+        name: 'total',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'DepositsPaused',
+    inputs: [
+      {
+        name: 'by',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'DepositsUnpaused',
+    inputs: [],
+    anonymous: false,
+  },
+  {
+    type: 'event',
     name: 'GuardianSet',
     inputs: [
       {
@@ -2896,6 +3119,19 @@ export const VAULT_FACTORY_ABI = [
   },
   {
     type: 'event',
+    name: 'SessionPriceAgeSet',
+    inputs: [
+      {
+        name: 'age',
+        type: 'uint32',
+        indexed: false,
+        internalType: 'uint32',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
     name: 'Upgraded',
     inputs: [
       {
@@ -3042,6 +3278,32 @@ export const VAULT_FACTORY_ABI = [
   },
   {
     type: 'error',
+    name: 'DecimalsMismatch',
+    inputs: [
+      {
+        name: 'what',
+        type: 'address',
+        internalType: 'address',
+      },
+      {
+        name: 'stated',
+        type: 'uint8',
+        internalType: 'uint8',
+      },
+      {
+        name: 'answered',
+        type: 'uint8',
+        internalType: 'uint8',
+      },
+    ],
+  },
+  {
+    type: 'error',
+    name: 'DepositsArePaused',
+    inputs: [],
+  },
+  {
+    type: 'error',
     name: 'ERC1967InvalidImplementation',
     inputs: [
       {
@@ -3115,6 +3377,17 @@ export const VAULT_FACTORY_ABI = [
     inputs: [
       {
         name: 'target',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
+  },
+  {
+    type: 'error',
+    name: 'NotAVault',
+    inputs: [
+      {
+        name: 'caller',
         type: 'address',
         internalType: 'address',
       },
@@ -3236,6 +3509,22 @@ export const VAULT_FACTORY_ABI = [
   },
   {
     type: 'error',
+    name: 'TotalCapReached',
+    inputs: [
+      {
+        name: 'total',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+      {
+        name: 'cap',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
+  },
+  {
+    type: 'error',
     name: 'UUPSUnauthorizedCallContext',
     inputs: [],
   },
@@ -3247,6 +3536,27 @@ export const VAULT_FACTORY_ABI = [
         name: 'slot',
         type: 'bytes32',
         internalType: 'bytes32',
+      },
+    ],
+  },
+  {
+    type: 'error',
+    name: 'VaultCapReached',
+    inputs: [
+      {
+        name: 'vault',
+        type: 'address',
+        internalType: 'address',
+      },
+      {
+        name: 'counted',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+      {
+        name: 'cap',
+        type: 'uint256',
+        internalType: 'uint256',
       },
     ],
   },

@@ -14,9 +14,10 @@ address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 ///
 /// This is the config half of `IVaultFactory` (section 3.8). The factory implements both.
 ///
-/// Three roles. The admin sets everything and is handed over in two steps. The guardian can only tighten:
-/// pause the keeper, halt an asset, close the market for longer. The keeper is named here and has no power
-/// in this contract.
+/// Three roles. The admin sets everything and is handed over in two steps; on a mainnet it is a timelock
+/// (OpenZeppelin's `TimelockController`) that a Safe proposes to, so every call marked "admin only" below
+/// waits out the delay. The guardian can only tighten: pause the keeper, pause deposits, halt an asset,
+/// close the market for longer. The keeper is named here and has no power in this contract.
 interface IVaultConfig {
     event AssetSet(address indexed token, AssetConfig config);
     event AssetRemoved(address indexed token);
@@ -36,6 +37,13 @@ interface IVaultConfig {
     event ClosedDaySet(uint32 indexed day, bool closed);
     event Launched();
     event PriceDevSet(uint16 bps);
+    event DepositCapsSet(uint256 perVault, uint256 total);
+    event DepositsPaused(address indexed by);
+    event DepositsUnpaused();
+    event SessionPriceAgeSet(uint32 age);
+    /// What the config counts for a vault changed: on its deposit, or when anyone brought the count up to
+    /// date after the vault paid cash out.
+    event DepositCounted(address indexed vault, uint256 counted, uint256 total);
 
     error NotAdmin(address caller);
     error NotPendingAdmin(address caller);
@@ -61,11 +69,21 @@ interface IVaultConfig {
     error RegistryAlreadySet(address registry);
     /// `param` is the field's name as ASCII, left-aligned: "source", "session", "tokenDecimals",
     /// "feedDecimals", "maxWeightBps", "maxAge", "flags", "maxPrice", "toleranceBps", "lossCapBps", "bandBps",
-    /// "assetCooldown", "sessionOpen", "sessionClose", "priceDevBps".
+    /// "assetCooldown", "sessionOpen", "sessionClose", "priceDevBps", "sessionPriceAge", "vaultCap".
     error ParamOutOfBounds(bytes32 param, uint256 value);
     /// The keeper's switch on an asset with no price to value it at: no Chainlink feed, no average feed
     /// apart from it, or no price range.
     error AssetNotPriced(address token);
+    /// The decimals stated for a token or a feed are not the ones it answers itself. `what` is the token,
+    /// the feed or the average feed.
+    error DecimalsMismatch(address what, uint8 stated, uint8 answered);
+    /// The guardian stopped new money: no deposit and no first deposit at creation until the admin lifts it.
+    error DepositsArePaused();
+    /// The deposit would leave the vault with more cash put in, net of cash taken out, than one vault may hold.
+    error VaultCapReached(address vault, uint256 counted, uint256 cap);
+    /// The deposit would take the count across every vault of this factory past the total cap.
+    error TotalCapReached(uint256 total, uint256 cap);
+    error NotAVault(address caller);
 
     // ---- what a vault reads
 
@@ -128,9 +146,42 @@ interface IVaultConfig {
     /// average. Zero until the admin sets it: a price must then equal its average.
     function priceDevBps() external view returns (uint16);
 
+    /// How old a US stock's price may be, in seconds, for the keeper to trade at it while the session is
+    /// open; the price must also be stamped at or after that day's session open. Zero is no such rule: only
+    /// the asset's own `maxAge` holds.
+    function sessionPriceAge() external view returns (uint32);
+
+    /// The most cash one vault may have put in, net of the cash it paid out, and the most across every vault
+    /// of this factory. Raw units of the cash token. Checked on every deposit; withdrawals are never capped.
+    function depositCaps() external view returns (uint256 perVault, uint256 total);
+
+    /// Whether the guardian stopped new money. It stops `deposit` and a first deposit at creation, and
+    /// nothing else: a swap, a withdrawal and the keeper never read it.
+    function depositsPaused() external view returns (bool);
+
+    /// What the config counts toward the total cap: the sum of `depositedOf` over every vault.
+    function totalDeposited() external view returns (uint256);
+
+    /// What the config last counted for `vault`: its net cash deposited as of its last deposit or the last
+    /// `syncDeposits` that named it.
+    function depositedOf(address vault) external view returns (uint256);
+
     function admin() external view returns (address);
 
     function pendingAdmin() external view returns (address);
+
+    // ---- a vault, about itself
+
+    /// Called by a vault inside its deposit, with what it has now put in net of what it paid out. Refused
+    /// when deposits are paused or when either cap would be passed.
+    function noteDeposit(uint256 netDeposited) external;
+
+    // ---- anyone
+
+    /// Brings the count of each vault named down to what that vault reports now. A vault's count rises only
+    /// in its own deposit; cash it paid out since is not seen until its next deposit or this call. It can
+    /// only lower the total, so anyone may make it.
+    function syncDeposits(address[] calldata vaults) external;
 
     // ---- guardian (or the admin): each call can only tighten, and none touches the owner's path
 
@@ -142,6 +193,9 @@ interface IVaultConfig {
     function extendClosedUntil(uint64 until) external;
 
     function addClosedDay(uint32 day) external;
+
+    /// Stops new money into every vault of this factory. Withdrawing is untouched: it reads no config.
+    function pauseDeposits() external;
 
     // ---- admin only: unpause, shorten, remove, rotate
 
@@ -169,6 +223,15 @@ interface IVaultConfig {
     function setPriceDevBps(uint16 bps) external;
 
     function unpauseKeeper() external;
+
+    function unpauseDeposits() external;
+
+    /// Both caps in raw units of the cash token, the per-vault cap at most the total. `type(uint256).max`
+    /// for both is no cap, which is how a new factory starts.
+    function setDepositCaps(uint256 perVault, uint256 total) external;
+
+    /// At most 26 hours. Zero switches the rule off.
+    function setSessionPriceAge(uint32 age) external;
 
     /// Sets an asset's halt to any time, earlier ones included: the admin's way to lift or shorten a halt.
     function setHalt(address token, uint64 until) external;

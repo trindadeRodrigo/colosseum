@@ -156,6 +156,10 @@ contract VaultFactory is VaultConfig, UUPSUpgradeable, IVaultFactory {
         return super._isReserved(target) || target == $.beacon || $.isVault[target];
     }
 
+    function _isVault(address target) internal view override returns (bool) {
+        return _factory().isVault[target];
+    }
+
     /// The beacon's owner can replace the code of every vault. At launch that key is the admin and nobody
     /// is waiting to take it over.
     function _checkLaunch() internal view override {
