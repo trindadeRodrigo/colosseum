@@ -79,7 +79,10 @@ contract StorageLayoutTest is SwapFixture {
         assertEq(_word(where, s + 8), 0, "lastKeeperAt: a mapping's own slot stays empty");
         assertEq(_word(where, s + 9), 0, "lossAccum");
         assertEq(_word(where, s + 10), 0, "lossTs");
-        assertEq(_word(where, s + 11), 0, "the next field a later version adds goes here");
+        // The mainnet setup, appended
+        assertEq(_word(where, s + 11), 10 * USD, "netDeposited");
+        assertEq(_addr(where, s + 12), address(cash), "depositToken");
+        assertEq(_word(where, s + 13), 0, "the next field a later version adds goes here");
         _assertPlainSlotsEmpty(where);
     }
 
@@ -132,6 +135,10 @@ contract StorageLayoutTest is SwapFixture {
         vm.startPrank(admin);
         factory.setAsset(address(stockA), priced);
         factory.setPriceDevBps(321);
+        factory.setSessionPriceAge(4321);
+        factory.setDepositCaps(7000 * USD, 9000 * USD);
+        factory.setCreator(stranger, true);
+        factory.setCreationRestricted(true);
         factory.launch();
         factory.proposeAdmin(stranger);
         factory.removeAsset(address(stockC));
@@ -141,6 +148,7 @@ contract StorageLayoutTest is SwapFixture {
         factory.pauseKeeper();
         factory.extendClosedUntil(1_800_000_000);
         factory.addClosedDay(20_800);
+        factory.pauseDeposits();
         vm.stopPrank();
 
         uint256 s = _namespace("basket.storage.VaultConfig");
@@ -174,7 +182,19 @@ contract StorageLayoutTest is SwapFixture {
         assertEq(_addr(where, s + 14), address(registry), "registry");
         // EVM-3, appended
         assertEq(uint16(_word(where, s + 14) >> 160), 321, "priceDevBps, in the registry's slot");
-        assertEq(_word(where, s + 14) >> 176, 0, "priceDevBps ends at bit 175");
+        // The mainnet setup, appended: two small fields in what was left of the registry's slot, then four
+        // slots of their own. A factory upgraded from the layout before reads zero in all of them: deposits
+        // not paused, no in-session age, and both caps zero, so no deposit until the admin sets them.
+        assertEq(uint8(_word(where, s + 14) >> 176), 1, "depositsPaused, after priceDevBps");
+        assertEq(uint32(_word(where, s + 14) >> 184), 4321, "sessionPriceAge, after it");
+        assertEq(_word(where, s + 14) >> 216, 0, "sessionPriceAge ends at bit 215");
+        assertEq(_word(where, s + 15), 7000 * USD, "vaultCap");
+        assertEq(_word(where, s + 16), 9000 * USD, "totalCap");
+        assertEq(_word(where, s + 17), 10 * USD, "totalDeposited");
+        assertEq(_word(where, s + 18), 0, "deposited: a mapping's own slot stays empty");
+        assertEq(
+            _word(where, uint256(keccak256(abi.encode(address(follower), s + 18)))), 10 * USD, "deposited: a vault"
+        );
         uint256 asset = uint256(keccak256(abi.encode(address(stockA), s + 4)));
         uint256 third = _word(where, asset + 2);
         assertEq(uint64(third), 0, "assets: haltUntil, alone at the start of the third slot");
@@ -184,7 +204,10 @@ contract StorageLayoutTest is SwapFixture {
         assertEq(uint128(fourth), 100e8, "assets: minPrice, in the fourth slot");
         assertEq(fourth >> 128, 150e8, "assets: maxPrice, beside it");
         assertEq(_word(where, asset + 4), 0, "assets: an entry is four slots");
-        assertEq(_word(where, s + 15), 0, "the next field a later version adds goes here");
+        assertEq(_word(where, s + 19), 0, "creators: a mapping's own slot stays empty");
+        assertEq(_word(where, uint256(keccak256(abi.encode(stranger, s + 19)))), 1, "creators: an entry");
+        assertEq(_word(where, s + 20), 1, "creationRestricted");
+        assertEq(_word(where, s + 21), 0, "the next field a later version adds goes here");
         _assertPlainSlotsEmpty(where);
     }
 
@@ -277,6 +300,8 @@ contract KeeperStorageLayoutTest is KeeperFixture {
         assertEq(uint256(vm.load(where, entry)), block.timestamp, "lastKeeperAt: an asset's entry");
         assertEq(uint256(vm.load(where, bytes32(s + 9))), 48 * USD, "lossAccum");
         assertEq(uint256(vm.load(where, bytes32(s + 10))), block.timestamp, "lossTs");
-        assertEq(uint256(vm.load(where, bytes32(s + 11))), 0, "the next field a later version adds goes here");
+        assertEq(uint256(vm.load(where, bytes32(s + 11))), vault.netDeposited(), "netDeposited, after the keeper's");
+        assertGt(vault.netDeposited(), 0);
+        assertEq(uint256(vm.load(where, bytes32(s + 13))), 0, "the next field a later version adds goes here");
     }
 }

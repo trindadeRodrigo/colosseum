@@ -36,7 +36,12 @@ import {AssetConfig, Params, Snapshot, Swap, Weight} from "./interfaces/Types.so
 /// - No allowance from the vault outlives the swap that gave it, on the token or in Permit2 (I3). The vault
 ///   has no `isValidSignature`, so nobody can sign an allowance in its name.
 /// - Withdrawing reads no feed and calls neither the config, the factory nor the registry (I4). Only a
-///   beacon upgrade can block it.
+///   beacon upgrade can block it. No pause reaches it: the guardian's two switches stop the keeper and new
+///   deposits, and neither is read on the way out.
+/// - New money is counted and capped (the deposit caps): the vault keeps what came in as cash less what
+///   left as cash, tells the config that number inside each deposit, and the config refuses a deposit that
+///   would pass the cap of one vault or of all of them. A withdrawal lowers the vault's own number and tells
+///   nobody.
 /// - `withdrawAll` never leaves a token behind for lack of gas: short of gas it fails as a whole.
 /// - One reentrancy guard covers every function that changes state. `multicall` is the one exception: it
 ///   only calls back into the vault, and each inner call takes the guard itself.
@@ -80,6 +85,13 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
         // written. What is left of it falls in a straight line to nothing over seven days from then.
         uint256 lossAccum;
         uint64 lossTs;
+        // ---- appended by the mainnet setup
+        // What the deposit caps count: cash in through `deposit` and creation, less cash out through
+        // `withdraw` and `withdrawAll`, never below zero. Raw units of `depositToken`.
+        uint256 netDeposited;
+        // The cash token as of the vault's last deposit. Kept here so that a withdrawal can tell cash from
+        // any other token without asking the config.
+        address depositToken;
     }
 
     // keccak256(abi.encode(uint256(keccak256("basket.storage.BasketVault")) - 1)) & ~bytes32(uint256(0xff))
@@ -139,6 +151,10 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
         uint256 others;
         uint256 assetValue;
         uint256 vaultValue;
+        /// When today's session opened and how old a stock's price may be in it; both zero when the rule is
+        /// off or the clock is outside the session.
+        uint256 sessionOpenAt;
+        uint32 sessionAge;
     }
 
     modifier onlyOwner() {
@@ -310,6 +326,7 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
     /// outside. Passes on all the gas it is given, and fails if the token does.
     function withdraw(address token, uint256 amount) external onlyOwner nonReentrant {
         IERC20(token).safeTransfer(_vault().owner, amount);
+        _countOut(_vault(), token, amount);
     }
 
     /// Sends the whole balance of every token in `tokens` to the owner. A token that reverts, answers
@@ -323,9 +340,11 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
     function withdrawAll() external onlyOwner nonReentrant returns (address[] memory skipped) {
         VaultStorage storage $ = _vault();
         address to = $.owner;
+        address cash = $.depositToken;
         address[] memory list = $.tokens.values();
         skipped = new address[](list.length);
         uint256 n;
+        uint256 cashOut;
         for (uint256 i; i < list.length; ++i) {
             require(gasleft() >= SWEEP_RESERVE, IBasketVault.GasTooLow(gasleft(), SWEEP_RESERVE));
             (bool readable, uint256 held) = _tryBalanceOf(list[i]);
@@ -333,7 +352,16 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
             if (!readable || !_tryTransfer(list[i], to, held)) {
                 skipped[n++] = list[i];
                 emit IBasketVault.WithdrawSkipped(list[i]);
+            } else if (list[i] == cash) {
+                cashOut = held;
             }
+        }
+        // With nothing left behind the vault holds none of what it took in, in whatever form it left. With
+        // a token skipped, only the cash that left is counted out.
+        if (n == 0) {
+            if ($.netDeposited != 0) $.netDeposited = 0;
+        } else if (cashOut != 0) {
+            _countOut($, cash, cashOut);
         }
         assembly ("memory-safe") {
             mstore(skipped, n)
@@ -362,6 +390,11 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
 
     function config() external view returns (address) {
         return address(_vault().config);
+    }
+
+    /// @inheritdoc IBasketVault
+    function netDeposited() external view returns (uint256) {
+        return _vault().netDeposited;
     }
 
     /// The tokens `withdrawAll` walks, in the order they first came in.
@@ -447,6 +480,24 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
         IERC20(cash).safeTransferFrom(from, address(this), amount);
         uint256 received = IERC20(cash).balanceOf(address(this)) - before;
         require(received >= amount, IBasketVault.DepositShortfall(cash, amount, received));
+
+        // The count is in units of one cash token. Should the admin ever name another, it starts again.
+        if ($.depositToken != cash) {
+            $.depositToken = cash;
+            $.netDeposited = 0;
+        }
+        uint256 net = $.netDeposited + received;
+        $.netDeposited = net;
+        // The config refuses here when deposits are paused or a cap would be passed.
+        $.config.noteDeposit(net);
+    }
+
+    /// Lowers the count of cash put in by cash that left, down to zero and no further: cash a sale brought
+    /// in can leave too. No call is made: the token is compared with the one the vault remembers.
+    function _countOut(VaultStorage storage $, address token, uint256 amount) private {
+        if (token != $.depositToken) return;
+        uint256 net = $.netDeposited;
+        if (net != 0) $.netDeposited = net > amount ? net - amount : 0;
     }
 
     /// Copies the active version of a shared portfolio as the vault's targets, if it is the version the
@@ -643,7 +694,8 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
         // loss cap are shares of the whole, so one target that cannot be valued stops the trade.
         _checkSequencer(cfg);
         uint16 devBps = cfg.priceDevBps();
-        leg.price = _reference(leg.asset, leg.config, devBps);
+        (leg.sessionOpenAt, leg.sessionAge) = _sessionRule(cfg, p);
+        leg.price = _reference(leg.asset, leg.config, devBps, leg.sessionOpenAt, leg.sessionAge);
         leg.cashDecimals = cfg.asset(leg.cash).tokenDecimals;
         Weight[] memory list = $.targets;
         for (uint256 i; i < list.length; ++i) {
@@ -655,7 +707,8 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
             // Watched by the trade's "no other token went down", whether or not it came in by a swap.
             $.tokens.add(token);
             AssetConfig memory a = cfg.asset(token);
-            leg.others += _value(amount, _reference(token, a, devBps), a, leg.cashDecimals);
+            uint256 price = _reference(token, a, devBps, leg.sessionOpenAt, leg.sessionAge);
+            leg.others += _value(amount, price, a, leg.cashDecimals);
         }
 
         uint256 assetHeld = _held(leg.asset);
@@ -784,13 +837,18 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
     /// always open. The same rule as the Solana program's `market_open`.
     function _checkMarket(IVaultConfig cfg, address token, AssetConfig memory a, Params memory p) private view {
         if (a.session == 0) return;
-        uint256 day = block.timestamp / 1 days;
+        (bool inSession, uint256 day) = _inSession(p);
+        bool open = inSession && !cfg.closedDay(uint32(day)) && block.timestamp >= cfg.closedUntil();
+        require(open, MarketClosed(token));
+    }
+
+    /// Whether the clock is inside the session, Monday to Friday, and the day it is, in days since 1970.
+    function _inSession(Params memory p) private view returns (bool inSession, uint256 day) {
+        day = block.timestamp / 1 days;
         uint256 second = block.timestamp % 1 days;
         // Day 0 was a Thursday; 0 is Sunday.
         uint256 weekday = (day + 4) % 7;
-        bool inSession = weekday >= 1 && weekday <= 5 && second >= p.sessionOpen && second < p.sessionClose;
-        bool open = inSession && !cfg.closedDay(uint32(day)) && block.timestamp >= cfg.closedUntil();
-        require(open, MarketClosed(token));
+        inSession = weekday >= 1 && weekday <= 5 && second >= p.sessionOpen && second < p.sessionClose;
     }
 
     /// On a chain with a sequencer feed (Base), the sequencer is up and has been for an hour. Robinhood
@@ -813,7 +871,16 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
     ///
     /// The range is what bounds a wrong price that is steady and followed by its own average: the switch and
     /// the range are the admin's, set only after the feed is seen to move with the market.
-    function _reference(address token, AssetConfig memory a, uint16 devBps) private view returns (uint256 price) {
+    ///
+    /// For a US stock while the session is open, and where the config sets `sessionPriceAge`, the price must
+    /// also be today's: stamped at or after the session's open and no older than that age. Without it
+    /// yesterday's close, 18.5 hours old at the open, is "fresh" under a 26-hour `maxAge` until the feed's
+    /// first round of the day.
+    function _reference(address token, AssetConfig memory a, uint16 devBps, uint256 sessionOpenAt, uint32 sessionAge)
+        private
+        view
+        returns (uint256 price)
+    {
         require(a.source == 1 && a.feed != address(0), AssetNotPriced(token));
         require(a.flags & KEEPER_ON != 0, KeeperAssetOff(token));
         uint256 updatedAt;
@@ -821,11 +888,26 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
         require(price != 0, AssetNotPriced(token));
         require(price >= a.minPrice && price <= a.maxPrice, PriceOutOfRange(token, price));
         require(_fresh(updatedAt, a.maxAge), PriceStale(token, updatedAt));
+        if (a.session == 1 && sessionOpenAt != 0) {
+            require(updatedAt >= sessionOpenAt && _fresh(updatedAt, sessionAge), PriceStale(token, updatedAt));
+        }
         (uint256 average, uint256 averageAt) = _readFeed(a.averageFeed);
         require(average != 0, AssetNotPriced(token));
         require(_fresh(averageAt, a.maxAge), PriceStale(token, averageAt));
         uint256 apart = price > average ? price - average : average - price;
         require(average <= type(uint128).max && apart * BPS <= average * devBps, PriceDeviation(token, price, average));
+    }
+
+    /// When today's session opened and the in-session age the config sets, or zeros when the config sets no
+    /// such age or the clock is outside Monday to Friday, open to close. Closed days are not read here: on
+    /// one, a stock cannot be traded at all (check 9), and one that is only held is then held to a price of
+    /// that day, which errs toward refusing.
+    function _sessionRule(IVaultConfig cfg, Params memory p) private view returns (uint256 openAt, uint32 age) {
+        age = cfg.sessionPriceAge();
+        if (age == 0) return (0, 0);
+        (bool inSession, uint256 day) = _inSession(p);
+        if (!inSession) return (0, 0);
+        openAt = day * 1 days + p.sessionOpen;
     }
 
     /// A price stamped at most `maxAge` ago, and not further ahead of the clock than that.

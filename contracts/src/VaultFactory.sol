@@ -129,6 +129,7 @@ contract VaultFactory is VaultConfig, UUPSUpgradeable, IVaultFactory {
     function _deploy(bytes32 salt) private returns (address vault) {
         FactoryStorage storage $ = _factory();
         address owner = msg.sender;
+        require(mayCreate(owner), NotAllowedToCreate(owner));
         require($.bySalt[owner][salt] == address(0), VaultExists($.bySalt[owner][salt]));
 
         vault = Create2.deploy(0, _salt(owner, salt), _creationCode($.beacon, owner, salt));
@@ -154,6 +155,10 @@ contract VaultFactory is VaultConfig, UUPSUpgradeable, IVaultFactory {
     function _isReserved(address target) internal view override returns (bool) {
         FactoryStorage storage $ = _factory();
         return super._isReserved(target) || target == $.beacon || $.isVault[target];
+    }
+
+    function _isVault(address target) internal view override returns (bool) {
+        return _factory().isVault[target];
     }
 
     /// The beacon's owner can replace the code of every vault. At launch that key is the admin and nobody

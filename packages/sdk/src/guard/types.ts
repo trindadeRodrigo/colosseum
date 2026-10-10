@@ -140,6 +140,19 @@ export type SolanaDeployment = {
   fee?: FeeLimit;
 };
 
+/**
+ * How the guard reads the call data a vault hands one of its exchanges (`Swap.data`). Every router of
+ * a deployment states one, and only a stated kind is read:
+ * - `universal-router-v4`: Uniswap's Universal Router, held to one exact-input swap in one v4 pool of
+ *   this fee and tick spacing, with these hooks (the zero address: a pool with none).
+ * - `unread`: an exchange whose call data the guard does not read, such as the mock router of a local
+ *   chain. The vault still holds the trade to its tokens, its amount and its minimum. Never on a live
+ *   network: the loader refuses it there, and so does the check.
+ */
+export type EvmRoute =
+  | { kind: 'universal-router-v4'; fee: number; tickSpacing: number; hooks: Address }
+  | { kind: 'unread' };
+
 export type EvmDeployment = {
   family: 'evm';
   chain: Exclude<ChainId, 'solana'>;
@@ -156,6 +169,8 @@ export type EvmDeployment = {
   proxyCreationCode?: string;
   /** The exchanges a vault may trade through. */
   routers: Address[];
+  /** How each router's call data is read, by the router's address in lower case: one for every router. */
+  routes: Record<Address, EvmRoute>;
   /** The shared portfolios' `IndexRegistry`. Left out, nothing is published on the chain. */
   registry?: Address;
   cash: AssetId;

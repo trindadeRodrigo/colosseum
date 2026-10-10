@@ -4,6 +4,37 @@ import { deepFreeze } from '../strict';
 
 /** One file per network, as committed, and frozen. `deploymentsOf` reads and checks them, and nothing else. */
 export const DEPLOYMENT_FILES: Readonly<Record<string, unknown>> = deepFreeze({
+  mainnet: {
+    format: 'guard-deployment/1',
+    network: 'mainnet',
+    placeholder: true,
+    todo: "Robinhood Chain mainnet (4663) is not deployed to. Fill in the factory, the beacon and the registry from the deploy's record, list every asset with its token and decimals, confirm the pool fee and tick spacing of every listed asset, then take out `placeholder` and `todo` and run `pnpm --filter @colosseum/sdk tables`.",
+    chains: {
+      robinhood: {
+        family: 'evm',
+        evmChainId: 4663,
+        factory: '0x0000000000000000000000000000000000000000',
+        beacon: '0x0000000000000000000000000000000000000000',
+        routers: ['0x204FAca1764B154221e35c0d20aBb3c525710498'],
+        routes: {
+          '0x204FAca1764B154221e35c0d20aBb3c525710498': {
+            kind: 'universal-router-v4',
+            fee: 100,
+            tickSpacing: 1,
+            hooks: '0x0000000000000000000000000000000000000000',
+          },
+        },
+        registry: '0x0000000000000000000000000000000000000000',
+        cash: 'robinhood:usdg',
+        assets: {
+          'robinhood:usdg': {
+            address: '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168',
+            decimals: 6,
+          },
+        },
+      },
+    },
+  },
   mock: {
     format: 'guard-deployment/1',
     network: 'mock',
@@ -118,6 +149,14 @@ export const DEPLOYMENT_FILES: Readonly<Record<string, unknown>> = deepFreeze({
         factory: '0xa3309dc51b41e55fcd48b12377025cd2ba4d21a4',
         beacon: '0x4c6699623966be46a40844da3e79d7da3d8d3d96',
         routers: ['0xd290cfe0738e1ab9cea9dc138bbec024dc3bd127'],
+        routes: {
+          '0xd290cfe0738e1ab9cea9dc138bbec024dc3bd127': {
+            kind: 'universal-router-v4',
+            fee: 500,
+            tickSpacing: 10,
+            hooks: '0x0000000000000000000000000000000000000000',
+          },
+        },
         registry: '0xe73c5df15452469873f610a26dac7fec68a23b14',
         cash: 'robinhood:tusdg',
         assets: {

@@ -210,10 +210,15 @@ describe('the guard on EVM: an honest call passes', () => {
 
   it('a trade good until half an hour from now, and not a second longer', () => {
     const last = BigInt(now() + 1_800);
+    // The route inside each trade carries the trade's own deadline, as the builder writes it.
+    const route = { deadline: last };
     expect(
       refusalOf(() =>
         guardTransaction(
-          input(swapStep, { to: VAULT, data: calls.ownerSwap([swapOf(SPY), swapOf(GOLD)], last) }),
+          input(swapStep, {
+            to: VAULT,
+            data: calls.ownerSwap([swapOf(SPY, { route }), swapOf(GOLD, { route })], last),
+          }),
         ),
       ),
     ).toBeNull();

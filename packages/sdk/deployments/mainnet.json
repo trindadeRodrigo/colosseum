@@ -1,0 +1,31 @@
+{
+  "format": "guard-deployment/1",
+  "network": "mainnet",
+  "placeholder": true,
+  "todo": "Robinhood Chain mainnet (4663) is not deployed to. Fill in the factory, the beacon and the registry from the deploy's record, list every asset with its token and decimals, confirm the pool fee and tick spacing of every listed asset, then take out `placeholder` and `todo` and run `pnpm --filter @colosseum/sdk tables`.",
+  "chains": {
+    "robinhood": {
+      "family": "evm",
+      "evmChainId": 4663,
+      "factory": "0x0000000000000000000000000000000000000000",
+      "beacon": "0x0000000000000000000000000000000000000000",
+      "routers": ["0x204FAca1764B154221e35c0d20aBb3c525710498"],
+      "routes": {
+        "0x204FAca1764B154221e35c0d20aBb3c525710498": {
+          "kind": "universal-router-v4",
+          "fee": 100,
+          "tickSpacing": 1,
+          "hooks": "0x0000000000000000000000000000000000000000"
+        }
+      },
+      "registry": "0x0000000000000000000000000000000000000000",
+      "cash": "robinhood:usdg",
+      "assets": {
+        "robinhood:usdg": {
+          "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+          "decimals": 6
+        }
+      }
+    }
+  }
+}

@@ -60,6 +60,11 @@ contract EvilFactoryLogic is VaultConfig, UUPSUpgradeable {
     function _authorizeUpgrade(address) internal view override {
         _checkAdmin();
     }
+
+    /// The vault it makes reports its deposit to its config, which is this logic: it lets it through.
+    function _isVault(address) internal pure override returns (bool) {
+        return true;
+    }
 }
 
 /// The factory: who a vault belongs to, where it lives, how it is found, and who may replace the factory.

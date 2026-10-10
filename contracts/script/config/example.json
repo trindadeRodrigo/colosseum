@@ -1,8 +1,14 @@
 {
-  "about": "The shape of a network's file, with made-up addresses. It deploys nowhere: it has no admin and its chain id is 0. Copy it to <chain id>.json and fill it in. adminIsDeployer (optional, false when left out) keeps the deployer as admin and beacon owner, for a test network with one key; admin is then ignored. maxAge and assetCooldown are seconds; sessionOpen and sessionClose are seconds after midnight UTC; closedDays are days since 1970, UTC; pull is 1 for a router that takes its input with transferFrom and 2 for one that takes it through Permit2; source is 0 for no price and 1 for a Chainlink feed; session is 0 for always open and 1 for US stock hours. priceDevBps is how far a price may be from its average for the keeper to trade at it. flags is 1 to switch the keeper on for an asset, which needs a feed, an averageFeed (the same source's one-hour average) and a range: minPrice and maxPrice in the feed's units, the ceiling above the floor and at most twice it; 0 and 0 is no range.",
+  "about": "The shape of a network's file, with made-up addresses. It deploys nowhere: it has no admin and its chain id is 0. Copy it to <chain id>.json and fill it in. adminIsDeployer (optional, false when left out) keeps the deployer as admin and beacon owner, for a test network with one key; admin is then ignored. maxAge and assetCooldown are seconds; sessionOpen and sessionClose are seconds after midnight UTC; closedDays are days since 1970, UTC; pull is 1 for a router that takes its input with transferFrom and 2 for one that takes it through Permit2; source is 0 for no price and 1 for a Chainlink feed; session is 0 for always open and 1 for US stock hours. priceDevBps is how far a price may be from its average for the keeper to trade at it. flags is 1 to switch the keeper on for an asset, which needs a feed, an averageFeed (the same source's one-hour average) and a range: minPrice and maxPrice in the feed's units, the ceiling above the floor and at most twice it; 0 and 0 is no range. timelock (optional; required on a mainnet) makes the admin and beacon owner a TimelockController the script creates, with timelock.owner (a Safe) as its only proposer, canceller and executor and timelock.delay seconds before any admin call runs; admin is then left zero. keeperEnabled (optional, false when left out) says whether this deploy means the keeper to run: on a mainnet, false requires a zero keeper and every asset's flags 0. depositCaps (optional; required on a mainnet) are the most one vault and all vaults may take in, in raw units of the cash token. sessionPriceAge (optional) is how old a stock's price may be in session for the keeper, in seconds; 0 or absent is no such rule. feedDescription (per asset; required on a mainnet for an asset with a feed) is what the feed's description() must answer. On a mainnet the script refuses a file that breaks any rule of checkMainnet in Deploy.s.sol, or holds the word that marks an unconfirmed value. safeMinThreshold (optional, 2 when left out) is the fewest signatures timelock.owner, a Safe, must need; a mainnet file may not set it under 2. creators (optional) are the only addresses that may create a vault; openToAll (optional, false when left out) says anyone may: a mainnet file must name creators or set openToAll, not both.",
   "chainId": 0,
   "admin": "0x0000000000000000000000000000000000000000",
+  "timelock": {
+    "owner": "0x0000000000000000000000000000000000000005",
+    "delay": 172800
+  },
+  "safeMinThreshold": 2,
   "guardian": "0x0000000000000000000000000000000000000002",
+  "keeperEnabled": true,
   "keeper": "0x0000000000000000000000000000000000000003",
   "sequencerFeed": "0x0000000000000000000000000000000000000004",
   "publishDelay": 172800,
@@ -15,6 +21,13 @@
     "sessionClose": 72000
   },
   "priceDevBps": 200,
+  "sessionPriceAge": 3600,
+  "depositCaps": {
+    "perVault": 10000000000,
+    "total": 10000000000
+  },
+  "openToAll": false,
+  "creators": ["0x0000000000000000000000000000000000000006"],
   "cashToken": "0x1111111111111111111111111111111111111111",
   "assets": [
     {
@@ -49,7 +62,8 @@
       "flags": 1,
       "averageFeed": "0x6666666666666666666666666666666666666666",
       "minPrice": 15000000000,
-      "maxPrice": 25000000000
+      "maxPrice": 25000000000,
+      "feedDescription": "EXAMPLE / USD"
     }
   ],
   "routers": [

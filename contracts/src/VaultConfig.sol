@@ -4,6 +4,7 @@ pragma solidity 0.8.37;
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {IBasketVault} from "./interfaces/IBasketVault.sol";
 import {IVaultConfig, PERMIT2} from "./interfaces/IVaultConfig.sol";
 import {AssetConfig, Params} from "./interfaces/Types.sol";
 
@@ -16,9 +17,13 @@ import {AssetConfig, Params} from "./interfaces/Types.sol";
 /// allowed router, and a router is never a listed asset. With a token as the "router", swap data could be
 /// an `approve`, which moves no balance.
 ///
-/// Nothing the guardian or the admin does here reaches the owner's path. A vault's `withdraw` reads no
-/// config at all; its deposit and its owner swap read the cash token, the asset list and the router list,
-/// and never the pause, a halt or the calendar.
+/// Nothing the guardian or the admin does here reaches the owner's way out. A vault's `withdraw` reads no
+/// config at all. Its owner swap reads the cash token, the asset list and the router list, and never a
+/// pause, a halt or the calendar. Its deposit reads those and two things more, both about new money only:
+/// the guardian's deposit pause and the two deposit caps.
+///
+/// On a mainnet the admin is a timelock, so every `onlyAdmin` call below waits out its delay. What must be
+/// fast is the guardian's, and the guardian can only stop things.
 ///
 /// Abstract on purpose: `VaultFactory` inherits it, adds creation, and is the contract behind the UUPS
 /// proxy. State lives in one ERC-7201 namespace; the factory keeps its own beside it.
@@ -48,6 +53,21 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
         // ---- appended by EVM-3
         // A keeper limit that `Params` has no room for: how far a price may be from its average.
         uint16 priceDevBps;
+        // ---- appended by the mainnet setup. The first two share the slot of `registry` and `priceDevBps`.
+        // The guardian's stop on new money.
+        bool depositsPaused;
+        // How old a US stock's price may be in session for the keeper; zero is no such rule.
+        uint32 sessionPriceAge;
+        // The deposit caps, in raw units of the cash token: one vault, and all of them together.
+        uint256 vaultCap;
+        uint256 totalCap;
+        // What is counted toward the total cap: the sum of `deposited` over every vault.
+        uint256 totalDeposited;
+        // Each vault's net cash deposited as it last reported it.
+        mapping(address vault => uint256) deposited;
+        // Who may create a vault while `creationRestricted` is on. Off, the list is not read.
+        mapping(address creator => bool) creators;
+        bool creationRestricted;
     }
 
     // keccak256(abi.encode(uint256(keccak256("basket.storage.VaultConfig")) - 1)) & ~bytes32(uint256(0xff))
@@ -77,6 +97,8 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
     uint32 internal constant MIN_ASSET_COOLDOWN = 600;
     /// Seven days, the window of the loss cap: a longer cooldown is a pause by another name.
     uint32 internal constant MAX_ASSET_COOLDOWN = 7 days;
+    /// The in-session age of a stock's price cannot be set past the 26 hours of the design's `maxAge`.
+    uint32 internal constant MAX_SESSION_PRICE_AGE = 26 hours;
     uint32 internal constant DAY = 86_400;
     /// Bit 0 of an asset's `flags`: the keeper may trade it and value a vault by its price.
     uint8 internal constant KEEPER_ON = 1;
@@ -100,6 +122,8 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
         _config().admin = admin_;
         emit AdminChanged(address(0), admin_);
         _setParams(params_);
+        // No cap until the admin sets one. A mainnet's deploy sets both before the admin is handed over.
+        _setDepositCaps(type(uint256).max, type(uint256).max);
     }
 
     // ---- admin: assets
@@ -140,6 +164,12 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
                 AssetNotPriced(token)
             );
         }
+
+        // The vault never calls `decimals()`: it takes these on trust, so they are held to the token's and
+        // the feeds' own answers here, where they are set. One that does not answer is left as stated.
+        _checkDecimals(token, cfg.tokenDecimals);
+        if (cfg.feed != address(0)) _checkDecimals(cfg.feed, cfg.feedDecimals);
+        if (cfg.averageFeed != address(0)) _checkDecimals(cfg.averageFeed, cfg.feedDecimals);
 
         uint64 halt = $.assets[token].haltUntil;
         $.removed.remove(token);
@@ -237,6 +267,41 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
         emit KeeperUnpaused();
     }
 
+    function unpauseDeposits() external onlyAdmin {
+        _config().depositsPaused = false;
+        emit DepositsUnpaused();
+    }
+
+    /// @inheritdoc IVaultConfig
+    function setDepositCaps(uint256 perVault, uint256 total) external onlyAdmin {
+        _setDepositCaps(perVault, total);
+    }
+
+    /// @inheritdoc IVaultConfig
+    /// @dev The total cap counts cash that left a vault in kind as still inside, so anyone who may create a
+    /// vault can use the total up for the price of a swap. While the total is small that is answered here:
+    /// only known people create vaults.
+    function setCreationRestricted(bool restricted) external onlyAdmin {
+        _config().creationRestricted = restricted;
+        emit CreationRestrictedSet(restricted);
+    }
+
+    /// @inheritdoc IVaultConfig
+    function setCreator(address creator, bool allowed) external onlyAdmin {
+        require(creator != address(0), ZeroAddress());
+        _config().creators[creator] = allowed;
+        emit CreatorSet(creator, allowed);
+    }
+
+    /// @inheritdoc IVaultConfig
+    function setSessionPriceAge(uint32 age) external onlyAdmin {
+        require(
+            age == 0 || (age >= MIN_PRICE_AGE && age <= MAX_SESSION_PRICE_AGE), ParamOutOfBounds("sessionPriceAge", age)
+        );
+        _config().sessionPriceAge = age;
+        emit SessionPriceAgeSet(age);
+    }
+
     /// @inheritdoc IVaultConfig
     function setHalt(address token, uint64 until) external onlyAdmin {
         _halt(token, until);
@@ -307,6 +372,48 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
     function addClosedDay(uint32 day) external onlyGuardian {
         _config().closedDays[day] = true;
         emit ClosedDaySet(day, true);
+    }
+
+    /// @inheritdoc IVaultConfig
+    /// @dev The one guardian switch a vault's owner feels, and only on the way in: `deposit` and the first
+    /// deposit of a creation read it through `noteDeposit`. `withdraw` and `withdrawAll` call nothing here.
+    function pauseDeposits() external onlyGuardian {
+        _config().depositsPaused = true;
+        emit DepositsPaused(msg.sender);
+    }
+
+    // ---- a vault, about itself, and anyone, about a vault
+
+    /// @inheritdoc IVaultConfig
+    /// @dev What is counted is cash that came in through `deposit` or creation, less cash that left through
+    /// `withdraw` or `withdrawAll`, never below zero: the vault keeps that number and states it here. No
+    /// price is read, so the caps do not see what the vault's holdings are worth now, and they do not see a
+    /// token sent to a vault's address from outside, which no contract can refuse.
+    function noteDeposit(uint256 netDeposited) external {
+        require(_isVault(msg.sender), NotAVault(msg.sender));
+        ConfigStorage storage $ = _config();
+        require(!$.depositsPaused, DepositsArePaused());
+        require(netDeposited <= $.vaultCap, VaultCapReached(msg.sender, netDeposited, $.vaultCap));
+        uint256 total = $.totalDeposited - $.deposited[msg.sender] + netDeposited;
+        require(total <= $.totalCap, TotalCapReached(total, $.totalCap));
+        $.deposited[msg.sender] = netDeposited;
+        $.totalDeposited = total;
+        emit DepositCounted(msg.sender, netDeposited, total);
+    }
+
+    /// @inheritdoc IVaultConfig
+    function syncDeposits(address[] calldata vaults) external {
+        ConfigStorage storage $ = _config();
+        for (uint256 i; i < vaults.length; ++i) {
+            address vault = vaults[i];
+            require(_isVault(vault), NotAVault(vault));
+            uint256 counted = $.deposited[vault];
+            uint256 current = IBasketVault(vault).netDeposited();
+            if (current >= counted) continue;
+            $.deposited[vault] = current;
+            $.totalDeposited -= counted - current;
+            emit DepositCounted(vault, current, $.totalDeposited);
+        }
     }
 
     // ---- views
@@ -411,6 +518,43 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
         return _config().priceDevBps;
     }
 
+    /// @inheritdoc IVaultConfig
+    function sessionPriceAge() public view returns (uint32) {
+        return _config().sessionPriceAge;
+    }
+
+    /// @inheritdoc IVaultConfig
+    function depositCaps() public view returns (uint256 perVault, uint256 total) {
+        ConfigStorage storage $ = _config();
+        return ($.vaultCap, $.totalCap);
+    }
+
+    /// @inheritdoc IVaultConfig
+    function creationRestricted() public view returns (bool) {
+        return _config().creationRestricted;
+    }
+
+    /// @inheritdoc IVaultConfig
+    function mayCreate(address who) public view returns (bool) {
+        ConfigStorage storage $ = _config();
+        return !$.creationRestricted || $.creators[who];
+    }
+
+    /// @inheritdoc IVaultConfig
+    function depositsPaused() public view returns (bool) {
+        return _config().depositsPaused;
+    }
+
+    /// @inheritdoc IVaultConfig
+    function totalDeposited() public view returns (uint256) {
+        return _config().totalDeposited;
+    }
+
+    /// @inheritdoc IVaultConfig
+    function depositedOf(address vault) public view returns (uint256) {
+        return _config().deposited[vault];
+    }
+
     // ---- internals
 
     function _checkAdmin() internal view {
@@ -424,6 +568,36 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
     /// every vault.
     function _isReserved(address target) internal view virtual returns (bool) {
         return target == PERMIT2 || target == address(this) || target == _config().registry;
+    }
+
+    /// Whether `target` is a vault this config's factory created. The factory answers; on its own the
+    /// config has none.
+    function _isVault(address target) internal view virtual returns (bool) {
+        target;
+        return false;
+    }
+
+    function _setDepositCaps(uint256 perVault, uint256 total) private {
+        require(perVault <= total, ParamOutOfBounds("vaultCap", perVault));
+        ConfigStorage storage $ = _config();
+        $.vaultCap = perVault;
+        $.totalCap = total;
+        emit DepositCapsSet(perVault, total);
+    }
+
+    /// Holds decimals stated for `what` to its own `decimals()`, when it answers a full word.
+    function _checkDecimals(address what, uint8 stated) private view {
+        bytes4 selector = 0x313ce567; // decimals()
+        bool ok;
+        uint256 answered;
+        assembly ("memory-safe") {
+            mstore(0x00, selector)
+            ok := staticcall(PROBE_GAS, what, 0x00, 0x04, 0x00, 0x20)
+            ok := and(ok, gt(returndatasize(), 0x1f))
+            answered := mload(0x00)
+        }
+        if (!ok) return;
+        require(answered == stated, DecimalsMismatch(what, stated, uint8(answered > 255 ? 255 : answered)));
     }
 
     function _setParams(Params memory p) private {

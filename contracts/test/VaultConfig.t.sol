@@ -11,6 +11,15 @@ import {MockToken, NoReturnToken} from "./mocks/Tokens.sol";
 /// Any contract will do as a router here: the config only checks that there is code at the address.
 contract RouterStub {}
 
+/// Answers `decimals()` with a number of its own, as a token or a feed does.
+contract DecimalsStub {
+    uint256 public decimals;
+
+    constructor(uint256 decimals_) {
+        decimals = decimals_;
+    }
+}
+
 /// The platform settings a vault reads, and who may change them.
 contract VaultConfigTest is Test {
     address internal admin = makeAddr("admin");
@@ -198,11 +207,83 @@ contract VaultConfigTest is Test {
 
     function test_setAsset_listsAnAssetWithNoPriceSource() public {
         AssetConfig memory unpriced;
-        unpriced.tokenDecimals = 6;
+        unpriced.tokenDecimals = 18;
         vm.prank(admin);
         config.setAsset(tokenA, unpriced);
         assertTrue(config.isAsset(tokenA));
         assertEq(config.asset(tokenA).feed, address(0));
+    }
+
+    // ---- decimals are held to what the token and the feeds answer (M3)
+
+    /// The vault takes an asset's decimals from here and never asks the token. A token listed with the
+    /// wrong number would be valued a power of ten off; one valued too low and over its target could be
+    /// sold by the keeper for a fraction of its worth with every check passing.
+    function test_M3_setAsset_refusesDecimalsThatAreNotTheTokens() public {
+        AssetConfig memory a = _priced(makeAddr("feedA"), 8);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.DecimalsMismatch.selector, tokenA, 8, 18));
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
+        assertFalse(config.isAsset(tokenA));
+
+        a.tokenDecimals = 18;
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
+        // Changing them later is the same check.
+        a.tokenDecimals = 6;
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.DecimalsMismatch.selector, tokenA, 6, 18));
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
+        assertEq(config.asset(tokenA).tokenDecimals, 18);
+    }
+
+    function test_M3_setAsset_refusesDecimalsThatAreNotTheFeeds() public {
+        address feed8 = address(new DecimalsStub(8));
+        AssetConfig memory a = _priced(feed8, 18);
+        a.feedDecimals = 18;
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.DecimalsMismatch.selector, feed8, 18, 8));
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
+        a.feedDecimals = 8;
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
+    }
+
+    /// The average is read in the feed's units, so it must have the feed's decimals.
+    function test_M3_setAsset_refusesAnAverageFeedWithOtherDecimals() public {
+        address feed8 = address(new DecimalsStub(8));
+        address average18 = address(new DecimalsStub(18));
+        AssetConfig memory a = _priced(feed8, 18);
+        a.flags = 1;
+        a.averageFeed = average18;
+        a.minPrice = 100e8;
+        a.maxPrice = 200e8;
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.DecimalsMismatch.selector, average18, 8, 18));
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
+        a.averageFeed = address(new DecimalsStub(8));
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
+    }
+
+    /// An answer that is not a number of decimals at all is a mismatch, not a truncation.
+    function test_M3_setAsset_refusesAnAnswerTooLargeForDecimals() public {
+        address odd = address(new DecimalsStub(256 + 8));
+        AssetConfig memory a = _priced(odd, 18);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.DecimalsMismatch.selector, odd, 8, 255));
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
+    }
+
+    /// A token or a feed that does not answer `decimals()` is taken as stated: the check has nothing to
+    /// compare with. A mainnet's deploy script reads each one itself and refuses a file whose token or feed
+    /// does not answer.
+    function test_M3_setAsset_takesTheStatedDecimalsWhereNothingAnswers() public {
+        address silent = address(new RouterStub());
+        AssetConfig memory a = _priced(silent, 7);
+        vm.prank(admin);
+        config.setAsset(silent, a);
+        assertEq(config.asset(silent).tokenDecimals, 7);
     }
 
     /// A halt belongs to the guardian. A feed update by the admin must not lift it, and a listing

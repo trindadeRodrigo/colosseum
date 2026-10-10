@@ -53,6 +53,31 @@ FACTORY=<factory proxy> forge script script/Deploy.s.sol --sig "settings()" \
   --rpc-url https://rpc.testnet.chain.robinhood.com --sender <admin address>
 ```
 
+## Mainnet: what stands in front of the admin, and how a deploy is held to it
+
+Written for a first, small, owner-signed deployment on Robinhood Chain (4663). Nothing is deployed there. `docs/vault/SECURITY.md` says who can do what; `docs/vault/INCIDENT.md` what to do when something is wrong.
+
+- **The admin is a timelock.** With a `timelock` block in its file, `Deploy.s.sol` creates OpenZeppelin's `TimelockController`, hands it the factory's admin and the beacon, and finishes the hand-over itself: the timelock starts with no delay and the deployer as a second proposer, for one batch (accept both keys, set the delay, remove the deployer's three roles), and the script then reads everything back and fails if the deployer still holds anything. After it, `timelock.owner` (a Safe) is the only proposer, canceller and executor, and every `onlyAdmin` call, both UUPS upgrades and the beacon's `upgradeTo` wait out the delay. 48 hours on a mainnet, the notice a follower gets for a new portfolio version.
+- **The guardian stops, at once, and only stops**: `pauseKeeper`, `pauseDeposits` (new), `haltAsset`, `extendClosedUntil`, `addClosedDay`. Lifting any of them is the admin's, so it waits. `pauseDeposits` stops `deposit` and the first deposit of a create; `withdraw` and `withdrawAll` still call nothing and read no pause.
+- **Deposit caps**, in raw units of the cash token: one per vault and one for all vaults of the factory (`setDepositCaps`, `depositCaps()`). A vault counts cash in less cash out (`netDeposited()`), reports it inside each deposit (`noteDeposit`), and the factory refuses a deposit past either cap. A withdrawal lowers the vault's own count and tells nobody, so the factory's total is brought down by that vault's next deposit or by anyone's `syncDeposits`. A new factory starts with no cap; a mainnet file must set both, at most 10,000 dollars in total before an audit. What the count does not see is in `SECURITY.md`.
+- **Who may create a vault** (`setCreationRestricted`, `setCreator`, `mayCreate`): open to anyone unless the admin restricts it to a list. A mainnet file names `creators` or sets `openToAll`; while the cap is small the list is what keeps a stranger from using up the total (`SECURITY.md`). A vault that exists is not touched by it.
+- **The timelock's owner must be a Safe of two or more**: the script reads `getThreshold()` and `getOwners()`, refuses a threshold under `safeMinThreshold` (2 at least on a mainnet), fewer than two owners, a contract that does not answer, and a key with delegated code, and prints the owners for a person to compare.
+- **A stock's price of the day** (`sessionPriceAge`, M1): where set, a keeper trade in session needs every stock it values stamped at or after that day's open and no older than the age. Off (zero) on the test network.
+- **Decimals** stated in `setAsset` are held to the token's, the feed's and the average feed's own `decimals()` where they answer (M3).
+- **A mainnet file** is refused by `checkMainnet` before anything is created: a `TODO` anywhere in it; `adminIsDeployer`; an `admin` beside the timelock; a timelock owner that is zero, has no code or is the deployer; a delay under 48 hours; no guardian; a keeper, or any asset's keeper switch, while `keeperEnabled` is false; with the keeper on, limits looser than 150 bps a trade, 200 bps a week, an hour between trades, 200 bps from the average, or a range wider than about 15% either side; no caps or a total above 10,000 dollars; a cash token that is not USDG or a router that is not Universal Router (on 4663); a token whose decimals are not the file's; a feed with no code, other decimals, no aggregator behind it, another description than the file's `feedDescription`, or that answers as a test price contract. `settings()` is refused on a mainnet. On every chain, an `averageFeed` that names what it averages (a pool-average feed: `base()`, `feed()`, `quote()`, `decimals()`) is held to the asset before `setAsset`, so one pasted beside the wrong asset stops the run (`AverageFeedMismatch`) and is not left for the keeper to refuse in silence; on a mainnet an average feed that names nothing is refused.
+- **`script/config/4663.json`** holds only what was read from the chain on Oct 9 (USDG, NVDA and its feed, Universal Router) and is refused as it stands: the Safe, the guardian, the cap decision and NVDA's ceiling are marked `TODO`.
+- **The contracts in `testnet/`** refuse to be created on chain ids 1, 4663 and 8453 (`TestnetOnly`).
+
+```
+# Dry run of the mainnet file, read only, once its TODOs are filled: prints every transaction and sends none
+cd contracts && forge script script/Deploy.s.sol --rpc-url https://rpc.mainnet.chain.robinhood.com --sender <deployer>
+
+# After a person has deployed: who holds what, against the record written from the deploy's output
+pnpm ops:authority-check --record deployments/robinhood-mainnet.json --rpc-env ROBINHOOD_RPC_URL
+```
+
+**Upgrading a chain that already runs the contracts before this** (46630): the new fields are appended (`test/StorageLayout.t.sol`), and they read zero after the upgrade. Both caps at zero refuse every deposit, so the admin calls `setDepositCaps` in the same batch as the two upgrades (`type(uint256).max` twice for no cap). The vault logic and the factory go together, as in note 12: the new vault calls `noteDeposit` and `sessionPriceAge` on its factory. A vault that already holds cash starts with a count of zero.
+
 ## What holds today
 
 **A vault and its owner**
@@ -129,7 +154,7 @@ From the review of this slot. None lets anyone but the owner move a vault's toke
 - **Balances are read, not tracked.** There is no `tracked` and no `syncBalances`: the keeper's swap reads `balanceOf` of every target, which Solana's account model cannot. A target sent in counts at once. So a stranger's dust of a target the vault held none of, while that target's price cannot pass, stops the keeper for that vault; on Solana `tracked` hides such dust and only the owner or the keeper can record it. The owner sells the dust, or the price comes back.
 - **A target whose balance cannot be read stops the keeper** for the vault (`BalanceUnreadable`); the owner's path skips it as before.
 - **Cash is $1.** The 0.5% peg check first written for EVM is not built, as on Solana. A dollar token off its peg is the guardian's pause to stop.
-- **The average is held to `maxAge`**, not to an hour as on Solana, since a stock feed updates only in session. No Chainlink feed of an average exists on Robinhood Chain or Base: the switch goes on only for an asset whose average feed the platform provides. On the test network that is TNET-1's price contract, written by our price writer. For mainnet the proposal is `PoolAverageFeed` ("The pool average" below), which nobody writes and whose answer is stamped with the block's time, so `maxAge` on that slot always passes.
+- **The average is held to `maxAge`**, not to an hour as on Solana, since a stock feed updates only in session. The price itself can be held to the day's session with `sessionPriceAge` (see the mainnet section). No Chainlink feed of an average exists on Robinhood Chain or Base: the switch goes on only for an asset whose average feed the platform provides. On the test network that is TNET-1's price contract, written by our price writer. For mainnet the proposal is `PoolAverageFeed` ("The pool average" below), which nobody writes and whose answer is stamped with the block's time, so `maxAge` on that slot always passes.
 - **The multiplier window does not compare the next multiplier with the current one**, as Solana does: a schedule that changes nothing still keeps the keeper away for a day either side.
 - **The keeper measures nothing past 10^30 raw units of cash** (`ValueTooLarge`): under that bound no product its checks form comes near 2^256.
 
@@ -175,6 +200,8 @@ It reads `script/config/pool-feeds/<chain id>.json` (or `POOL_FEEDS_CONFIG`): pe
 How it joins `Deploy.s.sol`: the feeds depend on nothing of ours and have no owner, so they are deployed first; a person copies each printed address into that asset's `averageFeed` in the chain's main file (`script/config/<chain id>.json`), with `flags` 1 and a range, and `Deploy.s.sol` writes it with `setAsset`. Neither script reads the other's file. The floors in `4663.json` are half of what each pool held in range on Friday Oct 9 at 16:30 UTC; NVDA's pool held 2.0e18 an hour earlier and 9.7e18 that night, so they are set again from the dry run. The file's `watch` section is the keeper's (`apps/keeper/README.md`).
 
 ## What the app and the trust notice must say
+
+On a mainnet the admin is a timelock a Safe proposes to, so what follows takes 48 hours and can be read on chain first; on the test network it is one key and takes one transaction. Through settings alone the admin can also drain a vault that has auto-follow on (`test_H2_settingsAloneDrainAnAutoFollowVault_butOnlyAfterTheDelay`).
 
 The admin key can replace the factory's logic. Through that it can reach two things a vault that exists is safe from: cash a person has approved to a vault not yet created, and tokens sent to that address in advance (`test_trust_theFactoryAdminReachesAVaultNotYetCreated_andNoVaultThatExists`). The beacon's key can replace every vault's code. So:
 

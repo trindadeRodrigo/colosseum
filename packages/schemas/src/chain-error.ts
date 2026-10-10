@@ -78,6 +78,12 @@ const CONTRACT_ONLY_ERRORS = [
   'DepositShortfall',
   /** `withdrawAll` was sent with too little gas to try every token. */
   'GasTooLow',
+  /** The guardian stopped new money on the chain: no deposit until the admin lifts it. Withdrawing works. */
+  'DepositsPaused',
+  /** The deposit would pass the most one vault, or all vaults together, may take in before an audit. */
+  'DepositCapReached',
+  /** Creating a vault is limited to a list the admin keeps, and this wallet is not on it. */
+  'CreationNotOpen',
   /** The caller is not the admin, or not the admin-to-be, that the call is for. */
   'NotAdmin',
   /** An address given as a token or a router holds no code. */
@@ -202,6 +208,14 @@ export const CONTRACT_ERROR_CODE = {
   NewAssetNeedsOwner: 'NewAssetNeedsOwner',
   VersionNotEffective: 'VersionNotEffective',
   // IVaultConfig
+  DepositsArePaused: 'DepositsPaused',
+  NotAllowedToCreate: 'CreationNotOpen',
+  VaultCapReached: 'DepositCapReached',
+  TotalCapReached: 'DepositCapReached',
+  /** Decimals stated for a token or a feed that are not its own: a setting outside what it may be. */
+  DecimalsMismatch: 'ParamOutOfBounds',
+  /** `noteDeposit` from a caller that is not a vault of the factory, as an admin's call from another is. */
+  NotAVault: 'NotAdmin',
   NotAdmin: 'NotAdmin',
   NotPendingAdmin: 'NotAdmin',
   /** A guardian's call from a caller who holds neither that role nor the admin's. */
@@ -303,6 +317,10 @@ export const CHAIN_ERROR_RETRYABLE: Record<ChainErrorCode, boolean> = {
   DepositShortfall: false,
   /** A new build states a higher `evm.gas`. */
   GasTooLow: true,
+  /** Neither passes by sending again: the admin lifts the pause or raises the cap, or the person deposits less. */
+  DepositsPaused: false,
+  DepositCapReached: false,
+  CreationNotOpen: false,
   NotAdmin: false,
   NoCode: false,
   AssetIsRouter: false,

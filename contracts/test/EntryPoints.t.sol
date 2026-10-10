@@ -83,6 +83,7 @@ contract EntryPointsTest is Test {
         _entry("planId()", "view: matches a vault to its plan with no event");
         _entry("config()", "view: the factory that created it");
         _entry("tokens()", "view: what withdrawAll walks");
+        _entry("netDeposited()", "view: cash in less cash out, what the deposit caps count");
         _entry("targets()", "view: the targets held");
         _entry("following()", "view: the shared portfolio, the accepted version, auto-follow");
         _entry("snapshot()", "view: one read of the vault for the app and for agents");
@@ -142,6 +143,11 @@ contract EntryPointsTest is Test {
         );
         _entry("setPriceDevBps(uint16)", "admin: how far a price may be from its average, inside a hard bound");
         _entry("unpauseKeeper()", "admin: lift the guardian's pause");
+        _entry("unpauseDeposits()", "admin: lift the guardian's stop on new money");
+        _entry("setDepositCaps(uint256,uint256)", "admin: the most one vault and all vaults may take in");
+        _entry("setCreationRestricted(bool)", "admin: only the listed may create a vault, or anyone again");
+        _entry("setCreator(address,bool)", "admin: put an address on that list, or take it off");
+        _entry("setSessionPriceAge(uint32)", "admin: how old a stock's price may be in session, for the keeper");
         _entry("setHalt(address,uint64)", "admin: lift or shorten a halt");
         _entry("setClosedUntil(uint64)", "admin: lift or shorten a market closure");
         _entry("setClosedDay(uint32,bool)", "admin: add or remove a closed day");
@@ -153,6 +159,10 @@ contract EntryPointsTest is Test {
         _entry("haltAsset(address,uint64)", "guardian: stop keeper trades in one asset, for longer only");
         _entry("extendClosedUntil(uint64)", "guardian: keep the market closed for longer");
         _entry("addClosedDay(uint32)", "guardian: add a closed day");
+        _entry("pauseDeposits()", "guardian: stop new money; withdrawing is untouched");
+        // a vault, about itself, and anyone, about a vault
+        _entry("noteDeposit(uint256)", "a vault of this factory, inside its deposit: counted against the caps");
+        _entry("syncDeposits(address[])", "anyone: lower a vault's count to what it reports now");
         // what a vault, the registry and the app read
         _entry("admin()", "view");
         _entry("pendingAdmin()", "view");
@@ -173,6 +183,13 @@ contract EntryPointsTest is Test {
         _entry("closedDay(uint32)", "view");
         _entry("params()", "view");
         _entry("priceDevBps()", "view: read by a vault on every keeper trade");
+        _entry("sessionPriceAge()", "view: read by a vault on every keeper trade");
+        _entry("depositCaps()", "view: the cap of one vault and of all of them");
+        _entry("depositsPaused()", "view");
+        _entry("creationRestricted()", "view");
+        _entry("mayCreate(address)", "view: read by the factory on every create");
+        _entry("totalDeposited()", "view: what counts toward the total cap");
+        _entry("depositedOf(address)", "view: what counts for one vault");
         _assertExactly("VaultFactory");
     }
 

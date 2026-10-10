@@ -193,6 +193,10 @@ interface IBasketVault {
     /// The tokens `withdrawAll` walks: every token that came in by a vault function.
     function tokens() external view returns (address[] memory);
 
+    /// Cash the vault took in through `deposit` and creation, less cash it paid out through `withdraw` and
+    /// `withdrawAll`, never below zero: raw units of the cash token. What the deposit caps count.
+    function netDeposited() external view returns (uint256);
+
     /// The targets the vault holds: its own, or the accepted version of the shared portfolio it follows.
     function targets() external view returns (Weight[] memory);
 
