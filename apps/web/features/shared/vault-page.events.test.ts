@@ -3,7 +3,16 @@ import type { OrderDetail, VaultView } from '@colosseum/schemas';
 import { type ExecutionResult, type ExecutorDeps, solanaVaultAddress } from '@colosseum/sdk';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { click, find, hintOf, mount, settle, unmountAll } from '../../components/ui/test/dom';
+import {
+  click,
+  find,
+  fire,
+  hintOf,
+  mount,
+  press,
+  settle,
+  unmountAll,
+} from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
@@ -14,6 +23,7 @@ import { vaultTitle } from '../portfolio/vault-name';
 import { EMBEDDED, fakePort, json, SOLANA, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
+import { MORE_ROW, placeMenu } from './MoreMenu';
 import type { SharedTerms } from './terms';
 import { CREATOR, ORDER_ID, retargetOrder, USER, vaultOf, withdrawOrder } from './test/fixtures';
 import { keepAction, recallAction } from './VaultAction';
@@ -352,6 +362,85 @@ describe('the owner’s page at rest', () => {
     expect(actions.contains(back)).toBe(false);
     // nothing a person reads says "mix" or "buy"
     expect(screen(host).textContent).not.toMatch(/\b(mix|buy)\b/i);
+  });
+
+  it('"More" is a menu surface: every row a full-width target the keyboard reaches, closed by Escape or by a choice', async () => {
+    api();
+    const host = await show();
+    const more = find<HTMLButtonElement>(host, '[data-ui="vault-more"]');
+    const list = find(host, '[data-ui="vault-more-list"]');
+    await click(more);
+    // drawn against the window, so the head it is written in cannot cut it off
+    expect(list.className.split(' ')).toContain('fixed');
+    expect(list.className.split(' ')).toContain('shadow-popover');
+    const rows = [...list.querySelectorAll<HTMLElement>('li > a, li > button')];
+    expect(rows.map((row) => row.textContent)).toEqual([
+      p.editWeights,
+      en.shared.publish.shareStrategy,
+      en.shared.vault.explorer('Solscan'),
+    ]);
+    for (const row of rows) {
+      // a row, not a bare underlined link: the whole width, 40px tall, in the tab order
+      expect(row.className).toBe(MORE_ROW);
+      expect(row.tabIndex).toBe(0);
+      row.focus();
+      expect(document.activeElement).toBe(row);
+      // focus inside the list keeps it open
+      expect(more.getAttribute('aria-expanded')).toBe('true');
+    }
+    // the explorer's row keeps its arrow, and opens beside the page
+    expect(rows[2]?.querySelector('svg')).not.toBeNull();
+    expect(rows[2]?.getAttribute('target')).toBe('_blank');
+    // Escape closes it and the focus is back on "More"
+    await press(document, 'Escape');
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    expect(list.hidden).toBe(true);
+    expect(document.activeElement).toBe(more);
+    // a press outside closes it
+    await click(more);
+    await fire(document.body, new Event('pointerdown', { bubbles: true }));
+    expect(list.hidden).toBe(true);
+    // and so does choosing the row that opens another tab: the page is as it was
+    await click(more);
+    rows[2]?.addEventListener('click', (event) => event.preventDefault());
+    await click(rows[2] as HTMLElement);
+    expect(list.hidden).toBe(true);
+    expect(screen(host).dataset.pane).toBe('holdings');
+  });
+
+  it('places the list in the window: under the button, moved in from an edge, above when there is no room below', () => {
+    const size = { width: 240, height: 136 };
+    const desk = { width: 1440, height: 900 };
+    // under the button, flush with its right edge
+    expect(placeMenu({ top: 170, bottom: 190, left: 1230, right: 1290 }, size, desk)).toEqual({
+      top: 198,
+      left: 1050,
+    });
+    // a phone, the button near the left: moved in to the gutter, never off the screen
+    expect(
+      placeMenu({ top: 210, bottom: 230, left: 232, right: 270 }, size, {
+        width: 375,
+        height: 812,
+      }),
+    ).toEqual({ top: 238, left: 30 });
+    expect(
+      placeMenu({ top: 210, bottom: 230, left: 16, right: 60 }, size, { width: 375, height: 812 })
+        .left,
+    ).toBe(16);
+    // no room below, room above: it opens above the button
+    expect(
+      placeMenu({ top: 560, bottom: 580, left: 1100, right: 1160 }, size, {
+        width: 1280,
+        height: 650,
+      }),
+    ).toEqual({ top: 416, left: 920 });
+    // room neither way: below, where the page can still show its top rows
+    expect(
+      placeMenu({ top: 60, bottom: 80, left: 1100, right: 1160 }, size, {
+        width: 1280,
+        height: 150,
+      }).top,
+    ).toBe(88);
   });
 
   it('shows the holdings with nothing to open: the bar, then one table with planned beside now', async () => {
