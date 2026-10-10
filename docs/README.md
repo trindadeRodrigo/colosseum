@@ -32,6 +32,8 @@ The product today, which the older documents do not all reflect: English only (g
 | [`STATE-VAULT.md`](vault/STATE-VAULT.md) | The task ledger: owner, status, evidence and blockers per task | Current. Many build rows say `in-review` after their pull request merged |
 | [`PLAN-VAULT.md`](vault/PLAN-VAULT.md) | The days, the milestones and the cut order of the MVP, written Oct 1 | Historical for the dates; the cut order still holds |
 | [`RUN-DEVNET-LOCAL.md`](vault/RUN-DEVNET-LOCAL.md) | How to run one checkout against Solana devnet with a passkey wallet | Current for the launcher. Its browser steps predate `CHAIN-AT-THE-PLAN` and `DEPOSIT-STEP`: the chain is now chosen on `/goal`, and the deposit opens there |
+| [`SECURITY.md`](vault/SECURITY.md) | The EVM contracts: who can do what and how fast, what an owner can always do, the deposit caps, the keeper's bounded loss, where each review finding stands, what is not audited | Current for EVM; the Solana matrix is not in it |
+| [`INCIDENT.md`](vault/INCIDENT.md) | What to do when something is wrong on an EVM chain: the guardian's pause, a lost key, a queued operation | Current; not rehearsed on a live network |
 | [`SECURITY-DEPS.md`](vault/SECURITY-DEPS.md) | The dependency advisories accepted for now, each with its reason | Current |
 | [`AUDIT-VAULT.md`](vault/AUDIT-VAULT.md) | A review of the code as it was on Oct 1, before the vault work | Decision record |
 | [`CONVERGENCE-VAULT.md`](vault/CONVERGENCE-VAULT.md) | What happens to each package of the structurer under the vault work, as decided on Oct 1 | Decision record |
