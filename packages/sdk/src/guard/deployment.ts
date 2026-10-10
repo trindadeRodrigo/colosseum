@@ -8,6 +8,7 @@ import { GuardRefusal } from './refusal';
 import { count, deepFreeze, type Loose, must, only, text } from './strict';
 import type {
   EvmDeployment,
+  EvmRoute,
   FeeLimit,
   GuardDeployment,
   GuardDeployments,
@@ -48,6 +49,11 @@ export type EvmEntry = {
   /** Only when the factory holds another proxy than the committed build's. */
   proxyCreationCode?: string;
   routers: string[];
+  /**
+   * How each router's call data is read, by the router's address: one for every router, and none for
+   * anything else. `unread` is refused in mainnet's file.
+   */
+  routes: Record<string, EvmRouteEntry>;
   /** The shared portfolios' registry. Left out, a publish on the chain is never signed. */
   registry?: string;
   cash: AssetId;
@@ -55,6 +61,13 @@ export type EvmEntry = {
   assets: Record<AssetId, { address: string; decimals: number }>;
   fee?: FeeLimit;
 };
+/**
+ * A router's route in a file. `universal-router-v4`: the one Uniswap v4 pool shape its swaps go
+ * through, `hooks` the zero address. `unread`: call data the guard does not read (a local mock router).
+ */
+export type EvmRouteEntry =
+  | { kind: 'universal-router-v4'; fee: number; tickSpacing: number; hooks: string }
+  | { kind: 'unread' };
 /** A chain's entry in the mock's file: the chain runs on packages/chain-mock and moves nothing. */
 export type MockEntry = { family: 'mock'; cash: AssetId; cashDecimals: number };
 
@@ -62,6 +75,13 @@ export type MockEntry = { family: 'mock'; cash: AssetId; cashDecimals: number };
 export type DeploymentFile = {
   format: typeof DEPLOYMENT_FORMAT;
   network: DeploymentNetwork;
+  /**
+   * A file that holds a network's place before the network is deployed to. The loader refuses it,
+   * whatever else it says, until the mark and its note are taken out with the real addresses put in.
+   */
+  placeholder?: true;
+  /** What is still to fill in, for a placeholder. */
+  todo?: string;
   chains: Partial<Record<ChainId, SolanaEntry | EvmEntry | MockEntry>>;
 };
 
@@ -194,6 +214,68 @@ function solanaOf(entry: Loose, network: DeploymentNetwork): SolanaDeployment {
   };
 }
 
+const ZERO_ADDRESS = `0x${'0'.repeat(40)}`;
+/** Uniswap v4's own bounds: a fee in hundredths of a basis point, and `TickMath.MAX_TICK_SPACING`. */
+const MAX_V4_FEE = 1_000_000;
+const MAX_V4_TICK_SPACING = 32_767;
+
+/**
+ * The routes of an EVM entry: one for every router, none for anything else, each of a kind the guard
+ * knows. A router with no route is refused, so no call data goes unread without the file saying so.
+ */
+function routesOf(
+  value: unknown,
+  routers: string[],
+  network: DeploymentNetwork,
+): Record<string, EvmRoute> {
+  const stated = only('the list of routes', value ?? {}, Object.keys((value ?? {}) as object));
+  const routes: Record<string, EvmRoute> = {};
+  for (const [key, raw] of Object.entries(stated)) {
+    const router = evmAddress(key, 'the router of a route');
+    must(
+      routers.includes(router),
+      `a route is stated for ${router}, which is no router of the entry`,
+    );
+    must(!Object.hasOwn(routes, router), `two routes are stated for ${router}`);
+    const what = `the route of ${router}`;
+    const route = only(what, raw, ['kind', 'fee', 'tickSpacing', 'hooks']);
+    if (route.kind === 'unread') {
+      only(what, raw, ['kind']);
+      must(
+        network !== 'mainnet',
+        `${what} is unread, and on mainnet every router's call data is read`,
+      );
+      routes[router] = { kind: 'unread' };
+      continue;
+    }
+    must(route.kind === 'universal-router-v4', `${what} is of no kind the guard reads`);
+    must(
+      count(route.fee, 0) && (route.fee as number) <= MAX_V4_FEE,
+      `the fee of ${what} is not 0 to ${MAX_V4_FEE}`,
+    );
+    must(
+      count(route.tickSpacing, 1) && (route.tickSpacing as number) <= MAX_V4_TICK_SPACING,
+      `the tick spacing of ${what} is not 1 to ${MAX_V4_TICK_SPACING}`,
+    );
+    must(
+      route.hooks === ZERO_ADDRESS,
+      `the hooks of ${what} are not the zero address: a vault trades in pools with no hooks`,
+    );
+    routes[router] = {
+      kind: 'universal-router-v4',
+      fee: route.fee as number,
+      tickSpacing: route.tickSpacing as number,
+      hooks: ZERO_ADDRESS,
+    };
+  }
+  for (const router of routers)
+    must(
+      Object.hasOwn(routes, router),
+      `the router ${router} states no route: how its call data is read is not said`,
+    );
+  return routes;
+}
+
 function evmOf(
   chain: Exclude<ChainId, 'solana'>,
   entry: Loose,
@@ -206,6 +288,7 @@ function evmOf(
     'beacon',
     'proxyCreationCode',
     'routers',
+    'routes',
     'registry',
     'cash',
     'assets',
@@ -232,6 +315,7 @@ function evmOf(
     return { address: token, value: { token, decimals: decimalsOf(asset.decimals, id) } };
   });
   must(new Set(seen).size === seen.length, 'two of its addresses are the same');
+  const routes = routesOf(entry.routes, routers, network);
   let proxyCreationCode: string | undefined;
   if (entry.proxyCreationCode !== undefined) {
     must(typeof entry.proxyCreationCode === 'string', "the proxy's creation code is not hex");
@@ -249,6 +333,7 @@ function evmOf(
     beacon,
     ...(proxyCreationCode ? { proxyCreationCode } : {}),
     routers,
+    routes,
     ...(registry ? { registry } : {}),
     cash,
     assets,
@@ -271,10 +356,15 @@ function mockOf(chain: ChainId, entry: Loose): MockDeployment {
 }
 
 function read(content: unknown, mark: boolean): DeploymentsRead {
-  const file = only('it', content, ['format', 'network', 'chains']);
+  const file = only('it', content, ['format', 'network', 'placeholder', 'todo', 'chains']);
   must(file.format === DEPLOYMENT_FORMAT, `its format is not ${DEPLOYMENT_FORMAT}`);
   const network = DEPLOYMENT_NETWORKS.find((n) => n === file.network);
   must(network !== undefined, 'it names no network');
+  // A placeholder is never a deployment: not with the mark set to anything, and not with a note left in.
+  must(
+    file.placeholder === undefined && file.todo === undefined,
+    `it is a placeholder for ${network}, not a deployment${text(file.todo) ? `: ${file.todo}` : ''}`,
+  );
   const chains = only('its list of chains', file.chains, Object.keys(CHAIN_NUMBERS));
   must(Object.keys(chains).length > 0, 'it names no chain');
 

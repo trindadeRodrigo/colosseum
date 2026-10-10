@@ -4,7 +4,7 @@ import { selectorOf } from '../scripts/tables';
 import { hexEncode } from '../src/bytes';
 import { tradesOf } from '../src/guard/context';
 import { type DeploymentFile, deploymentsOf, type EvmEntry } from '../src/guard/deployment';
-import { type AbiValue, encodeArgs, parseSignature } from '../src/guard/evm/abi';
+import { type AbiValue, encodeArgs, parseSignature, parseType } from '../src/guard/evm/abi';
 import type { InterfaceTable } from '../src/guard/evm/table';
 import { EVM_INTERFACE } from '../src/guard/generated/evm-interface';
 import type { ApprovedStep, ApprovedTrade, EvmDeployment, Loaded } from '../src/guard/types';
@@ -34,6 +34,9 @@ export const CHAIN_ID = 46630;
 export const ZERO32 = `0x${'0'.repeat(64)}`;
 export const PLAN_ID = `0x${BigInt(BASKET_ID).toString(16).padStart(64, '0')}`;
 export const MAX = (1n << 256n) - 1n;
+export const ZERO_ADDRESS = `0x${'0'.repeat(40)}`;
+/** The pool shape of the test deployment's router: the test network's, as routes.ts has it. */
+export const POOL = { fee: 500, tickSpacing: 10, hooks: ZERO_ADDRESS } as const;
 
 /** A deployment file for the test network, as a deploy would write it, with `change` on top. */
 export function evmDeployment(change: Partial<EvmEntry> = {}): Loaded<EvmDeployment> {
@@ -47,6 +50,7 @@ export function evmDeployment(change: Partial<EvmEntry> = {}): Loaded<EvmDeploym
         factory: FACTORY,
         beacon: BEACON,
         routers: [ROUTER],
+        routes: { [ROUTER]: { kind: 'universal-router-v4', ...POOL } },
         cash: 'robinhood:usdc',
         assets: {
           'robinhood:usdc': { address: anyone('token usdc'), decimals: 6 },
@@ -94,17 +98,104 @@ export const weights = (targets: { asset: string; weightBps: number }[]): AbiVal
   targets
     .map((t) => [tokenOf(t.asset), BigInt(t.weightBps)] as [string, bigint])
     .sort(([a], [b]) => (a < b ? -1 : 1));
+
+/** What a route says, field by field, for a test to change one of. Left out: what the builder writes. */
+export type RouteOf = {
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: bigint;
+  deadline?: bigint;
+  fee?: number;
+  tickSpacing?: number;
+  hooks?: string;
+  hookData?: Uint8Array;
+  /** The pool's two tokens, in the order written. Left out: the trade's two, the lower first. */
+  currencies?: [string, string];
+  zeroForOne?: boolean;
+  swapAmountIn?: bigint;
+  amountOutMinimum?: bigint;
+  minHopPriceX36?: bigint;
+  settle?: [string, bigint];
+  take?: [string, bigint];
+  commands?: number[];
+  /** One input per command. Left out: the one plan below. */
+  inputs?: (plan: Uint8Array) => Uint8Array[];
+  actions?: number[];
+  /** The actions' parameters. Left out: the swap, the settle, the take. */
+  params?: (own: Uint8Array[]) => Uint8Array[];
+  signature?: string;
+};
+const types = (...list: string[]) => list.map(parseType);
+/**
+ * Universal Router call data for one exact-input swap in one v4 pool, as `swapCalldata` of
+ * packages/chain-evm builds it (route.test.ts holds this to that builder's own bytes), with `o` on top.
+ */
+export function routeOf(o: RouteOf): Uint8Array {
+  const [currency0, currency1] =
+    o.currencies ??
+    (BigInt(o.tokenIn) < BigInt(o.tokenOut) ? [o.tokenIn, o.tokenOut] : [o.tokenOut, o.tokenIn]);
+  const swap = encodeArgs(
+    types('((address,address,uint24,uint24,address),bool,uint128,uint128,uint256,bytes)'),
+    [
+      [
+        [
+          currency0,
+          currency1,
+          BigInt(o.fee ?? POOL.fee),
+          BigInt(o.tickSpacing ?? POOL.tickSpacing),
+          o.hooks ?? POOL.hooks,
+        ],
+        o.zeroForOne ?? o.tokenIn === currency0,
+        o.swapAmountIn ?? o.amountIn,
+        o.amountOutMinimum ?? 0n,
+        o.minHopPriceX36 ?? 0n,
+        o.hookData ?? new Uint8Array(),
+      ],
+    ],
+  );
+  const pair = types('address', 'uint256');
+  const own = [
+    swap,
+    encodeArgs(pair, o.settle ?? [o.tokenIn, o.amountIn]),
+    encodeArgs(pair, o.take ?? [o.tokenOut, 0n]),
+  ];
+  const plan = encodeArgs(types('bytes', 'bytes[]'), [
+    Uint8Array.from(o.actions ?? [0x06, 0x0c, 0x0f]),
+    o.params ? o.params(own) : own,
+  ]);
+  return call(o.signature ?? 'execute(bytes,bytes[],uint256)', [
+    Uint8Array.from(o.commands ?? [0x10]),
+    o.inputs ? o.inputs(plan) : [plan],
+    o.deadline ?? DEADLINE,
+  ]);
+}
+
+/**
+ * A trade as the vault takes it, with the route the builder writes for it: through the test
+ * deployment's router, in its pool, good until `DEADLINE`. `route` changes fields of the route, or is
+ * the bytes themselves.
+ */
 export const swapOf = (
   trade: ApprovedTrade,
-  o: { router?: string; tokenIn?: string; tokenOut?: string; route?: Uint8Array } = {},
-): AbiValue[] => [
-  o.router ?? ROUTER,
-  o.tokenIn ?? tokenOf(trade.sell),
-  o.tokenOut ?? tokenOf(trade.buy),
-  BigInt(trade.inRaw),
-  BigInt(trade.minOutRaw),
-  o.route ?? Uint8Array.of(7, 7, 7),
-];
+  o: {
+    router?: string;
+    tokenIn?: string;
+    tokenOut?: string;
+    route?: Uint8Array | Partial<RouteOf>;
+  } = {},
+): AbiValue[] => {
+  const tokenIn = o.tokenIn ?? tokenOf(trade.sell);
+  const tokenOut = o.tokenOut ?? tokenOf(trade.buy);
+  const amountIn = BigInt(trade.inRaw);
+  return [
+    o.router ?? ROUTER,
+    tokenIn,
+    tokenOut,
+    amountIn,
+    BigInt(trade.minOutRaw),
+    o.route instanceof Uint8Array ? o.route : routeOf({ tokenIn, tokenOut, amountIn, ...o.route }),
+  ];
+};
 
 export const calls = {
   approve: (spender: string, amount: bigint) => call('approve(address,uint256)', [spender, amount]),

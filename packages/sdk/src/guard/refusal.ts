@@ -68,8 +68,16 @@ export const GUARD_CHECKS = [
   'spender',
   /** An approval of everything, whatever the order says. */
   'unlimited',
-  /** A trade's deadline has passed, or is further off than a signed step may stay good. */
+  /**
+   * A trade's deadline has passed, or is further off than a signed step may stay good, or the route
+   * inside it carries another deadline than the trade's own.
+   */
   'deadline',
+  /**
+   * The call data a trade hands its exchange is not the one route the deployment states for it: one
+   * exact-input swap in one pool of the stated fee, tick spacing and hooks, and nothing beside it.
+   */
+  'route',
 ] as const;
 export type GuardCheck = (typeof GUARD_CHECKS)[number];
 

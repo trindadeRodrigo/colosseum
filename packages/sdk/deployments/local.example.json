@@ -24,6 +24,14 @@
       "factory": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
       "beacon": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
       "routers": ["0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9"],
+      "routes": {
+        "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9": {
+          "kind": "universal-router-v4",
+          "fee": 100,
+          "tickSpacing": 1,
+          "hooks": "0x0000000000000000000000000000000000000000"
+        }
+      },
       "cash": "robinhood:usdc",
       "assets": {
         "robinhood:usdc": {
