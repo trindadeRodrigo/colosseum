@@ -82,6 +82,8 @@ const CONTRACT_ONLY_ERRORS = [
   'DepositsPaused',
   /** The deposit would pass the most one vault, or all vaults together, may take in before an audit. */
   'DepositCapReached',
+  /** Creating a vault is limited to a list the admin keeps, and this wallet is not on it. */
+  'CreationNotOpen',
   /** The caller is not the admin, or not the admin-to-be, that the call is for. */
   'NotAdmin',
   /** An address given as a token or a router holds no code. */
@@ -207,6 +209,7 @@ export const CONTRACT_ERROR_CODE = {
   VersionNotEffective: 'VersionNotEffective',
   // IVaultConfig
   DepositsArePaused: 'DepositsPaused',
+  NotAllowedToCreate: 'CreationNotOpen',
   VaultCapReached: 'DepositCapReached',
   TotalCapReached: 'DepositCapReached',
   /** Decimals stated for a token or a feed that are not its own: a setting outside what it may be. */
@@ -317,6 +320,7 @@ export const CHAIN_ERROR_RETRYABLE: Record<ChainErrorCode, boolean> = {
   /** Neither passes by sending again: the admin lifts the pause or raises the cap, or the person deposits less. */
   DepositsPaused: false,
   DepositCapReached: false,
+  CreationNotOpen: false,
   NotAdmin: false,
   NoCode: false,
   AssetIsRouter: false,

@@ -65,6 +65,9 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
         uint256 totalDeposited;
         // Each vault's net cash deposited as it last reported it.
         mapping(address vault => uint256) deposited;
+        // Who may create a vault while `creationRestricted` is on. Off, the list is not read.
+        mapping(address creator => bool) creators;
+        bool creationRestricted;
     }
 
     // keccak256(abi.encode(uint256(keccak256("basket.storage.VaultConfig")) - 1)) & ~bytes32(uint256(0xff))
@@ -272,6 +275,22 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
     /// @inheritdoc IVaultConfig
     function setDepositCaps(uint256 perVault, uint256 total) external onlyAdmin {
         _setDepositCaps(perVault, total);
+    }
+
+    /// @inheritdoc IVaultConfig
+    /// @dev The total cap counts cash that left a vault in kind as still inside, so anyone who may create a
+    /// vault can use the total up for the price of a swap. While the total is small that is answered here:
+    /// only known people create vaults.
+    function setCreationRestricted(bool restricted) external onlyAdmin {
+        _config().creationRestricted = restricted;
+        emit CreationRestrictedSet(restricted);
+    }
+
+    /// @inheritdoc IVaultConfig
+    function setCreator(address creator, bool allowed) external onlyAdmin {
+        require(creator != address(0), ZeroAddress());
+        _config().creators[creator] = allowed;
+        emit CreatorSet(creator, allowed);
     }
 
     /// @inheritdoc IVaultConfig
@@ -508,6 +527,17 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
     function depositCaps() public view returns (uint256 perVault, uint256 total) {
         ConfigStorage storage $ = _config();
         return ($.vaultCap, $.totalCap);
+    }
+
+    /// @inheritdoc IVaultConfig
+    function creationRestricted() public view returns (bool) {
+        return _config().creationRestricted;
+    }
+
+    /// @inheritdoc IVaultConfig
+    function mayCreate(address who) public view returns (bool) {
+        ConfigStorage storage $ = _config();
+        return !$.creationRestricted || $.creators[who];
     }
 
     /// @inheritdoc IVaultConfig

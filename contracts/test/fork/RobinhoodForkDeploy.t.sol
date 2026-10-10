@@ -16,8 +16,19 @@ interface IRealToken {
     function approve(address spender, uint256 amount) external returns (bool);
 }
 
-/// Stands for the Safe: the committed file's one missing contract.
-contract SafeStandIn {}
+/// Stands for the Safe, the committed file's one missing contract: two of three must sign.
+contract SafeStandIn {
+    function getThreshold() external pure returns (uint256) {
+        return 2;
+    }
+
+    function getOwners() external pure returns (address[] memory owners) {
+        owners = new address[](3);
+        owners[0] = address(0x5AFE01);
+        owners[1] = address(0x5AFE02);
+        owners[2] = address(0x5AFE03);
+    }
+}
 
 /// The committed mainnet file (`script/config/4663.json`) against Robinhood Chain itself: the real dollar
 /// token, the real NVDA token, its real Chainlink feed and the real Universal Router, at the block the
@@ -68,6 +79,7 @@ contract RobinhoodForkDeployTest is Test {
         cfg.placeholders = false;
         cfg.timelockOwner = safe;
         cfg.guardian = guardian;
+        cfg.creators[0] = person;
     }
 
     function test_fork_theChainIsMainnet_andTheCommittedFileIsRefusedAsItStands() public onFork {

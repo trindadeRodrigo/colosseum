@@ -343,6 +343,107 @@ contract DepositCapsTest is SwapFixture {
         elsewhere.noteDeposit(0);
     }
 
+    // ---- who may create a vault
+
+    function test_creation_isOpenToAnyone_untilTheAdminRestrictsIt() public {
+        assertFalse(factory.creationRestricted());
+        assertTrue(factory.mayCreate(stranger));
+        _createVault(stranger, keccak256("anyone"));
+    }
+
+    function test_creation_theListIsTheAdminsOnly() public {
+        address[4] memory others = [guardian, keeper, owner, stranger];
+        for (uint256 i; i < others.length; ++i) {
+            vm.startPrank(others[i]);
+            vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, others[i]));
+            factory.setCreationRestricted(true);
+            vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, others[i]));
+            factory.setCreator(others[i], true);
+            vm.stopPrank();
+        }
+        vm.startPrank(admin);
+        vm.expectRevert(IVaultConfig.ZeroAddress.selector);
+        factory.setCreator(address(0), true);
+        vm.expectEmit(address(factory));
+        emit IVaultConfig.CreatorSet(second, true);
+        factory.setCreator(second, true);
+        vm.expectEmit(address(factory));
+        emit IVaultConfig.CreationRestrictedSet(true);
+        factory.setCreationRestricted(true);
+        vm.stopPrank();
+        assertTrue(factory.creationRestricted());
+        assertTrue(factory.mayCreate(second));
+        assertFalse(factory.mayCreate(stranger));
+    }
+
+    /// Restricted: only the listed create, by either way of creating. A vault that already exists is not
+    /// touched: its owner, listed or not, still deposits and withdraws.
+    function test_creation_restricted_onlyTheListedCreate_andExistingVaultsAreUntouched() public {
+        vm.startPrank(admin);
+        factory.setCreator(second, true);
+        factory.setCreationRestricted(true);
+        vm.stopPrank();
+
+        Weight[] memory none = new Weight[](0);
+        Swap[] memory noSwaps = new Swap[](0);
+        vm.startPrank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAllowedToCreate.selector, stranger));
+        factory.createVault(keccak256("a"), none, bytes32(0), 0, false);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAllowedToCreate.selector, stranger));
+        factory.createVaultAndBuy(keccak256("b"), none, bytes32(0), 0, false, 0, noSwaps, LATER);
+        vm.stopPrank();
+        vm.prank(second);
+        address made = factory.createVault(keccak256("c"), none, bytes32(0), 0, false);
+        assertTrue(factory.isVault(made));
+
+        // The fixture's owner is not on the list, and their vault is theirs as before.
+        assertFalse(factory.mayCreate(owner));
+        _deposit(vault, 100 * USD);
+        vm.prank(owner);
+        vault.withdrawAll();
+
+        // Off the list again, and open again.
+        vm.prank(admin);
+        factory.setCreator(second, false);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAllowedToCreate.selector, second));
+        vm.prank(second);
+        factory.createVault(keccak256("d"), none, bytes32(0), 0, false);
+        vm.prank(admin);
+        factory.setCreationRestricted(false);
+        _createVault(stranger, keccak256("e"));
+    }
+
+    /// What the list is for. A stranger uses up the whole total for the price of a swap: deposit to the
+    /// cap, swap, take the stock out with `withdraw`. The count stays, and nobody can deposit until the
+    /// admin raises the cap. With creation restricted the stranger has no vault to do it with.
+    function test_creation_restricted_closesTheUseUpOfTheTotalCap() public {
+        _caps(CAP, CAP);
+        uint256 open = vm.snapshotState();
+        BasketVault griefer = _createVault(stranger, keccak256("grief"));
+        cash.mint(stranger, CAP);
+        vm.startPrank(stranger);
+        cash.approve(address(griefer), CAP);
+        griefer.deposit(CAP);
+        griefer.ownerSwap(_swaps(_swap(direct, address(cash), address(stockA), CAP, 100 * unit)), LATER);
+        griefer.withdraw(address(stockA), 100 * unit);
+        vm.stopPrank();
+        address[] memory list = new address[](1);
+        list[0] = address(griefer);
+        factory.syncDeposits(list);
+        assertEq(factory.totalDeposited(), CAP, "an empty vault, still counted: a recount cannot lower it");
+        _expectDepositRevert(vault, 1, abi.encodeWithSelector(IVaultConfig.TotalCapReached.selector, CAP + 1, CAP));
+
+        vm.revertToState(open);
+        vm.startPrank(admin);
+        factory.setCreator(owner, true);
+        factory.setCreationRestricted(true);
+        vm.stopPrank();
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAllowedToCreate.selector, stranger));
+        vm.prank(stranger);
+        factory.createVault(keccak256("grief"), new Weight[](0), bytes32(0), 0, false);
+        _deposit(vault, CAP);
+    }
+
     // ---- a factory and a vault that came from the layout before
 
     /// What an upgrade of a live factory and its vaults reads in the new fields is zero. Zero caps refuse

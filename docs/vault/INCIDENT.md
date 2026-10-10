@@ -35,7 +35,13 @@ For the EVM vault contracts. Who holds which key is in `SECURITY.md`. Every tran
 | An owner's swap | not touched | not touched |
 | `withdraw`, `withdrawAll` | not touched | not touched |
 
-There is no call that stops a withdrawal. If the vault's own code is what is wrong, the only stop is an upgrade, and an upgrade takes 48 hours: tell owners to withdraw in kind.
+There is no call that stops a withdrawal.
+
+## Known limit: no fast stop for a fault in the vault itself
+
+If the vault's own code is what is wrong, nothing stops it quickly. The guardian can stop the keeper and new deposits; it cannot stop an owner's swap, and it cannot change code. The only fix is an upgrade, and an upgrade waits the timelock's 48 hours like everything else. This is accepted for the first step, knowingly, because of what bounds it: deposits are capped, one known person may create a vault, there is no keeper, and the owner's own calls are the only ones that move tokens.
+
+What an owner can always do in that time: `withdraw(token, amount)` for each token, or `withdrawAll()`, which take the tokens out as they are and depend on nothing but the token. Tell owners to withdraw in kind, then schedule the fix.
 
 ## If a key is lost or stolen
 

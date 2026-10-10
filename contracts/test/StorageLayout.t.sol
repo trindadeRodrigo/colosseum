@@ -137,6 +137,8 @@ contract StorageLayoutTest is SwapFixture {
         factory.setPriceDevBps(321);
         factory.setSessionPriceAge(4321);
         factory.setDepositCaps(7000 * USD, 9000 * USD);
+        factory.setCreator(stranger, true);
+        factory.setCreationRestricted(true);
         factory.launch();
         factory.proposeAdmin(stranger);
         factory.removeAsset(address(stockC));
@@ -202,7 +204,10 @@ contract StorageLayoutTest is SwapFixture {
         assertEq(uint128(fourth), 100e8, "assets: minPrice, in the fourth slot");
         assertEq(fourth >> 128, 150e8, "assets: maxPrice, beside it");
         assertEq(_word(where, asset + 4), 0, "assets: an entry is four slots");
-        assertEq(_word(where, s + 19), 0, "the next field a later version adds goes here");
+        assertEq(_word(where, s + 19), 0, "creators: a mapping's own slot stays empty");
+        assertEq(_word(where, uint256(keccak256(abi.encode(stranger, s + 19)))), 1, "creators: an entry");
+        assertEq(_word(where, s + 20), 1, "creationRestricted");
+        assertEq(_word(where, s + 21), 0, "the next field a later version adds goes here");
         _assertPlainSlotsEmpty(where);
     }
 

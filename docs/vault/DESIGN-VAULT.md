@@ -818,6 +818,8 @@ interface IVaultConfig {                                        // the settings 
   function unpauseDeposits() external;
   function setDepositCaps(uint256 perVault, uint256 total) external;   // perVault at most total
   function setSessionPriceAge(uint32 age) external;             // 0, or 60 s to 26 h
+  function setCreationRestricted(bool restricted) external;     // only the listed may create a vault; mayCreate(who)
+  function setCreator(address creator, bool allowed) external;
   function setHalt(address token, uint64 until) external;       // any time, earlier ones included
   function setClosedUntil(uint64 until) external;
   function setClosedDay(uint32 day, bool closed) external;

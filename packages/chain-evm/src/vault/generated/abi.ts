@@ -1739,6 +1739,19 @@ export const VAULT_FACTORY_ABI = [
   },
   {
     type: 'function',
+    name: 'creationRestricted',
+    inputs: [],
+    outputs: [
+      {
+        name: '',
+        type: 'bool',
+        internalType: 'bool',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     name: 'depositCaps',
     inputs: [],
     outputs: [
@@ -1961,6 +1974,25 @@ export const VAULT_FACTORY_ABI = [
     type: 'function',
     name: 'launched',
     inputs: [],
+    outputs: [
+      {
+        name: '',
+        type: 'bool',
+        internalType: 'bool',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'mayCreate',
+    inputs: [
+      {
+        name: 'who',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
     outputs: [
       {
         name: '',
@@ -2305,6 +2337,37 @@ export const VAULT_FACTORY_ABI = [
         name: 'until',
         type: 'uint64',
         internalType: 'uint64',
+      },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'setCreationRestricted',
+    inputs: [
+      {
+        name: 'restricted',
+        type: 'bool',
+        internalType: 'bool',
+      },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'setCreator',
+    inputs: [
+      {
+        name: 'creator',
+        type: 'address',
+        internalType: 'address',
+      },
+      {
+        name: 'allowed',
+        type: 'bool',
+        internalType: 'bool',
       },
     ],
     outputs: [],
@@ -2889,6 +2952,38 @@ export const VAULT_FACTORY_ABI = [
   },
   {
     type: 'event',
+    name: 'CreationRestrictedSet',
+    inputs: [
+      {
+        name: 'restricted',
+        type: 'bool',
+        indexed: false,
+        internalType: 'bool',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'CreatorSet',
+    inputs: [
+      {
+        name: 'creator',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'allowed',
+        type: 'bool',
+        indexed: false,
+        internalType: 'bool',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
     name: 'DepositCapsSet',
     inputs: [
       {
@@ -3396,6 +3491,17 @@ export const VAULT_FACTORY_ABI = [
   {
     type: 'error',
     name: 'NotAdmin',
+    inputs: [
+      {
+        name: 'caller',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
+  },
+  {
+    type: 'error',
+    name: 'NotAllowedToCreate',
     inputs: [
       {
         name: 'caller',

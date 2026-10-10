@@ -1050,6 +1050,7 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
         // Added with the mainnet setup: the guardian's stop on new money, and the deposit caps.
         'DepositsPaused',
         'DepositCapReached',
+        'CreationNotOpen',
       ].sort(),
     );
   });

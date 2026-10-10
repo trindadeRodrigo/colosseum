@@ -40,6 +40,11 @@ const SAFE = at(0x5afe);
 const OTHER_SAFE = at(0x5aff);
 const GUARDIAN = at(0x60); // a key
 const KEEPER = at(0x6e); // a key
+const CREATOR = at(0xc4ea);
+const OWNER_A = at(0xa11);
+const OWNER_B = at(0xb22);
+const OWNER_C = at(0xc33);
+const OWNER_D = at(0xd44);
 const DEPLOYER = at(0xde); // a key
 const CASH = at(0xc0);
 const STOCK = at(0xc1);
@@ -70,6 +75,14 @@ type Model = {
   assets: ModelAsset[];
   /** Feeds that answer `writer()`: ours, written by one key. */
   testFeeds: Set<string>;
+  /** Contracts that answer as a Safe. */
+  safes: Map<string, { threshold: number; owners: string[] }>;
+  /** Code that is not the usual: an EIP-7702 delegation, say. */
+  codes: Map<string, string>;
+  /** What each token answers `decimals()` with. */
+  decimals: Map<string, number>;
+  creationRestricted: boolean;
+  creators: Set<string>;
   timelock?: {
     address: string;
     minDelay: bigint;
@@ -108,6 +121,7 @@ function readerOf(model: Model): Reader {
       [selector('assets')]: () => hex(32, model.assets.length, ...model.assets.map((a) => a.token)),
       [selector('cashToken')]: () => hex(CASH),
       [selector('sessionPriceAge')]: () => hex(3600),
+      [selector('creationRestricted')]: () => hex(model.creationRestricted),
       [selector('priceDevBps')]: () => hex(200),
     },
     [BEACON]: {
@@ -123,7 +137,8 @@ function readerOf(model: Model): Reader {
   return {
     chainId: async () => model.chainId,
     blockNumber: async () => model.head,
-    code: async (address) => (model.code.has(address) ? '0x60806040' : '0x'),
+    code: async (address) =>
+      model.codes.get(address) ?? (model.code.has(address) ? '0x60806040' : '0x'),
     storageAt: async (address, slot) => {
       if (slot !== IMPLEMENTATION_SLOT) return hex(0);
       if (address === FACTORY) return hex(f.implementation);
@@ -154,6 +169,13 @@ function readerOf(model: Model): Reader {
         if (sel === selector('getTimestamp'))
           return hex(tl.timestamps.get(`0x${args.slice(0, 64)}`) ?? 0n);
       }
+      if (to === FACTORY && sel === selector('mayCreate'))
+        return hex(model.creators.has(`0x${args.slice(24, 64)}`));
+      const safe = model.safes.get(to);
+      if (safe && sel === selector('getThreshold')) return hex(safe.threshold);
+      if (safe && sel === selector('getOwners')) return hex(32, safe.owners.length, ...safe.owners);
+      if (sel === selector('decimals') && model.decimals.has(to))
+        return hex(model.decimals.get(to) ?? 0);
       if (sel === selector('writer')) {
         if (model.testFeeds.has(to)) return hex(DEPLOYER);
         throw new CallReverted();
@@ -190,13 +212,20 @@ const revoke = (role: string, account: string, block = DEPLOY_BLOCK + 1) => ({
   data: '0x',
   block,
 });
-/** `CallScheduled(id, index, target, value, data, predecessor, delay)` with `data` a bare selector. */
-const scheduled = (id: string, target: string, callSelector: string, block: number) => ({
-  topics: [TOPICS.callScheduled[1], id, hex(0)],
-  data: `${hex(target, 0, 0xa0, 0, DAYS_2, 4)}${callSelector.slice(2).padEnd(64, '0')}`,
-  block,
-});
+/** `CallScheduled(id, index, target, value, data, predecessor, delay)`. */
+const scheduled = (id: string, target: string, callData: string, block: number, index = 0) => {
+  const bytes = callData.slice(2);
+  return {
+    topics: [TOPICS.callScheduled[1], id, hex(index)],
+    data: `${hex(target, 0, 0xa0, 0, DAYS_2, bytes.length / 2)}${bytes.padEnd(Math.ceil(bytes.length / 64) * 64, '0')}`,
+    block,
+  };
+};
+/** The data of a call: a selector and its words. */
+const callOf = (name: keyof typeof SELECTORS, ...args: (bigint | number | string)[]) =>
+  `${selector(name)}${args.map(word).join('')}`;
 
+const QUEUED = `0x${'ab'.repeat(32)}`;
 const THREE = ['PROPOSER_ROLE', 'CANCELLER_ROLE', 'EXECUTOR_ROLE'] as const;
 
 /** A mainnet deploy as `Deploy.s.sol` leaves it: the Safe behind a 48 hour timelock, the deployer with nothing. */
@@ -238,6 +267,17 @@ function mainnetModel(): Model {
       { token: STOCK, feed: STOCK_FEED, flags: 0, averageFeed: STOCK_AVERAGE },
     ],
     testFeeds: new Set(),
+    safes: new Map([
+      [SAFE, { threshold: 2, owners: [OWNER_A, OWNER_B, OWNER_C] }],
+      [OTHER_SAFE, { threshold: 2, owners: [OWNER_A, OWNER_B, OWNER_D] }],
+    ]),
+    codes: new Map(),
+    decimals: new Map([
+      [CASH, 6],
+      [STOCK, 18],
+    ]),
+    creationRestricted: true,
+    creators: new Set([CREATOR]),
     timelock: {
       address: TIMELOCK,
       minDelay: DAYS_2,
@@ -279,15 +319,21 @@ const mainnetRecordJson = () => ({
     proposers: [SAFE],
     cancellers: [SAFE],
     executors: [SAFE],
+    safe: { threshold: 2, owners: [OWNER_A, OWNER_B, OWNER_C] },
   },
   expected: {
     launched: false,
     publishDelay: 172800,
     keeperEnabled: false,
+    openToAll: false,
+    creators: [CREATOR],
     depositCaps: { perVault: '10000000000', total: '10000000000' },
   },
 });
-type RecordJson = ReturnType<typeof mainnetRecordJson> & { todo?: string };
+type RecordJson = ReturnType<typeof mainnetRecordJson> & {
+  todo?: string;
+  expected: { safeMinThreshold?: number; totalCapCeilingDollars?: number };
+};
 
 /** Runs the check on the healthy mainnet after one change to the chain, the record, or both. */
 async function run(
@@ -350,6 +396,7 @@ describe('a healthy timelocked mainnet', () => {
       'priceDevBps',
       'sessionPriceAge',
       'cashToken',
+      'creationRestricted',
     ])
       expect(out).toContain(`INFO\tfactory.${fact}()`);
     // The deployer was granted three roles and holds none: revoked is not a finding.
@@ -391,9 +438,9 @@ describe('a healthy timelocked mainnet', () => {
       model: (m) => {
         // upgradeTo(address) on the beacon, queued; one that ran; one that was cancelled.
         tl(m).logs.push(
-          scheduled(queued, BEACON, '0x3659cfe6', 2_000),
-          scheduled(done, FACTORY, '0x704b6c02', 2_001),
-          scheduled(cancelled, FACTORY, '0x704b6c02', 2_002),
+          scheduled(queued, BEACON, `0x3659cfe6${word(OTHER_SAFE)}`, 2_000),
+          scheduled(done, FACTORY, `0x704b6c02${word(SAFE)}`, 2_001),
+          scheduled(cancelled, FACTORY, `0x704b6c02${word(SAFE)}`, 2_002),
         );
         tl(m).timestamps.set(queued, 1_800_000_000n).set(done, 1n);
       },
@@ -404,6 +451,115 @@ describe('a healthy timelocked mainnet', () => {
       `INFO\tpending operation\t${queued} call 0: target ${BEACON}, selector 0x3659cfe6\t\tmay run at 2027-01-15T08:00:00.000Z (1800000000)`,
     ]);
     expect(text(r)).toContain('INFO\tpending operations\t1');
+  });
+
+  it('prints the Safe behind the roles, the cap against its ceiling and who may create', async () => {
+    const out = text(await run());
+    expect(out).toContain(
+      `INFO\tsafe ${SAFE}\t2 of 3: ${OWNER_A}, ${OWNER_B}, ${OWNER_C}\t\tcompare the owners with the people who hold them`,
+    );
+    expect(out.match(/INFO\tsafe /g)).toHaveLength(1);
+    expect(out).toContain(`OK\tsafe ${SAFE} threshold\t2\texpected 2`);
+    expect(out).toContain(`OK\tsafe ${SAFE} owners\t${OWNER_A}, ${OWNER_B}, ${OWNER_C}`);
+    expect(out).toContain(
+      'OK\ttotal cap ceiling\ttotal 10000000000\texpected at most 10000000000 (10000 dollars, 6 decimals)',
+    );
+    expect(out).toContain('INFO\tfactory.creationRestricted()\ttrue');
+    expect(out).toContain(`OK\tfactory.mayCreate(${CREATOR})\ttrue\texpected true`);
+  });
+
+  it("takes the record's owners in any order and any case, and a record that states no Safe", async () => {
+    const reordered = await run({
+      record: (j) => {
+        j.timelock.safe.owners = [OWNER_C.toUpperCase().replace('0X', '0x'), OWNER_A, OWNER_B];
+      },
+    });
+    expect(reordered.failures).toEqual([]);
+    const unstated = await run({
+      record: (j) => {
+        delete (j.timelock as Partial<RecordJson['timelock']>).safe;
+        delete (j.expected as Partial<RecordJson['expected']>).creators;
+        delete (j.expected as Partial<RecordJson['expected']>).openToAll;
+      },
+    });
+    expect(unstated.failures).toEqual([]);
+    expect(text(unstated)).toContain(`INFO\tsafe ${SAFE}\t2 of 3`);
+  });
+
+  it('allows a higher total cap once the record raises the ceiling', async () => {
+    const change = {
+      model: (m: Model) => {
+        m.factory.caps.total = 20_000_000_000n;
+      },
+      record: (j: RecordJson) => {
+        j.expected.depositCaps.total = '20000000000';
+      },
+    };
+    expect((await run(change)).failures).toHaveLength(1);
+    const raised = await run({
+      ...change,
+      record: (j) => {
+        change.record(j);
+        j.expected.totalCapCeilingDollars = 20_000;
+      },
+    });
+    expect(raised.failures).toEqual([]);
+  });
+
+  it('warns on a queued change the timelock makes to itself, and does not fail on it', async () => {
+    const second = `0x${'12'.repeat(32)}`;
+    const r = await run({
+      model: (m) => {
+        tl(m).logs.push(
+          scheduled(QUEUED, TIMELOCK, callOf('updateDelay', 259_200), 2_000),
+          scheduled(second, TIMELOCK, callOf('grantRole', ROLES.PROPOSER_ROLE, OTHER_SAFE), 2_001),
+          scheduled(second, TIMELOCK, callOf('revokeRole', ROLES.EXECUTOR_ROLE, SAFE), 2_001, 1),
+        );
+        tl(m).timestamps.set(QUEUED, 1_800_000_000n).set(second, 1_800_000_000n);
+      },
+    });
+    expect(r.failures).toEqual([]);
+    expect(
+      r.lines.filter((l) => l.what === 'pending operation').map((l) => [l.status, l.note]),
+    ).toEqual([
+      [
+        'WARN',
+        "updateDelay(259200): the timelock's delay becomes 259200 s; may run at 2027-01-15T08:00:00.000Z (1800000000)",
+      ],
+      [
+        'WARN',
+        `grantRole(PROPOSER_ROLE, ${OTHER_SAFE}); may run at 2027-01-15T08:00:00.000Z (1800000000)`,
+      ],
+      [
+        'WARN',
+        `revokeRole(EXECUTOR_ROLE, ${SAFE}); may run at 2027-01-15T08:00:00.000Z (1800000000)`,
+      ],
+    ]);
+    expect(verdict(r)).toBe('VERDICT: OK, the chain is as the record says, 3 warnings');
+  });
+
+  it('fails on an updateDelay under 48 hours that is the second call of a batch', async () => {
+    const r = await run({
+      model: (m) => {
+        tl(m).logs.push(
+          scheduled(QUEUED, BEACON, `0x3659cfe6${word(OTHER_SAFE)}`, 2_000, 0),
+          scheduled(QUEUED, TIMELOCK, callOf('updateDelay', 0), 2_000, 1),
+        );
+        tl(m).timestamps.set(QUEUED, 1_800_000_000n);
+      },
+    });
+    expect(r.failures).toHaveLength(1);
+    expect(r.failures[0]).toMatch(
+      /^pending operation: updateDelay\(0\): the timelock's delay becomes 0 s, under 48 hours; .*call 1: target 0x0+71/,
+    );
+    // The same call to another contract is not the timelock's delay.
+    const elsewhere = await run({
+      model: (m) => {
+        tl(m).logs.push(scheduled(QUEUED, FACTORY, callOf('updateDelay', 0), 2_000));
+        tl(m).timestamps.set(QUEUED, 1_800_000_000n);
+      },
+    });
+    expect(elsewhere.failures).toEqual([]);
   });
 });
 
@@ -652,10 +808,10 @@ describe('what fails on a mainnet, one change each', () => {
       'the caps differ',
       {
         model: (m) => {
-          m.factory.caps.total = 20_000_000_000n;
+          m.factory.caps.perVault = 5_000_000_000n;
         },
       },
-      /^factory\.depositCaps\(\)\.total: live 20000000000: expected 10000000000$/,
+      /^factory\.depositCaps\(\)\.perVault: live 5000000000: expected 10000000000$/,
     ],
     [
       'the caps are 2^256-1, which is no cap',
@@ -750,6 +906,172 @@ describe('what fails on a mainnet, one change each', () => {
       },
       /^record\.roles\.guardian: the zero address where a mainnet needs an address/,
     ],
+    [
+      'a role holder is a key with an EIP-7702 delegation',
+      {
+        model: (m) => {
+          m.codes.set(SAFE, `0xef0100${OWNER_A.slice(2)}`);
+        },
+      },
+      /^safe 0x0+5afe: its code is an EIP-7702 delegation: a key that delegates, not a Safe: live 0x0+5afe \(delegated key\)$/,
+    ],
+    [
+      'a role holder has code and is not a Safe',
+      {
+        model: (m) => {
+          m.safes.delete(SAFE);
+        },
+      },
+      /^safe 0x0+5afe: not a Safe: it does not answer getThreshold\(\) and getOwners\(\)/,
+    ],
+    [
+      'the Safe needs one signature',
+      {
+        model: (m) => {
+          m.safes.set(SAFE, { threshold: 1, owners: [OWNER_A, OWNER_B, OWNER_C] });
+        },
+        record: (j) => {
+          j.timelock.safe.threshold = 1;
+        },
+      },
+      /^safe 0x0+5afe: the threshold is under 2: live 1 of 3/,
+    ],
+    [
+      'the Safe needs fewer signatures than the record asks for',
+      {
+        record: (j) => {
+          j.expected.safeMinThreshold = 3;
+        },
+      },
+      /^safe 0x0+5afe: the threshold is under 3: live 2 of 3/,
+    ],
+    [
+      'the record asks for a least threshold under 2',
+      {
+        record: (j) => {
+          j.expected.safeMinThreshold = 1;
+        },
+      },
+      /^record\.expected\.safeMinThreshold: under 2: one signature is a key, not a Safe: live 1$/,
+    ],
+    [
+      'the Safe has one owner',
+      {
+        model: (m) => {
+          m.safes.set(SAFE, { threshold: 1, owners: [OWNER_A] });
+        },
+      },
+      /^safe 0x0+5afe: fewer than two owners: live 1 of 1/,
+    ],
+    [
+      "the Safe's threshold is above its owners",
+      {
+        model: (m) => {
+          m.safes.set(SAFE, { threshold: 4, owners: [OWNER_A, OWNER_B, OWNER_C] });
+        },
+        record: (j) => {
+          j.timelock.safe.threshold = 4;
+        },
+      },
+      /^safe 0x0+5afe: the threshold is above the number of owners: live 4 of 3/,
+    ],
+    [
+      "the Safe's threshold is not the record's",
+      {
+        record: (j) => {
+          j.timelock.safe.threshold = 3;
+        },
+      },
+      /^safe 0x0+5afe threshold: live 2: expected 3$/,
+    ],
+    [
+      "the Safe's owners are not the record's",
+      {
+        model: (m) => {
+          m.safes.set(SAFE, { threshold: 2, owners: [OWNER_A, OWNER_B, OWNER_D] });
+        },
+      },
+      /^safe 0x0+5afe owners: live 0x0+a11, 0x0+b22, 0x0+d44: expected 0x0+a11, 0x0+b22, 0x0+c33$/,
+    ],
+    [
+      'a queued updateDelay under 48 hours',
+      {
+        model: (m) => {
+          tl(m).logs.push(scheduled(QUEUED, TIMELOCK, callOf('updateDelay', 3600), 2_000));
+          tl(m).timestamps.set(QUEUED, 1_800_000_000n);
+        },
+      },
+      /^pending operation: updateDelay\(3600\): the timelock's delay becomes 3600 s, under 48 hours; may run at 2027-01-15T08:00:00\.000Z \(1800000000\): live 0x(ab)+ call 0: target 0x0+71, selector 0x64d62353$/,
+    ],
+    [
+      'the total cap is over 10,000 dollars',
+      {
+        model: (m) => {
+          m.factory.caps.total = 10_000_000_001n;
+        },
+        record: (j) => {
+          j.expected.depositCaps.total = '10000000001';
+        },
+      },
+      /^total cap ceiling: the total cap is over 10000 dollars: live total 10000000001: expected at most 10000000000 \(10000 dollars, 6 decimals\)$/,
+    ],
+    [
+      "the cash token's decimals cannot be read",
+      {
+        model: (m) => {
+          m.decimals.delete(CASH);
+        },
+      },
+      /^total cap ceiling: the cash token's decimals\(\) could not be read/,
+    ],
+    [
+      'anyone may create a vault while the record says it is closed',
+      {
+        model: (m) => {
+          m.creationRestricted = false;
+        },
+      },
+      /^factory\.creationRestricted\(\): anyone may create a vault while the record says openToAll is false: live false: expected true$/,
+    ],
+    [
+      'anyone may create a vault while the record lists creators',
+      {
+        model: (m) => {
+          m.creationRestricted = false;
+        },
+        record: (j) => {
+          j.expected.openToAll = true;
+        },
+      },
+      /^factory\.creationRestricted\(\): anyone may create a vault while the record lists creators/,
+    ],
+    [
+      'a creator the record lists may not create',
+      {
+        model: (m) => {
+          m.creators.delete(CREATOR);
+        },
+      },
+      /^factory\.mayCreate\(0x0+c4ea\): the record lists it as a creator and it may not create: live false: expected true$/,
+    ],
+    [
+      'the record lists no creator while it is closed',
+      {
+        record: (j) => {
+          j.expected.creators = [];
+        },
+      },
+      /^record\.expected\.creators: empty while openToAll is false/,
+    ],
+    [
+      'creationRestricted() does not answer',
+      {
+        model: (m) => {
+          m.reverting.add(`${FACTORY}:${SELECTORS.creationRestricted[1]}`);
+        },
+      },
+      /^factory\.creationRestricted\(\): could not be read: the call reverted$/,
+    ],
   ];
 
   it.each(cases)('%s', async (_name, change, failure) => {
@@ -778,6 +1100,21 @@ describe('what fails on a mainnet, one change each', () => {
         'launched differs',
         'the publish delay differs',
         'the caps differ',
+        'a role holder is a key with an EIP-7702 delegation',
+        'a role holder has code and is not a Safe',
+        'the Safe needs one signature',
+        'the Safe needs fewer signatures than the record asks for',
+        'the record asks for a least threshold under 2',
+        "the Safe's threshold is above its owners",
+        "the Safe's threshold is not the record's",
+        "the Safe's owners are not the record's",
+        'a queued updateDelay under 48 hours',
+        'the total cap is over 10,000 dollars',
+        "the cash token's decimals cannot be read",
+        'anyone may create a vault while the record says it is closed',
+        'a creator the record lists may not create',
+        'the record lists no creator while it is closed',
+        'creationRestricted() does not answer',
         'a feed has no code',
         'a feed answers writer()',
         'the logs cannot be read',
@@ -966,6 +1303,7 @@ describe('a test network is not held to the mainnet rules', () => {
     const model = testnetModel(record);
     for (const name of [
       'depositCaps',
+      'creationRestricted',
       'depositsPaused',
       'totalDeposited',
       'sessionPriceAge',
@@ -975,11 +1313,12 @@ describe('a test network is not held to the mainnet rules', () => {
     expect(r.failures).toEqual([]);
     expect(r.lines.filter((l) => l.status === 'WARN').map((l) => l.what)).toEqual([
       'factory.depositCaps()',
+      'factory.creationRestricted()',
       'factory.depositsPaused()',
       'factory.totalDeposited()',
       'factory.sessionPriceAge()',
     ]);
-    expect(verdict(r)).toBe('VERDICT: OK, the chain is as the record says, 4 warnings');
+    expect(verdict(r)).toBe('VERDICT: OK, the chain is as the record says, 5 warnings');
   });
 
   it('with a timelock there, logs that cannot be read are a warning, and the record is still asked', async () => {
@@ -993,5 +1332,44 @@ describe('a test network is not held to the mainnet rules', () => {
       'timelock logs',
     ]);
     expect(text(r)).toContain(`OK\tPROPOSER_ROLE\t${SAFE} (contract)\texpected holds it`);
+  });
+  it('prints what stands behind a role there and fails on none of it: one signature, a delegated key, a short delay queued', async () => {
+    const run46630 = async (change: (m: Model) => void) => {
+      const model = mainnetModel();
+      model.chainId = 46630;
+      change(model);
+      const json = { ...mainnetRecordJson(), evmChainId: 46630 };
+      json.expected.depositCaps = { perVault: '10000000000', total: '90000000000' };
+      model.factory.caps.total = 90_000_000_000n;
+      return checkAuthority(parseRecord(JSON.stringify(json)), readerOf(model));
+    };
+    const one = await run46630((m) => {
+      m.safes.set(SAFE, { threshold: 1, owners: [OWNER_D] });
+      m.creationRestricted = false;
+      m.creators.clear();
+    });
+    expect(one.failures).toEqual([]);
+    expect(text(one)).toContain(`INFO\tsafe ${SAFE}\t1 of 1: ${OWNER_D}`);
+    expect(text(one)).not.toContain('total cap ceiling');
+
+    const delegated = await run46630((m) => {
+      m.codes.set(SAFE, `0xef0100${OWNER_A.slice(2)}`);
+    });
+    expect(delegated.failures).toEqual([]);
+    expect(text(delegated)).toContain(`OK\tPROPOSER_ROLE\t${SAFE} (delegated key)`);
+
+    const notSafe = await run46630((m) => {
+      m.safes.delete(SAFE);
+    });
+    expect(notSafe.failures).toEqual([]);
+
+    const queued = await run46630((m) => {
+      tl(m).logs.push(scheduled(QUEUED, TIMELOCK, callOf('updateDelay', 60), 2_000));
+      tl(m).timestamps.set(QUEUED, 1_800_000_000n);
+    });
+    expect(queued.failures).toEqual([]);
+    expect(queued.lines.filter((l) => l.status === 'WARN').map((l) => l.note)).toEqual([
+      "updateDelay(60): the timelock's delay becomes 60 s, under 48 hours; may run at 2027-01-15T08:00:00.000Z (1800000000)",
+    ]);
   });
 });

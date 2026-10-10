@@ -20,6 +20,10 @@ On a mainnet the admin of the factory and the owner of the beacon are one contra
 
 Why 48 hours: it is the notice a follower already gets before a new version of a shared portfolio takes effect, so one number answers "how long before anything about my vault can change". The script refuses a mainnet delay under it.
 
+**The delay has no floor in the timelock itself.** `TimelockController` is used unmodified, and its `updateDelay` takes any value. The Safe can schedule `updateDelay(0)`; 48 hours later every admin call is instant. The same holds for the roles and for the admin itself: after one delay the Safe can hand either to anything. None of this can be prevented without changing OpenZeppelin's contract, which this deployment does not do. What stands in its place is that each is an operation readable on chain for 48 hours first: `authority-check` fails on a mainnet when the live delay is under 48 hours and when an `updateDelay` to less is waiting, and warns on any waiting `updateDelay`, `grantRole` or `revokeRole`. So it runs daily, and a red run is a reason to withdraw.
+
+**"A Safe" is checked, as far as a contract can say it of itself.** The script and `authority-check` refuse an owner with no code, a key with delegated code (EIP-7702, 23 bytes starting `0xef0100`), anything that does not answer `getThreshold()` and `getOwners()`, a threshold under `safeMinThreshold` (2 at least on a mainnet), fewer than two owners, or a threshold above the owner count. Both print the owners and the threshold. That the contract is a real Safe and that those owners are the people meant is a person's comparison; a contract written to answer like one would pass.
+
 Tests: `contracts/test/Timelock.t.sol` (every guarded call refused when made directly, refused a second before the delay ends, accepted after it; the guardian can only stop), `contracts/test/DeployMainnet.t.sol` (where the keys are when the script ends).
 
 ## What an owner can always do
@@ -48,8 +52,9 @@ What is counted: cash that came in through `deposit` or at creation, less cash t
 
 Limits of counting without a price, on purpose rather than hidden:
 
-- It bounds money in, not what the holdings are worth. A vault whose stock doubled holds more than the cap.
-- Deposit, swap, withdraw the stock in kind: the count stays where it was until the vault is emptied or cash leaves. It errs toward refusing. It also means a person can use up the total cap for the price of a swap and leave it used; the fix is the Safe raising the cap, 48 hours later. With a handful of known depositors this is accepted; before the cap is opened to strangers it is not.
+- **The caps bound deposits, not what a vault holds, and not what is at risk.** A vault whose stock doubled holds more than the cap. An owner can send the cash token, or any token, straight to their vault's address and trade it there: that is not a deposit, it is not counted, and no contract can refuse it. Nothing a person reads may say that at most 10,000 dollars is at risk. The sentence for the trust notice: "Before an audit, deposits made through this app are limited to 10,000 dollars. That limits what goes in through a deposit. It is not a limit on what a vault can hold or on what you could lose: a vault can receive tokens sent to it directly, and what it holds changes in value."
+- **A withdrawal of cash lowers the count. A withdrawal in kind does not.** `withdraw` of the cash token and `withdrawAll` lower the vault's own count at once; the factory's total follows at that vault's next deposit or at anyone's `syncDeposits`, because a withdrawal calls nothing outside the token. `withdraw` of a stock leaves the count where it was, since the contract has no price to say what left: the vault still counts as holding what it deposited until it is swept empty or the cash leaves. It errs toward refusing.
+- **So the total can be used up for the price of a swap**: deposit to the cap, swap, take the stock out with `withdraw`. `syncDeposits` cannot lower a count the vault itself still reports, and new deposits are refused for everyone until the Safe raises the cap 48 hours later (`test_creation_restricted_closesTheUseUpOfTheTotalCap` shows it). Nothing is lost. The answer while the cap is small is the list of who may create a vault: with `setCreationRestricted(true)` only addresses the admin listed with `setCreator` can create one, and the deploy script refuses a mainnet file that neither names creators nor says `openToAll`. The first step is one known vault. A vault that exists is not touched by the list.
 - Between a withdrawal and the next deposit or `syncDeposits`, the total is too high, never too low.
 - A token sent straight to a vault's address is not a deposit and is not counted. No contract can refuse it.
 - Should the cash token ever change, each vault's count starts again at its next deposit.
@@ -70,7 +75,7 @@ Not live at the first deployment: `4663.json` has no keeper and no asset with th
 | A stock's price in session (`sessionPriceAge`) | off, or 60 s to 26 h | must be set | 3,600 s |
 | Price range, ceiling over floor | 2× | 1.36× | about 15% either side |
 
-So at the planned numbers a stolen keeper key costs each auto-follow vault at most 1% at once and 2% in seven days, and the same again each week until the guardian calls `pauseKeeper`. At a 10,000 dollar total cap that is 100 dollars at once and 200 a week. This is measured at the reference price: an error in the reference adds to it and the counter does not see it. That is what the range, the average, and the in-session age are for.
+So at the planned numbers a stolen keeper key costs each auto-follow vault at most 1% at once and 2% in seven days, and the same again each week until the guardian calls `pauseKeeper`. On 10,000 dollars held in auto-follow vaults that is 100 dollars at once and 200 a week. This is measured at the reference price: an error in the reference adds to it and the counter does not see it. That is what the range, the average, and the in-session age are for.
 
 Where a price is read: only in `keeperSwap`, and in the view `snapshot()`, which never reverts. Nothing an owner calls reads a feed (`test_M1_theOwnersPathReadsNoPrice`).
 
@@ -106,12 +111,14 @@ One thing M1 costs: Chainlink's stock feeds on Robinhood Chain write a round on 
 pnpm ops:authority-check --record deployments/robinhood-<network>.json --rpc-env ROBINHOOD_RPC_URL
 ```
 
-Read-only. It compares the live admin, beacon owner, pending hand-overs, the three implementation addresses, guardian, keeper, the timelock's delay and the holders of each of its roles, `launched`, the publish delay and the caps with the record, prints whether each holder is a contract, lists every operation waiting in the timelock, and exits non-zero on any difference or any broken mainnet rule. The record is written from the deploy's output and reviewed before anyone deposits.
+Read-only, and meant to run every day once anything is deployed. On a mainnet it also holds the timelock's owner to being a Safe of two or more (and to the owners and threshold the record names), the total cap to 10,000 dollars, and the list of who may create a vault to the record's. It compares the live admin, beacon owner, pending hand-overs, the three implementation addresses, guardian, keeper, the timelock's delay and the holders of each of its roles, `launched`, the publish delay and the caps with the record, prints whether each holder is a contract, lists every operation waiting in the timelock, and exits non-zero on any difference or any broken mainnet rule. The record is written from the deploy's output and reviewed before anyone deposits.
 
 ## Not audited, not done
 
 - No outside audit of any contract here. No Slither or Aderyn run. Tier 2 of gate `G-SEC` is not complete: the Saturday fork and the second rehearsal have not been run.
 - No mainnet rehearsal. Fork tests cover NVDA and USDG only; the other tokens were not tested in a vault.
+- There is no fast stop for a fault in the vault's own code: see `INCIDENT.md`. Accepted under the cap.
+- The Safe checks, the cap ceiling and the creator list in `authority-check` have run against a model only; the rest of it has run against a local chain and the test network.
 - The Safe does not exist yet. Its address, signers and threshold go here when it does, and into `script/config/4663.json`.
 - The guardian key does not exist yet.
 - What Robinhood's stock tokens do on freeze or seizure is not published; only `paused()` and `effectiveAt()` were read.

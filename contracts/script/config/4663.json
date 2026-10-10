@@ -1,5 +1,5 @@
 {
-  "about": "Robinhood Chain MAINNET (4663). NOT READY TO DEPLOY: the script refuses this file while the word T-O-D-O appears anywhere in it, and it appears beside every value a person has not confirmed. The first mainnet step is owner-signed vaults only: no keeper (keeperEnabled false, keeper zero, every asset's flags 0), so no averageFeed is needed yet; the pool-average feed (branch contracts/pool-average-feed) fills that slot when the keeper comes. The admin and the beacon's owner is a TimelockController the script creates; timelock.owner is the Safe that proposes to it. Confirmed by public reads on 2026-10-09 (ROBINHOOD-MAINNET-SCOPE): chain id 4663; USDG at 0x5fc5...d168 with 6 decimals; the NVDA token at 0xd060...9EEC, which answers paused() and effectiveAt(); its Chainlink feed 'RHNVDA / USD' at 0x379E...9F15 with 8 decimals; Universal Router 2.1.2 at 0x204F...0498. Only NVDA is listed because only NVDA was tested in a vault on a fork; the other ten tokens of the test network's list exist on mainnet and are added by a person, each with its feedDescription. depositCaps are raw USDG units (6 decimals): 10000000000 is 10,000 dollars, the most the script allows before an audit. Closed days are the NYSE closures the test network file carries.",
+  "about": "Robinhood Chain MAINNET (4663). NOT READY TO DEPLOY: the script refuses this file while the word T-O-D-O appears anywhere in it, and it appears beside every value a person has not confirmed. The first mainnet step is owner-signed vaults only: no keeper (keeperEnabled false, keeper zero, every asset's flags 0), so no averageFeed is needed yet; the pool-average feed (branch contracts/pool-average-feed) fills that slot when the keeper comes. The admin and the beacon's owner is a TimelockController the script creates; timelock.owner is the Safe that proposes to it. Confirmed by public reads on 2026-10-09 (ROBINHOOD-MAINNET-SCOPE): chain id 4663; USDG at 0x5fc5...d168 with 6 decimals; the NVDA token at 0xd060...9EEC, which answers paused() and effectiveAt(); its Chainlink feed 'RHNVDA / USD' at 0x379E...9F15 with 8 decimals; Universal Router 2.1.2 at 0x204F...0498. Only NVDA is listed because only NVDA was tested in a vault on a fork; the other ten tokens of the test network's list exist on mainnet and are added by a person, each with its feedDescription. depositCaps are raw USDG units (6 decimals): 10000000000 is 10,000 dollars, the most the script allows before an audit. Closed days are the NYSE closures the test network file carries. safeMinThreshold is the fewest signatures the Safe must need (2 at least on a mainnet). While openToAll is false only the addresses in creators may create a vault: the total cap can otherwise be used up by anyone for the price of a swap.",
   "chainId": 4663,
   "adminIsDeployer": false,
   "admin": "0x0000000000000000000000000000000000000000",
@@ -8,6 +8,7 @@
     "ownerNote": "TODO: the Safe's address on Robinhood Chain, with its signers and threshold recorded in docs/vault/SECURITY.md. Must be a contract.",
     "delay": 172800
   },
+  "safeMinThreshold": 2,
   "guardian": "0x0000000000000000000000000000000000000000",
   "guardianNote": "TODO: the guardian's address. Not the deployer, not the keeper's machine. It can only pause.",
   "keeperEnabled": false,
@@ -29,6 +30,9 @@
     "total": 10000000000,
     "note": "TODO: Thom to confirm whether 10,000 dollars is per vault or in total. As written it is both: no vault and no sum of vaults above 10,000."
   },
+  "openToAll": false,
+  "creators": ["0x0000000000000000000000000000000000000000"],
+  "creatorsNote": "TODO: the address or addresses that may create a vault at the first step (the one known vault's owner). While openToAll is false nobody else can.",
   "cashToken": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
   "assets": [
     {

@@ -101,8 +101,8 @@ contract TimelockTest is KeeperFixture {
         address nextRegistry = address(new IndexRegistry());
         address nextVault = address(new BasketVault());
 
-        targets = new address[](23);
-        calls = new bytes[](23);
+        targets = new address[](25);
+        calls = new bytes[](25);
         uint256 i;
         // The settings a keeper trade is measured against (H2).
         (targets[i], calls[i++]) = (address(factory), abi.encodeCall(IVaultConfig.setKeeper, (attacker)));
@@ -119,6 +119,9 @@ contract TimelockTest is KeeperFixture {
             (address(factory), abi.encodeCall(IVaultConfig.setDepositCaps, (type(uint256).max, type(uint256).max)));
         (targets[i], calls[i++]) = (address(factory), abi.encodeCall(IVaultConfig.unpauseKeeper, ()));
         (targets[i], calls[i++]) = (address(factory), abi.encodeCall(IVaultConfig.unpauseDeposits, ()));
+        // Who may create a vault.
+        (targets[i], calls[i++]) = (address(factory), abi.encodeCall(IVaultConfig.setCreationRestricted, (false)));
+        (targets[i], calls[i++]) = (address(factory), abi.encodeCall(IVaultConfig.setCreator, (attacker, true)));
         (targets[i], calls[i++]) = (address(factory), abi.encodeCall(IVaultConfig.setHalt, (address(stockA), 0)));
         (targets[i], calls[i++]) = (address(factory), abi.encodeCall(IVaultConfig.setClosedUntil, (0)));
         (targets[i], calls[i++]) = (address(factory), abi.encodeCall(IVaultConfig.setClosedDay, (20_800, false)));

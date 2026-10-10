@@ -100,8 +100,23 @@ contract PoolAverageLike {
     }
 }
 
-/// Stands for the Safe, and for a router: an address with code.
+/// A router, or any contract that is not a Safe: an address with code.
 contract Anything {}
+
+/// What a Safe says of itself: who its owners are and how many must sign.
+contract SafeLike {
+    address[] internal owners;
+    uint256 public getThreshold;
+
+    constructor(address[] memory owners_, uint256 threshold_) {
+        owners = owners_;
+        getThreshold = threshold_;
+    }
+
+    function getOwners() external view returns (address[] memory) {
+        return owners;
+    }
+}
 
 /// The deploy script on a mainnet: the hand-over to a timelock it creates, and every rule a mainnet file
 /// is held to (M4 of the review of 2026-10-09). Nothing here reaches a network: the chain id is set in the
@@ -117,6 +132,7 @@ contract DeployMainnetTest is Test {
     address internal safe;
     address internal guardian = makeAddr("guardian");
     address internal keeper = makeAddr("keeper");
+    address internal person = makeAddr("person");
     Stock18 internal stock;
     ChainlinkLikeFeed internal feed;
     PoolAverageLike internal average;
@@ -124,7 +140,7 @@ contract DeployMainnetTest is Test {
     function setUp() public {
         script = new Deploy();
         deployer = address(script);
-        safe = address(new Anything());
+        safe = _safe(3, 2);
         stock = new Stock18();
         feed = new ChainlinkLikeFeed(8, "RHNVDA / USD", address(new Aggregator()));
         average = new PoolAverageLike(address(stock), USDG, address(feed), 8);
@@ -137,12 +153,24 @@ contract DeployMainnetTest is Test {
         vm.warp(1_791_212_400);
     }
 
+    /// A Safe-like contract with `owners` owners that needs `threshold` of them.
+    function _safe(uint256 owners, uint256 threshold) internal returns (address) {
+        address[] memory list = new address[](owners);
+        for (uint256 i; i < owners; ++i) {
+            list[i] = address(uint160(0x5AFE00 + i));
+        }
+        return address(new SafeLike(list, threshold));
+    }
+
     /// A file a mainnet deploy accepts: owner-signed only, behind a Safe and a 48-hour timelock, with a
     /// guardian and both caps at $10,000.
     function _good() internal view returns (Deploy.Config memory cfg) {
         cfg.chainId = ROBINHOOD;
         cfg.timelockOwner = safe;
         cfg.timelockDelay = 48 hours;
+        cfg.safeMinThreshold = 2;
+        cfg.creators = new address[](1);
+        cfg.creators[0] = person;
         cfg.guardian = guardian;
         cfg.publishDelay = 172_800;
         cfg.params = Params(125, 100, 50, 3600, 52_200, 72_000);
@@ -270,7 +298,10 @@ contract DeployMainnetTest is Test {
     /// everything out again.
     function test_mainnet_aVaultDepositsInsideTheCap_andWithdraws() public {
         Deploy.Deployed memory d = script.deploy(_good(), deployer);
-        address person = makeAddr("person");
+        assertTrue(VaultFactory(d.factory).creationRestricted());
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAllowedToCreate.selector, keeper));
+        vm.prank(keeper);
+        VaultFactory(d.factory).createVault(keccak256("plan"), new Weight[](0), bytes32(0), 0, false);
         Dollar6(USDG).mint(person, 20_000 * USD);
         vm.startPrank(person);
         BasketVault vault = BasketVault(
@@ -331,6 +362,63 @@ contract DeployMainnetTest is Test {
         _refused(cfg, "the timelock owner has no code: it must be a contract (a Safe), not a key");
         cfg.timelockOwner = deployer;
         _refused(cfg, "the timelock owner is the deployer");
+    }
+
+    /// "Has code" is not "is a Safe": the owner must answer as one, need two signatures or more, and not
+    /// be a key that has delegated its code.
+    function test_mainnet_holdsTheTimelockOwnerToBeingASafeOfTwoOrMore() public {
+        Deploy.Config memory cfg = _good();
+        cfg.timelockOwner = address(new Anything());
+        _refused(cfg, "the timelock owner does not answer getThreshold(): not a Safe");
+
+        cfg.timelockOwner = _safe(1, 1);
+        _refused(cfg, "the Safe needs fewer signatures than safeMinThreshold");
+        cfg.timelockOwner = _safe(3, 1);
+        _refused(cfg, "the Safe needs fewer signatures than safeMinThreshold");
+        cfg.timelockOwner = _safe(2, 3);
+        _refused(cfg, "the Safe needs more signatures than it has owners");
+        cfg.timelockOwner = _safe(1, 2);
+        _refused(cfg, "the Safe has fewer than two owners");
+
+        // A plain key with an EIP-7702 delegation has code: 0xef0100 and the address it delegates to.
+        address key = makeAddr("a-key-with-a-delegation");
+        vm.etch(key, abi.encodePacked(hex"ef0100", safe));
+        assertEq(key.code.length, 23);
+        cfg.timelockOwner = key;
+        _refused(cfg, "the timelock owner is a key with delegated code (EIP-7702), not a Safe");
+
+        // The file may ask for more than two, and may not ask for fewer.
+        cfg.timelockOwner = _safe(3, 2);
+        cfg.safeMinThreshold = 3;
+        _refused(cfg, "the Safe needs fewer signatures than safeMinThreshold");
+        cfg.safeMinThreshold = 1;
+        _refused(cfg, "safeMinThreshold is under 2: one signature is a key");
+        cfg.safeMinThreshold = 0;
+        _refused(cfg, "safeMinThreshold is under 2: one signature is a key");
+
+        (uint256 threshold, address[] memory owners) = script.checkSafe(safe, 2);
+        assertEq(threshold, 2);
+        assertEq(owners.length, 3);
+    }
+
+    /// While the cap is small, a mainnet file names who may create a vault, or says that anyone may.
+    function test_mainnet_namesWhoMayCreateAVault_orSaysAnyoneMay() public {
+        Deploy.Config memory cfg = _good();
+        cfg.creators = new address[](0);
+        _refused(cfg, "no creator is named while openToAll is false");
+        cfg = _good();
+        cfg.openToAll = true;
+        _refused(cfg, "creators are named while openToAll is true");
+        cfg = _good();
+        cfg.creators[0] = address(0);
+        _refused(cfg, "a creator is the zero address");
+
+        cfg = _good();
+        cfg.creators = new address[](0);
+        cfg.openToAll = true;
+        Deploy.Deployed memory d = script.deploy(cfg, deployer);
+        assertFalse(VaultFactory(d.factory).creationRestricted());
+        assertTrue(VaultFactory(d.factory).mayCreate(keeper));
     }
 
     function test_mainnet_refusesADelayUnder48Hours_orOver30Days() public {
@@ -676,6 +764,10 @@ contract DeployMainnetTest is Test {
         _refused(cfg, "no timelock owner");
         cfg.timelockOwner = safe;
         _refused(cfg, "no guardian");
+        cfg.guardian = guardian;
+        assertEq(cfg.safeMinThreshold, 2);
+        assertFalse(cfg.openToAll);
+        _refused(cfg, "a creator is the zero address");
     }
 
     /// With its placeholders filled, and stand-ins at the addresses it names, the committed file deploys.
@@ -685,6 +777,7 @@ contract DeployMainnetTest is Test {
         cfg.placeholders = false;
         cfg.timelockOwner = safe;
         cfg.guardian = guardian;
+        cfg.creators[0] = person;
         vm.etch(cfg.assets[1].token, address(stock).code);
         vm.etch(cfg.assets[1].config.feed, address(feed).code);
         vm.store(cfg.assets[1].config.feed, bytes32(0), vm.load(address(feed), bytes32(0)));
@@ -740,6 +833,10 @@ contract DeployMainnetTest is Test {
         assertEq(cfg.vaultCap, 10_000 * USD);
         assertEq(cfg.totalCap, 10_000 * USD);
         assertEq(cfg.sessionPriceAge, 3600);
+        assertEq(cfg.safeMinThreshold, 2);
+        assertFalse(cfg.openToAll);
+        assertEq(cfg.creators.length, 1);
+        assertEq(cfg.creators[0], address(6));
         assertEq(cfg.feedDescriptions[1], "EXAMPLE / USD");
         assertFalse(cfg.placeholders);
 
@@ -748,6 +845,8 @@ contract DeployMainnetTest is Test {
         assertEq(cfg.timelockOwner, address(0));
         assertFalse(cfg.hasCaps);
         assertFalse(cfg.keeperEnabled);
+        assertEq(cfg.safeMinThreshold, 2, "the default");
+        assertEq(cfg.creators.length, 0);
         assertEq(cfg.sessionPriceAge, 0);
     }
 }

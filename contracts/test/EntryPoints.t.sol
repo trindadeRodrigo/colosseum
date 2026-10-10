@@ -145,6 +145,8 @@ contract EntryPointsTest is Test {
         _entry("unpauseKeeper()", "admin: lift the guardian's pause");
         _entry("unpauseDeposits()", "admin: lift the guardian's stop on new money");
         _entry("setDepositCaps(uint256,uint256)", "admin: the most one vault and all vaults may take in");
+        _entry("setCreationRestricted(bool)", "admin: only the listed may create a vault, or anyone again");
+        _entry("setCreator(address,bool)", "admin: put an address on that list, or take it off");
         _entry("setSessionPriceAge(uint32)", "admin: how old a stock's price may be in session, for the keeper");
         _entry("setHalt(address,uint64)", "admin: lift or shorten a halt");
         _entry("setClosedUntil(uint64)", "admin: lift or shorten a market closure");
@@ -184,6 +186,8 @@ contract EntryPointsTest is Test {
         _entry("sessionPriceAge()", "view: read by a vault on every keeper trade");
         _entry("depositCaps()", "view: the cap of one vault and of all of them");
         _entry("depositsPaused()", "view");
+        _entry("creationRestricted()", "view");
+        _entry("mayCreate(address)", "view: read by the factory on every create");
         _entry("totalDeposited()", "view: what counts toward the total cap");
         _entry("depositedOf(address)", "view: what counts for one vault");
         _assertExactly("VaultFactory");

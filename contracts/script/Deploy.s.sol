@@ -92,6 +92,12 @@ contract Deploy is Script {
         /// One entry per asset, in the assets' order: what the feed's `description()` must answer, for
         /// example "RHNVDA / USD". Required on a mainnet for an asset with a feed; not read elsewhere.
         string[] feedDescriptions;
+        /// The fewest signatures the timelock's owner, a Safe, must need. 2 when the file does not say; a
+        /// mainnet file may raise it and may not lower it.
+        uint256 safeMinThreshold;
+        /// Whether anyone may create a vault. False with `creators` named restricts creation to them.
+        bool openToAll;
+        address[] creators;
         /// The file still holds the word TODO somewhere: a value nobody has confirmed.
         bool placeholders;
     }
@@ -124,6 +130,9 @@ contract Deploy is Script {
     uint32 public constant MAINNET_MIN_COOLDOWN = 3600;
     /// A keeper's price range on a mainnet: the ceiling at most 36% above the floor, about 15% either side.
     uint256 public constant MAINNET_MAX_RANGE_PCT = 136;
+
+    /// A Safe one signature moves is a key with extra steps.
+    uint256 public constant MIN_SAFE_THRESHOLD = 2;
 
     uint256 internal constant ROBINHOOD = 4663;
     uint256 internal constant BASE = 8453;
@@ -374,6 +383,11 @@ contract Deploy is Script {
             MainnetRefused("the timelock owner has no code: it must be a contract (a Safe), not a key")
         );
         require(cfg.timelockOwner != deployer, MainnetRefused("the timelock owner is the deployer"));
+        require(
+            cfg.safeMinThreshold >= MIN_SAFE_THRESHOLD,
+            MainnetRefused("safeMinThreshold is under 2: one signature is a key")
+        );
+        checkSafe(cfg.timelockOwner, cfg.safeMinThreshold);
         require(cfg.timelockDelay >= MIN_MAINNET_DELAY, MainnetRefused("the timelock delay is under 48 hours"));
         require(cfg.timelockDelay <= MAX_MAINNET_DELAY, MainnetRefused("the timelock delay is over 30 days"));
         require(cfg.guardian != address(0), MainnetRefused("no guardian"));
@@ -410,6 +424,18 @@ contract Deploy is Script {
                 !anyKeeperStock || cfg.sessionPriceAge != 0,
                 MainnetRefused("sessionPriceAge is zero with the keeper on for a stock")
             );
+        }
+
+        // Who may create a vault. The total cap can be used up by anyone who can create one, so while it is
+        // small the file either names who may, or says in so many words that anyone may.
+        require(
+            cfg.openToAll || cfg.creators.length != 0, MainnetRefused("no creator is named while openToAll is false")
+        );
+        require(
+            !cfg.openToAll || cfg.creators.length == 0, MainnetRefused("creators are named while openToAll is true")
+        );
+        for (uint256 i; i < cfg.creators.length; ++i) {
+            require(cfg.creators[i] != address(0), MainnetRefused("a creator is the zero address"));
         }
 
         // The caps before an audit.
@@ -509,6 +535,45 @@ contract Deploy is Script {
         require(cashListed, MainnetRefused("the cash token is not among the assets"));
     }
 
+    /// Holds the timelock's owner to being a Safe more than one person must sign for. "Has code" is not
+    /// enough: a contract one key controls has code, and so does a plain key that has delegated its code
+    /// (EIP-7702: 23 bytes that start 0xef0100). It must answer as a Safe does, `getThreshold()` and
+    /// `getOwners()`, need at least `minThreshold` signatures, and have at least two owners and no fewer
+    /// than it needs. This reads what the contract says of itself; that it is a real Safe with these
+    /// people behind it is for a person to compare with the owners the run prints.
+    function checkSafe(address safe, uint256 minThreshold)
+        public
+        view
+        returns (uint256 threshold, address[] memory owners)
+    {
+        bytes memory code = safe.code;
+        require(
+            code.length != 0,
+            MainnetRefused("the timelock owner has no code: it must be a contract (a Safe), not a key")
+        );
+        require(
+            !(code.length == 23 && code[0] == 0xef && code[1] == 0x01 && code[2] == 0x00),
+            MainnetRefused("the timelock owner is a key with delegated code (EIP-7702), not a Safe")
+        );
+        bool ok;
+        (ok, threshold) = _word(safe, bytes4(keccak256("getThreshold()")));
+        require(ok, MainnetRefused("the timelock owner does not answer getThreshold(): not a Safe"));
+        bytes memory ret;
+        (ok, ret) = safe.staticcall(abi.encodeWithSelector(bytes4(keccak256("getOwners()"))));
+        require(ok && ret.length >= 64, MainnetRefused("the timelock owner does not answer getOwners(): not a Safe"));
+        uint256 count;
+        assembly ("memory-safe") {
+            count := mload(add(ret, 0x40))
+        }
+        require(
+            ret.length == 64 + count * 32, MainnetRefused("the timelock owner does not answer getOwners(): not a Safe")
+        );
+        owners = abi.decode(ret, (address[]));
+        require(threshold >= minThreshold, MainnetRefused("the Safe needs fewer signatures than safeMinThreshold"));
+        require(owners.length >= 2, MainnetRefused("the Safe has fewer than two owners"));
+        require(owners.length >= threshold, MainnetRefused("the Safe needs more signatures than it has owners"));
+    }
+
     /// A feed on a mainnet has code and is not one of ours: `TestPriceFeed` answers `writer()` and
     /// `StubSequencerFeed` answers `down()`, each the mark of a value one key sets; a Chainlink feed has
     /// neither. The contracts in `testnet/` also refuse to be created on a mainnet at all; this is the
@@ -545,6 +610,14 @@ contract Deploy is Script {
         if (cfg.sessionPriceAge != 0) {
             factory.setSessionPriceAge(cfg.sessionPriceAge);
             _tx(to, string.concat("setSessionPriceAge(", _n(cfg.sessionPriceAge), ")"));
+        }
+        for (uint256 i; i < cfg.creators.length; ++i) {
+            factory.setCreator(cfg.creators[i], true);
+            _tx(to, string.concat("setCreator(", vm.toString(cfg.creators[i]), ", may create a vault)"));
+        }
+        if (cfg.creators.length != 0) {
+            factory.setCreationRestricted(true);
+            _tx(to, "setCreationRestricted(true): only the creators above may create a vault");
         }
         if (cfg.hasCaps) {
             factory.setDepositCaps(cfg.vaultCap, cfg.totalCap);
@@ -604,6 +677,14 @@ contract Deploy is Script {
             cfg.timelockDelay = json.readUint(".timelock.delay");
         }
         cfg.keeperEnabled = vm.keyExistsJson(json, ".keeperEnabled") && json.readBool(".keeperEnabled");
+        cfg.safeMinThreshold =
+            vm.keyExistsJson(json, ".safeMinThreshold") ? json.readUint(".safeMinThreshold") : MIN_SAFE_THRESHOLD;
+        cfg.openToAll = vm.keyExistsJson(json, ".openToAll") && json.readBool(".openToAll");
+        uint256 creators = _count(json, ".creators");
+        cfg.creators = new address[](creators);
+        for (uint256 i; i < creators; ++i) {
+            cfg.creators[i] = json.readAddress(string.concat(".creators[", vm.toString(i), "]"));
+        }
         if (vm.keyExistsJson(json, ".depositCaps")) {
             cfg.hasCaps = true;
             cfg.vaultCap = json.readUint(".depositCaps.perVault");
@@ -717,6 +798,20 @@ contract Deploy is Script {
         return bytes4(raw);
     }
 
+    /// What the timelock's owner says of itself, for a person to hold against the Safe they expect.
+    function _printSafe(address safe) private view {
+        try this.checkSafe(safe, 0) returns (uint256 threshold, address[] memory owners) {
+            console2.log("  signatures it needs:", threshold);
+            console2.log("  owners:", owners.length);
+            for (uint256 i; i < owners.length; ++i) {
+                console2.log("   ", owners[i]);
+            }
+            console2.log("  compare these owners and this threshold with the Safe you mean, before anything else");
+        } catch {
+            console2.log("  it does not answer as a Safe of two or more owners (allowed on a test network only)");
+        }
+    }
+
     function _print(Config memory cfg, Deployed memory d, address deployer) private view {
         console2.log("transactions:", sent);
         console2.log("chain id:", block.chainid);
@@ -741,6 +836,7 @@ contract Deploy is Script {
             console2.log("timelock (admin and beacon owner):", d.timelock);
             console2.log("timelock delay, seconds:", cfg.timelockDelay);
             console2.log("timelock proposer, canceller, executor:", cfg.timelockOwner);
+            _printSafe(cfg.timelockOwner);
             console2.log(
                 "the deployer holds nothing. Write deployments/<network>.json from this and run authority-check"
             );

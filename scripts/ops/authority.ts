@@ -29,6 +29,8 @@ export const SELECTORS = {
   cashToken: ['cashToken()', '0xa7224687'],
   sessionPriceAge: ['sessionPriceAge()', '0x0872c2e0'],
   priceDevBps: ['priceDevBps()', '0xef36787a'],
+  creationRestricted: ['creationRestricted()', '0x5957e754'],
+  mayCreate: ['mayCreate(address)', '0x2d40ceb8'],
   // VaultBeacon
   owner: ['owner()', '0x8da5cb5b'],
   pendingOwner: ['pendingOwner()', '0xe30c3978'],
@@ -40,6 +42,15 @@ export const SELECTORS = {
   getMinDelay: ['getMinDelay()', '0xf27a0c92'],
   hasRole: ['hasRole(bytes32,address)', '0x91d14854'],
   getTimestamp: ['getTimestamp(bytes32)', '0xd45c4435'],
+  // The timelock's own calls that a queued operation is read for
+  updateDelay: ['updateDelay(uint256)', '0x64d62353'],
+  grantRole: ['grantRole(bytes32,address)', '0x2f2ff15d'],
+  revokeRole: ['revokeRole(bytes32,address)', '0xd547741f'],
+  // Safe
+  getThreshold: ['getThreshold()', '0xe75235b8'],
+  getOwners: ['getOwners()', '0xa0e67e2b'],
+  // ERC-20
+  decimals: ['decimals()', '0x313ce567'],
   // TestPriceFeed: the mark of a price one key writes
   writer: ['writer()', '0x453a2abc'],
 } as const satisfies Record<string, readonly [string, string]>;
@@ -76,6 +87,10 @@ export const ZERO_ADDRESS = `0x${'0'.repeat(40)}`;
 /** 48 hours: the least a mainnet's timelock and publish delay may be (`MIN_MAINNET_DELAY`). */
 export const MIN_MAINNET_DELAY = 172_800n;
 const MAX_UINT256 = (1n << 256n) - 1n;
+/** The least signatures a mainnet's Safe may need, unless the record asks for more. */
+export const MIN_SAFE_THRESHOLD = 2;
+/** `UNAUDITED_TOTAL_CAP_DOLLARS` of the deploy script: the most all vaults may take in before an audit. */
+export const TOTAL_CAP_CEILING_DOLLARS = 10_000n;
 /** The chains that are not held to the mainnet rules: local, Robinhood Chain's test network, Base Sepolia. */
 export const TEST_CHAIN_IDS = [31337, 46630, 84532];
 
@@ -116,6 +131,10 @@ const Record_ = z.object({
       proposers: z.array(Address),
       cancellers: z.array(Address),
       executors: z.array(Address),
+      /** What the Safe behind the three roles is: compared with the chain when stated. */
+      safe: z
+        .object({ threshold: z.number().int().nonnegative(), owners: z.array(Address) })
+        .optional(),
     })
     .optional(),
   expected: z
@@ -124,6 +143,13 @@ const Record_ = z.object({
       publishDelay: Uint,
       keeperEnabled: z.boolean(),
       depositCaps: z.object({ perVault: Uint, total: Uint }),
+      /** The least signatures a role holder's Safe needs. Absent is 2; under 2 is refused on a mainnet. */
+      safeMinThreshold: z.number().int().nonnegative().optional(),
+      /** The most the total cap may be, in whole dollars of the cash token. Absent is 10,000. */
+      totalCapCeilingDollars: Uint.optional(),
+      /** Who may create a vault while creation is restricted, and whether it is meant to be open. */
+      creators: z.array(Address).optional(),
+      openToAll: z.boolean().optional(),
     })
     .optional(),
 });
@@ -219,6 +245,11 @@ const words = (data: string) => Math.floor(strip(data).length / 64);
 const asAddress = (word: string) => `0x${strip(word).slice(-40).toLowerCase()}`;
 const asUint = (word: string) => BigInt(`0x${strip(word) || '0'}`);
 const iso = (seconds: bigint) => new Date(Number(seconds) * 1000).toISOString();
+/** EIP-7702: the code of a key that delegates is exactly `0xef0100` and an address, 23 bytes. */
+const isDelegation = (code: string) =>
+  strip(code).length === 46 && strip(code).toLowerCase().startsWith('ef0100');
+const roleName = (role: string) =>
+  Object.entries(ROLES).find(([, id]) => id === role.toLowerCase())?.[0] ?? role;
 
 type Asset = { token: string; feed: string; flags: bigint; averageFeed: string };
 
@@ -291,18 +322,22 @@ export async function checkAuthority(
     const out = await callWords(what, to, data);
     return out === undefined ? undefined : asUint(wordAt(out, 0));
   };
-  const codeOf = new Map<string, boolean | undefined>();
-  async function hasCode(address: string): Promise<boolean | undefined> {
-    if (!codeOf.has(address)) {
-      const code = await read(`code of ${address}`, () => reader.code(address));
-      codeOf.set(address, code === undefined ? undefined : strip(code).length > 0);
-    }
+  const codeOf = new Map<string, string | undefined>();
+  async function codeAt(address: string): Promise<string | undefined> {
+    if (!codeOf.has(address))
+      codeOf.set(address, await read(`code of ${address}`, () => reader.code(address)));
     return codeOf.get(address);
+  }
+  async function hasCode(address: string): Promise<boolean | undefined> {
+    const code = await codeAt(address);
+    return code === undefined ? undefined : strip(code).length > 0;
   }
   const kind = async (address: string) => {
     if (address === ZERO_ADDRESS) return 'zero';
-    const code = await hasCode(address);
-    return code === undefined ? 'unread' : code ? 'contract' : 'no code';
+    const code = await codeAt(address);
+    if (code === undefined) return 'unread';
+    if (isDelegation(code)) return 'delegated key';
+    return strip(code).length > 0 ? 'contract' : 'no code';
   };
   const shown = async (address: string) => `${address} (${await kind(address)})`;
   /** Live against expected: one line, OK or DIFFERS. `undefined` live was already reported. */
@@ -383,6 +418,19 @@ export async function checkAuthority(
         });
       }
     }
+    expected?.creators?.forEach((a, i) => {
+      required.push([`record.expected.creators[${i}]`, a]);
+    });
+    timelock?.safe?.owners.forEach((a, i) => {
+      required.push([`record.timelock.safe.owners[${i}]`, a]);
+    });
+    if (expected?.safeMinThreshold !== undefined && expected.safeMinThreshold < MIN_SAFE_THRESHOLD)
+      say({
+        status: 'FAIL',
+        what: 'record.expected.safeMinThreshold',
+        live: `${expected.safeMinThreshold}`,
+        note: 'under 2: one signature is a key, not a Safe',
+      });
     for (const [what, address] of required)
       if (address === ZERO_ADDRESS)
         say({ status: 'FAIL', what, note: 'the zero address where a mainnet needs an address' });
@@ -505,6 +553,19 @@ export async function checkAuthority(
     }
   } else await info('factory.depositCaps()', contracts.factory, sel('depositCaps'), showCaps);
 
+  const cashOut = await info('factory.cashToken()', contracts.factory, sel('cashToken'), (out) =>
+    asAddress(wordAt(out, 0)),
+  );
+  const cash = cashOut === undefined ? undefined : asAddress(wordAt(cashOut, 0));
+  const restrictedOut = await info(
+    'factory.creationRestricted()',
+    contracts.factory,
+    sel('creationRestricted'),
+    bool,
+  );
+  const restricted =
+    restrictedOut === undefined ? undefined : asUint(wordAt(restrictedOut, 0)) !== 0n;
+
   // ---- the timelock
   if (timelock) await checkTimelock(timelock);
 
@@ -563,7 +624,9 @@ export async function checkAuthority(
               : undefined;
       if (broken) say({ status: 'FAIL', what: 'factory.depositCaps()', live, note: broken });
       else say({ status: 'OK', what: 'factory.depositCaps()', live, note: 'capped' });
+      await checkCeiling(caps.total);
     }
+    await checkCreation();
     await checkAssets(expected?.keeperEnabled);
   } else {
     const list = await info('factory.assets()', contracts.factory, sel('assets'), (out) =>
@@ -580,9 +643,6 @@ export async function checkAuthority(
   await info('factory.totalDeposited()', contracts.factory, sel('totalDeposited'), uint);
   await info('factory.priceDevBps()', contracts.factory, sel('priceDevBps'), uint);
   await info('factory.sessionPriceAge()', contracts.factory, sel('sessionPriceAge'), uint);
-  await info('factory.cashToken()', contracts.factory, sel('cashToken'), (out) =>
-    asAddress(wordAt(out, 0)),
-  );
 
   return result();
 
@@ -596,6 +656,138 @@ export async function checkAuthority(
       if (e instanceof CallReverted) return false;
       say({ status: 'FAIL', what, note: 'could not be read: the node did not answer' });
       return undefined;
+    }
+  }
+
+  /**
+   * A call whose answer may rightly be missing. `'none'`: the contract does not answer it. `undefined`:
+   * the node did not answer, which is a failure on a mainnet and silence elsewhere.
+   */
+  async function probe(what: string, to: string, data: string, atLeast: number) {
+    try {
+      const out = await reader.call(to, data);
+      return words(out) >= atLeast ? out : ('none' as const);
+    } catch (e) {
+      if (e instanceof CallReverted) return 'none' as const;
+      if (mainnet)
+        say({ status: 'FAIL', what, note: 'could not be read: the node did not answer' });
+      return undefined;
+    }
+  }
+
+  /** The total cap against the ceiling before an audit, in the cash token's own units. */
+  async function checkCeiling(total: bigint) {
+    const what = 'total cap ceiling';
+    if (cash === undefined) return; // factory.cashToken() already failed
+    const out = await probe(`${what}: cash token decimals()`, cash, sel('decimals'), 1);
+    if (out === undefined) return;
+    const decimals = out === 'none' ? undefined : asUint(wordAt(out, 0));
+    if (decimals === undefined || decimals > 36n) {
+      say({
+        status: 'FAIL',
+        what,
+        live: cash,
+        note: "the cash token's decimals() could not be read: the cap cannot be held to a ceiling",
+      });
+      return;
+    }
+    const dollars = expected?.totalCapCeilingDollars ?? TOTAL_CAP_CEILING_DOLLARS;
+    const ceiling = dollars * 10n ** decimals;
+    say({
+      status: total > ceiling ? 'FAIL' : 'OK',
+      what,
+      live: `total ${total}`,
+      expected: `at most ${ceiling} (${dollars} dollars, ${decimals} decimals)`,
+      note: total > ceiling ? `the total cap is over ${dollars} dollars` : undefined,
+    });
+  }
+
+  /** Who may create a vault, against what the record says of it. */
+  async function checkCreation() {
+    const creators = expected?.creators ?? [];
+    const closed = expected?.openToAll === false;
+    if (!closed && creators.length === 0) return;
+    if (restricted === false)
+      say({
+        status: 'FAIL',
+        what: 'factory.creationRestricted()',
+        live: 'false',
+        expected: 'true',
+        note: closed
+          ? 'anyone may create a vault while the record says openToAll is false'
+          : 'anyone may create a vault while the record lists creators',
+      });
+    if (closed && creators.length === 0)
+      say({
+        status: 'FAIL',
+        what: 'record.expected.creators',
+        note: 'empty while openToAll is false: nobody could create a vault',
+      });
+    if (!closed) return;
+    for (const creator of creators) {
+      const what = `factory.mayCreate(${creator})`;
+      const may = await callUint(what, contracts.factory, sel('mayCreate', creator));
+      if (may === undefined) continue;
+      say({
+        status: may !== 0n ? 'OK' : 'DIFFERS',
+        what,
+        live: String(may !== 0n),
+        expected: 'true',
+        note: may !== 0n ? undefined : 'the record lists it as a creator and it may not create',
+      });
+    }
+  }
+
+  /**
+   * What stands behind a role of the timelock: having code is not being a Safe. On a mainnet it must
+   * answer as a Safe with enough owners and signatures; elsewhere what it answers is only printed.
+   */
+  async function checkSafe(
+    account: string,
+    stated: { threshold: number; owners: string[] } | undefined,
+  ) {
+    const what = `safe ${account}`;
+    const code = await codeAt(account);
+    if (code === undefined || strip(code).length === 0) return; // no code is reported with the role
+    if (isDelegation(code)) {
+      if (mainnet)
+        say({
+          status: 'FAIL',
+          what,
+          live: `${account} (delegated key)`,
+          note: 'its code is an EIP-7702 delegation: a key that delegates, not a Safe',
+        });
+      return;
+    }
+    const t = await probe(`${what} getThreshold()`, account, sel('getThreshold'), 1);
+    const o = await probe(`${what} getOwners()`, account, sel('getOwners'), 2);
+    if (t === undefined || o === undefined) return;
+    const count = o === 'none' ? 0 : Number(asUint(wordAt(o, 1)));
+    if (t === 'none' || o === 'none' || words(o) < 2 + count) {
+      if (mainnet)
+        say({
+          status: 'FAIL',
+          what,
+          live: `${account} (contract)`,
+          note: 'not a Safe: it does not answer getThreshold() and getOwners()',
+        });
+      return;
+    }
+    const threshold = asUint(wordAt(t, 0));
+    const owners = Array.from({ length: count }, (_, i) => asAddress(wordAt(o, 2 + i)));
+    const live = `${threshold} of ${owners.length}: ${owners.join(', ')}`;
+    say({ status: 'INFO', what, live, note: 'compare the owners with the people who hold them' });
+    if (!mainnet) return;
+    const least = BigInt(expected?.safeMinThreshold ?? MIN_SAFE_THRESHOLD);
+    if (threshold < least)
+      say({ status: 'FAIL', what, live, note: `the threshold is under ${least}` });
+    if (owners.length < 2) say({ status: 'FAIL', what, live, note: 'fewer than two owners' });
+    if (BigInt(owners.length) < threshold)
+      say({ status: 'FAIL', what, live, note: 'the threshold is above the number of owners' });
+    if (stated) {
+      compare(`${what} threshold`, `${threshold}`, `${stated.threshold}`);
+      const sorted = (list: string[]) => [...new Set(list)].sort().join(', ');
+      compare(`${what} owners`, sorted(owners), sorted(stated.owners));
     }
   }
 
@@ -752,6 +944,7 @@ export async function checkAuthority(
       return out === undefined ? undefined : out !== 0n;
     };
 
+    const behind = new Set<string>();
     for (const [name, list] of [
       ['PROPOSER_ROLE', tl.proposers],
       ['CANCELLER_ROLE', tl.cancellers],
@@ -774,6 +967,7 @@ export async function checkAuthority(
         if (held === undefined) continue;
         const inRecord = list.includes(account);
         if (!held && !inRecord) continue; // granted once and revoked since
+        behind.add(account);
         const live = await shown(account);
         if (held && inRecord) say({ status: 'OK', what: name, live, expected: 'holds it' });
         else if (held)
@@ -800,6 +994,12 @@ export async function checkAuthority(
           });
       }
     }
+
+    // The record states one Safe: it is compared with the holders the record names, and a holder it
+    // does not name is already a finding of its own.
+    const named = new Set([...tl.proposers, ...tl.cancellers, ...tl.executors]);
+    for (const account of behind)
+      await checkSafe(account, named.has(account) ? tl.safe : undefined);
 
     // The admin of the roles: the timelock itself, so that a role changes only through the delay.
     const name = 'DEFAULT_ADMIN_ROLE';
@@ -833,7 +1033,10 @@ export async function checkAuthority(
         });
     }
 
-    // What is queued: scheduled, and neither run nor cancelled. Printed, never a failure.
+    // What is queued: scheduled, and neither run nor cancelled. Printed. One call is more than
+    // printed: the timelock's delay has no floor of its own (OpenZeppelin's, unmodified), so a queued
+    // `updateDelay` under 48 hours is a failure on a mainnet, and any other change the timelock makes
+    // to itself is a warning for a person to read.
     const scheduled = (logs ?? []).filter((l) => l.topics[0] === TOPICS.callScheduled[1]);
     const timestamps = new Map<string, bigint | undefined>();
     let pending = 0;
@@ -854,11 +1057,34 @@ export async function checkAuthority(
       const body = strip(log.data);
       const length = Number(asUint(body.slice(offset, offset + 64)));
       const selector = length >= 4 ? `0x${body.slice(offset + 64, offset + 72)}` : '(no data)';
+      const args = body.slice(offset + 72, offset + 64 + length * 2);
+      let status: Status = 'INFO';
+      let meaning = '';
+      if (target === tl.address && selector === SELECTORS.updateDelay[1]) {
+        if (args.length < 64) {
+          status = mainnet ? 'FAIL' : 'WARN';
+          meaning = 'updateDelay with a delay that cannot be read; ';
+        } else {
+          const delay = asUint(args.slice(0, 64));
+          status = mainnet && delay < MIN_MAINNET_DELAY ? 'FAIL' : 'WARN';
+          meaning = `updateDelay(${delay}): the timelock's delay becomes ${delay} s${delay < MIN_MAINNET_DELAY ? ', under 48 hours' : ''}; `;
+        }
+      } else if (
+        target === tl.address &&
+        (selector === SELECTORS.grantRole[1] || selector === SELECTORS.revokeRole[1])
+      ) {
+        status = 'WARN';
+        const call = selector === SELECTORS.grantRole[1] ? 'grantRole' : 'revokeRole';
+        meaning =
+          args.length < 128
+            ? `${call} with arguments that cannot be read; `
+            : `${call}(${roleName(`0x${args.slice(0, 64)}`)}, ${asAddress(args.slice(64, 128))}); `;
+      }
       say({
-        status: 'INFO',
+        status,
         what: 'pending operation',
         live: `${id} call ${Number(asUint(log.topics[2] ?? '0'))}: target ${target}, selector ${selector}`,
-        note: `may run at ${iso(at)} (${at})`,
+        note: `${meaning}may run at ${iso(at)} (${at})`,
       });
     }
     if (logs) say({ status: 'INFO', what: 'pending operations', live: `${pending}` });

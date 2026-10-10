@@ -41,6 +41,8 @@ interface IVaultConfig {
     event DepositsPaused(address indexed by);
     event DepositsUnpaused();
     event SessionPriceAgeSet(uint32 age);
+    event CreationRestrictedSet(bool restricted);
+    event CreatorSet(address indexed creator, bool allowed);
     /// What the config counts for a vault changed: on its deposit, or when anyone brought the count up to
     /// date after the vault paid cash out.
     event DepositCounted(address indexed vault, uint256 counted, uint256 total);
@@ -84,6 +86,8 @@ interface IVaultConfig {
     /// The deposit would take the count across every vault of this factory past the total cap.
     error TotalCapReached(uint256 total, uint256 cap);
     error NotAVault(address caller);
+    /// Creating a vault is restricted to a list the admin keeps, and the caller is not on it.
+    error NotAllowedToCreate(address caller);
 
     // ---- what a vault reads
 
@@ -166,6 +170,13 @@ interface IVaultConfig {
     /// `syncDeposits` that named it.
     function depositedOf(address vault) external view returns (uint256);
 
+    /// Whether only the addresses the admin listed may create a vault. Off unless the admin switches it on.
+    function creationRestricted() external view returns (bool);
+
+    /// Whether `who` may create a vault now: anyone while creation is open, the listed while it is not.
+    /// A vault that exists is not touched by the list: its owner deposits, trades and withdraws as before.
+    function mayCreate(address who) external view returns (bool);
+
     function admin() external view returns (address);
 
     function pendingAdmin() external view returns (address);
@@ -229,6 +240,12 @@ interface IVaultConfig {
     /// Both caps in raw units of the cash token, the per-vault cap at most the total. `type(uint256).max`
     /// for both is no cap, which is how a new factory starts.
     function setDepositCaps(uint256 perVault, uint256 total) external;
+
+    /// Restricts creating a vault to the listed addresses, or opens it to anyone again.
+    function setCreationRestricted(bool restricted) external;
+
+    /// Puts an address on the list of who may create a vault while creation is restricted, or takes it off.
+    function setCreator(address creator, bool allowed) external;
 
     /// At most 26 hours. Zero switches the rule off.
     function setSessionPriceAge(uint32 age) external;

@@ -2983,6 +2983,34 @@ const RULES = [
     replace: 'factory.setAsset(a.token, a.config);',
     expect: 'test_testNetwork_holdsAPoolAverageFeedToItsAsset_andLeavesATestPriceContractAlone',
   },
+  {
+    id: 'setup-create-only-the-listed',
+    file: FACTORY,
+    find: 'require(mayCreate(owner), NotAllowedToCreate(owner));',
+    replace: '',
+    expect: 'test_creation_restricted_onlyTheListedCreate_andExistingVaultsAreUntouched',
+  },
+  {
+    id: 'setup-admin-setCreationRestricted',
+    file: CONFIG,
+    find: 'function setCreationRestricted(bool restricted) external onlyAdmin {',
+    replace: 'function setCreationRestricted(bool restricted) external {',
+    expect: 'test_creation_theListIsTheAdminsOnly',
+  },
+  {
+    id: 'setup-admin-setCreator',
+    file: CONFIG,
+    find: 'function setCreator(address creator, bool allowed) external onlyAdmin {',
+    replace: 'function setCreator(address creator, bool allowed) external {',
+    expect: 'test_creation_theListIsTheAdminsOnly',
+  },
+  {
+    id: 'setup-deploy-safe-of-two',
+    file: 'script/Deploy.s.sol',
+    find: 'checkSafe(cfg.timelockOwner, cfg.safeMinThreshold);',
+    replace: '',
+    expect: 'test_mainnet_holdsTheTimelockOwnerToBeingASafeOfTwoOrMore',
+  },
 ];
 
 // Fewer fuzz and invariant runs than the default: a removed rule fails on the first runs or not at all.
