@@ -872,6 +872,41 @@ describe('a reload in the middle of signing', () => {
     expect(find(host, '[data-ui="vault-chat-waits"]').textContent).toBe(p.waits.change);
   });
 
+  it('writes a sale in a change of targets as a sale, in the units of the token sold', async () => {
+    // A change that sells what the vault holds before it spends the cash: the sale is the first trade.
+    const base = retargetOrder() as OrderDetail;
+    const change = {
+      ...base,
+      legs: base.legs.map((l) =>
+        l.kind === 'swap'
+          ? {
+              ...l,
+              trades: [{ sell: SPYX, buy: CASH, amountInRaw: '250000000' }, ...l.trades],
+              expected: [
+                { inRaw: '250000000', outRaw: '20200000', minOutRaw: '20000000', costBps: 10 },
+                ...l.expected,
+              ],
+            }
+          : l,
+      ),
+    } as OrderDetail;
+    api({ order: () => change });
+    expect(kept(change, terms('retarget'))).toBe(true);
+    keepAction(USER, 'solana', MY_VAULT, { kind: 'apply', orderId: ORDER_ID });
+    const host = await show();
+    const steps = [...pane(host).querySelectorAll('[data-ui="order-step"]')].map(
+      (step) => step.textContent ?? '',
+    );
+    expect(steps).toHaveLength(2);
+    expect(steps[1]).toMatch(
+      /Sell [\d.,]+ SPYx · receive at least 20 USDC \(at least \$[\d.,]+ each\)/,
+    );
+    // never the cash token's name or decimals on what is sold
+    expect(steps[1]).not.toMatch(/Spend 250 USDC|on USDC/);
+    // the purchase after it reads as before
+    expect(steps[1]).toContain('Spend 20 USDC on');
+  });
+
   it('takes an approved deposit up again on the same card: its own order and amount, and no new order', async () => {
     const add = {
       ...orderOn(),
