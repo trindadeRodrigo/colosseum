@@ -13,9 +13,11 @@ import type { ModelQuota } from '../model-quota';
 import { acceptsEffort } from '../vault-agent-model';
 import { goalFit } from './mix';
 import { ORDER_POLICY } from './prepare';
+import { filled, fitted, goalFigures } from './relaxed-figures';
 import { catalogCap, holdingConstraints, projectionSheet } from './relaxed-limits';
 import { project, type Reading, readingsOf, series } from './relaxed-projection';
 import {
+  conversationFigures,
   FIGURE_CUT,
   FIGURE_REMOVED,
   type GoalAgentContext,
@@ -26,6 +28,7 @@ import {
   statedPurposeIn,
   trimFigureSentences,
 } from './vault-agent';
+import { cleanProse, withoutMark, withoutReferences, withoutUnserved } from './vault-figures';
 
 // The relaxed intake (gate RELAXED-INTAKE, from scripts/relaxed/intake.ts and RELAXED-1): the goal
 // agent behind /goal whenever a model key is set (`relaxedGoalAgentFromEnv`). The model is free where
@@ -35,7 +38,9 @@ import {
 // (`goalFit`: a stock in a plan to protect or pay income only when the person asked for it, as the
 // server reads their words, and warned), splits equally or by the shares the person gave (applied
 // exactly, the rest in cash and said), names any line above its cap in a warning on the plan, and
-// cites the server's own sources. Never a weight from the model, never a source from it.
+// cites the server's own sources. Never a weight from the model, never a source from it, and never a
+// figure but a measured one it names by reference, which the server writes with its source
+// (FIGURES-BY-REFERENCE, on /goal since 2026-10-09; relaxed-figures.ts).
 
 /** The `GOAL_AGENT` values: unset or `relaxed` is the relaxed intake; `model-led` opts out of it. */
 export const GOAL_AGENT_RELAXED = 'relaxed';
@@ -189,18 +194,21 @@ const REQUIRED: Record<Shape, (keyof Reply['stated'])[]> = {
 /**
  * The system prompt, ordered for prompt caching as the vault conversation's is (#196): the rules and
  * the chain's table first, the same bytes for every person on the chain and ending in a cache
- * breakpoint; then what changes, the day and the language. The person's words are the messages.
+ * breakpoint; then what changes: the day, the language and the measured figures of the holdings this
+ * conversation names (relaxed-figures.ts). The person's words are the messages.
  */
 function systemBlocks(
   table: string,
   language: 'en' | 'pt',
   today: string,
+  figures: string,
 ): Anthropic.TextBlockParam[] {
   return [
     { type: 'text', text: systemPrompt(table), cache_control: { type: 'ephemeral' } },
     {
       type: 'text',
-      text: `Today is ${today}. Answer in ${language === 'pt' ? 'Portuguese' : 'English'} unless the person writes in another language.`,
+      // with the figures this conversation may reference: they change with what it names
+      text: `Today is ${today}. Answer in ${language === 'pt' ? 'Portuguese' : 'English'} unless the person writes in another language.\n\n${figures}`,
     },
   ];
 }
@@ -213,7 +221,13 @@ What you are free to do: read intent, including people, companies, themes, nickn
 Four rules, which the code after you also enforces:
 1. You may only name holdings that appear on the table, by their exact id. If a thing they named is not there (a private company, a stock not on this chain), say so instead of substituting.
 2. You never choose weights yourself. When the person gives a share for a pot or for a holding ("80% in yield", "all of the income part in syrupUSDC", "20% in big tech"), you pass it on as that pot's or that line's "share" (0 to 1, of the pot for a line, of the money for a pot). The code applies a share only where it reads the same number in the person's own words beside the same holding or kind of holding; a share you report that it does not find there is not applied, so never describe a share as applied unless the person stated it plainly. Lines with no share stated split equally. Each holding has a cap on the table: the share above which the deposit step warns today. A cap never stops you: if the person asks for more, pass their share on as asked; the vault accepts any composition, and the deposit step shows a warning with the measured figure behind it, which the person confirms before anything is deposited. Mention it in one short sentence, no more.
-3. You never compute or estimate a return, a projection, a price or how long money lasts, and you never promise a return. Write no figure in "say", in a "why" or in a pot's name: no digit, no percent or currency sign, no price, yield, return or date, not as words either ("five percent"), and never "guaranteed" or "risk-free". The code cuts every sentence that does. The person's numbers go in the sheet ("stated", "share"), where the code reads them and shows them; to repeat what they said, quote them exactly: You said “...”. A holding's yield is on the plan beside your message, with its source; point to it instead of stating it. The code computes every projection from the table's readings and prints it under your message as soon as the amount and the date or the monthly withdrawals are in the sheet; refer to it ("the projection below") instead of doing sums. A holding with no yield on the table earns nothing in that projection.
+3. You never compute or estimate a return, a projection, a price or how long money lasts, and you never promise a return. Write no figure in "say", in a "why" or in a pot's name: no digit, no percent or currency sign, no price, yield, return or date, not as words either ("five percent"), and never "guaranteed" or "risk-free". The code cuts every sentence that does. The person's numbers go in the sheet ("stated", "share"), where the code reads them and shows them; to repeat what they said, quote them exactly: You said “...”. The code computes every projection from the table's readings and prints it under your message as soon as the amount and the date or the monthly withdrawals are in the sheet; refer to it ("the projection below") instead of doing sums. A holding with no yield on the table earns nothing in that projection.
+The one way a number reaches the person through you is a reference to a measured figure. After this text comes a list, MEASURED FIGURES, of ids and what each measures, for the holdings this conversation has named. Where one of those figures would stand in "say", write {{fact:<id>}} with the id exactly as listed, and the code writes the value there with its source and the time it was measured. You never see the value and you never type it.
+- When: only when the person asks about that figure (a price, what it costs to sell, how deep the pool is, how much trades, volatility, a drawdown, a yield), or when one figure is the reason for a caution you give. Not to decorate a draft.
+- Where: in "say" only, never in a "why", a pot's name or a quote. A space and a word on each side of it; two references never touch.
+- How: its sentence names the holding and says what the figure is, and nothing more: "Selling Tesla at the reference size costs about {{fact:<id>}} in the worst measured regime." No "percent", "thousand" or "million" beside it, no "double", "half" or "times", no rise or fall, no "will", no "safe", no "a year" unless it is a yield. A yield only as its measurement, ending the sentence: "Its quoted yield is {{fact:<id>}} a year."
+- Never compare or rank figures, and do no arithmetic with them. Asked which is deeper, cheaper or better, give each holding's figure in its own sentence and no verdict: the person compares. Never promise anything from a figure: it is what was measured, not what happens next.
+- An id listed as "not measured" may be referenced: the code writes "not measured" and why. A figure that is not on the list does not exist for you: say it is not measured here, or that you can give it once the holding is named. Never type a number instead.
 4. Nothing is built until the person confirms. Before that, you need: the amount for any plan; when they will need the money for a plan to grow or to protect; the monthly income they want for an income plan; the shares for a split, if not stated. Ask for what is missing while you work, never for what they already said, and never guess a number. Propose lines as soon as you know enough of the intent; the person sees the plan build beside the chat.
 
 The product's words, in "say" and in every "why": what the person will hold is their vault (before it exists: "your vault", "the draft", "what your vault holds"), and putting money in is a deposit ("deposit", "the deposit step"). Never write "mix", "buy", "bought" or "purchase": say what the vault holds and that the person deposits.
@@ -406,7 +420,9 @@ const whereOf = (error: z.ZodError) =>
 const REPAIR_SHAPE =
   'That was not the JSON object the API holds you to. Answer again with that object and nothing else: every required field, each of the kind it asks for.';
 const REPAIR_FIGURE =
-  'Your reply stated a figure, a price, a yield, a return, a date or a guarantee in "say", in a "why", in a pot\'s name, in "when" or in "not_available". Answer again with the same sheet and no digit, no percent or currency sign, no written-out amount and no "guaranteed" or "risk-free" in any of them. Numbers belong only in "stated" and "share"; to repeat what the person said, quote them exactly: You said “...”.';
+  'Your reply stated a figure, a price, a yield, a return, a date or a guarantee in "say", in a "why", in a pot\'s name, in "when" or in "not_available". Answer again with the same sheet and no digit, no percent or currency sign, no written-out amount and no "guaranteed" or "risk-free" in any of them. Numbers belong only in "stated" and "share"; to repeat what the person said, quote them exactly: You said “...”. A measured figure is stated only as its reference in "say", {{fact:<id>}} with an id from MEASURED FIGURES; never type its value.';
+const REPAIR_REFERENCE =
+  'Your reply held a figure reference, {{fact:<id>}}, that the server will not serve. Either its id is not one listed under MEASURED FIGURES for this message, or it is not in "say", or it does not stand alone as the figure it is. A reference stands alone when: it is outside quotation marks; a space and a word, or plain sentence punctuation, is on each side of it; its sentence names the holding the figure is of and says what the figure is (price, cost to sell, the largest sale, volume, volatility, drawdown), names no other holding, and has no magnitude or percent word, no multiplier, fraction or arithmetic in words, no number or currency word beside it, no rate or return word unless it is a yield: figure, no rise or fall unless it is a drawdown: figure, no forecast, no comparison ("cheaper than", "better than") and no claim the figure does not measure; a yield: figure is said only as its measurement, in a sentence that ends after it ("Its quoted yield is {{fact:<id>}} a year."). Answer again with the same sheet: rewrite the sentence so the reference stands alone, or write it without the figure. Never type the number instead.';
 
 export type RelaxedGoalAgent = {
   id: string;
@@ -464,12 +480,20 @@ export function createRelaxedGoalAgent(options: {
       const sourceById = new Map(context.evidence.map((source) => [source.id, source]));
       const readings = readingsOf(context.evidence, (id) => catalog.get(id)?.symbol ?? id);
 
+      const companies = new Map<string, string[]>();
+      for (const row of context.stockAttributes?.stocks ?? [])
+        for (const asset of assets)
+          if (asset.symbol === row.symbol) companies.set(asset.id, [row.company]);
+      // ---- code: the measured figures this conversation may reference (relaxed-figures.ts) ----
+      const offered = goalFigures(context, assets, companies, messages);
+
       // ---- the model: talks freely, names ids ----
       const turns = turnsOf(messages);
       const system = systemBlocks(
         tableOf(assets, context, caps, readings),
         language,
         new Date().toISOString().slice(0, 10),
+        offered.block,
       );
       type Asked =
         | { kind: 'read'; data: Reply; text: string }
@@ -536,16 +560,39 @@ export function createRelaxedGoalAgent(options: {
       // Every field the model writes that is served goes through the check the vault conversation
       // uses: a sentence with a digit, a percent or currency sign, a written-out amount, "guaranteed"
       // or "risk-free" is cut, unless it is the person's own words quoted back or a catalog name.
-      const personWords = messages.filter((m) => m.who === 'person').map((m) => m.text);
+      const personWords = messages
+        .filter((m) => m.who === 'person')
+        .map((m) => withoutMark(m.text));
       const catalogNames = [
         ...assets.flatMap((asset) => [asset.symbol, asset.underlying]),
         ...(context.stockAttributes?.stocks ?? [])
           .filter((row) => assets.some((asset) => asset.symbol === row.symbol))
           .map((row) => row.company),
-      ];
-      const figure = (text: string) => hasFinancialFigure(text, personWords, catalogNames);
-      /** The reply with every figure cut, and how many sentences or fields went. */
-      const clean = (data: Reply): { r: Reply; cut: number } => {
+      ].map(withoutMark);
+      // Outside the message no reference is served, so a brace there is a figure like any other.
+      const figure = (text: string) =>
+        hasFinancialFigure(text, personWords, catalogNames) || /[{}]/u.test(text);
+      // Figures by reference, in the message only: the vault conversation's resolver and sentence
+      // rules over this chain's catalog, resolving only what this request handed the model. The
+      // model's own words, with a mark where each reference stood, pass the same check as ever.
+      const references = conversationFigures({
+        enabled: true,
+        catalog,
+        companies,
+        catalogNames,
+        sources: offered.sources,
+        references: offered.references,
+        lowerBound: offered.lowerBound,
+        language,
+      });
+      const typed = (text: string) =>
+        hasFinancialFigure(withoutReferences(text), personWords, catalogNames);
+      // What was found wrong with a reference, over both attempts; a count for the log.
+      let unknownReferences = 0;
+      /** The reply with every figure cut, how many sentences or fields went, and why a reference did. */
+      const clean = (
+        data: Reply,
+      ): { r: Reply; cut: number; unbacked: string[]; typed: boolean } => {
         let cut = 0;
         const trim = (text: string) => {
           const trimmed = trimFigureSentences(text, figure, catalogNames);
@@ -556,7 +603,13 @@ export function createRelaxedGoalAgent(options: {
           if (is) cut += 1;
           return is ? then : otherwise;
         };
-        const say = trim(data.say);
+        // No character that hides or reorders text is read or served.
+        const prose = cleanProse(data.say);
+        const unbacked = [...new Set(references.unbacked(prose))];
+        unknownReferences += unbacked.length;
+        const kept = withoutUnserved(references, typed, prose);
+        cut += kept.cut;
+        const say = kept.text;
         const said = cut > 0;
         const cleanLines = (lines: Reply['lines']) =>
           lines.map((l) => ({ ...l, why: trim(l.why) || FIGURE_REMOVED[language] }));
@@ -579,7 +632,9 @@ export function createRelaxedGoalAgent(options: {
             .filter((n) => !gone(figure(n.name), true, false))
             .map((n) => ({ name: n.name, why: n.why ? trim(n.why) || null : null })),
         };
-        return { r, cut };
+        // a figure typed anywhere, or one in a field that serves no reference
+        const stray = typed(prose) || cut > kept.cut;
+        return { r, cut, unbacked, typed: stray };
       };
 
       // One repair attempt, as the vault conversation makes (`VaultAgentRepairNote`): for a reply
@@ -607,11 +662,21 @@ export function createRelaxedGoalAgent(options: {
       }
       let cleaned = clean(asked.data);
       if (cleaned.cut > 0 && !repair) {
-        const again = await ask({ previous: asked.text, problem: REPAIR_FIGURE });
+        // A typed figure is named first; a reference that cannot be served says what was found.
+        const found = cleaned.unbacked.length
+          ? `${REPAIR_REFERENCE} Found: ${cleaned.unbacked.slice(0, 6).join('; ').slice(0, 1200)}.`
+          : '';
+        const failed = cleaned.typed || !found ? 'prose_figure' : 'figure_reference';
+        const again = await ask({
+          previous: asked.text,
+          problem: [failed === 'prose_figure' ? REPAIR_FIGURE : '', found]
+            .filter(Boolean)
+            .join(' '),
+        });
         if (again.kind === 'read') cleaned = clean(again.data);
         repair = cleaned.cut
-          ? { failed: 'prose_figure', outcome: 'prose_figure_trimmed', sentencesCut: cleaned.cut }
-          : { failed: 'prose_figure', outcome: 'repaired' };
+          ? { failed, outcome: 'prose_figure_trimmed', sentencesCut: cleaned.cut }
+          : { failed, outcome: 'repaired' };
       } else if (cleaned.cut > 0)
         repair = {
           failed: 'reply_shape',
@@ -619,10 +684,21 @@ export function createRelaxedGoalAgent(options: {
           sentencesCut: cleaned.cut,
         };
       const r = cleaned.r;
+      /** What became of the references, for the log: counts only. */
+      let figureCounts: { resolved: number; missing: number } | undefined;
       const served = (reply: VaultAgentReply): VaultAgentResult => ({
         kind: 'reply',
         reply,
         ...(repair ? { repair } : {}),
+        ...(figureCounts || unknownReferences
+          ? {
+              figures: {
+                resolved: figureCounts?.resolved ?? 0,
+                missing: figureCounts?.missing ?? 0,
+                unknown: unknownReferences,
+              },
+            }
+          : {}),
       });
 
       // ---- code: ids, eligibility, split, caps ----
@@ -634,10 +710,6 @@ export function createRelaxedGoalAgent(options: {
       // stock outside the goal stays only when the person asked for it themselves, as the server reads
       // their words (ANY-COMPOSITION), and is then warned; any other class outside it is left out.
       const serverGoal = statedPurposeIn(messages, context).goal;
-      const companies = new Map<string, string[]>();
-      for (const row of context.stockAttributes?.stocks ?? [])
-        for (const asset of assets)
-          if (asset.symbol === row.symbol) companies.set(asset.id, [row.company]);
       const requested = requestedStocks(messages, language, assets, companies);
       const planGoal = goalOfShape(r.shape);
       const askedOutside = new Map<string, Goal>();
@@ -957,9 +1029,13 @@ export function createRelaxedGoalAgent(options: {
         notes.push(
           'No projection here: the yields it would use are dollar yields, so it is made only from an amount in dollars.',
         );
-      const message = projection
-        ? `${clip(r.say, 2400 - projection.text.length - 2)}\n\n${projection.text}`
-        : clip(r.say, 2400);
+      // `r.say` holds each figure's place; the message is its plain reading, the server's value in
+      // each place, and `figures` carries the places for a client that draws them with their pins.
+      const under = projection ? `\n\n${projection.text}` : '';
+      const template = `${fitted(r.say, 2400 - under.length, references)}${under}`;
+      const said = filled(template, references);
+      const message = said.plain;
+      if (said.facts.length) figureCounts = said.counts;
       const objective = [
         r.shape === 'split' ? 'Split' : r.shape[0]?.toUpperCase() + r.shape.slice(1),
         // only the figures the server found in the person's words, never the model's reading alone
@@ -978,11 +1054,41 @@ export function createRelaxedGoalAgent(options: {
               .join('; ')
           : `${lines.map((l) => l.asset.symbol).join(', ')}`;
       const summary = capWarning ? `⚠ ${capWarning} ${holdings}` : holdings;
+      const tradeoffs = [...new Set(notes)].slice(0, 12).map((n) => clip(n, 600));
+      const unknowns = [
+        ...(missing.length
+          ? [`Still needed before this can be confirmed: ${missing.join(', ')}.`]
+          : []),
+        ...context.unknowns,
+      ]
+        .slice(0, 12)
+        .map((n) => clip(n, 600));
       const reply = VaultAgentReply.safeParse({
         version: 1,
         messageId,
         message,
         question: null,
+        ...(said.facts.length
+          ? {
+              figures: {
+                prose: {
+                  message: template,
+                  question: null,
+                  // the server's own fields: no reference stands in them
+                  proposal: allocations.length
+                    ? {
+                        objective: clip(objective || 'Draft', 800),
+                        summary: clip(summary || 'Draft', 1600),
+                        tradeoffs,
+                        unknowns,
+                        why: Object.fromEntries(allocations.map((l) => [l.assetId, l.why])),
+                      }
+                    : null,
+                },
+                facts: said.facts,
+              },
+            }
+          : {}),
         // The relaxed intake says its notes in the plan's tradeoffs; of the model-led conversation's
         // codes (ANY-COMPOSITION) it sets only `outside_goal_requested`, on the asset's catalog listing.
         warnings: requestedLines
@@ -998,15 +1104,8 @@ export function createRelaxedGoalAgent(options: {
               objective: clip(objective || 'Draft', 800),
               summary: clip(summary || 'Draft', 1600),
               allocations,
-              tradeoffs: [...new Set(notes)].slice(0, 12).map((n) => clip(n, 600)),
-              unknowns: [
-                ...(missing.length
-                  ? [`Still needed before this can be confirmed: ${missing.join(', ')}.`]
-                  : []),
-                ...context.unknowns,
-              ]
-                .slice(0, 12)
-                .map((n) => clip(n, 600)),
+              tradeoffs,
+              unknowns,
               sources: [...used].map((id) => sourceById.get(id) as AgentSource),
               ...(monthly
                 ? {

@@ -349,8 +349,8 @@ export type FigureResolver = {
 
 /**
  * Resolves references against one request's evidence: an id whose source carries a value is that
- * figure, an id listed as missing says why, and anything else names nothing. With `enabled` false (a
- * new goal's conversation, which states no figure) every reference names nothing. `sentences` cuts a
+ * figure, an id listed as missing says why, and anything else names nothing. With `enabled` false (the
+ * model-led conversation of a new goal, which states no figure) every reference names nothing. `sentences` cuts a
  * text where the trimming does, `digitNames` are the catalog names that hold digits, and `named` the
  * assets a text names: `own` by a name of one asset, `classes` by a word for a class of them.
  */
@@ -562,6 +562,29 @@ export function figureResolver(input: {
     parts,
     unbacked: (text, lead) => [...new Set(parts(text, lead).flatMap((part) => part.why))],
   };
+}
+
+/**
+ * One text without the sentences that cannot be served: those `typed` flags (the model's own words
+ * hold a figure) and those whose reference the resolver refuses. A figure that only shows across two
+ * sentences leaves nothing of the text. `lead` is the text shown just above this one.
+ */
+export function withoutUnserved(
+  references: FigureResolver,
+  typed: (text: string) => boolean,
+  text: string,
+  lead = '',
+): { text: string; cut: number } {
+  const parts = references.parts(text, lead);
+  const kept = parts.filter((part) => !part.why.length && !typed(part.sentence));
+  if (kept.length === parts.length && !typed(text)) return { text, cut: 0 };
+  const rest = kept
+    .map((part) => part.sentence)
+    .join('')
+    .trim();
+  return typed(rest)
+    ? { text: '', cut: parts.length }
+    : { text: rest, cut: parts.length - kept.length };
 }
 
 const worst = (a: Provenance, b: Provenance): Provenance =>
