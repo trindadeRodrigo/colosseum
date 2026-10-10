@@ -728,6 +728,70 @@ describe('the goal agent behind /goal (gate RELAXED-INTAKE)', () => {
     expect(res.json()).toMatchObject({ code: 'GOAL_AGENT_UNAVAILABLE', reason: 'timeout' });
     expect(s.logs.join('\n')).toContain('"agent":"relaxed"');
   });
+  it('serves a measured figure the relaxed intake names, with its source, and reads no sum or goal from it', async () => {
+    // the real agent with the model stubbed; the asset is found in the route's own catalog
+    let asked = '';
+    let reference = '';
+    const relaxed = createRelaxedGoalAgent({
+      apiKey: 'placeholder',
+      log: () => {},
+      create: async () => ({
+        stop_reason: 'end_turn',
+        content: [
+          {
+            type: 'text',
+            citations: null,
+            text: JSON.stringify({
+              say: `The largest sale of ${asked} within the cost tolerance is ${reference}.`,
+              shape: 'pick',
+              lines: [],
+              buckets: null,
+              stated: {
+                amount: null,
+                currency: null,
+                when: null,
+                need_by: null,
+                monthly: null,
+                withdraw_months: null,
+                withdraw_start: null,
+                weights: null,
+                risk: null,
+              },
+              not_available: [],
+              open: [],
+            }),
+          },
+        ],
+      }),
+    });
+    const s = await setup(false, undefined, relaxed);
+    asked = s.asset.symbol;
+    reference = `{{fact:capacity:${s.asset.id}}}`;
+    const res = await s.post(s.owner, {
+      ...s.body,
+      messages: [{ who: 'person', text: `How deep is the pool for ${asked}?` }],
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const body = res.json();
+    expect(body).toMatchObject({ agent: 'relaxed', amountUsd: null, goal: null, risk: null });
+    expect(body.message).toBe(
+      `The largest sale of ${asked} within the cost tolerance is $42,000.00.`,
+    );
+    expect(body.figures.prose.message).toContain(reference);
+    expect(body.figures.facts).toEqual([
+      expect.objectContaining({
+        id: `capacity:${s.asset.id}`,
+        assetId: s.asset.id,
+        text: '$42,000.00',
+        value: 42_000,
+        unit: 'USD',
+        source: 'offline measured input',
+        method: expect.stringContaining('offline-exit-fixture'),
+        fetchedAt: '2026-10-07T20:00:00.000Z',
+        provenance: 'mock',
+      }),
+    ]);
+  });
   it('is made with no network call: the client is built, nothing is sent until a reply is asked', () => {
     expect(createRelaxedGoalAgent({ apiKey: 'placeholder' }).id).toBe('claude-sonnet-5-5');
   });

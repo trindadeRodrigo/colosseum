@@ -45,7 +45,9 @@ export async function goalAgent(
       version: 1,
       messageId,
       language,
-      messages: turns.map(({ who, text }) => ({ who, text })),
+      // A reply that stated figures goes back with each figure's place held, never its value: the
+      // model reads what it wrote, and no served number is read as the person's.
+      messages: turns.map(({ who, text, figures }) => ({ who, text: figures?.template ?? text })),
     }),
   });
   if (!response.ok) {
