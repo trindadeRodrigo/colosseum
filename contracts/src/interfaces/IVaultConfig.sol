@@ -156,7 +156,8 @@ interface IVaultConfig {
     function sessionPriceAge() external view returns (uint32);
 
     /// The most cash one vault may have put in, net of the cash it paid out, and the most across every vault
-    /// of this factory. Raw units of the cash token. Checked on every deposit; withdrawals are never capped.
+    /// of this factory. Raw units of the cash token; zero is no cap, and none is set unless the admin sets
+    /// one. Checked on every deposit; withdrawals are never capped.
     function depositCaps() external view returns (uint256 perVault, uint256 total);
 
     /// Whether the guardian stopped new money. It stops `deposit` and a first deposit at creation, and
@@ -237,8 +238,9 @@ interface IVaultConfig {
 
     function unpauseDeposits() external;
 
-    /// Both caps in raw units of the cash token, the per-vault cap at most the total. `type(uint256).max`
-    /// for both is no cap, which is how a new factory starts.
+    /// Both caps in raw units of the cash token. Zero is no cap for that one, which is how a new factory
+    /// starts; where both are set, the per-vault cap is at most the total. A cap never closes deposits:
+    /// that is the guardian's `pauseDeposits`.
     function setDepositCaps(uint256 perVault, uint256 total) external;
 
     /// Restricts creating a vault to the listed addresses, or opens it to anyone again.

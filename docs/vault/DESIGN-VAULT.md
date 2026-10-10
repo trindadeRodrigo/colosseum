@@ -793,7 +793,7 @@ interface IVaultConfig {                                        // the settings 
       uint32 assetCooldown, uint32 sessionOpen, uint32 sessionClose);
   function priceDevBps() external view returns (uint16);        // a price against its average; EVM-3
   function sessionPriceAge() external view returns (uint32);    // a stock's price in session, for the keeper; 0 = off
-  function depositCaps() external view returns (uint256 perVault, uint256 total);  // raw units of cash
+  function depositCaps() external view returns (uint256 perVault, uint256 total);  // raw units of cash; 0 = none
   function depositsPaused() external view returns (bool);
   function totalDeposited() external view returns (uint256);    // also depositedOf(vault)
   // a vault of this factory, inside its deposit; and anyone, to lower a stale count
@@ -816,7 +816,7 @@ interface IVaultConfig {                                        // the settings 
   function setPriceDevBps(uint16 bps) external;                 // at most 1,000
   function unpauseKeeper() external;
   function unpauseDeposits() external;
-  function setDepositCaps(uint256 perVault, uint256 total) external;   // perVault at most total
+  function setDepositCaps(uint256 perVault, uint256 total) external;   // 0 = none; perVault at most a set total
   function setSessionPriceAge(uint32 age) external;             // 0, or 60 s to 26 h
   function setCreationRestricted(bool restricted) external;     // only the listed may create a vault; mayCreate(who)
   function setCreator(address creator, bool allowed) external;
@@ -1669,7 +1669,7 @@ Abuse limits. Portfolio names and descriptions: 280 characters, links stripped, 
 
 ## 13. Security model and tests before the submission
 
-The keeper is the bounded risk: a leaked keeper key can cost each auto-follow vault at most 2% of the vault in any seven days (twice the weekly cap parameter, section 5) plus any error in the price reference, which on Solana is held inside the range the admin gave each asset. The upgrade key is the unbounded one: it can replace vault code. On an EVM mainnet it is a timelock of 48 hours that a Safe proposes to, and the contracts cap deposits per vault and in total (gates `MAINNET-KEYS` and `MAINNET-CAP`, Thom, Oct 9; `docs/vault/SECURITY.md`); on Solana and on the test networks it is one key and there is no cap. The API cannot sign, and it cannot make the keeper sign: the keeper plans from chain state and never reads a job the API wrote.
+The keeper is the bounded risk: a leaked keeper key can cost each auto-follow vault at most 2% of the vault in any seven days (twice the weekly cap parameter, section 5) plus any error in the price reference, which on Solana is held inside the range the admin gave each asset. The upgrade key is the unbounded one: it can replace vault code. On an EVM mainnet it is a timelock of 48 hours that a Safe proposes to (gate `MAINNET-KEYS`, Thom, Oct 9; `docs/vault/SECURITY.md`); on Solana and on the test networks it is one key. There is no deposit cap on any chain (gate `NO-DEPOSIT-CAP`, Thom, Oct 10): the EVM contracts carry caps the Safe can switch on, set to none. The API cannot sign, and it cannot make the keeper sign: the keeper plans from chain state and never reads a job the API wrote.
 
 | Key | Power | Where |
 |---|---|---|
@@ -1749,7 +1749,7 @@ A tier 2 failure blocks only if it shows a real way to lose funds.
 | Agent-run portfolios | A creator is an address; `creator_kind`; a per-vault `keeper` / `operator` slot | A per-vault agent operator under the same checks; agent API keys |
 | Pooled token | The vault owner may be a program or a contract; no `tx.origin`; `vault_type` | A separate program reading the same recipes |
 | Embeds | Every write goes through `/v1`; `WalletPort` has no Privy types; nullable `org_id` on orders; an `(embed)` route group | Partner keys, OAuth, `createVaultFor` |
-| Audits, governance | One admin address with two-step transfer; `deployments/*.json`; parameter bounds in code; the invariant suite. On EVM since Oct 9: the timelock and the Safe in the deploy path, deposit caps, `authority-check` | A multisig on Solana, an audit, verified builds |
+| Audits, governance | One admin address with two-step transfer; `deployments/*.json`; parameter bounds in code; the invariant suite. On EVM since Oct 9: the timelock and the Safe in the deploy path, optional deposit caps set to none, `authority-check` | A multisig on Solana, an audit, verified builds |
 
 ## 15. Workstreams
 
@@ -1871,13 +1871,13 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 25. Auto-follow on stocks trades only Mon to Fri 14:30 to 20:00 UTC, and never on a listed closed day.
 26. Who opens the accounts (Supabase, Render, Vercel, Helius, Alchemy, UptimeRobot, the second Jupiter organisation), whether Jupiter's terms allow a second organisation, and whether Vercel Hobby's non-commercial clause is acceptable.
 27. Who fills `blockedCountries` per asset: information only since Oct 6 (gate `COUNTRY-REMOVED`); the engine ignores it. Where legal restrictions on holders are enforced (sign-up, terms of service) is open for the founders.
-28. A warning above $1,000 per vault, since there is no cap. No agent-run portfolio at launch. On an EVM mainnet there is a cap in the contracts before an audit: 10,000 dollars (gate `MAINNET-CAP`, Thom, Oct 9).
+28. A warning above $1,000 per vault, since there is no cap. No agent-run portfolio at launch. The EVM contracts can cap deposits, and no cap is set on any network (gate `NO-DEPOSIT-CAP`, Thom, Oct 10).
 29. A plan lives on one chain, the chain it was made on: decided on Oct 3 (gate `ONE-CHAIN`). A person who creates a wallet in the app picks its chain at that moment: decided on Oct 3 (gate `CHAIN-PICK`), and replaced on Oct 6 by a current chain the person can switch (gate `CHAIN-SWITCH`); a plan stays on the chain it was made on. Assumed until Thom says otherwise: a person who signs in with a different wallet on another chain has a separate plan there. Still open: which chain an EVM wallet means once Base is deployed, since one address serves both EVM chains; and which chain a plan is built for when no wallet is known yet (the keyless plan routes, and an agent's `build_personal_basket`). Taken in the API (API-2), until somebody says otherwise: a stored chain stands when other wallets are linked later, until the person switches; a person with outside wallets of both families has no chain until they pick; and on an EVM chain a second order of the same wallet waits for the first one's open transaction rather than being built on the nonce after it.
 30. Open, for the founders: the names of the stock classification. `content/stocks/` writes each stock's sector, industry and sub-industry in the names of the GICS structure, which belongs to MSCI and S&P, and a plan shows them ("matched by industry: Aerospace & Defense"). MSCI's own document, read on Oct 6 for SpaceX's row, carries a notice against using its information to populate a database, as input to a language model, or commercially, without permission. For that reason no sector, industry or sub-industry name is sent to the model that reads a goal: it is shown our own keywords only. Until a founder decides (a licence, or a classification of our own or from a public source such as the SIC code of each filing), the names stay as data recorded for the test shelf; the filter itself does not depend on whose names they are.
 
 **Flags on fixed decisions.** None is shown unworkable. Four carry risk.
 
-- No deposit cap sits on unaudited, upgradeable code, and one disclosed key per chain holds the upgrade power. The app says so and `G-LINK` checks the key against `deployments/*.json`. For an EVM mainnet both are answered since Oct 9: deposit caps in the contracts, and a Safe behind a 48-hour timelock in place of the key (`MAINNET-CAP`, `MAINNET-KEYS`).
+- No deposit cap sits on unaudited, upgradeable code, and one disclosed key per chain holds the upgrade power. The app says so and `G-LINK` checks the key against `deployments/*.json`. For an EVM mainnet the key is answered since Oct 9 by a Safe behind a 48-hour timelock (`MAINNET-KEYS`); the cap is not: Thom decided on Oct 10 that none is set (`NO-DEPOSIT-CAP`), so how much sits in a vault is its owner's choice.
 - The 48-hour delay holds for every public user, but test cycles before `launch()` run at 300 s on team money. The latch is one-way and `authority-check` reads it.
 - Free tiers can sleep the API or throttle Jupiter. Each has a mitigation in section 10 and a test in `G-LINK` or the Oct 5 cold-start test.
 - Jupiter's `route_v2` from a vault ran on Oct 3 on a local validator with mainnet's programs and one frozen pool (section 3.7). Not yet run: a route through a private market maker, which cannot be replayed from a snapshot, and anything on mainnet itself.

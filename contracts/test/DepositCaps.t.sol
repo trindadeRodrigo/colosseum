@@ -7,7 +7,9 @@ import {Swap, Weight} from "../src/interfaces/Types.sol";
 import {VaultFactory} from "../src/VaultFactory.sol";
 import {SwapFixture} from "./helpers/SwapFixture.sol";
 
-/// The deposit caps: what one vault and what all vaults of a factory may take in before an audit.
+/// The deposit caps: what one vault and what all vaults of a factory may take in, where the admin sets
+/// one. None is set unless it does (gate `NO-DEPOSIT-CAP`, Thom, 2026-10-10): a cap of zero is no cap, on a
+/// new factory and on an upgraded one, and what closes deposits is the guardian's pause, never a number.
 ///
 /// What is counted, exactly: cash that came in through `deposit` or at creation, less cash that left
 /// through `withdraw` or `withdrawAll`, never below zero, per vault; the total is the sum over vaults as each
@@ -52,11 +54,48 @@ contract DepositCapsTest is SwapFixture {
 
     // ---- the setting
 
-    function test_caps_aNewFactoryHasNone_untilTheAdminSetsThem() public view {
+    /// No cap is the start: both read zero, zero is "none", and any amount comes in.
+    function test_caps_aNewFactoryHasNone_untilTheAdminSetsThem() public {
         (uint256 perVault, uint256 total) = factory.depositCaps();
-        assertEq(perVault, type(uint256).max);
-        assertEq(total, type(uint256).max);
+        assertEq(perVault, 0);
+        assertEq(total, 0);
         assertEq(factory.totalDeposited(), 0);
+        assertFalse(factory.depositsPaused());
+        _deposit(vault, 900_000 * USD);
+        _deposit(other, 900_000 * USD);
+        assertEq(factory.totalDeposited(), 1_800_000 * USD, "counted all the same, for a cap set later");
+    }
+
+    /// Either cap alone: the other stays "none".
+    function test_caps_oneCanBeSetWithoutTheOther() public {
+        _caps(CAP, 0);
+        _deposit(vault, CAP);
+        _expectDepositRevert(
+            vault, 1, abi.encodeWithSelector(IVaultConfig.VaultCapReached.selector, address(vault), CAP + 1, CAP)
+        );
+        _deposit(other, CAP);
+        assertEq(factory.totalDeposited(), 2 * CAP, "no total cap: every vault may fill its own");
+
+        _caps(0, 3 * CAP);
+        _deposit(vault, CAP);
+        _expectDepositRevert(
+            other, 1, abi.encodeWithSelector(IVaultConfig.TotalCapReached.selector, 3 * CAP + 1, 3 * CAP)
+        );
+    }
+
+    /// A cap taken away again is gone: zero does not close deposits, it opens them.
+    function test_caps_setBackToZero_areNoCapAgain() public {
+        _caps(CAP, CAP);
+        _deposit(vault, CAP);
+        _expectDepositRevert(
+            vault, 1, abi.encodeWithSelector(IVaultConfig.VaultCapReached.selector, address(vault), CAP + 1, CAP)
+        );
+        vm.expectEmit(address(factory));
+        emit IVaultConfig.DepositCapsSet(0, 0);
+        _caps(0, 0);
+        _deposit(vault, 50 * CAP);
+        _deposit(other, 50 * CAP);
+        assertEq(vault.netDeposited(), 51 * CAP);
     }
 
     function test_setDepositCaps_isTheAdminsOnly() public {
@@ -74,11 +113,15 @@ contract DepositCapsTest is SwapFixture {
         assertEq(total, 3 * CAP);
     }
 
-    /// One vault can never be allowed more than all of them.
+    /// One vault can never be allowed more than all of them, where both are capped.
     function test_setDepositCaps_refusesAVaultCapAboveTheTotal() public {
         vm.expectRevert(abi.encodeWithSelector(IVaultConfig.ParamOutOfBounds.selector, bytes32("vaultCap"), CAP + 1));
         vm.prank(admin);
         factory.setDepositCaps(CAP + 1, CAP);
+        // With no total, a vault's cap has nothing to be above.
+        _caps(CAP + 1, 0);
+        _caps(0, CAP);
+        _caps(CAP, CAP);
     }
 
     /// Stopping new money is the guardian's, or the admin's; lifting the stop is the admin's alone.
@@ -169,16 +212,16 @@ contract DepositCapsTest is SwapFixture {
 
     // ---- the way out is never capped
 
-    /// With both caps at zero, which is also what an upgraded factory reads before the admin sets them:
-    /// nothing comes in, and everything still goes out.
+    /// With both caps set as low as a cap goes, far under what the vault already holds: nothing more comes
+    /// in, and everything still goes out.
     function test_caps_neverReachAWithdrawal() public {
         _deposit(vault, 5000 * USD);
         vm.prank(owner);
         vault.ownerSwap(_swaps(_swap(direct, address(cash), address(stockA), 2000 * USD, 20 * unit)), LATER);
-        _caps(0, 0);
+        _caps(1, 1);
 
         _expectDepositRevert(
-            vault, 1, abi.encodeWithSelector(IVaultConfig.VaultCapReached.selector, address(vault), 5000 * USD + 1, 0)
+            vault, 1, abi.encodeWithSelector(IVaultConfig.VaultCapReached.selector, address(vault), 5000 * USD + 1, 1)
         );
         vm.startPrank(owner);
         vault.withdraw(address(cash), 1000 * USD);
@@ -446,10 +489,11 @@ contract DepositCapsTest is SwapFixture {
 
     // ---- a factory and a vault that came from the layout before
 
-    /// What an upgrade of a live factory and its vaults reads in the new fields is zero. Zero caps refuse
-    /// every deposit until the admin sets them; a vault that already holds cash has no count and no
-    /// remembered cash token, and its way out is as before.
-    function test_upgrade_fromTheLayoutBefore_startsClosedToDeposits_andOpenToWithdrawals() public {
+    /// What an upgrade of a live factory and its vaults reads in the new fields is zero, and zero is no
+    /// cap: deposits stay open and unlimited after an upgrade, with nothing for the admin to set first. A
+    /// vault that already holds cash has no count and no remembered cash token, and counts from its next
+    /// deposit on; its way out is as before. A cap set later bites from then.
+    function test_upgrade_fromTheLayoutBefore_staysOpenAndUncapped_untilACapIsSet() public {
         _deposit(vault, 3000 * USD);
         uint256 c =
             uint256(keccak256(abi.encode(uint256(keccak256("basket.storage.VaultConfig")) - 1))) & ~uint256(0xff);
@@ -466,16 +510,25 @@ contract DepositCapsTest is SwapFixture {
         assertEq(total, 0);
         assertEq(vault.netDeposited(), 0);
 
-        _expectDepositRevert(
-            vault, 1, abi.encodeWithSelector(IVaultConfig.VaultCapReached.selector, address(vault), 1, 0)
-        );
+        assertFalse(factory.depositsPaused());
+        assertFalse(factory.creationRestricted());
+
         vm.prank(owner);
         vault.withdraw(address(cash), 1000 * USD);
         assertEq(vault.netDeposited(), 0);
+        // Open and unlimited, with no call from the admin.
+        _deposit(vault, 500_000 * USD);
+        assertEq(vault.netDeposited(), 500_000 * USD, "counted from the upgrade on");
+        assertEq(factory.totalDeposited(), 500_000 * USD);
+        _deposit(other, 1);
 
+        // A cap set later holds from then: this vault is already over it.
         _caps(CAP, CAP);
-        _deposit(vault, 500 * USD);
-        assertEq(vault.netDeposited(), 500 * USD, "counted from the upgrade on");
+        _expectDepositRevert(
+            vault,
+            1,
+            abi.encodeWithSelector(IVaultConfig.VaultCapReached.selector, address(vault), 500_000 * USD + 1, CAP)
+        );
         vm.prank(owner);
         vault.withdrawAll();
         assertEq(cash.balanceOf(address(vault)), 0);

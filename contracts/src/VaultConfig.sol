@@ -58,7 +58,8 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
         bool depositsPaused;
         // How old a US stock's price may be in session for the keeper; zero is no such rule.
         uint32 sessionPriceAge;
-        // The deposit caps, in raw units of the cash token: one vault, and all of them together.
+        // The deposit caps, in raw units of the cash token: one vault, and all of them together. Zero is no
+        // cap, which is how a new factory and an upgraded one both start.
         uint256 vaultCap;
         uint256 totalCap;
         // What is counted toward the total cap: the sum of `deposited` over every vault.
@@ -122,8 +123,6 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
         _config().admin = admin_;
         emit AdminChanged(address(0), admin_);
         _setParams(params_);
-        // No cap until the admin sets one. A mainnet's deploy sets both before the admin is handed over.
-        _setDepositCaps(type(uint256).max, type(uint256).max);
     }
 
     // ---- admin: assets
@@ -393,9 +392,12 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
         require(_isVault(msg.sender), NotAVault(msg.sender));
         ConfigStorage storage $ = _config();
         require(!$.depositsPaused, DepositsArePaused());
-        require(netDeposited <= $.vaultCap, VaultCapReached(msg.sender, netDeposited, $.vaultCap));
+        // A cap of zero is no cap. What closes deposits is the pause above, never a number.
+        uint256 cap = $.vaultCap;
+        require(cap == 0 || netDeposited <= cap, VaultCapReached(msg.sender, netDeposited, cap));
         uint256 total = $.totalDeposited - $.deposited[msg.sender] + netDeposited;
-        require(total <= $.totalCap, TotalCapReached(total, $.totalCap));
+        cap = $.totalCap;
+        require(cap == 0 || total <= cap, TotalCapReached(total, cap));
         $.deposited[msg.sender] = netDeposited;
         $.totalDeposited = total;
         emit DepositCounted(msg.sender, netDeposited, total);
@@ -578,7 +580,8 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
     }
 
     function _setDepositCaps(uint256 perVault, uint256 total) private {
-        require(perVault <= total, ParamOutOfBounds("vaultCap", perVault));
+        // One vault is never allowed more than all of them, where both are capped.
+        require(perVault <= total || total == 0, ParamOutOfBounds("vaultCap", perVault));
         ConfigStorage storage $ = _config();
         $.vaultCap = perVault;
         $.totalCap = total;

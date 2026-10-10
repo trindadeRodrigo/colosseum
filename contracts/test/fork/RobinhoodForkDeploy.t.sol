@@ -79,7 +79,6 @@ contract RobinhoodForkDeployTest is Test {
         cfg.placeholders = false;
         cfg.timelockOwner = safe;
         cfg.guardian = guardian;
-        cfg.creators[0] = person;
     }
 
     function test_fork_theChainIsMainnet_andTheCommittedFileIsRefusedAsItStands() public onFork {
@@ -116,6 +115,24 @@ contract RobinhoodForkDeployTest is Test {
         assertEq(factory.guardian(), guardian);
     }
 
+    /// As committed, with no cap: real dollars come in far past 10,000 and go out again.
+    function test_fork_theCommittedFile_takesRealDollarsWithNoCap() public onFork {
+        Deploy.Deployed memory d = script.deploy(_file(), deployer);
+        VaultFactory factory = VaultFactory(d.factory);
+        (uint256 perVault, uint256 total) = factory.depositCaps();
+        assertEq(perVault + total, 0, "no cap");
+        vm.prank(USDG_HOLDER);
+        assertTrue(IRealToken(USDG).transfer(person, 250_000 * USD));
+        vm.startPrank(person);
+        BasketVault vault =
+            BasketVault(payable(factory.createVault(keccak256("plan"), new Weight[](0), bytes32(0), 0, false)));
+        IRealToken(USDG).approve(address(vault), type(uint256).max);
+        vault.deposit(250_000 * USD);
+        vault.withdrawAll();
+        vm.stopPrank();
+        assertEq(IRealToken(USDG).balanceOf(person), 250_000 * USD);
+    }
+
     /// A wrong number of decimals for the real token, or another feed's description, is caught against the
     /// chain and not only against a stand-in.
     function test_fork_theRealTokenAndFeed_refuseWrongDecimalsAndAWrongDescription() public onFork {
@@ -144,8 +161,14 @@ contract RobinhoodForkDeployTest is Test {
     }
 
     /// The cap, the pause and the way out, with the real dollar token and the real stock token.
+    /// The committed file sets no cap; this one adds a cap of 10,000 dollars to it, to see a cap bite on
+    /// the real token.
     function test_fork_realDollars_areCappedOnTheWayIn_andNeverOnTheWayOut() public onFork {
-        Deploy.Deployed memory d = script.deploy(_file(), deployer);
+        Deploy.Config memory capped = _file();
+        capped.hasCaps = true;
+        capped.vaultCap = 10_000 * USD;
+        capped.totalCap = 10_000 * USD;
+        Deploy.Deployed memory d = script.deploy(capped, deployer);
         VaultFactory factory = VaultFactory(d.factory);
         vm.prank(USDG_HOLDER);
         assertTrue(IRealToken(USDG).transfer(person, 12_000 * USD));
