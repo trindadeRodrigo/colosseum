@@ -131,6 +131,11 @@ const F: Record<string, string> = {
   // of a vault only: nothing on /goal answers to them
   CS: r(`holding:${cash}:share`),
   W: r('vault:value'),
+  // the review of #230's own keys
+  TP: r(`price:${ts}`),
+  NL: r(`lp:${nv}:top1`),
+  NVM: r(`volume:${nv}`),
+  RP: r(`price:${reserve}`),
 };
 const fill = (text: string) => text.replace(/\[(\w+)\]/g, (whole, key: string) => F[key] ?? whole);
 const CUT = FIGURE_CUT.en;
@@ -221,8 +226,8 @@ describe('the reviews’ probes on the goal path', () => {
       {
         "1 meaning-changers": {
           "failed": 0,
-          "refused": 18,
-          "served": 3,
+          "refused": 21,
+          "served": 0,
           "trimmed": 0,
         },
         "2 splits": {
@@ -251,15 +256,15 @@ describe('the reviews’ probes on the goal path', () => {
         },
         "6 wrong asset": {
           "failed": 0,
-          "refused": 9,
-          "served": 2,
+          "refused": 11,
+          "served": 0,
           "trimmed": 1,
         },
         "8 natural answers": {
           "failed": 0,
-          "refused": 1,
-          "served": 18,
-          "trimmed": 5,
+          "refused": 9,
+          "served": 12,
+          "trimmed": 3,
         },
         "G1 legit shapes": {
           "failed": 0,
@@ -301,8 +306,84 @@ describe('the reviews’ probes on the goal path', () => {
     `);
   });
 
+  // The review of #230: a figure called what it is not. The model is handed ids with no values, so
+  // the wrong id is its likely mistake; every one of these names the right asset.
+  const MISMATCHES = [
+    'Nvidia is nearly [NX] of the vault.',
+    'Nvidia is [NX] of your vault.',
+    'Nvidia’s share is [NX].',
+    'Nvidia’s target is [NL].',
+    'Your Nvidia holding is worth [NP].',
+    'Tesla is worth [TP], more than Nvidia.',
+    'Nvidia is worth [NVM].',
+    'Nvidia’s price is [NVM].',
+    'Nvidia trades at [NVM].',
+    'Nvidia’s price is [NX].',
+    'Nvidia’s volatility is [ND].',
+    'Nvidia’s largest drawdown was [NVOL].',
+    'Nvidia’s exit cost is [NL].',
+    'Selling Nvidia costs about [NVOL].',
+    'Selling Nvidia costs about [NP].',
+    'Nvidia’s volume is [NP].',
+    'Nvidia’s weekend capacity is [NX].',
+    'Nvidia’s largest provider holds [NX] of the pool.',
+    'Nvidia: [NX].',
+    'Nvidia: [NVOL].',
+    'Nvidia’s quoted yield is [NX] a year.',
+    'Nvidia’s yield is currently [NVOL].',
+    'The reserve’s quoted yield is [RP] a year.',
+    'The reserve’s price is [Y].',
+    'The reserve is [Y].',
+    'jlUSDC: [Y].',
+    'You hold [NVM] units of Nvidia.',
+    'Nvidia’s pool is [NVM] deep.',
+    'Nvidia’s pool holds [NVM].',
+    'Nvidia’s market cap is [NVM].',
+    'Nvidia’s spread is [NX].',
+    'Nvidia’s fee is [NX].',
+    'Nvidia’s dividend is [NX].',
+    'Nvidia’s return is [NVOL].',
+    'Nvidia’s beta is [NVOL].',
+    'Nvidia’s liquidity is [NVM].',
+    'Nvidia’s P/E is [NVOL].',
+    'Nvidia’s Sharpe is [NVOL].',
+    'Nvidia’s upside is [ND].',
+    'Nvidia’s cap is [NL].',
+    'Nvidia’s weight is [NL].',
+    'Nvidia’s allocation is [NL].',
+    'Nvidia is [NL] of the draft.',
+    'Nvidia gets [NL] of your money.',
+    'Put [NL] in Nvidia.',
+    'I would put about [NL] of the deposit in Nvidia.',
+    'Nvidia’s cap is [NX], so stay under it.',
+    'Nvidia can be at most [NL] of the vault.',
+  ];
+  it('refuses a figure its sentence calls something else', async () => {
+    const out = await Promise.all(MISMATCHES.map(probe));
+    const served = MISMATCHES.filter((_, at) => out[at]?.kind !== 'refused');
+    if (process.env.PROBE_OUT)
+      writeFileSync(
+        `${process.env.PROBE_OUT}.kinds`,
+        out.map((o, i) => `${o.kind} ${MISMATCHES[i]}\n   -> ${o.message}`).join('\n'),
+      );
+    expect(served).toMatchInlineSnapshot(`[]`);
+  });
+
   // What a person asks on Invest, where there is no vault: depth, cost to sell, price, how much
-  // trades, how it moves, what a reserve yields.
+  // trades, how it moves, what a reserve yields. The review's ten, then eighteen natural answers
+  // (twelve of them this branch's own).
+  const LEGITIMATE = [
+    'Selling Nvidia at the reference size costs about [NX] in the worst measured regime.',
+    'Nvidia’s price is [NP].',
+    'Nvidia trades at [NP].',
+    'Nvidia: about [NP] per unit at the reference price.',
+    'Traded volume for Nvidia over the last four weeks is [NVM].',
+    'For Nvidia, the largest liquidity provider holds [NL] of the main dollar pool.',
+    'Nvidia’s annualised volatility is [NVOL].',
+    'Nvidia’s largest measured drawdown was [ND].',
+    'Here are the exit costs:\n- Nvidia: [NX]\n- Tesla: [TX]',
+    'Nvidia costs about [NX] to sell; Tesla costs about [TX].',
+  ];
   const NATIVE = [
     'For Nvidia, the largest liquidity provider holds [NT] of the main dollar pool. Selling Nvidia at the reference size costs about [NX] in the worst measured regime.',
     'Selling Nvidia at the reference size costs about [NX] in the worst measured regime, and selling Tesla about [TX].',
@@ -316,28 +397,45 @@ describe('the reviews’ probes on the goal path', () => {
     'jlUSDC currently yields [Y] a year. That is a past observation, not a promise.',
     'How deep is the pool? For Nvidia, selling at the reference size costs about [NX] in the worst measured regime.',
     'Tesla is the more volatile name to hold. Its annualised volatility is [NVOL].',
+    'Nvidia’s pool: the largest provider holds [NL], and about [NVM] traded over the last four weeks.',
+    'Nvidia has fallen as much as [ND] from a peak.',
+    'Exit costs at the reference size:\n- Nvidia: [NX]\n- Tesla: [TX]',
+    'Prices:\n- Nvidia: [NP]\n- Tesla: [TP]',
+    'Nvidia is at [NP] right now.',
+    'Nvidia goes for about [NP] a unit.',
   ];
   it('serves what a person asks on Invest', async () => {
+    const legit = await Promise.all(LEGITIMATE.map(probe));
+    expect(legit.map((o) => o.kind)).toEqual(LEGITIMATE.map(() => 'served'));
     const out = await Promise.all(NATIVE.map(probe));
     if (process.env.PROBE_OUT)
       writeFileSync(
         `${process.env.PROBE_OUT}.native`,
         out.map((o, i) => `${o.kind} ${NATIVE[i]}\n   -> ${o.message}`).join('\n'),
       );
-    expect(out.map((o) => o.kind)).toMatchInlineSnapshot(`
+    expect(out.map((o, at) => `${o.kind}: ${NATIVE[at]?.slice(0, 48)}`)).toMatchInlineSnapshot(`
       [
-        "served",
-        "served",
-        "served",
-        "served",
-        "served",
-        "trimmed",
-        "served",
-        "served",
-        "served",
-        "served",
-        "served",
-        "trimmed",
+        "served: For Nvidia, the largest liquidity provider holds",
+        "served: Selling Nvidia at the reference size costs about",
+        "served: Selling Nvidia costs about [NX]. Selling Tesla c",
+        "served: Nvidia trades at [NP] and Tesla at [TV], at the ",
+        "served: Traded volume for Nvidia over the last four week",
+        "trimmed: Nvidia’s annualised volatility is [NVOL]. Its la",
+        "served: Nvidia’s largest measured drawdown was [ND], and",
+        "served: Weekend exit capacity for Nvidia is [NW], so I c",
+        "served: The reserve’s quoted yield is [Y] a year. After ",
+        "served: jlUSDC currently yields [Y] a year. That is a pa",
+        "served: How deep is the pool? For Nvidia, selling at the",
+        "trimmed: Tesla is the more volatile name to hold. Its ann",
+        "served: Nvidia’s pool: the largest provider holds [NL], ",
+        "served: Nvidia has fallen as much as [ND] from a peak.",
+        "served: Exit costs at the reference size:
+      - Nvidia: [NX]",
+        "served: Prices:
+      - Nvidia: [NP]
+      - Tesla: [TP]",
+        "served: Nvidia is at [NP] right now.",
+        "served: Nvidia goes for about [NP] a unit.",
       ]
     `);
   });

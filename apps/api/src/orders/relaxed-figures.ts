@@ -11,13 +11,17 @@ import { type FigureReferences, type FigureResolver, NULL_REASONS } from './vaul
 // conversation, so it cannot sit in the cached prefix; a question is about one to four holdings, and
 // loading those keeps the uncached part of the prompt a few hundred tokens. A holding is named by its
 // symbol, what it tracks or its company in any turn, by its id in a draft the web kept and resent, or
-// by a class word ("the stocks") in the person's latest message. The others are listed by symbol only,
+// by a class word ("the stocks") in the person's latest message, which loads at most `CLASS_LOADS` more
+// than are named already. The others are listed by symbol only,
 // so the model can say their figures come once they are named. Each id goes with what it measures and
 // never with its value: the model has nothing to copy, compare or rank.
 
 /** The kinds of evidence that are measured figures of a listed asset. Nothing of a vault or a person. */
 const MEASURED =
   /^(?:price|yield|exit|lpexit|weekend|lp|capvar|volume|vol|drawdown|capacity|liquidity):/u;
+
+/** How many holdings a class word ("the stocks") loads at most, beside those already named. */
+export const CLASS_LOADS = 6;
 
 export type GoalFigures = {
   /** The measured sources the model was handed, by id: what a reference may resolve to. */
@@ -40,9 +44,8 @@ export function goalFigures(
   const latest = messages.at(-1);
   const loaded = new Set<string>();
   for (const message of messages) {
-    // one asset by its own name anywhere; a class word only in the newest question
-    for (const ids of named(message.text))
-      if (ids.length === 1 || message === latest) for (const id of ids) loaded.add(id);
+    // one asset by its own name anywhere
+    for (const ids of named(message.text)) if (ids.length === 1) loaded.add(ids[0] as string);
     if (message.who === 'app')
       for (const asset of assets)
         if (
@@ -52,6 +55,17 @@ export function goalFigures(
           ).test(message.text)
         )
           loaded.add(asset.id);
+  }
+  // A class word, only in the newest question, and only so far: the first of the class in the
+  // catalog's order, beside what is already loaded. The rest are listed by symbol.
+  for (const ids of named(latest?.text ?? '')) {
+    if (ids.length === 1) continue;
+    let room = CLASS_LOADS;
+    for (const id of ids) {
+      if (loaded.has(id) || room === 0) continue;
+      loaded.add(id);
+      room -= 1;
+    }
   }
   const sources: GoalFigures['sources'] = new Map();
   const references: FigureReferences = { missing: {}, staleAgeSec: {} };
@@ -93,7 +107,7 @@ export function goalFigures(
       : ['None is loaded: the conversation has named no holding with figures.']),
     ...(others.length
       ? [
-          `Not loaded, so no reference to them this turn: ${others.map((asset) => asset.symbol).join(', ')}. Their figures are loaded once the conversation names them; say so if asked.`,
+          `Not loaded, so no reference to them this turn: ${others.map((asset) => asset.symbol).join(', ')}. Their figures are loaded once the conversation names them one by one; say so if asked, and name them.`,
         ]
       : []),
   ].join('\n');

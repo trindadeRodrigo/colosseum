@@ -2310,6 +2310,9 @@ export function conversationFigures(input: {
   references: FigureReferences | undefined;
   lowerBound: ReadonlySet<string>;
   language: 'en' | 'pt';
+  /** The two rules of a conversation that is handed ids without values (vault-figures.ts). */
+  kindRequired?: boolean;
+  noComparison?: boolean;
 }): FigureResolver {
   const { catalog, catalogNames } = input;
   const namer = assetNamer([...catalog.values()], input.companies);
@@ -2319,6 +2322,8 @@ export function conversationFigures(input: {
     references: input.references,
     lowerBound: input.lowerBound,
     language: input.language,
+    ...(input.kindRequired ? { kindRequired: true } : {}),
+    ...(input.noComparison ? { noComparison: true } : {}),
     sentences: (text) => sentencesOf(text, catalogNames),
     digitNames: catalogNames,
     namesOf: (assetId) => {

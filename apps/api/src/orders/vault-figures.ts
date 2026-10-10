@@ -301,6 +301,39 @@ const KINDS: Array<[RegExp, RegExp]> = [
   [/^volume:/u, lone('volume|trades?|traded|negociad\\p{L}*')],
 ];
 const VAULT_WORD = lone('vault|cofre');
+// Where every figure must be called what it is (`kindRequired`, the relaxed intake): the words that
+// name each kind, narrower than `KINDS`. A cost is not a capacity, "trades" is a price and not a
+// volume, and "is at" and "goes for" say a price. A kind of the vault's own (worth, share, target,
+// amount) has no words here: no such figure exists where this is asked.
+const STRICT_KINDS: Array<[RegExp, RegExp]> = [
+  [
+    /^price:/u,
+    lone(
+      'price[sd]?|trades?|trading|is\\s+at|goes\\s+for|pre[cç]os?|cota[cç][aã]o|negocia\\p{L}*|est[aá]\\s+a',
+    ),
+  ],
+  [/^(?:exit|lpexit):/u, lone('costs?|custos?|custa|custaria')],
+  [
+    /^(?:capacity|liquidity):/u,
+    lone('capacity|largest\\s+sale|sale|deep|depth|capacidade|maior\\s+venda|venda|profund\\p{L}*'),
+  ],
+  [/^drawdown:/u, lone('drawdowns?|fall|fell|fallen|drop\\p{L}*|declin\\p{L}*|quedas?|caiu')],
+  [/^vol:/u, lone('volatil\\p{L}*')],
+  [/^weekend:/u, lone('weekends?|fi(?:m|ns)\\s+de\\s+semana')],
+  [/^lp:/u, lone('providers?|provedor\\p{L}*')],
+  [/^capvar:/u, lone('var(?:y|ies|ied|iation|iations)|varia\\p{L}*')],
+  [/^volume:/u, lone('volume|traded|negociad\\p{L}*')],
+];
+const strictlyNamed = (id: string, words: string) =>
+  STRICT_KINDS.some(([of, named]) => of.test(id) && named.test(words));
+const anyKindWord = (words: string) =>
+  [...KINDS, ...STRICT_KINDS].some(([, named]) => named.test(words));
+/** One figure set against another, or against anything: a verdict, which no figure states. */
+const COMPARISON = lone(
+  '(?:more|less|higher|lower|deeper|shallower|cheaper|costlier|pricier|better|worse|bigger|smaller|larger|greater|fewer|safer|riskier|easier|harder)\\s+than|than|compared\\s+(?:to|with)|versus|vs|(?:mais|menos|maior|menor|melhor|pior)\\s+(?:\\p{L}+\\s+)?(?:do\\s+)?que|do\\s+que',
+);
+/** A line of a list: it is read under the list's heading. */
+const LIST_ITEM = /^\s*(?:[-*•–—]|\p{N}+[.)])\s/u;
 const kindNamed = (id: string, words: string) =>
   KINDS.some(([of, named]) => of.test(id) && named.test(words));
 
@@ -332,6 +365,9 @@ const SAID = {
     'a letter that is not Latin, or a character that is not shown, in or just before a sentence with a reference',
   asset: "a sentence that names one asset and references another asset's figure",
   malformed: 'a brace that is not part of one well-formed reference',
+  kind: "a reference whose sentence does not call the figure what it is: say price, cost to sell, the largest sale or capacity, weekend, provider, variation, volume, volatility or drawdown, as the figure's own line says, in the sentence of the figure or in the heading of its list",
+  comparison:
+    'a comparison in a sentence with a reference ("more than", "cheaper than", "versus"): give each figure in its own sentence and no verdict',
 } as const;
 
 export type FigureResolver = {
@@ -365,6 +401,15 @@ export function figureResolver(input: {
   named?: (text: string) => { own: string[]; classes: string[] };
   /** The names an asset goes by in prose: its symbol and what it tracks. */
   namesOf?: (assetId: string) => string[];
+  /**
+   * Every figure but a yield is called what it is (`STRICT_KINDS`): its kind's word stands in its
+   * sentence, or, where the sentence has no word of any kind, in the one it is read with; a line of a
+   * list is read with the list's heading. For a conversation whose model is handed ids without their
+   * values, where naming the wrong id is the likely mistake. Off for the vault's conversation.
+   */
+  kindRequired?: boolean;
+  /** No sentence with a reference compares (`COMPARISON`). Off for the vault's conversation. */
+  noComparison?: boolean;
 }): FigureResolver {
   const { sources, references, lowerBound, language } = input;
   const figure = (id: string): VaultAgentFigure | undefined => {
@@ -489,6 +534,11 @@ export function figureResolver(input: {
     if (BESIDE.test(whole)) found.push('beside');
     if (CLAIM.test(whole)) found.push('claim');
     if (FORECAST.test(whole)) found.push('forecast');
+    if (input.kindRequired && others.length) {
+      const said = anyKindWord(own) ? own : lead;
+      if (!others.every((id) => strictlyNamed(id, said))) found.push('kind');
+    }
+    if (input.noComparison && COMPARISON.test(all)) found.push('comparison');
     if (others.length) {
       const every = (...kinds: string[]) =>
         others.every((id) => kinds.some((kind) => id.startsWith(kind)));
@@ -550,8 +600,14 @@ export function figureResolver(input: {
         }
         const marked = withoutReferences(mine);
         if (nameTouches.some((touches) => touches.test(marked))) found.add('name');
-        const before =
+        let before =
           index > 0 ? (read[index - 1] ?? '') : (split(lead).at(-1) ?? '').normalize('NFKC');
+        if (input.kindRequired && LIST_ITEM.test(mine)) {
+          // under the heading of its list as well as the line before it
+          let at = index - 1;
+          while (at >= 0 && LIST_ITEM.test(read[at] ?? '')) at -= 1;
+          if (at >= 0 && at < index - 1) before = `${read[at] ?? ''} ${before}`;
+        }
         for (const why of worded(mine, before, read[index + 1] ?? '')) found.add(why);
       }
       return { sentence, why: [...bad, ...[...found].map((why) => SAID[why])] };

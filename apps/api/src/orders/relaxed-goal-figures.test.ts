@@ -385,6 +385,51 @@ describe('the Invest chat states measured figures by reference', () => {
   });
 });
 
+describe('a figure is called what it is, and set against nothing', () => {
+  const two: Turn[] = [{ who: 'person', text: 'Tell me about Tesla and Nvidia' }];
+  it.each([
+    ['a provider’s share as a weight', `Put ${ref(`lp:${TSLA}:top1`)} in Tesla.`],
+    [
+      'a provider’s share as a limit',
+      `Tesla can be at most ${ref(`lp:${TSLA}:top1`)} of the vault.`,
+    ],
+    ['an exit cost as a share', `Tesla is ${ref(`exit:${TSLA}:worst`)} of your vault.`],
+    ['an exit cost as a price', `Tesla’s price is ${ref(`exit:${TSLA}:worst`)}.`],
+    ['volatility as a cost to sell', `Selling Tesla costs about ${ref(`vol:${TSLA}`)}.`],
+    ['a drawdown as volatility', `Tesla’s volatility is ${ref(`drawdown:${TSLA}`)}.`],
+    ['volume as a price', `Tesla trades at ${ref(`volume:${TSLA}`)}.`],
+    ['a price as what a holding is worth', `Your Tesla holding is worth ${ref(`price:${TSLA}`)}.`],
+    [
+      'an exit cost under a capacity’s name',
+      `Tesla’s weekend capacity is ${ref(`exit:${TSLA}:worst`)}.`,
+    ],
+    ['a largest sale as a cost', `Selling Tesla costs about ${ref(`capacity:${TSLA}`)}.`],
+    ['a figure with no word for it', `Tesla: ${ref(`vol:${TSLA}`)}.`],
+    ['one figure set above another', `Tesla trades at ${ref(`price:${TSLA}`)}, more than Nvidia.`],
+    [
+      'a verdict between two',
+      `Selling Tesla costs ${ref(`exit:${TSLA}:worst`)} versus ${ref(`exit:${NVDA}:worst`)} for Nvidia.`,
+    ],
+  ])('never %s', async (_what, say) => {
+    const { reply } = await ask({ say }, two);
+    expect(reply.message).toBe(CUT);
+    expect(reply.figures).toBeUndefined();
+  });
+
+  it('reads a line of a list under the list’s heading, and no further than that list', async () => {
+    const list = `Exit costs at the reference size:\n- Tesla: ${ref(`exit:${TSLA}:worst`)}\n- Nvidia: ${ref(`exit:${NVDA}:worst`)}`;
+    expect((await ask({ say: list }, two)).reply.message).toBe(
+      'Exit costs at the reference size:\n- Tesla: 0.4%\n- Nvidia: 0.6%',
+    );
+    // the heading's other words are read with every line, not only the first
+    const promised = `Expected exit costs next year:\n- Tesla: ${ref(`exit:${TSLA}:worst`)}\n- Nvidia: ${ref(`exit:${NVDA}:worst`)}`;
+    expect((await ask({ say: promised }, two)).reply.figures).toBeUndefined();
+    // and a heading of another kind lends its word to no line
+    const wrong = `Prices:\n- Tesla: ${ref(`exit:${TSLA}:worst`)}\n- Nvidia: ${ref(`exit:${NVDA}:worst`)}`;
+    expect((await ask({ say: wrong }, two)).reply.figures).toBeUndefined();
+  });
+});
+
 describe('what a reference on /goal may name', () => {
   it.each([
     ['a holding of a vault', `holding:${TSLA}:value`],
@@ -492,6 +537,36 @@ describe('the evidence the model is handed', () => {
     const stocks = await loaded('how liquid are the stocks here?');
     expect(stocks).toContain(`exit:${TSLA}:worst`);
     expect(stocks).toContain(`exit:${NVDA}:worst`);
+    // a class word loads so many and no more; the rest are named as not loaded
+    const many = built();
+    const more = Array.from({ length: 9 }, (_, at) => ({
+      ...(many.assets.find((asset) => asset.id === NVDA) as (typeof many.assets)[number]),
+      id: `robinhood:extra${at}`,
+      symbol: `XTR${at}`,
+      underlying: `XTR${at}`,
+    }));
+    const wide = {
+      ...many,
+      assets: [...many.assets, ...more],
+      evidence: [
+        ...many.evidence,
+        ...more.map((asset) => ({
+          id: `price:${asset.id}`,
+          assetId: asset.id,
+          label: 'Reference price',
+          value: 10,
+          unit: 'USD',
+          source: 'reference oracle',
+          method: 'oracle read',
+          fetchedAt: now,
+          provenance: 'sandbox' as const,
+        })),
+      ],
+    } as GoalAgentContext;
+    const { calls } = await ask({ say: 'Noted.' }, 'how liquid are the stocks here?', wide);
+    const block = system(calls)[1]?.text ?? '';
+    expect((block.match(/^\S.*\):$/gmu) ?? []).length).toBe(6);
+    expect(block).toMatch(/Not loaded[^\n]*XTR8/u);
     // a class word in older words loads nothing: only the newest question does
     expect(
       await loaded([
