@@ -31,6 +31,7 @@ import {
 } from 'viem';
 import { z } from 'zod';
 import { type Composed, compose } from './compose';
+import { firstShort, referenceCostBps } from './funds';
 import { BASKET_VAULT_ABI, INDEX_REGISTRY_ABI, VAULT_FACTORY_ABI } from './generated/abi';
 import { createEvmVaultReader, type EvmVaultReader, type EvmVaultReaderOptions } from './reader';
 import { quoteExactIn, swapCalldata, type V4Pools } from './routes';
@@ -210,7 +211,7 @@ export function createEvmVaultAdapter(options: EvmVaultAdapterOptions): EvmVault
     slippageBps: number,
     deadline: bigint,
     stated?: readonly string[],
-  ): Promise<{ swaps: readonly unknown[]; minimums: TradeMinimum[] }> {
+  ): Promise<{ swaps: readonly unknown[]; minimums: TradeMinimum[]; quoted: bigint[] }> {
     if (trades.length > MAX_TRADES)
       refuse(
         'TooManyTrades',
@@ -269,10 +270,15 @@ export function createEvmVaultAdapter(options: EvmVaultAdapterOptions): EvmVault
             data: swapCalldata(pools, { tokenIn, tokenOut, amountIn, deadline }),
           },
           minimum: { sell: t.sell, buy: t.buy, inRaw: t.amountInRaw, minOutRaw: minOut.toString() },
+          out,
         };
       }),
     );
-    return { swaps: routed.map((r) => r.swap), minimums: routed.map((r) => r.minimum) };
+    return {
+      swaps: routed.map((r) => r.swap),
+      minimums: routed.map((r) => r.minimum),
+      quoted: routed.map((r) => r.out),
+    };
   }
 
   /** The cash a step pulls from the owner: there, and approved to the vault. */
@@ -387,8 +393,8 @@ export function createEvmVaultAdapter(options: EvmVaultAdapterOptions): EvmVault
           const price = prices.find((p) => p.asset === id);
           return price ? (Number(raw) / 10 ** asset.decimals) * Number(price.usdPerToken) : null;
         };
-        const [inUsd, outUsd] = [usd(t.sell, amountIn), usd(t.buy, out)];
-        const reference = inUsd !== null && outUsd !== null && inUsd > 0;
+        const costBps = referenceCostBps(usd(t.sell, amountIn), usd(t.buy, out));
+        const reference = costBps !== null;
         return {
           source: `Uniswap v4 Quoter ${pools.quoter} on ${config.networkName}`,
           method: `quoteExactInputSingle in the pool of fee ${pools.fee} and tick spacing ${pools.tickSpacing}, no hooks; minimum ${quoteSlippageBps} bps under the quote${
@@ -401,7 +407,7 @@ export function createEvmVaultAdapter(options: EvmVaultAdapterOptions): EvmVault
           trade: t,
           outRaw: out.toString(),
           minOutRaw: minOut.toString(),
-          costBps: reference ? Math.round(((inUsd - outUsd) / inUsd) * 10_000) : 0,
+          costBps: costBps ?? 0,
           against: reference ? 'reference' : 'pool_mid',
           venue: `Uniswap v4 (fee ${pools.fee}) through Universal Router ${router ?? 'unset'}`,
         };
@@ -548,16 +554,36 @@ export function createEvmVaultAdapter(options: EvmVaultAdapterOptions): EvmVault
         builds();
         const a = input(OwnerSwapArgs, args, 'swap');
         const { vault, owner } = await ownedVault(a.vault);
-        for (const t of a.trades) {
-          const held = await balanceOf(tokenOf(t.sell), vault);
-          if (held < BigInt(t.amountInRaw))
+        // A sale that is over what the vault holds is refused before any quote is asked.
+        const sold = [...new Set(a.trades.map((t) => t.sell))];
+        const held = new Map(
+          await Promise.all(
+            sold.map(async (id) => [id, await balanceOf(tokenOf(id), vault)] as const),
+          ),
+        );
+        const short = (received: readonly bigint[]) => {
+          const at = firstShort(a.trades, held, received);
+          const t = at && a.trades[at.index];
+          if (at && t)
             refuse(
               'SpentTooMuch',
-              `vault ${vault} holds ${held} raw ${t.sell}, and the trade sells ${t.amountInRaw}`,
+              `vault ${vault} holds ${at.held} raw ${at.asset}${
+                at.index > 0 ? ' once the trades before it have run' : ''
+              }, and the trade sells ${t.amountInRaw}`,
             );
-        }
+        };
+        const first = a.trades[0];
+        if (first && (held.get(first.sell) ?? 0n) < BigInt(first.amountInRaw)) short([]);
         const deadline = (await blockTime()) + BigInt(DEADLINE_S);
-        const { swaps, minimums } = await swapsOf(a.trades, a.slippageBps, deadline, a.minimums);
+        const { swaps, minimums, quoted } = await swapsOf(
+          a.trades,
+          a.slippageBps,
+          deadline,
+          a.minimums,
+        );
+        // The swaps run in order: a trade may spend what the trades before it in this step bring in
+        // (the cash of a sale pays for the purchase after it), counted at the quote now.
+        short(quoted);
         return built({
           kind: 'swap',
           signer: owner,

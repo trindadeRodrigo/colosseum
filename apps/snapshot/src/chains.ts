@@ -61,6 +61,7 @@ export const ALSO_KNOWN: readonly string[] = [
   'KEEPER_DISCORD_WEBHOOK',
   'KEEPER_HEALTHCHECK_URL',
   'KEEPER_INTERVAL',
+  'KEEPER_POOL_FEEDS',
 ];
 
 /** Where a real chain's node comes from. A URL can carry a key: it is read as written, never printed. */

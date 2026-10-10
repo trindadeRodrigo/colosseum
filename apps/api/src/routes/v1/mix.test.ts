@@ -623,6 +623,65 @@ describe('POST /v1/vaults/{chain}/{address}/targets', () => {
     expect(ordered.order.owner.evm?.toLowerCase()).toBe(owner.toLowerCase());
   });
 
+  it('orders an EVM vault of one 18-decimal stock into another: an answer that validates, the sale written as a sale', async () => {
+    const s = await setup();
+    const entry = s.chains.get('robinhood');
+    const mock = entry.mock;
+    if (!mock) throw new Error('the test chain is the mock');
+    const owner = s.evmOnly.evm as Address;
+    mock.fund(owner, { gasRaw: '1000000000000000000', assets: { 'robinhood:usdc': '100000000' } });
+    // The new goal's review takes all of one stock, with its warnings.
+    const accepted = await s.confirm(
+      '/v1/conversations/robinhood/goal/accept',
+      goal({
+        origin: 'person',
+        risk: 'high',
+        amountUsd: 100,
+        allocations: [{ assetId: 'robinhood:tsla', weightBps: 10_000 }],
+      }),
+      s.evmOnly,
+    );
+    expect(accepted.statusCode, accepted.body).toBe(200);
+    expect(AcceptGoalMixResponse.parse(accepted.json()).status).toBe('stored');
+    await mock.send(
+      await entry.adapter.buildApprove({ owner, basketId: '13', amountRaw: '100000000' }),
+    );
+    await mock.send(
+      await entry.adapter.buildCreateVault({
+        owner,
+        basketId: '13',
+        targets: [{ asset: 'robinhood:tsla', weightBps: 10_000 }],
+        autoFollow: false,
+        depositRaw: '100000000',
+        trades: [{ sell: 'robinhood:usdc', buy: 'robinhood:tsla', amountInRaw: '100000000' }],
+        slippageBps: 100,
+      }),
+    );
+    const [vault] = await entry.adapter.getVaults(owner);
+    if (!vault) throw new Error('no vault');
+    const res = await s.confirm(
+      `/v1/vaults/robinhood/${vault.address}/targets`,
+      targets({ allocations: [{ assetId: 'robinhood:nvda', weightBps: 10_000 }] }),
+      s.evmOnly,
+    );
+    expect(res.statusCode, res.body).toBe(200);
+    // As it was sent: the response schema passed it, and no figure in it is Infinity or NaN.
+    expect(res.body).not.toMatch(/Infinity|NaN/);
+    const ordered = ApplyVaultMixResponse.parse(res.json());
+    if (ordered.status !== 'ordered') throw new Error(res.body);
+    const [, swap] = ordered.order.legs;
+    expect(ordered.order.legs.map((l) => l.kind)).toEqual(['set_targets', 'swap']);
+    expect(swap?.description).toBe('Sell TSLA for cash, Swap into NVDA');
+    expect(swap?.trades[0]).toEqual({
+      sell: 'robinhood:tsla',
+      buy: 'robinhood:usdc',
+      amountInRaw: vault.positions.find((p) => p.asset === 'robinhood:tsla')?.raw,
+    });
+    expect(swap?.trades[1]).toMatchObject({ sell: 'robinhood:usdc', buy: 'robinhood:nvda' });
+    expect(swap?.expected.map((e) => e.inRaw)).toEqual(swap?.trades.map((t) => t.amountInRaw));
+    for (const e of swap?.expected ?? []) expect(Number.isFinite(e.costBps)).toBe(true);
+  });
+
   it('refuses a vault worth more than one order may move, with a reason', async () => {
     const s = await setup();
     const entry = s.chains.get('solana');

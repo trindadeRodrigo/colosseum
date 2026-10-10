@@ -25,7 +25,9 @@ import {
 import { parseChainConfigs } from '@colosseum/schemas';
 import { lowGasFromEnv, notifierFromEnv } from './alerts';
 import { runKeeper, type Wired } from './keeper';
+import { keepRunning } from './loop';
 import { loadMemory, lockState, saveMemory } from './memory';
+import { PoolFeedsFile, watchRound } from './watch';
 
 // The keeper (DESIGN-VAULT 3.5, section 10): a worker with no HTTP listener, on one chain a process,
 // KEEPER_CHAIN=solana (the default) or robinhood.
@@ -34,7 +36,12 @@ import { loadMemory, lockState, saveMemory } from './memory';
 //   KEEPER_CHAIN=robinhood ROBINHOOD_RPC_URL=<46630 node> KEEPER_ROBINHOOD_KEY=<path> ... --once
 //   ... --loop [--interval 60]     a round every interval seconds, until stopped; a failed round is
 //                                  logged as `round-failed`, alerted, and retried after a back-off (loop.ts)
-//   ... --dry-run                  plans and builds, signs and sends nothing
+//   ... --dry-run                  plans and builds, signs and sends nothing; on EVM each vault's line
+//                                  carries the feed's price, the average and their distance per position
+//   KEEPER_CHAIN=robinhood CHAIN_NETWORK_ROBINHOOD=mainnet ROBINHOOD_RPC_URL=<4663 node> ... --dry-run
+//                                  mainnet, read only: no key and no deploy record; one line an asset
+//                                  with Chainlink's price, the pool's average and what the keeper's
+//                                  price check would decide (watch.ts). Without --dry-run it is refused.
 //
 // The network is CHAIN_NETWORK_SOLANA (testnet by default; mainnet is refused), and everything it acts
 // on comes from that network's deploy record (deployments/solana-<network>.json): the program, the
@@ -49,6 +56,9 @@ import { loadMemory, lockState, saveMemory } from './memory';
 // refuses to start.
 
 const DEPLOYMENTS = fileURLToPath(new URL('../../../deployments/', import.meta.url));
+const POOL_FEEDS = fileURLToPath(
+  new URL('../../../contracts/script/config/pool-feeds/', import.meta.url),
+);
 
 function args(argv: string[]) {
   const has = (flag: string) => argv.includes(flag);
@@ -63,6 +73,10 @@ function args(argv: string[]) {
 async function main() {
   const { loop, dryRun, interval } = args(process.argv.slice(2));
   const chain = process.env.KEEPER_CHAIN?.trim() || 'solana';
+  // Robinhood Chain mainnet: a dry run only, which reads prices and holds no key. Without --dry-run
+  // it falls through to `robinhood()`, which refuses mainnet as it always has.
+  if (chain === 'robinhood' && process.env.CHAIN_NETWORK_ROBINHOOD?.trim() === 'mainnet' && dryRun)
+    return watchMainnet({ loop, intervalMs: interval * 1000 });
   const wired =
     chain === 'robinhood' ? await robinhood() : chain === 'solana' ? await solana() : null;
   if (!wired) throw new Error(`KEEPER_CHAIN is solana or robinhood, not ${chain}`);
@@ -82,12 +96,60 @@ async function main() {
     memory,
     save: (m) => saveMemory(stateFile, m),
     notify: notifierFromEnv(process.env, { label: `keeper ${wired.network}` }),
-    hide: (text) =>
-      // A failed round's reason never carries a node's address: a private node's has its key in it.
-      (['SOLANA_RPC_URL', 'ROBINHOOD_RPC_URL'] as const).reduce((t, name) => {
-        const url = process.env[name]?.trim();
-        return url ? t.split(url).join(`<${name}>`) : t;
-      }, text),
+    hide: hideNodes,
+  });
+}
+
+const hideNodes = (text: string) =>
+  // A failed round's reason never carries a node's address: a private node's has its key in it.
+  (['SOLANA_RPC_URL', 'ROBINHOOD_RPC_URL'] as const).reduce((t, name) => {
+    const url = process.env[name]?.trim();
+    return url ? t.split(url).join(`<${name}>`) : t;
+  }, text);
+
+/**
+ * Robinhood Chain mainnet, `--dry-run` only: no deploy record, no key, no state file, nothing signed
+ * and nothing sent. Each round reads the Chainlink feed and the Uniswap v3 pool of every asset in the
+ * chain's pool-feed file (KEEPER_POOL_FEEDS, by default contracts/script/config/pool-feeds/4663.json)
+ * and prints one line an asset: the spot, the pool's average, their distance in bps, and why the
+ * keeper's price check would refuse (watch.ts). The session it holds them to is that file's `watch`
+ * section.
+ */
+async function watchMainnet(o: { loop: boolean; intervalMs: number }): Promise<void> {
+  const path = process.env.KEEPER_POOL_FEEDS?.trim() || `${POOL_FEEDS}4663.json`;
+  if (!existsSync(path)) throw new Error('no pool-feed file for Robinhood Chain mainnet');
+  const file = PoolFeedsFile.parse(JSON.parse(readFileSync(path, 'utf8')));
+  const url = process.env.ROBINHOOD_RPC_URL?.trim();
+  if (!url) throw new Error('ROBINHOOD_RPC_URL is not set');
+  const rpc = createEvmRpc(url);
+  const chainId = await rpc.getChainId();
+  if (chainId !== file.chainId)
+    throw new Error(
+      `the node answers chain ${chainId}, and the pool-feed file is for ${file.chainId}`,
+    );
+  const network = 'robinhood-mainnet';
+  const say = (fields: object) =>
+    console.log(
+      JSON.stringify({ at: new Date().toISOString(), network, mode: 'dry-run', ...fields }),
+    );
+  const notify = notifierFromEnv(process.env, { label: `keeper ${network} dry run` });
+  await keepRunning({
+    loop: o.loop,
+    intervalMs: o.intervalMs,
+    failed: async (f) => {
+      say({ ...f, reason: hideNodes(f.reason) });
+      await notify.ping(false);
+    },
+    round: async () => {
+      const lines = await watchRound({ rpc, file, log: say });
+      await notify.ping(true);
+      say({
+        round: 'done',
+        assets: lines.length,
+        wouldPass: lines.filter((l) => l.outcome === 'would-pass').length,
+        sent: 0,
+      });
+    },
   });
 }
 
@@ -99,7 +161,9 @@ async function main() {
 async function robinhood(): Promise<Wired> {
   const network = process.env.CHAIN_NETWORK_ROBINHOOD?.trim() || 'testnet';
   if (network !== 'testnet' && network !== 'local')
-    throw new Error('the keeper runs Robinhood Chain on its test network or a local copy only');
+    throw new Error(
+      'the keeper runs Robinhood Chain on its test network or a local copy only; on mainnet it reads prices with --dry-run and sends nothing',
+    );
   // 0.0005 ETH
   const low = lowGasFromEnv(process.env, 500_000_000_000_000n);
   const name = `robinhood-${network}`;

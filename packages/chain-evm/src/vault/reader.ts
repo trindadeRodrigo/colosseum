@@ -38,6 +38,7 @@ import {
   tradeRefusal,
 } from './keeper';
 import { dayOf, marketAt } from './market';
+import { type AverageRefusal, readPoolAverageFeed } from './pool-average';
 import { ask, type EvmRpc, isRevert } from './rpc';
 import { unlistedAssetId, unlistedToken } from './unlisted';
 
@@ -182,6 +183,11 @@ export type EvmKeeperPosition = {
   average: { usdPerToken: string; ageSeconds: number } | null;
   /** Why the contract would not value the asset now; while the vault holds any of it, no leg passes. */
   reference: ReferenceRefusal | null;
+  /**
+   * Where the asset's average is a pool-average feed and it gives no answer (the contract then says
+   * `AssetNotPriced`): why, and the pool's average where it could still be worked out. Null otherwise.
+   */
+  averageRefusal: { reason: AverageRefusal; poolAverage: string | null } | null;
   /** Why the asset itself cannot be traded now, though it can be valued. */
   trade: TradeRefusal | null;
   /** Unix seconds from which the cooldown allows a trade in the asset again; null when it never traded. */
@@ -849,6 +855,12 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
               onFactory(m, 'isAsset', [token]) as Promise<boolean>,
             ]);
             const lastKeeperAt = BigInt(p.lastKeeperAt ?? 0);
+            // An average that does not answer: a pool-average feed says why. A test network's written
+            // average has no `check`, and the extra read is made only when there is something to explain.
+            const refused =
+              average && feed && !averageRound
+                ? await readPoolAverageFeed(rpc, average, { block: m.block, ...overrides })
+                : null;
             return {
               asset: p.asset,
               token,
@@ -860,6 +872,13 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
               keeperOn: (a.flags & 1) === 1,
               price: seen(priceRound, a.feedDecimals),
               average: seen(averageRound, a.feedDecimals),
+              averageRefusal: refused?.reason
+                ? {
+                    reason: refused.reason,
+                    poolAverage:
+                      refused.average > 0n ? fromScaled(refused.average, a.feedDecimals) : null,
+                  }
+                : null,
               reference: referenceOf(
                 {
                   source: a.source,

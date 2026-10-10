@@ -32,7 +32,50 @@ export type VaultLine = {
   txIds: string[];
   /** Something a person should look at. */
   alert: boolean;
+  /**
+   * A dry run on a chain that prices each asset by a feed and an average (EVM): what the vault would
+   * value each position at, so a dry run records both sources and how far apart they are.
+   */
+  prices?: PositionPrices[];
 };
+
+/** One position's two prices as a keeper leg would find them. */
+export type PositionPrices = {
+  asset: string;
+  /** The feed's price (Chainlink), dollars for one token; null when it does not answer. */
+  spot: string | null;
+  /** The average (the pool's, where the average is a pool-average feed); null when there is none. */
+  average: string | null;
+  /** How far the spot is from the average, in bps of the average. */
+  gapBps: number | null;
+  /** Why the average's feed gives no answer; null when it answers. */
+  feedRefusal: string | null;
+  /** Why the vault would not value the asset now, by its own error; null when it would. */
+  reference: string | null;
+};
+
+/** The two prices of every position that carries them: none on a chain that prices from one account. */
+export function positionPrices(ctx: KeeperView): PositionPrices[] | undefined {
+  const rows = ctx.positions
+    .filter((p) => p.price !== undefined)
+    .map((p): PositionPrices => {
+      const spot = p.price?.usdPerToken ?? null;
+      const average = p.average?.usdPerToken ?? p.averageRefusal?.poolAverage ?? null;
+      const gap =
+        spot !== null && average !== null && Number(average) > 0
+          ? Math.round((Math.abs(Number(spot) - Number(average)) / Number(average)) * 100_000) / 10
+          : null;
+      return {
+        asset: p.asset,
+        spot,
+        average,
+        gapBps: gap,
+        feedRefusal: p.averageRefusal?.reason ?? null,
+        reference: p.reference,
+      };
+    });
+  return rows.length ? rows : undefined;
+}
 
 export type KeeperOptions = {
   adapter: KeeperAdapter;
@@ -201,6 +244,7 @@ export async function runRound(
     let synced = false;
     let alert = false;
     let budget = '';
+    let seen: PositionPrices[] | undefined;
     const line = (outcome: Outcome, reason: string, raise = false) => {
       const l: VaultLine = {
         vault,
@@ -209,6 +253,7 @@ export async function runRound(
         reason: hide([...did, reason].join('; ') + budget),
         txIds,
         alert: alert || raise,
+        ...(seen ? { prices: seen } : {}),
       };
       lines.push(l);
       log(l);
@@ -246,6 +291,7 @@ export async function runRound(
         continue;
       }
       await forgetOtherVersions(ctx.vault.acceptedVersion);
+      if (o.dryRun) seen = positionPrices(ctx);
       // Past half the loss budget, every line for the vault is an alert.
       if (ctx.rules.lossCapBps > 0 && ctx.vault.lossUsedBps * 2 >= ctx.rules.lossCapBps) {
         alert = true;

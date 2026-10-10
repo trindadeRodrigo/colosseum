@@ -43,6 +43,7 @@ import type { PlanInputs } from '../../orders/personalize';
 import { type RelaxedGoalAgent, relaxedGoalAgentFromEnv } from '../../orders/relaxed-goal-agent';
 import type { AgentAnalytics } from '../../orders/vault-agent';
 import { authFromEnv, enforceSignIn, identify, type TokenIssuer } from '../../plugins/auth';
+import { refuseNonFinite } from '../../plugins/finite';
 import { type Limits, registerLimits, requireDeclared } from '../../plugins/limits';
 import { loggable } from '../../plugins/loggable';
 import {
@@ -250,6 +251,8 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
     identify(scope, issuer);
     registerLimits(scope, { limits: deps.limits, now: deps.now });
     enforceSignIn(scope);
+    // No answer of /v1 carries Infinity or NaN: it is refused here, where the route is known.
+    refuseNonFinite(scope);
     scope.setErrorHandler((err, req, reply) => {
       const refusal =
         err instanceof Refusal

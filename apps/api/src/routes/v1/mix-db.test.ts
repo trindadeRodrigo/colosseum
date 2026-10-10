@@ -1,5 +1,10 @@
 import { orders, proposals, users } from '@colosseum/db';
-import { AcceptGoalMixResponse, ApplyVaultMixResponse } from '@colosseum/schemas';
+import {
+  AcceptGoalMixResponse,
+  ApplyVaultMixResponse,
+  BuildLegResponse,
+  ChainError,
+} from '@colosseum/schemas';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -41,11 +46,12 @@ describe.skipIf(!DB)('a mix, stored and bought, and a vault retargeted, in the d
     for (const step of undo.reverse()) await step();
   });
 
-  const { post, put, fund, order, settleAll, read } = orderFlow({
-    app: () => app,
-    registry: () => registry,
-    plans: () => ({ solana: '', robinhood: '' }),
-  });
+  const { post, put, fund, order, settleAll, read, build, land, report, legUrl, attemptsOf } =
+    orderFlow({
+      app: () => app,
+      registry: () => registry,
+      plans: () => ({ solana: '', robinhood: '' }),
+    });
 
   it('stores the mix, buys it by its id, then orders and settles new targets for its vault', async () => {
     const who = data.track(await person(issuer, 'solana'));
@@ -179,5 +185,115 @@ describe.skipIf(!DB)('a mix, stored and bought, and a vault retargeted, in the d
         ['solana:gold', 4000],
       ]),
     );
+  });
+
+  it('on an EVM chain: a vault of one stock retargeted to another, step by step through the routes, and tried again after a refusal', async () => {
+    const who = data.track(await person(issuer, 'robinhood'));
+    expect((await put(who, '/v1/me/chain', { chain: 'robinhood' })).statusCode).toBe(200);
+    await fund(who);
+    const lines = (assetId: string) => ({
+      version: 1,
+      language: 'en',
+      allocations: [{ assetId, weightBps: 10_000 }],
+      confirm: false,
+      acceptedWarnings: [],
+    });
+    // A vault that holds all TSLA (18 decimals on this chain) and no cash.
+    const accept = {
+      ...lines('robinhood:tsla'),
+      origin: 'person',
+      goal: 'grow',
+      risk: 'high',
+      amountUsd: 100,
+    };
+    const url = '/v1/conversations/robinhood/goal/accept';
+    const seen = AcceptGoalMixResponse.parse((await post(who, url, accept)).json());
+    const res = await post(who, url, {
+      ...accept,
+      confirm: true,
+      reviewHash: seen.review.reviewHash,
+      acceptedWarnings: seen.review.unconfirmed,
+    });
+    const stored = AcceptGoalMixResponse.parse(res.json());
+    if (stored.status !== 'stored') throw new Error(res.body);
+    await settleAll(who, await order(who, { proposalId: stored.proposalId, amountUsd: 100 }));
+    const adapter = registry.get('robinhood').adapter;
+    const [vault] = await adapter.getVaults(who.evm);
+    if (!vault) throw new Error('the deposit opened no vault');
+    expect(vault.cash.raw).toBe('0');
+    const held = vault.positions.find((p) => p.asset === 'robinhood:tsla')?.raw;
+
+    // New targets: all of another stock.
+    const targetsUrl = `/v1/vaults/robinhood/${vault.address}/targets`;
+    const body = { ...lines('robinhood:nvda'), origin: 'person' };
+    const review = ApplyVaultMixResponse.parse((await post(who, targetsUrl, body)).json());
+    const placed = await post(who, targetsUrl, {
+      ...body,
+      confirm: true,
+      reviewHash: review.review.reviewHash,
+      acceptedWarnings: review.review.unconfirmed,
+    });
+    // No number that is not finite in the answer as it was sent, before any schema reads it.
+    expect(placed.body).not.toMatch(/Infinity|NaN/);
+    const ordered = ApplyVaultMixResponse.parse(placed.json());
+    if (ordered.status !== 'ordered') throw new Error(placed.body);
+    const [targets, swap] = ordered.order.legs;
+    if (!targets || !swap) throw new Error('the order has two steps');
+    expect(ordered.order.legs.map((l) => l.kind)).toEqual(['set_targets', 'swap']);
+    // The sale is a sale: the stock in, in its own raw units, for cash; then cash for the other stock.
+    expect(swap.trades[0]).toEqual({
+      sell: 'robinhood:tsla',
+      buy: 'robinhood:usdc',
+      amountInRaw: held,
+    });
+    expect(swap.trades[1]).toMatchObject({ sell: 'robinhood:usdc', buy: 'robinhood:nvda' });
+    for (const e of swap.expected) expect(Number.isFinite(e.costBps)).toBe(true);
+
+    // Step 1 lands.
+    await build(who, ordered.order, targets.id);
+    await report(who, ordered.order, targets.id, {
+      txId: await land(who, ordered.order, targets.id),
+    });
+
+    // Step 2 is refused by the chain once (as the EVM adapter refused it on Oct 9): a 409 the person
+    // can try again, and step 1 stays as it landed.
+    const refusedOnce = vi
+      .spyOn(adapter, 'buildOwnerSwap')
+      .mockRejectedValueOnce(
+        new ChainError('SpentTooMuch', 'the vault holds less than the trade sells'),
+      );
+    const refused = await post(who, legUrl(ordered.order, swap.id, 'build'));
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().details).toMatchObject({ chainCode: 'SpentTooMuch' });
+    refusedOnce.mockRestore();
+    const stopped = await read(who, ordered.order);
+    expect(stopped.legs.map((l) => l.status)).toEqual(['confirmed', 'planned']);
+
+    // "Try again": the same order at step 2. Step 1 is not built again.
+    const again = await post(who, legUrl(ordered.order, targets.id, 'build'));
+    expect(again.statusCode).toBe(409);
+    const built = await post(who, legUrl(ordered.order, swap.id, 'build'));
+    expect(built.statusCode, built.body).toBe(200);
+    expect(built.body).not.toMatch(/Infinity|NaN/);
+    const { tx } = BuildLegResponse.parse(built.json());
+    // The bytes hold each trade to what the order stated: the asset sold, its amount, the least out.
+    expect(tx.preview.minimums).toEqual(
+      swap.trades.map((t, i) => ({
+        sell: t.sell,
+        buy: t.buy,
+        inRaw: t.amountInRaw,
+        minOutRaw: swap.expected[i]?.minOutRaw,
+      })),
+    );
+    const done = await report(who, ordered.order, swap.id, {
+      txId: await land(who, ordered.order, swap.id),
+    });
+    expect(done.status).toBe('done');
+    expect(attemptsOf(done, targets.id)).toEqual([[1, 'confirmed']]);
+    const after = await adapter.getVault(vault.address);
+    expect(after?.positions.find((p) => p.asset === 'robinhood:tsla')?.raw ?? '0').toBe('0');
+    expect(
+      BigInt(after?.positions.find((p) => p.asset === 'robinhood:nvda')?.raw ?? '0'),
+    ).toBeGreaterThan(0n);
   });
 });

@@ -4,6 +4,7 @@ import {
   type ChainId,
   chainFamily,
   type Leg,
+  type Price,
   type Principal,
   parseChainConfigs,
   parseFlags,
@@ -249,14 +250,21 @@ describe.each(CHAINS)('a withdrawal on %s', (chain) => {
   });
 
   it('values a token at the chain’s reference price as it is ordered, to the cent and never above, and gives no value where there is no price', async () => {
-    const [price] = await w.entry.adapter.getPrices([w.spy]);
-    if (!price) throw new Error('no price');
     const raw = (await inVault(w, w.spy)) / 3n;
     const request: WithdrawRequest = {
       ...everything(w),
       withdrawals: [{ asset: w.spy, amountRaw: raw.toString() }],
     };
+    // The price the plan itself read: a second read is stamped with its own second, so the stamp
+    // is held to the read the value came from.
+    const reads = vi.spyOn(w.entry.adapter, 'getPrices');
     const plan = await planWithdraw(request, { principal: w.me, chains: w.chains });
+    expect(reads).toHaveBeenCalledTimes(1);
+    expect(reads).toHaveBeenCalledWith([w.spy]);
+    const [price] = ((await reads.mock.results[0]?.value) ?? []) as Price[];
+    reads.mockRestore();
+    if (!price) throw new Error('no price');
+    expect(price.asset).toBe(w.spy);
     const valued = plan.steps.flatMap((s) => s.withdrawals ?? [])[0]?.valued;
     const decimals = (await w.entry.adapter.listAssets()).find((a) => a.id === w.spy)?.decimals;
     const exact = (Number(raw) / 10 ** (decimals ?? 0)) * Number(price.usdPerToken);
