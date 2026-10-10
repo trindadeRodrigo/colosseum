@@ -1,0 +1,37 @@
+{
+  "todo": "An example of the shape, deployed nowhere. Every address below is a placeholder. Copy it to robinhood-mainnet.json after the deploy, fill every value from the deploy's output, have a person confirm each, and remove this note: pnpm ops:authority-check refuses a record that still holds it, or the zero address where a mainnet needs one.",
+  "network": "robinhood-mainnet",
+  "chain": "robinhood",
+  "provenance": "live",
+  "evmChainId": 4663,
+  "deployBlock": 0,
+  "contracts": {
+    "factory": "0x0000000000000000000000000000000000000000",
+    "registry": "0x0000000000000000000000000000000000000000",
+    "beacon": "0x0000000000000000000000000000000000000000",
+    "vaultLogic": "0x0000000000000000000000000000000000000000",
+    "factoryLogic": "0x0000000000000000000000000000000000000000",
+    "registryLogic": "0x0000000000000000000000000000000000000000"
+  },
+  "roles": {
+    "admin": "0x0000000000000000000000000000000000000000",
+    "guardian": "0x0000000000000000000000000000000000000000",
+    "keeper": "0x0000000000000000000000000000000000000000"
+  },
+  "timelock": {
+    "address": "0x0000000000000000000000000000000000000000",
+    "minDelay": 172800,
+    "proposers": ["0x0000000000000000000000000000000000000000"],
+    "cancellers": ["0x0000000000000000000000000000000000000000"],
+    "executors": ["0x0000000000000000000000000000000000000000"]
+  },
+  "expected": {
+    "launched": false,
+    "publishDelay": 172800,
+    "keeperEnabled": false,
+    "depositCaps": {
+      "perVault": "10000000000",
+      "total": "10000000000"
+    }
+  }
+}
