@@ -83,7 +83,7 @@ export function registerGoalConversationReplyRoute(
         tags: ['plans'],
         summary: 'Discuss a new goal and preview model-proposed allocations',
         description:
-          'Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. The relaxed intake answers when a model key is set, unless the server runs with `GOAL_AGENT=model-led`, which chooses the model-led conversation; `agent` says which wrote the reply. Either draws on the shared call quota, sets weights in code from the shares the server reads in the messages (an equal split otherwise), and serves no sentence of the model that states a figure. A preview is not a plan: the amount is confirmed on the review of `POST /v1/conversations/{chain}/goal/accept` before anything is stored. No goal is stored for a new goal yet and none is taken from the request, so no pick is checked against one here and `proposal.unknowns` says so: `goal/accept` checks the mix against the goal the person said, or, where they said none, the one it works out from the mix and names (gate DEPOSIT-DERIVE).',
+          'Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. The relaxed intake answers when a model key is set, unless the server runs with `GOAL_AGENT=model-led`, which chooses the model-led conversation; `agent` says which wrote the reply. Either draws on the shared call quota, sets weights in code from the shares the server reads in the messages (an equal split otherwise), and serves no sentence of the model that states a figure. The one figure the relaxed intake states is a measured one it names by reference (gate RELAXED-INTAKE as amended, with the rules of FIGURES-BY-REFERENCE): the server writes the value in `message`, and `figures` is then present, with `figures.prose.message` the same words with each figure a `{{fact:<id>}}` placeholder and `figures.facts` what each one is, with its source, fetchedAt, method and provenance; a figure that is not measured has a null value and says so. The figures are of listed assets only (price, cost to sell, the largest sale within the cost tolerance, traded volume, volatility, drawdown, yield): there is no vault yet, so none is of a person. The model-led conversation states none. A preview is not a plan: the amount is confirmed on the review of `POST /v1/conversations/{chain}/goal/accept` before anything is stored. No goal is stored for a new goal yet and none is taken from the request, so no pick is checked against one here and `proposal.unknowns` says so: `goal/accept` checks the mix against the goal the person said, or, where they said none, the one it works out from the mix and names (gate DEPOSIT-DERIVE).',
         params: z.strictObject({ chain: ChainId }),
         body: VaultAgentRequest,
         response: {
@@ -192,7 +192,14 @@ export function registerGoalConversationReplyRoute(
             ? 'the new-goal conversation reply passed on its repair attempt'
             : 'the new-goal conversation reply asks about a stated limit its repair attempt still missed',
         );
-      // Read from the person's messages alone: the same whichever model attempt is served.
+      if (result.figures)
+        // Counts only: never an id, a value, the person's words or the model's reply.
+        req.log.info(
+          { figures: result.figures, chain },
+          'the new-goal conversation reply stated figures by reference',
+        );
+      // Read from the person's messages alone, never from a reply's figures: the same whichever
+      // model attempt is served.
       return {
         ...result.reply,
         chain,

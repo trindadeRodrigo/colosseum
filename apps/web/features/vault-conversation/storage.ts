@@ -7,7 +7,7 @@ import {
 } from '@colosseum/schemas';
 import type { ApiFetch } from '../account/person';
 import { networkFor } from '../order/readiness';
-import { type Figured, factsOf, figuredOf } from './agent';
+import { type Figure, type Figured, factsOf, figuredOf, referencesIn } from './agent';
 import { CONVERSATION_PREFIX } from './forget';
 
 /**
@@ -78,6 +78,27 @@ export function withinFigureBudget(turns: Turn[], said: string): Turn[] {
       rows[at] = { id: row.id, who: row.who, text: withoutFigures(row.figures.template, said) };
   }
   return rows;
+}
+
+/**
+ * A reply as it is kept: `text`, and with it the figures it stated as they were served, `template`
+ * holding each figure's place. Read again later it shows what was measured then, never today's.
+ * Figures that cannot be kept are never kept as bare values: their places say `notKept`.
+ */
+export function keptReply(
+  text: string,
+  template: string,
+  facts: readonly Figure[],
+  notKept: string,
+): Turn {
+  const figures = template.length <= 8000 ? figuredOf(template, facts) : undefined;
+  const stated = referencesIn(template).length > 0;
+  return {
+    id: crypto.randomUUID(),
+    who: 'app',
+    text: stated && !figures ? withoutFigures(template, notKept) : text,
+    ...(figures ? { figures } : {}),
+  };
 }
 
 /** A row's kept figures: its template and the facts it names, or null when they are not that. */

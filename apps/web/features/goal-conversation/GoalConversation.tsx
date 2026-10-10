@@ -27,12 +27,16 @@ import {
   VaultAgentError,
   type VaultStrategyPreview,
 } from '../vault-conversation/agent';
+import { FiguredText } from '../vault-conversation/Figures';
 import { StrategyPreview, WeightNotes } from '../vault-conversation/StrategyPreview';
 import {
   conversationNetwork,
+  keptReply,
+  plainText,
   readLocal,
   type Turn,
   transcriptOf,
+  withinFigureBudget,
   writeLocal,
 } from '../vault-conversation/storage';
 import { useApiFetch } from '../wallet/WalletProvider';
@@ -119,6 +123,16 @@ export function GoalConversation({
   const box = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLOListElement>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
+  // The reader's clock, read when the messages change and once a minute after: a figure kept with a
+  // reply says how old it is by it (gate FIGURES-BY-REFERENCE).
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    if (turns.length > 0) setNow(Date.now());
+  }, [turns]);
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(tick);
+  }, []);
   const [text, setText] = useState(() =>
     carried?.current && carried.current.chain === chain ? carried.current.text : '',
   );
@@ -343,13 +357,17 @@ export function GoalConversation({
     try {
       const result = await goalAgent(requestApi.current, chain, lang, next, controller.signal);
       if (!active()) return;
-      const completed = [
+      // A reply that stated figures is kept with them as served (`keptReply`): its words with each
+      // figure's place held, and what each figure was then.
+      const prose = result.figures?.prose;
+      let completed: Turn[] = [
         ...next,
-        {
-          id: crypto.randomUUID(),
-          who: 'app' as const,
-          text: replyText(result.message, result.question),
-        },
+        keptReply(
+          replyText(plainText(result.message), result.question),
+          prose ? replyText(plainText(prose.message), prose.question) : result.message,
+          result.figures?.facts ?? [],
+          t.shared.vault.conversation.figureNotKept,
+        ),
       ];
       if (result.proposal) {
         let chunk = t.shared.vault.conversation.draftIntro;
@@ -368,6 +386,8 @@ export function GoalConversation({
         }
         completed.push({ id: crypto.randomUUID(), who: 'app', text: chunk });
       }
+      // past what is kept of figures the oldest replies give theirs up, and say so in their places
+      completed = withinFigureBudget(completed, t.shared.vault.conversation.figureNotKept);
       if (!transcriptOf({ revision: 0, transcript: completed })) {
         setAnnounced('');
         setError(copy.capacity);
@@ -514,6 +534,9 @@ export function GoalConversation({
                   </summary>
                   <p className="pt-2 text-caption">{turn.text}</p>
                 </details>
+              ) : turn.figures ? (
+                // each figure drawn with its pin, as the vault's conversation draws it
+                <FiguredText {...turn.figures} now={now} />
               ) : (
                 turn.text
               )}

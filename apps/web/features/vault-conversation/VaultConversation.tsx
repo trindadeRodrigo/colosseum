@@ -18,8 +18,6 @@ import { DraftBuilding, PendingReply, ReplyAnnouncer, useChatScroll } from '../s
 import { useApiFetch } from '../wallet/WalletProvider';
 import {
   agentReplyOf,
-  figuredOf,
-  referencesIn,
   replyText,
   type VaultAgent,
   VaultAgentError,
@@ -31,13 +29,13 @@ import { StrategyPreview, WeightNotes } from './StrategyPreview';
 import {
   conversationKey,
   conversationNetwork,
+  keptReply,
   plainText,
   readLocal,
   serverConversation,
   type Turn,
   transcriptOf,
   withinFigureBudget,
-  withoutFigures,
   writeLocal,
 } from './storage';
 
@@ -269,17 +267,8 @@ export function VaultConversation({
       // A reply that stated figures is kept with them as served: its words with each figure's place
       // held, and what each figure was then. Read again later, it shows that, never today's.
       const facts = result.figures?.facts ?? [];
-      const kept = (text: string, template: string): Turn => {
-        const figures = template.length <= 8000 ? figuredOf(template, facts) : undefined;
-        // Figures that cannot be kept are never kept as bare values: their places say so.
-        const stated = referencesIn(template).length > 0;
-        return {
-          id: crypto.randomUUID(),
-          who: 'app',
-          text: stated && !figures ? withoutFigures(template, copy.figureNotKept) : text,
-          ...(figures ? { figures } : {}),
-        };
-      };
+      const kept = (text: string, template: string): Turn =>
+        keptReply(text, template, facts, copy.figureNotKept);
       const prose = result.figures?.prose;
       let completed = [
         ...next,
