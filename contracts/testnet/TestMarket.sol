@@ -5,6 +5,7 @@ import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {TestnetOnly} from "./TestnetOnly.sol";
 
 /// A Uniswap v4 pool's key. `Currency` and `IHooks` are addresses in the ABI.
 struct PoolKey {
@@ -63,7 +64,7 @@ interface ITestTokenSupply {
 ///
 /// A real token's pool is never re-centred: this is how a test exchange follows a copied price, as the
 /// Solana test exchange pays at the test price (TNET-4).
-contract TestMarket is Ownable2Step {
+contract TestMarket is TestnetOnly, Ownable2Step {
     using SafeCast for uint256;
 
     /// v4-core's `TickMath` bounds.

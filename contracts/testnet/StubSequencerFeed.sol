@@ -2,6 +2,7 @@
 pragma solidity 0.8.37;
 
 import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {TestnetOnly} from "./TestnetOnly.sol";
 
 /// TEST NETWORK ONLY. A stand-in for Chainlink's L2 sequencer uptime feed, which no test network has
 /// (docs/vault/research/test-networks.md, Base Sepolia). It answers as the real one does: `answer` 0 while
@@ -9,7 +10,7 @@ import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step
 /// flips it, so the vault's check (up, and for at least an hour) can be seen to run on a test network.
 ///
 /// Base only: Robinhood Chain has no sequencer feed and its config names none.
-contract StubSequencerFeed is Ownable2Step {
+contract StubSequencerFeed is TestnetOnly, Ownable2Step {
     uint8 public constant decimals = 0;
     string public constant description = "L2 Sequencer Uptime Status Feed (test network stub)";
     uint256 public constant version = 1;

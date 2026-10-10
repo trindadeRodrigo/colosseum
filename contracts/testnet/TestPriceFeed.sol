@@ -2,6 +2,7 @@
 pragma solidity 0.8.37;
 
 import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {TestnetOnly} from "./TestnetOnly.sol";
 
 /// TEST NETWORK ONLY. A price contract with Chainlink's aggregator interface (`decimals`, `description`,
 /// `version`, `latestRoundData`, `getRoundData`), whose rounds are written by one price writer the owner
@@ -15,7 +16,7 @@ import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step
 ///   - a time newer than the round before, so a round is never replaced by an older one;
 ///   - a time at most `MAX_AHEAD` past the chain's clock.
 /// `startedAt` is the round's `updatedAt`, and `answeredInRound` its id, as Chainlink's feeds answer today.
-contract TestPriceFeed is Ownable2Step {
+contract TestPriceFeed is TestnetOnly, Ownable2Step {
     /// How far past the chain's clock a round may be stamped: the source chain's clock and this one's differ
     /// by a few seconds.
     uint256 public constant MAX_AHEAD = 60;
