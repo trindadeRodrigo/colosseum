@@ -1194,10 +1194,17 @@ async function solanaFetch(kind: 'swaps' | 'mints') {
         windows.push([Math.max(d90, end - passDays * DAY + 1), end]);
       const lastSig = new Map<string, string | undefined>();
       let piecesDone = 0;
-      // pools fetched `--pool-parallel` at a time (default 6), each pool's days in order
+      // pools fetched `--pool-parallel` at a time (default 6). With --no-barrier each slot walks one pool through
+      // every pass, newest first, the pools busiest first by the count's own figures, so a pool that holds a
+      // quarter of the scope (JTO/SOL, about 1.6M signatures a day) starts at once and no slot waits for it at a
+      // pass's end (found 2026-10-13: the passes' barrier left most slots idle behind one pool). Without it, the
+      // passes as before: every pool's week, then the week before.
       const poolParallel = Number(opt('--pool-parallel') ?? 6);
-      for (const [i, [from, to]] of windows.entries()) {
-        await pool(passScope.subjects, poolParallel, async (p) => {
+      const walkPool = async (
+        p: (typeof passScope.subjects)[number],
+        ws: Array<[number, [number, number]]>,
+      ) => {
+        for (const [i, [from, to]] of ws) {
           const before = lastSig.get(p.address);
           const r = await solanaPieces({
             kind,
@@ -1219,15 +1226,41 @@ async function solanaFetch(kind: 'swaps' | 'mints') {
             piecesDone,
             writtenBytes: written.bytes,
           });
-        });
-        log({
-          event: 'pass_done',
-          pass: i + 1,
-          of: windows.length,
-          from: new Date(from * 1000).toISOString(),
-          writtenBytes: written.bytes,
-        });
-      }
+        }
+      };
+      if (has('--no-barrier')) {
+        const countFile = newestCount(
+          join(OUT, 'solana', kind === 'swaps' ? 'solana-swaps' : 'solana-mints'),
+          passScope.key,
+        )?.file;
+        const per = countFile
+          ? ((
+              JSON.parse(readFileSync(countFile, 'utf8')) as {
+                perSubject?: Array<{ address: string; sigs90?: number }>;
+              }
+            ).perSubject ?? [])
+          : [];
+        const sigsOf = new Map(per.map((x) => [x.address, x.sigs90 ?? 0]));
+        const order = [...passScope.subjects].sort(
+          (a, b) => (sigsOf.get(b.address) ?? 0) - (sigsOf.get(a.address) ?? 0),
+        );
+        await pool(order, poolParallel, (p) =>
+          walkPool(
+            p,
+            windows.map((w, i) => [i, w] as [number, [number, number]]),
+          ),
+        );
+      } else
+        for (const [i, w] of windows.entries()) {
+          await pool(passScope.subjects, poolParallel, (p) => walkPool(p, [[i, w]]));
+          log({
+            event: 'pass_done',
+            pass: i + 1,
+            of: windows.length,
+            from: new Date(w[0] * 1000).toISOString(),
+            writtenBytes: written.bytes,
+          });
+        }
       return finish({
         subjects: passScope.subjects.length,
         passes: windows.length,
