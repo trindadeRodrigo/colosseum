@@ -160,20 +160,6 @@ The tokens, the roles and the parameters are in the same files.
 - `security.yml`, on every pull request and weekly: gitleaks, `pnpm audit --prod` and cargo-deny. The advisories accepted for now are in [`docs/vault/SECURITY-DEPS.md`](docs/vault/SECURITY-DEPS.md).
 - Every task has a row with its evidence in [`docs/vault/STATE-VAULT.md`](docs/vault/STATE-VAULT.md), and every decision a row in [`docs/GATES.md`](docs/GATES.md).
 
-## Not done, and known limits
-
-- Nothing has been deposited on mainnet. The Robinhood Chain deployment has held no vault and run no trade, so its money path is proven by tests and by a copy of the chain, not by use (gates `SPEND`, `SPEND-FIRST-MAINNET-DEPOSIT`).
-- The snapshot worker refuses a mainnet chain, so a vault on Robinhood Chain mainnet gets no stored snapshots yet: portfolio totals and history are devnet only, and a vault's own page reads the chain (`tests/snapshot/start.test.ts`, gate `APP-MAINNET-BESIDE-TESTNET`).
-- Solana is on devnet only. The stock tokens, Jupiter's liquidity and the price feeds do not exist there, so test tokens, a test exchange and copied prices stand in for them. The handling of the real ones is tested on copies of mainnet (gate `SHOW`).
-- The vault program and the contracts are unaudited, and the team can change the code: on Solana devnet with one key, on Robinhood Chain mainnet through the Safe and the 48-hour timelock. The stock tokens there are proxies their issuer can upgrade, and USDG can be frozen by its issuer. The app says all of it before a first deposit (`TRUST_STATUS` in `packages/schemas`).
-- The keeper and auto-follow are built and tested but switched off on the hosted API (`KEEPER_ENABLED`, `AUTO_FOLLOW_<CHAIN>`). Rebalancing there is the person's own press.
-- No estimate of the odds of reaching a goal. A plan shows a status with its method and date, never a probability (ledger row `ENG-1`).
-- Plans are in US dollars, and the app is English only (gates `USD-ONLY`, `ENGLISH-ONLY`).
-- The security rows `SEC-1` to `SEC-4` are not closed. The authority check passes against the mainnet record, and [`docs/vault/SECURITY.md`](docs/vault/SECURITY.md) says who can do what; still missing are the hostile-case matrix by test for both chains, static analysis, a rehearsal on a live network, and the dependency overrides.
-- Branch protection on `main` and `staging` is not set (ledger row `ORG-5`).
-- The MCP server has not been checked against the hosted API (ledger row `AGT-3`).
-- The product is not for people in the United States. The notice before a first deposit says so; there is no location block. Stock tokens can also be paused or frozen by their issuers.
-
 ## Disclaimer
 
 This tool is not licensed investment advice. It structures and explains an allocation from a goal you state; the decision and custody are yours. The distributor embedding this tool holds the client relationship.
