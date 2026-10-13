@@ -141,11 +141,13 @@ export function toOklch({ r, g, b }: Rgb): Oklch {
 /**
  * The rule for "no blue or violet" (STYLE.md, rule 6), as a number. A colour is one when its hue, in
  * OKLCH, lies between 200° and 330° (cyan-blue through blue, indigo, violet and purple to magenta)
- * and it has any tint to speak of: a chroma of 0.008 or more. The brand's own colours sit between
- * 4° (madder) and 142° (forest), so nothing of ours comes near. The chroma floor lets a true grey
- * through and catches a cool grey: Tailwind's gray-300 (0.011) is flagged, its gray-200 (0.006) not.
+ * and it has a tint to speak of: a chroma of 0.03 or more. The grounds of IDENTITY-2 are cool greys
+ * with a trace of blue on purpose (night #0C0D12 is 0.011, line-2 #363B4B 0.029, the most), so a cool
+ * grey passes and a blue does not: a pale sky blue (#CAE3F4, 0.035) is caught. Chalk (#78B4E8 /
+ * #2A73B0, 0.10 to 0.12) is a blue by this rule, and is allowed only by name, as a line
+ * (test/forbidden.ts, CHALK).
  */
-export const BLUE = { from: 200, to: 330, chroma: 0.008 } as const;
+export const BLUE = { from: 200, to: 330, chroma: 0.03 } as const;
 
 export function isBlueOrViolet(color: Rgb): boolean {
   if (color.a === 0) return false;

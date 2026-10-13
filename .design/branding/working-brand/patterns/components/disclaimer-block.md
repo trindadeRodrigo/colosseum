@@ -1,14 +1,14 @@
 # Disclaimer block
-> Type: custom | Component: `<Disclaimer>` | Text: `DISCLAIMER` from `@colosseum/schemas` (`packages/schemas/src/constants.ts`) | Replaces: footer micro-text in `app/layout.tsx`
+> Type: custom | Component: `<Disclaimer>` | Text: `DISCLAIMER` from `@colosseum/schemas` (`packages/schemas/src/constants.ts`) | Replaces: footer micro-text in `app/layout.tsx` | Revised 2026-10-08 (honey on night)
 
 The product is not licensed advice, and it says so in full, at body size, where the plan is. The text lives in one constant and is never typed, edited or paraphrased in UI code.
 
 ## Anatomy
 
 ```
-┌──────────────────────────────────────────────────────────────┐  1px --border box, 2px radius, 16px/24px padding, bg transparent
-│ Not advice                                                   │  Plex Sans 600 caption (optional heading, from the copy dictionary)
-│ This tool is not licensed investment advice. It structures   │  DISCLAIMER[language], Plex Sans 400 body (16px), --foreground
+┌──────────────────────────────────────────────────────────────┐  1px --border box, 10px radius, 16px/24px padding, bg transparent
+│ NOT LICENSED ADVICE                                          │  Inter 500 caption, 12px uppercase +0.04em, muted (optional heading, from the copy dictionary)
+│ This tool is not licensed investment advice. It structures   │  DISCLAIMER[language], Inter 400 body (16px), --foreground
 │ and explains an allocation from a goal you state; the        │  max 66ch
 │ decision and custody are yours. The distributor embedding    │
 │ this tool holds the client relationship.                     │
@@ -17,14 +17,14 @@ The product is not licensed advice, and it says so in full, at body size, where 
 
 - Renders `DISCLAIMER[lang]` where `lang` is the view's language (`pt` | `en`). If the view is bilingual, render both, each in its own `<p lang>`.
 - Body size: 1rem in app/docs, **≥ 1em** in the embed. Colour `--foreground` (not muted: it must be read).
-- Hairline box (`--border`), no fill, no icon (`Shield`, `Info` as a promise, warning triangles are banned), no pattern behind it.
+- Hairline box (`--border`, the card radius), no fill, no tint, no icon (`Shield`, `Info` as a promise, warning triangles are banned), no pattern or glow behind it.
 
 ## Placement
 
 | Surface | Where |
 |---|---|
 | Plan view (`/plans/[id]`) | **directly under the plan** (after allocation, schedule and exit plan, before activity) |
-| Embed | same position, inside the shell, ≥ 1em |
+| Embed | same position, inside the shell, ≥ 1em, partner radius |
 | API docs (`/docs`) | top of the reference section, and in the OpenAPI `info.description` (from the same constant) |
 | Landing showcase / simulator | once under the showcase section and once in the simulator panel, because they show plans |
 | Monitor | under the plan summary card |
@@ -43,12 +43,12 @@ None interactive. It is not collapsible, dismissible or hidden behind "Read more
 
 ## Accessibility
 
-`<aside aria-label="Disclaimer">` (or `role="note"`). Contrast ink 15.81 / washi 15.56. Language marked with `lang`.
+`<aside aria-label="Disclaimer">` (or `role="note"`). Contrast ink 16.57 on paper / text 17.2 on night. Language marked with `lang`.
 
 ## Do / don't
 
 | Do | Don't |
 |---|---|
 | `{DISCLAIMER[lang]}` verbatim, body size, under the plan | 12px grey footer text |
-| Hairline box | A warning-yellow banner, a shield icon |
+| Hairline box | A clay or madder banner, a honey tint, a shield icon |
 | Both languages when the view is bilingual | A paraphrase in a component |

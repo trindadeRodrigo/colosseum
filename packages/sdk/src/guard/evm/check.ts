@@ -1,16 +1,20 @@
 import { hexDecode, hexEncode, utf8Encode } from '../../bytes';
 import { sha256 } from '../../hash';
 import { type Context, isRawAmount, isUnlimited, reading, sameWeights, tradesOf } from '../context';
+import { familyTextHash } from '../meta';
 import { GuardRefusal } from '../refusal';
 import type { ApprovedTrade, EvmDeployment, Withdrawal } from '../types';
 import { type AbiValue, decodeArgs, parseSignature } from './abi';
-import { evmVaultAddress, planIdOf } from './addresses';
+import { evmIndexId, evmVaultAddress, planIdOf } from './addresses';
+import { readV4SingleSwap, type V4SingleSwap } from './route';
 import type { InterfaceTable } from './table';
 
-// An EVM transaction against the step. It is one call, with no value, to one of three contracts and no
-// other: the cash token for an approval, the factory for a create, the person's own vault for
-// everything else. The vault's address is derived here. The function is the step's, its arguments are
-// the step's, and a `multicall` is opened and every call inside it is held to the same rule.
+// An EVM transaction against the step. It is one call, with no value, to one of four contracts and no
+// other: the cash token for an approval, the factory for a create, the registry for a publish, the
+// person's own vault for everything else. The vault's address is derived here. The function is the step's, its arguments are
+// the step's, and a `multicall` is opened and every call inside it is held to the same rule. A call
+// that trades carries a deadline, and it is held to this guard's own clock. The call data each trade
+// hands its exchange is read too, and held to the one route the deployment states for that exchange.
 
 /** The most a transaction may state as its fee where the deployment sets no ceiling: 0.001 of the native token. */
 export const DEFAULT_EVM_FEE_WEI = 1_000_000_000_000_000n;
@@ -18,6 +22,12 @@ export const DEFAULT_EVM_FEE_WEI = 1_000_000_000_000_000n;
 export const DEFAULT_EVM_MAX_GAS = 5_000_000;
 /** How deep a `multicall` may hold another. */
 const MAX_DEPTH = 3;
+/**
+ * The longest a signed trade stays good: its deadline is in the future and at most this far off. The
+ * contracts refuse it after the deadline, so a signature that was never sent cannot land later at
+ * whatever the market then gives above its minimum.
+ */
+export const MAX_EVM_DEADLINE_S = 1_800;
 const ZERO32 = `0x${'0'.repeat(64)}`;
 
 const WEIGHTS = '(address,uint16)[]';
@@ -28,23 +38,26 @@ const FN = {
   createVault: ['VaultFactory', `createVault(bytes32,${WEIGHTS},bytes32,uint32,bool)`],
   createVaultAndBuy: [
     'VaultFactory',
-    `createVaultAndBuy(bytes32,${WEIGHTS},bytes32,uint32,bool,uint256,${SWAPS})`,
+    `createVaultAndBuy(bytes32,${WEIGHTS},bytes32,uint32,bool,uint256,${SWAPS},uint64)`,
   ],
   deposit: ['BasketVault', 'deposit(uint256)'],
-  ownerSwap: ['BasketVault', `ownerSwap(${SWAPS})`],
+  ownerSwap: ['BasketVault', `ownerSwap(${SWAPS},uint64)`],
   withdraw: ['BasketVault', 'withdraw(address,uint256)'],
   withdrawAll: ['BasketVault', 'withdrawAll()'],
   setTargets: ['BasketVault', `setTargets(${WEIGHTS})`],
   acceptVersion: ['BasketVault', 'acceptVersion(bytes32,uint32)'],
   setAutoFollow: ['BasketVault', 'setAutoFollow(bool)'],
   multicall: ['BasketVault', 'multicall(bytes[])'],
+  createIndex: ['IndexRegistry', `create(bytes32,${WEIGHTS},bytes32,uint16,uint8)`],
+  publishVersion: ['IndexRegistry', `publish(bytes32,${WEIGHTS},bytes32)`],
+  cancelPending: ['IndexRegistry', 'cancel(bytes32)'],
 } as const;
 type FnName = keyof typeof FN;
 export const GUARDED_EVM_FUNCTIONS: readonly (readonly [string, string])[] = Object.values(FN);
 
 type Atom =
   | { fn: 'deposit'; amount: bigint }
-  | { fn: 'swap'; swap: AbiValue[] }
+  | { fn: 'swap'; swap: AbiValue[]; deadline: bigint }
   | { fn: 'withdraw'; token: string; amount: bigint }
   | { fn: 'withdrawAll' }
   | { fn: 'setTargets'; weights: AbiValue[] }
@@ -88,6 +101,13 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
     return listed.token.toLowerCase();
   };
   const routers = deployment.routers.map((r) => r.toLowerCase());
+  const now = Math.floor(Date.now() / 1000);
+  const checkDeadline = (deadline: bigint) =>
+    need(
+      'deadline',
+      deadline > BigInt(now) && deadline <= BigInt(now + MAX_EVM_DEADLINE_S),
+      `a trade is good until ${deadline}, and it is ${now}: a deadline is ahead of the clock by at most ${MAX_EVM_DEADLINE_S} s`,
+    );
 
   const evm = tx.evm;
   const call = reading('the call', legId, () => {
@@ -121,19 +141,193 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
     `the transaction states ${call.gas ?? 'no'} gas and a fee of ${tx.preview.feeNativeRaw}, above the ${maxGas} gas or the ${maxFee} allowed`,
   );
 
-  const vault = reading('the owner', legId, () =>
-    evmVaultAddress(deployment, owner, step.basketId),
-  );
   const selector = `0x${hexEncode(call.data.slice(0, 4))}`;
   const body = call.data.slice(4);
 
-  const checkSwap = (swap: AbiValue[], trade: ApprovedTrade) => {
-    const [router, tokenIn, tokenOut, amountIn, minOut] = swap as [
+  if (step.kind === 'publish') {
+    // The creator's own shared portfolio of this family, through the deployment's registry: its id is
+    // derived from the owner and the family, never named. The text hash is worked out here from the
+    // text the creator saw, never a hash handed over.
+    const registry = deployment.registry?.toLowerCase();
+    if (!registry) throw unsupported('the deployment names no registry: nothing is published here');
+    const fn: FnName =
+      step.action === 'publish'
+        ? 'createIndex'
+        : step.action === 'update'
+          ? 'publishVersion'
+          : 'cancelPending';
+    const wanted = selectorOf(fn);
+    need(
+      'target',
+      call.to === registry,
+      `a shared portfolio is published through the registry, and this call is to ${call.to}`,
+    );
+    const right = selector === wanted;
+    need('function', right, `the call is ${named(selector)}, and the step is to ${step.action}`);
+    if (!right) return;
+    const args = argsOf(fn, body);
+    const id = reading('the family', legId, () => evmIndexId(owner, step.familyId));
+    if (fn === 'cancelPending') {
+      need('recipe', args[0] === id, "the bytes cancel another creator's or family's version");
+      return;
+    }
+    const [named32, weights, metaHash, maxFeeBps, flags] = args as [
+      string,
+      AbiValue[],
+      string,
+      bigint | undefined,
+      bigint | undefined,
+    ];
+    need(
+      'recipe',
+      fn === 'createIndex' ? named32 === `0x${step.familyId.toLowerCase()}` : named32 === id,
+      'the bytes publish another family, or for another creator',
+    );
+    need(
+      'targets',
+      sameWeights(
+        step.components.map((t) => ({ key: token(t.asset), bps: t.weightBps })),
+        weightsIn(weights),
+      ),
+      "the assets and weights in the bytes are not the version's",
+    );
+    // Only the four fields shown, under the step's own family: a family id inside the text is not read.
+    const t = step.text;
+    const textHash = t
+      ? `0x${familyTextHash({ familyId: step.familyId, slug: t.slug, name: t.name, copy: t.copy, kind: t.kind })}`
+      : '';
+    need('recipe', metaHash === textHash, "the bytes publish another family's text");
+    if (fn === 'createIndex') {
+      need('limits', maxFeeBps === 0n, `the bytes set a fee cap of ${maxFeeBps}`);
+      need('limits', flags === 0n, `the bytes set the flags ${flags}`);
+    }
+    return;
+  }
+
+  const vault = reading('the owner', legId, () =>
+    evmVaultAddress(deployment, owner, step.basketId),
+  );
+
+  /**
+   * The call data a trade hands its exchange, against the trade itself. The vault holds a trade to its
+   * minimum whatever the route, so a route through another pool costs the person at most the gap
+   * between the quote and the minimum; this takes that away too. The route is exactly what the builder
+   * makes (packages/chain-evm/src/vault/routes.ts): `execute` with one `V4_SWAP` of
+   * `SWAP_EXACT_IN_SINGLE`, `SETTLE_ALL`, `TAKE_ALL`, in the pool of the trade's two tokens at the
+   * fee and tick spacing the deployment records for the trade's asset and with the route's hooks, for
+   * the trade's amount, under the trade's deadline. A trade is cash for one asset or one asset for
+   * cash, and the asset's pool is the only one it may go through: another pool of the same two
+   * tokens, at another fee, is refused, and so is a trade of an asset with no pool recorded. The
+   * router's own minimums are zero, as built: the vault's `minOut` is the one that binds.
+   */
+  const checkRoute = (
+    router: string,
+    trade: ApprovedTrade,
+    tokenIn: string,
+    tokenOut: string,
+    amountIn: bigint,
+    data: Uint8Array,
+    deadline: bigint,
+  ) => {
+    const rule = Object.hasOwn(deployment.routes, router) ? deployment.routes[router] : undefined;
+    if (!rule) {
+      // An exchange the deployment does not name was refused above as `router`. One it names without
+      // saying how its call data is read is refused here: nothing goes unread unsaid.
+      need(
+        'route',
+        !routers.includes(router),
+        `the deployment does not say how the call data of ${router} is read`,
+      );
+      return;
+    }
+    if (rule.kind === 'unread') {
+      need(
+        'route',
+        deployment.provenance !== 'live',
+        `the call data of ${router} is not read, and on a live network every trade's is`,
+      );
+      return;
+    }
+    let route: V4SingleSwap;
+    try {
+      route = readV4SingleSwap(data);
+    } catch (e) {
+      need(
+        'route',
+        false,
+        `a trade's call data for ${router} is not one exact-input swap in one pool: ${e instanceof Error ? e.message : 'it cannot be read'}`,
+      );
+      return;
+    }
+    // Uniswap v4 sorts a pool's two tokens: the lower address is `currency0`.
+    const [currency0, currency1] =
+      BigInt(tokenIn) < BigInt(tokenOut) ? [tokenIn, tokenOut] : [tokenOut, tokenIn];
+    need(
+      'asset',
+      route.currency0 === currency0 && route.currency1 === currency1,
+      `a trade's route is in the pool of ${route.currency0} and ${route.currency1}, and the trade is ${tokenIn} for ${tokenOut}`,
+    );
+    need(
+      'asset',
+      route.settle.currency === tokenIn && route.take.currency === tokenOut,
+      `a trade's route pays in ${route.settle.currency} and takes ${route.take.currency}, and the trade is ${tokenIn} for ${tokenOut}`,
+    );
+    // The asset of a trade is its side that is not cash. Two assets, or cash for cash, have no pool.
+    const traded =
+      trade.sell === deployment.cash
+        ? trade.buy
+        : trade.buy === deployment.cash
+          ? trade.sell
+          : undefined;
+    const pool =
+      traded !== undefined && traded !== deployment.cash && Object.hasOwn(deployment.assets, traded)
+        ? deployment.assets[traded]?.pool
+        : undefined;
+    need(
+      'route',
+      pool !== undefined,
+      `the deployment records no pool for a trade of ${trade.sell} for ${trade.buy}: a trade is between cash and one asset whose pool is recorded`,
+    );
+    if (!pool) return;
+    need(
+      'route',
+      route.fee === BigInt(pool.fee) && route.tickSpacing === BigInt(pool.tickSpacing),
+      `a trade's route is in a pool of fee ${route.fee} and tick spacing ${route.tickSpacing}, and the pool the deployment records for ${traded} is ${pool.fee} and ${pool.tickSpacing}`,
+    );
+    need(
+      'route',
+      route.hooks === rule.hooks && route.hookData.length === 0,
+      `a trade's route is in a pool with the hooks ${route.hooks}, or hands a hook ${route.hookData.length} bytes`,
+    );
+    need(
+      'route',
+      route.zeroForOne === (tokenIn === currency0),
+      `a trade's route swaps the pool the other way: it sells ${tokenOut}`,
+    );
+    need(
+      'amount',
+      route.amountIn === amountIn && route.settle.maxAmount === amountIn,
+      `a trade's route sells ${route.amountIn} and pays in up to ${route.settle.maxAmount}, and the trade sells ${amountIn}`,
+    );
+    need(
+      'minimum',
+      route.amountOutMinimum === 0n && route.minHopPriceX36 === 0n && route.take.minAmount === 0n,
+      `a trade's route sets the exchange's own minimums (${route.amountOutMinimum}, ${route.minHopPriceX36}, ${route.take.minAmount}), and the vault's minimum is the only one a built trade carries`,
+    );
+    need(
+      'deadline',
+      route.deadline === deadline,
+      `a trade's route is good until ${route.deadline}, and the trade until ${deadline}`,
+    );
+  };
+  const checkSwap = (swap: AbiValue[], trade: ApprovedTrade, deadline: bigint) => {
+    const [router, tokenIn, tokenOut, amountIn, minOut, data] = swap as [
       string,
       string,
       string,
       bigint,
       bigint,
+      Uint8Array,
     ];
     need('router', routers.includes(router), `a trade goes through ${router}`);
     need(
@@ -151,8 +345,9 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
       minOut === BigInt(trade.minOutRaw),
       `a trade accepts ${minOut} at the least, and the step ${trade.minOutRaw}`,
     );
+    checkRoute(router, trade, tokenIn, tokenOut, amountIn, data, deadline);
   };
-  const checkSwaps = (swaps: AbiValue[][], trades: ApprovedTrade[]) => {
+  const checkSwaps = (swaps: AbiValue[][], trades: ApprovedTrade[], deadline: bigint) => {
     need(
       'calls',
       swaps.length === trades.length,
@@ -160,7 +355,7 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
     );
     swaps.forEach((swap, i) => {
       const trade = trades[i];
-      if (trade) checkSwap(swap, trade);
+      if (trade) checkSwap(swap, trade, deadline);
     });
   };
 
@@ -202,7 +397,7 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
     const creates = buys || selector === selectorOf('createVault');
     need('function', creates, `the call is ${named(selector)}, and the step opens a vault`);
     if (!creates) return;
-    const [salt, targets, indexId, version, autoFollow, cash, swaps] = argsOf(
+    const [salt, targets, indexId, version, autoFollow, cash, swaps, deadline] = argsOf(
       buys ? 'createVaultAndBuy' : 'createVault',
       body,
     ) as [
@@ -213,7 +408,9 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
       boolean,
       bigint | undefined,
       AbiValue[][] | undefined,
+      bigint | undefined,
     ];
+    if (deadline !== undefined) checkDeadline(deadline);
     const follow = step.follow;
     need('vault', salt === planIdOf(step.basketId), 'the vault is opened for another plan number');
     need(
@@ -236,7 +433,8 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
       (cash ?? 0n) === BigInt(step.depositRaw),
       `the bytes deposit ${cash ?? 0n}, and the step ${step.depositRaw}`,
     );
-    checkSwaps(swaps ?? [], step.trades);
+    // Only `createVaultAndBuy` carries trades, and it carries their deadline with them.
+    checkSwaps(swaps ?? [], step.trades, deadline ?? 0n);
     return;
   }
 
@@ -263,9 +461,10 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
     } else if (is('deposit'))
       atoms.push({ fn: 'deposit', amount: argsOf('deposit', rest)[0] as bigint });
     else if (is('ownerSwap')) {
-      const swaps = argsOf('ownerSwap', rest)[0] as AbiValue[][];
+      const [swaps, deadline] = argsOf('ownerSwap', rest) as [AbiValue[][], bigint];
+      checkDeadline(deadline);
       need('calls', swaps.length > 0, 'a swap call that makes no trade');
-      for (const swap of swaps) atoms.push({ fn: 'swap', swap });
+      for (const swap of swaps) atoms.push({ fn: 'swap', swap, deadline });
     } else if (is('withdraw')) {
       const [asset, amount] = argsOf('withdraw', rest) as [string, bigint];
       atoms.push({ fn: 'withdraw', token: asset, amount });
@@ -331,7 +530,7 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
         break;
       case 'swap': {
         const trade = trades[step.kind === 'deposit' ? at - 1 : at];
-        if (trade) checkSwap(atom.swap, trade);
+        if (trade) checkSwap(atom.swap, trade, atom.deadline);
         break;
       }
       case 'withdraw': {

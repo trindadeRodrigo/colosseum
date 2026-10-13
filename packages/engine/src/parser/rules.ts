@@ -56,9 +56,18 @@ export function parseGoalRules(
 
   const monthly = /(por m[eê]s|mensal|mensais|a month|per month|monthly|\/m[eê]s)/.test(t);
   const yearMatch = t.match(/(?:a partir de|from|starting|desde|by|até)\s*(?:(\d{2})\/)?(20\d{2})/);
-  const inYears = t.match(/(?:em|in|dentro de|within)\s*(\d+)\s*(anos?|years?)/);
-  const inMonths = t.match(/(?:em|in|dentro de|within)\s*(\d+)\s*(meses|months?)/);
-  const horizonYears = t.match(/(?:por|for|durante)\s*(\d+)\s*(anos?|years?)/);
+  // A point in time: "in 3 years", "em até 3 anos". For an income, when it starts.
+  const at = String.raw`(?:\bem|\bin|dentro de|within)\s*(?:at[eé]\s+)?`;
+  // A span: "for 15 years", "over 10 years", "for the next 15 years", "nos próximos 10 anos",
+  // "pelos próximos 15 anos", "in the next 18 months". For an income, how long it is paid.
+  const next = String.raw`(?:(?:the\s+)?(?:next|coming)\s+|pr[oó]xim[oa]s?\s+)`;
+  const span = String.raw`(?:(?:\bpor|\bpel[oa]s?|\bfor|durante|\bover)\s*${next}?|(?:\bem|\bin|\bnos|\bnas|within|dentro d[eo]s?)\s*${next})`;
+  const YEARS = String.raw`(\d+)\s*(anos?|years?)`;
+  const MONTHS = String.raw`(\d+)\s*(meses|months?)`;
+  const inYears = t.match(new RegExp(at + YEARS));
+  const inMonths = t.match(new RegExp(at + MONTHS));
+  const horizonYears = t.match(new RegExp(span + YEARS));
+  const horizonMonths = t.match(new RegExp(span + MONTHS));
 
   if (monthly) {
     const startMonth = yearMatch
@@ -83,7 +92,11 @@ export function parseGoalRules(
         ? addMonths(nowMonth, Number(inYears[1]) * 12)
         : inMonths
           ? addMonths(nowMonth, Number(inMonths[1]))
-          : undefined;
+          : horizonYears
+            ? addMonths(nowMonth, Number(horizonYears[1]) * 12)
+            : horizonMonths
+              ? addMonths(nowMonth, Number(horizonMonths[1]))
+              : undefined;
     if (!byMonth)
       errors.push({
         path: 'target.byMonth',

@@ -62,3 +62,15 @@ export function canonicalFamilyMeta(family: HashedMeta): string {
 export function metaHash(family: HashedMeta): string {
   return sha256Hex(new TextEncoder().encode(canonicalFamilyMeta(family)));
 }
+
+/**
+ * The id of a new shared portfolio, from its slug: SHA-256 of `family:<slug>` as 64 lower-case hex
+ * characters. A rule rather than a number the server hands out, so the publish form works out the id it
+ * shows itself, and the guard holds the bytes to it (packages/sdk `familyIdOf` repeats it, and
+ * tests/meta-hash.test.ts holds the two together). The registry's account is per creator and family,
+ * so two creators with the same slug never share a portfolio onchain; the server keeps one family per
+ * slug.
+ */
+export function familyIdOf(slug: string): string {
+  return sha256Hex(new TextEncoder().encode(`family:${slug}`));
+}

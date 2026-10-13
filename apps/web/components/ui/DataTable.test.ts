@@ -38,13 +38,14 @@ describe('DataTable (data-table.md)', () => {
     for (const tr of rows) expect(byRole(tr, 'rowheader')).toHaveLength(1);
   });
 
-  it('sets figures on the right in the mono face, tabular', () => {
+  it('sets figures on the right in tabular lining figures of the UI face (mono is for sources)', () => {
     const cells = all(one(tableEl, tag('tbody')), tag('td')).filter((td) =>
       text(td).startsWith('48.0'),
     );
     expect(classes(cells[0] as never)).toEqual(
-      expect.arrayContaining(['text-right', 'font-mono', 'tabular-nums']),
+      expect.arrayContaining(['text-right', 'tabular-nums']),
     );
+    expect(classes(cells[0] as never)).not.toContain('font-mono');
     const dash = all(tableEl, tag('td')).find((td) => text(td).includes('6.0%'));
     expect(text(dash as never)).toBe('−6.0%'); // a true minus, from the caller's formatter
   });
@@ -64,20 +65,21 @@ describe('DataTable (data-table.md)', () => {
       expect(all(tr, ui('status'))).toHaveLength(0);
   });
 
-  it('marks a mock row with a hatch band on its edge and the plate in its first cell', () => {
+  it('marks a mock row with a hatch band on its edge and the named glyph in its first cell', () => {
     const row = one(tableEl, (e) => e.tag === 'tr' && e.attrs['data-mock'] === 'true');
     const first = one(row, (e) => e.tag === 'th');
-    expect(all(first, (e) => classes(e).includes('tf-hatch'))).toHaveLength(1);
-    expect(all(first, ui('mock-plate'))).toHaveLength(1);
+    expect(
+      all(first, (e) => classes(e).includes('tf-hatch') && e.attrs['data-ui'] !== 'sample-glyph'),
+    ).toHaveLength(1);
+    expect(all(first, ui('sample-glyph'))).toHaveLength(1);
+    expect(text(row)).not.toContain('MOCK');
   });
 
-  it('keeps rows 32px, or 28px dense in the condensed face, with hairlines between', () => {
+  it('keeps rows 44px, or 36px dense at the 13px cell, with hairlines between', () => {
     expect(classes(all(tableEl, tag('td'))[0] as never)).toContain('h-(--tf-row-comfortable)');
     const dense = render(table.narrow);
     expect(classes(all(dense, tag('td'))[0] as never)).toContain('h-(--tf-row-dense)');
-    expect(classes(one(dense, tag('table')))).toEqual(
-      expect.arrayContaining(['font-condensed', 'text-b-cell']),
-    );
+    expect(classes(one(dense, tag('table')))).toEqual(expect.arrayContaining(['text-b-cell']));
     expect(classes(all(one(tableEl, tag('tbody')), tag('tr'))[0] as never)).toEqual(
       expect.arrayContaining(['border-b', 'border-border']),
     );
@@ -95,7 +97,7 @@ describe('DataTable (data-table.md)', () => {
     expect(classes(region)).toContain('max-sm:hidden');
     expect(all(stacked, tag('dl'))).toHaveLength(3);
     expect(text(stacked)).toContain('Out of band');
-    expect(all(stacked, ui('mock-plate')).length).toBeGreaterThan(0);
+    expect(all(stacked, ui('sample-glyph')).length).toBeGreaterThan(0);
     const narrow = render(table.narrow);
     expect(all(narrow, ui('data-table-stacked'))).toHaveLength(0);
     expect(classes(one(narrow, (e) => e.tag === 'section'))).not.toContain('max-sm:hidden');
@@ -142,14 +144,15 @@ describe('ExecutionList and ExplorerLink (data-table.md)', () => {
     expect((unknown as { attrs: Record<string, string> }).attrs['data-status']).toBe('settled');
   });
 
-  it('links the transaction as "Tx", the signature cut in the middle, with a name that says where it goes', () => {
+  it('links the transaction as "Tx", the signature cut in the middle, then the explorer it opens', () => {
     const link = one(confirmed as never, ui('explorer-link'));
     expect(link.tag).toBe('a');
-    expect(text(link)).toBe('Tx4kZ9…mX2p');
+    expect(text(link)).toBe('Tx4kZ9…mX2pthe sample explorer');
+    expect(text(one(link, ui('explorer-name')))).toBe('the sample explorer');
     expect(link.attrs).toMatchObject({ target: '_blank', rel: 'noopener' });
     expect(link.attrs['aria-label']).toBe('View transaction 4kZ9…mX2p on the sample explorer');
     expect(classes(link)).toEqual(
-      expect.arrayContaining(['font-mono', 'text-primary', 'underline']),
+      expect.arrayContaining(['font-mono', 'text-honey-text', 'underline']),
     );
     expect(classes(link).join(' ')).not.toMatch(/blue/);
     expect(shorten('4kZ9sampleSignaturemX2p')).toBe('4kZ9…mX2p');
@@ -160,7 +163,9 @@ describe('ExecutionList and ExplorerLink (data-table.md)', () => {
   it('says a failure in words with its shape, says it was not retried, and offers no retry', () => {
     expect(text(failed as never)).toContain('failed: slippage exceeded (not retried)');
     expect(all(failed as never, ui('status-mark'))[0]?.attrs['data-status']).toBe('off-track');
-    const buttons = all(root, tag('button'));
+    // the only buttons copy a signature, or open the tooltip that shows one whole
+    const buttons = all(root, tag('button')).filter((b) => b.attrs['data-ui'] !== 'hint-trigger');
+    expect(buttons.length).toBeGreaterThan(0);
     for (const b of buttons) expect(b.attrs['aria-label']).toMatch(/^Copy /);
   });
 
@@ -170,16 +175,16 @@ describe('ExecutionList and ExplorerLink (data-table.md)', () => {
     expect(text(cell)).toBe('9aQ1…Lk7c link unavailable');
   });
 
-  it('says "test network" after the plate of a transaction on one, and not after a mock', () => {
+  it('says "test network" after the glyph of a transaction on one, and not after a mock', () => {
     // EXECUTIONS: the swap is `sandbox`, the failed deposit is `mock`
     expect(text(one(confirmed as never, ui('execution-network')))).toBe('test network');
-    expect(text(confirmed as never)).toContain('MOCKtest network');
+    expect(text(confirmed as never)).not.toContain('MOCK');
     expect(all(failed as never, ui('execution-network'))).toHaveLength(0);
   });
 
-  it('puts the hatch band and the MOCK plate on a transaction that is not on mainnet', () => {
+  it('puts the hatch band and the named glyph on a transaction that is not on mainnet', () => {
     for (const row of [confirmed, failed]) {
-      expect(all(row as never, ui('mock-plate'))).toHaveLength(1);
+      expect(all(row as never, ui('sample-glyph'))).toHaveLength(1);
       expect(all(row as never, ui('hatch-band'))).toHaveLength(1);
       expect((row as { attrs: Record<string, string> }).attrs['data-mock']).toBe('true');
     }

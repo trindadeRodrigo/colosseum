@@ -11,7 +11,11 @@ export const Asset = z.object({
   mint: z.string().optional(),
   tokenProgram: z.string().optional(),
   decimals: z.number().int().min(0).max(18).optional(),
-  eligibleProfiles: z.array(Profile).min(1),
+  /**
+   * The profiles a plan may hold it under. Empty: no plan holds it. That is the row of an asset the
+   * risk layer measures and the structurer does not offer (the tracked EVM stocks, PLAN-UNIVERSE RU.8).
+   */
+  eligibleProfiles: z.array(Profile),
   /** Max portfolio weight, 0..1. For the BRL leg this is a parameter, not a fact. */
   capWeight: z.number().min(0).max(1),
   mintPath: MintPathKind,

@@ -52,31 +52,41 @@ contract EntryPointsTest is Test {
 
     /// I1, stated as the whole surface of a vault. No function takes a recipient. Tokens leave by
     /// `withdraw`, `withdrawAll` and as the input of `ownerSwap`, each the owner's call; `start` can spend
-    /// only what the owner sent the factory in the creating transaction.
+    /// only what the owner sent the factory in the creating transaction; `keeperSwap` spends only toward
+    /// the owner's targets, under the checks of section 5, and is paid back into the vault.
     function test_I1_entryPoints_areExactlyThese() public {
         _entry(
             "initialize(address,bytes32)",
             "the factory, inside the proxy's constructor: fixes the owner, the plan and the config"
         );
         _entry(
-            "start(bytes32,uint32,(address,uint16)[],uint256,(address,address,address,uint256,uint256,bytes)[])",
-            "the factory, in the creating transaction only: targets or the followed portfolio, the first deposit and swaps"
+            "start(bytes32,uint32,(address,uint16)[],bool,uint256,(address,address,address,uint256,uint256,bytes)[])",
+            "the factory, in the creating transaction only: targets or the followed portfolio, auto-follow, the first deposit and swaps"
         );
         _entry("deposit(uint256)", "the owner puts the cash token in");
         _entry("withdraw(address,uint256)", "the owner takes any token out, to the owner");
         _entry("withdrawAll()", "the owner takes every tracked token out, to the owner");
         _entry(
-            "ownerSwap((address,address,address,uint256,uint256,bytes)[])",
-            "the owner trades through an allowed router, judged by the vault's balances"
+            "ownerSwap((address,address,address,uint256,uint256,bytes)[],uint64)",
+            "the owner trades through an allowed router, judged by the vault's balances, until a deadline"
         );
         _entry("setTargets((address,uint16)[])", "the owner sets their own targets and stops following");
+        _entry("acceptVersion(bytes32,uint32)", "the owner takes the version in effect of a shared portfolio");
+        _entry("setAutoFollow(bool)", "the owner lets the keeper trade toward the targets, or stops it");
+        _entry("adoptVersion()", "anyone, for an auto-follow vault: a newer version with no new asset");
+        _entry(
+            "keeperSwap((address,address,address,uint256,uint256,bytes))",
+            "the config's keeper: cash for one target or back, under the checks of section 5"
+        );
         _entry("multicall(bytes[])", "several of the above in one transaction; each inner call checks its caller");
         _entry("owner()", "view");
         _entry("planId()", "view: matches a vault to its plan with no event");
         _entry("config()", "view: the factory that created it");
         _entry("tokens()", "view: what withdrawAll walks");
+        _entry("netDeposited()", "view: cash in less cash out, what the deposit caps count");
         _entry("targets()", "view: the targets held");
         _entry("following()", "view: the shared portfolio, the accepted version, auto-follow");
+        _entry("snapshot()", "view: one read of the vault for the app and for agents");
         _assertExactly("BasketVault");
     }
 
@@ -96,8 +106,8 @@ contract EntryPointsTest is Test {
         // creation: anyone, for themselves
         _entry("createVault(bytes32,(address,uint16)[],bytes32,uint32,bool)", "anyone creates their own vault");
         _entry(
-            "createVaultAndBuy(bytes32,(address,uint16)[],bytes32,uint32,bool,uint256,(address,address,address,uint256,uint256,bytes)[])",
-            "the same, with the first deposit and swaps in one transaction"
+            "createVaultAndBuy(bytes32,(address,uint16)[],bytes32,uint32,bool,uint256,(address,address,address,uint256,uint256,bytes)[],uint64)",
+            "the same, with the first deposit and swaps in one transaction, until a deadline"
         );
         // finding vaults with no event
         _entry("vaultOf(address,bytes32)", "view: the address of a vault, before or after it exists");
@@ -118,8 +128,8 @@ contract EntryPointsTest is Test {
         _entry("UPGRADE_INTERFACE_VERSION()", "UUPS: a constant tools read");
         // admin
         _entry(
-            "setAsset(address,(address,uint8,uint8,uint32,uint8,uint8,uint16,address,bytes4,bytes4,uint64))",
-            "admin: list an asset or change its feed and limits"
+            "setAsset(address,(address,uint8,uint8,uint32,uint8,uint8,uint16,address,bytes4,bytes4,uint64,uint8,address,uint128,uint128))",
+            "admin: list an asset or change its feeds, its range, its limits and the keeper's switch on it"
         );
         _entry("removeAsset(address)", "admin: take an asset off the list");
         _entry("setRouter(address,uint8)", "admin: allow or remove a router");
@@ -131,7 +141,13 @@ contract EntryPointsTest is Test {
         _entry(
             "setParams((uint16,uint16,uint16,uint32,uint32,uint32))", "admin: the keeper's limits, inside hard bounds"
         );
+        _entry("setPriceDevBps(uint16)", "admin: how far a price may be from its average, inside a hard bound");
         _entry("unpauseKeeper()", "admin: lift the guardian's pause");
+        _entry("unpauseDeposits()", "admin: lift the guardian's stop on new money");
+        _entry("setDepositCaps(uint256,uint256)", "admin: the most one vault and all vaults may take in");
+        _entry("setCreationRestricted(bool)", "admin: only the listed may create a vault, or anyone again");
+        _entry("setCreator(address,bool)", "admin: put an address on that list, or take it off");
+        _entry("setSessionPriceAge(uint32)", "admin: how old a stock's price may be in session, for the keeper");
         _entry("setHalt(address,uint64)", "admin: lift or shorten a halt");
         _entry("setClosedUntil(uint64)", "admin: lift or shorten a market closure");
         _entry("setClosedDay(uint32,bool)", "admin: add or remove a closed day");
@@ -143,6 +159,10 @@ contract EntryPointsTest is Test {
         _entry("haltAsset(address,uint64)", "guardian: stop keeper trades in one asset, for longer only");
         _entry("extendClosedUntil(uint64)", "guardian: keep the market closed for longer");
         _entry("addClosedDay(uint32)", "guardian: add a closed day");
+        _entry("pauseDeposits()", "guardian: stop new money; withdrawing is untouched");
+        // a vault, about itself, and anyone, about a vault
+        _entry("noteDeposit(uint256)", "a vault of this factory, inside its deposit: counted against the caps");
+        _entry("syncDeposits(address[])", "anyone: lower a vault's count to what it reports now");
         // what a vault, the registry and the app read
         _entry("admin()", "view");
         _entry("pendingAdmin()", "view");
@@ -162,6 +182,14 @@ contract EntryPointsTest is Test {
         _entry("closedUntil()", "view");
         _entry("closedDay(uint32)", "view");
         _entry("params()", "view");
+        _entry("priceDevBps()", "view: read by a vault on every keeper trade");
+        _entry("sessionPriceAge()", "view: read by a vault on every keeper trade");
+        _entry("depositCaps()", "view: the cap of one vault and of all of them");
+        _entry("depositsPaused()", "view");
+        _entry("creationRestricted()", "view");
+        _entry("mayCreate(address)", "view: read by the factory on every create");
+        _entry("totalDeposited()", "view: what counts toward the total cap");
+        _entry("depositedOf(address)", "view: what counts for one vault");
         _assertExactly("VaultFactory");
     }
 

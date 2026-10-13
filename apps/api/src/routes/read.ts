@@ -1,7 +1,6 @@
 import {
   assets as assetsTable,
   constraintSheets,
-  createDb,
   depthObservations,
   executions,
   goals,
@@ -12,6 +11,7 @@ import {
   rebalances,
   riskSheets,
   schedules,
+  sharedDb,
   stressCases,
   yieldObservations,
 } from '@colosseum/db';
@@ -30,7 +30,8 @@ import { z } from 'zod';
 
 /** Read routes used by the UI (plan view, monitoring, embed). Everything returned carries provenance where it applies. */
 export async function registerReadRoutes(app: FastifyInstance) {
-  const { db } = createDb();
+  // The process's one pool (packages/db: `sharedDb`).
+  const { db } = sharedDb();
   const f = app.withTypeProvider<ZodTypeProvider>();
 
   f.get(

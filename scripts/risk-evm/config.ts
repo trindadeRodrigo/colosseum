@@ -21,9 +21,12 @@ export type ChainConfig = {
    * Factories of Uniswap-v3-style pools the vault's swap path reaches. A pool is quoted only if one of
    * them names it for its pair: getPool(token0, token1, fee) on Uniswap v3, (…, tickSpacing) on Slipstream.
    */
-  clFactories: Array<{ address: string; getPoolBy: 'fee' | 'tickSpacing' }>;
-  /** Uniswap v4 periphery; null where the vault does not swap through v4. Only hookless pools are quoted. */
-  v4: { quoter: string; stateView: string; positionManager: string } | null;
+  clFactories: Array<{ address: string; getPoolBy: 'fee' | 'tickSpacing'; name?: string }>;
+  /**
+   * Uniswap v4 periphery; null where the vault does not swap through v4. Only hookless pools are quoted.
+   * `poolManager` is the contract whose Initialize events list the pools (pool discovery only).
+   */
+  v4: { quoter: string; stateView: string; positionManager: string; poolManager?: string } | null;
   tokens: TokenConfig[];
 };
 
@@ -45,13 +48,21 @@ export const CHAINS: ChainConfig[] = [
     dollar: { symbol: 'USDG', address: '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168', decimals: 6 },
     multicall3: MULTICALL3,
     // Uniswap v3 factory: factory() of the NVDA/USDG pool 0xd4EB…14a3.
-    clFactories: [{ address: '0x1f7d7550B1b028f7571E69A784071F0205FD2EfA', getPoolBy: 'fee' }],
+    clFactories: [
+      {
+        address: '0x1f7d7550B1b028f7571E69A784071F0205FD2EfA',
+        getPoolBy: 'fee',
+        name: 'uniswap-v3',
+      },
+    ],
     // https://developers.uniswap.org/contracts/v4/deployments; the Quoter's poolManager() and the
     // StateView's poolManager() both return 0x8366…0951.
     v4: {
       quoter: '0x8dc178efb8111bb0973dd9d722ebeff267c98f94',
       stateView: '0xf3334192d15450cdd385c8b70e03f9a6bd9e673b',
       positionManager: '0x58daec3116aae6d93017baaea7749052e8a04fa7',
+      // poolManager() of the Quoter, read on 2026-10-05
+      poolManager: '0x8366a39cc670b4001a1121b8f6a443a643e40951',
     },
     tokens: [
       rh('SPY', '0x117cc2133c37B721F49dE2A7a74833232B3B4C0C'),
@@ -91,7 +102,11 @@ export const CHAINS: ChainConfig[] = [
     multicall3: MULTICALL3,
     // Aerodrome Slipstream: factory() of the NVDAc/USDC pool 0x853F…7ab9.
     clFactories: [
-      { address: '0xf8f2eB4940CFE7d13603DDDD87f123820Fc061Ef', getPoolBy: 'tickSpacing' },
+      {
+        address: '0xf8f2eB4940CFE7d13603DDDD87f123820Fc061Ef',
+        getPoolBy: 'tickSpacing',
+        name: 'aerodrome-slipstream',
+      },
     ],
     v4: null,
     tokens: [

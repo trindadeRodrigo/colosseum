@@ -22,6 +22,7 @@ struct Swap {
 }
 
 /// What the platform knows about a listed asset. Decimals are stated here and never read from the token.
+/// A mapping's value: fields are appended at the end, never reordered.
 struct AssetConfig {
     address feed;
     uint8 tokenDecimals;
@@ -34,6 +35,11 @@ struct AssetConfig {
     bytes4 pauseSelector;
     bytes4 scheduleSelector; // called on the token; 0 = none
     uint64 haltUntil;
+    // ---- appended by EVM-3: the keeper's price reference (DESIGN-VAULT.md section 5)
+    uint8 flags; // bit 0: the keeper may trade it and value a vault by its price; the other bits are zero
+    address averageFeed; // the same source's one-hour average: the feed's interface and decimals
+    uint128 minPrice; // the range a keeper trade holds the feed's answer to, in the feed's units;
+    uint128 maxPrice; // zero and zero is no range, and then the keeper's switch stays off
 }
 
 /// The author limits the registry checks on every version of a shared portfolio. One delay, not two:

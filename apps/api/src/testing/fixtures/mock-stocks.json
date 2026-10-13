@@ -1,0 +1,92 @@
+{
+  "chain": "solana",
+  "version": 1,
+  "readOn": "2026-10-06",
+  "note": "MOCK: stock attributes for the mock chain's stand-in tokens, written for the tests. No source was read for any row: each row's source says so. `unverified` is empty so that a filter can read the rows (it reads nothing of a field marked unverified).",
+  "stocks": [
+    {
+      "symbol": "NVDAx",
+      "underlying": "NVDA",
+      "kind": "common",
+      "company": "NVIDIA Corporation",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Semiconductors & Semiconductor Equipment",
+      "subIndustry": "Semiconductors",
+      "keywords": ["gpus", "ai chips", "data centers"],
+      "tracks": null,
+      "sets": ["shelf"],
+      "sources": [
+        {
+          "url": "https://example.com/mock",
+          "title": "MOCK: no source was read for this fixture",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": []
+    },
+    {
+      "symbol": "AVGOx",
+      "underlying": "AVGO",
+      "kind": "common",
+      "company": "Broadcom Inc.",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Semiconductors and Semiconductor Equipment",
+      "subIndustry": "Semiconductors",
+      "keywords": ["networking chips", "ai chips", "infrastructure software"],
+      "tracks": null,
+      "sets": ["universe"],
+      "sources": [
+        {
+          "url": "https://example.com/mock",
+          "title": "MOCK: no source was read for this fixture",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": []
+    },
+    {
+      "symbol": "TSLAx",
+      "underlying": "TSLA",
+      "kind": "common",
+      "company": "Tesla, Inc.",
+      "headquarters": "United States",
+      "sector": "Consumer Discretionary",
+      "industry": "Automobiles",
+      "subIndustry": "Automobile Manufacturers",
+      "keywords": ["electric vehicles", "batteries", "self-driving"],
+      "tracks": null,
+      "sets": ["shelf"],
+      "sources": [
+        {
+          "url": "https://example.com/mock",
+          "title": "MOCK: no source was read for this fixture",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": []
+    },
+    {
+      "symbol": "SPYx",
+      "underlying": "SPY",
+      "kind": "fund",
+      "company": "SPDR S&P 500 ETF Trust",
+      "headquarters": null,
+      "sector": null,
+      "industry": null,
+      "subIndustry": null,
+      "keywords": ["s&p 500", "large companies", "index fund"],
+      "tracks": "the S&P 500 index",
+      "sets": ["shelf"],
+      "sources": [
+        {
+          "url": "https://example.com/mock",
+          "title": "MOCK: no source was read for this fixture",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": []
+    }
+  ]
+}

@@ -24,7 +24,7 @@ export function Disclaimer({ lang, heading, label = 'Disclaimer', className }: D
       data-ui="disclaimer"
       aria-label={label}
       className={cn(
-        'max-w-(--tf-measure-body) rounded-md border border-border px-6 py-4 text-foreground',
+        'max-w-(--tf-measure-body) rounded-lg border border-border px-6 py-4 text-foreground',
         className,
       )}
     >

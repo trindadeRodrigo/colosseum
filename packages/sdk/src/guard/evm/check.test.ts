@@ -13,7 +13,7 @@ import {
   evmTx,
   FACTORY,
   MAX,
-  NEXT_INTERFACE,
+  now,
   OWNER,
   ROUTER,
   STRANGER,
@@ -22,15 +22,17 @@ import {
   tokenOf,
   VAULT,
   WEIGHTS,
+  WITHOUT_FOLLOWING,
   weights,
   ZERO32,
 } from '../../../test/evm';
 import vectors from '../../../test/fixtures/evm-vectors.json';
 import { withRules } from '../../../test/rules';
+import { deploymentsOf } from '../deployment';
 import { guardTransaction, isGuarded } from '../index';
 import type { GuardCheck } from '../refusal';
 import { runGuard } from '../run';
-import type { ApprovedStep, GuardInput } from '../types';
+import type { ApprovedStep, EvmDeployment, GuardInput, Loaded } from '../types';
 import { evmVaultAddress } from './addresses';
 
 vi.mock('../rules', () => import('../../../test/rules'));
@@ -125,7 +127,7 @@ const input = (
   over: Partial<BasketTx> = {},
   consents: ConsentKind[] = [],
 ): GuardInput => ({ step, tx: evmTx(step, c, over), deployment: EVM, consents });
-const NEXT = { evmInterface: NEXT_INTERFACE };
+const WITHOUT = { evmInterface: WITHOUT_FOLLOWING };
 
 describe('the guard on EVM: an honest call passes', () => {
   it("the vault it derives is the factory's, as viem worked it out", () => {
@@ -200,23 +202,121 @@ describe('the guard on EVM: an honest call passes', () => {
     ];
     for (const [step, data, consents] of cases)
       expect(
-        refusalOf(() =>
-          withRules(NEXT, () => runGuard(input(step, { to: VAULT, data }, {}, consents))),
-        )?.message ?? null,
+        refusalOf(() => guardTransaction(input(step, { to: VAULT, data }, {}, consents)))
+          ?.message ?? null,
         step.kind,
       ).toBeNull();
   });
+
+  it('a trade good until half an hour from now, and not a second longer', () => {
+    const last = BigInt(now() + 1_800);
+    // The route inside each trade carries the trade's own deadline, as the builder writes it.
+    const route = { deadline: last };
+    expect(
+      refusalOf(() =>
+        guardTransaction(
+          input(swapStep, {
+            to: VAULT,
+            data: calls.ownerSwap([swapOf(SPY, { route }), swapOf(GOLD, { route })], last),
+          }),
+        ),
+      ),
+    ).toBeNull();
+  });
 });
 
-describe('the guard on EVM: what the committed ABIs cannot check yet', () => {
-  it('refuses an accept and the auto-follow switch as unsupported, until the table has them', () => {
+describe('the guard on EVM: the committed test network entry of Robinhood Chain (46630)', () => {
+  // The bytes a buy on the web sends, built against packages/sdk/deployments/testnet.json as committed,
+  // with no copy of the chain: the approval of the deposit to the plan's vault, then the create that buys.
+  const rh = deploymentsOf('testnet').robinhood as Loaded<EvmDeployment>;
+  const token = (asset: string) => rh.assets[asset]?.token ?? '';
+  const vault = evmVaultAddress(rh, OWNER, BASKET_ID);
+  const deposit = '10000000';
+  const trade = {
+    sell: 'robinhood:tusdg',
+    buy: 'robinhood:tspy',
+    inRaw: '6000000',
+    minOutRaw: '9900000000000000',
+  };
+  const approve: Step<'approve'> = { ...base, kind: 'approve', amountRaw: deposit };
+  const create: Step<'create_vault'> = {
+    ...base,
+    kind: 'create_vault',
+    targets: [
+      { asset: 'robinhood:tspy', weightBps: 6000 },
+      { asset: 'robinhood:tgld', weightBps: 3500 },
+    ],
+    follow: null,
+    autoFollow: false,
+    depositRaw: deposit,
+    trades: [trade],
+  };
+  const createData = calls.createVaultAndBuy({
+    targets: create.targets
+      .map((t) => [token(t.asset), BigInt(t.weightBps)] as [string, bigint])
+      .sort(([a], [b]) => (a < b ? -1 : 1)),
+    cash: deposit,
+    swaps: [
+      swapOf(trade, {
+        router: rh.routers[0],
+        tokenIn: token(trade.sell),
+        tokenOut: token(trade.buy),
+      }),
+    ],
+  });
+  const given = (step: ApprovedStep, c: EvmCallOf): GuardInput => ({
+    step,
+    tx: evmTx(step, c),
+    deployment: rh,
+    consents: [],
+  });
+
+  it('is the record of the deploy: chain 46630, its factory, router and cash', () => {
+    expect(rh.evmChainId).toBe(46630);
+    expect(rh.factory).toBe('0xa3309dc51b41e55fcd48b12377025cd2ba4d21a4');
+    expect(rh.routers).toEqual(['0xd290cfe0738e1ab9cea9dc138bbec024dc3bd127']);
+    expect(rh.cash).toBe('robinhood:tusdg');
+    expect(token('robinhood:tusdg')).toBe('0xd3d6e7bf284d922651983468b75492be4f3f689a');
+  });
+
+  it('passes the approval of the deposit to the plan’s vault, and the create that buys', () => {
+    const cases: [ApprovedStep, EvmCallOf][] = [
+      [approve, { to: token('robinhood:tusdg'), data: calls.approve(vault, BigInt(deposit)) }],
+      [create, { to: rh.factory, data: createData }],
+    ];
+    for (const [step, c] of cases) {
+      expect(
+        refusalOf(() => guardTransaction(given(step, c)))?.message ?? null,
+        step.kind,
+      ).toBeNull();
+      expect(isGuarded(guardTransaction(given(step, c)))).toBe(true);
+    }
+  });
+
+  it('refuses the same calls aimed anywhere but the committed addresses', () => {
+    // a vault derived from another factory, a create sent to another factory, a mainnet chain id
+    const elsewhere: [ApprovedStep, EvmCallOf][] = [
+      [approve, { to: token('robinhood:tusdg'), data: calls.approve(VAULT, BigInt(deposit)) }],
+      [create, { to: FACTORY, data: createData }],
+      [create, { to: rh.factory, data: createData, chainId: 4663 }],
+    ];
+    expect(
+      elsewhere.map(([step, c]) => refusalOf(() => guardTransaction(given(step, c)))?.code),
+    ).toEqual(['spender', 'target', 'network']);
+  });
+});
+
+describe('the guard on EVM: what a table without a function cannot check', () => {
+  it('refuses an accept and the auto-follow switch as unsupported, where the table lacks them', () => {
     const cases: [ApprovedStep, Uint8Array][] = [
       [acceptStep, calls.acceptVersion(INDEX, 4)],
       [autoStep(false), calls.setAutoFollow(false)],
     ];
     for (const [step, data] of cases) {
       const refusal = refusalOf(() =>
-        guardTransaction(input(step, { to: VAULT, data }, {}, ['new_asset', 'auto_follow_on'])),
+        withRules(WITHOUT, () =>
+          runGuard(input(step, { to: VAULT, data }, {}, ['new_asset', 'auto_follow_on'])),
+        ),
       );
       expect(refusal?.code, step.kind).toBe('unsupported');
       expect(refusal?.message).toMatch(/regenerated/);
@@ -299,7 +399,6 @@ const next = (
 ): Negative => ({
   name,
   check,
-  rules: NEXT,
   input: () => input(step, { to: VAULT, data: data() }, {}, consents),
 });
 const strangersVault = () => evmVaultAddress(EVM, STRANGER, BASKET_ID);
@@ -397,6 +496,26 @@ const negatives: Negative[] = [
       to: VAULT,
       data: calls.multicall([honest.withdraw().data, transfer(STRANGER, 500n)]),
     }),
+  ),
+
+  // ---- a trade signed to stay good too long, or past its time
+  on(swapStep, 'a trade whose deadline has passed', 'deadline', () => ({
+    to: VAULT,
+    data: calls.ownerSwap([swapOf(SPY), swapOf(GOLD)], BigInt(now() - 1)),
+  })),
+  on(swapStep, 'a trade good for longer than half an hour', 'deadline', () => ({
+    to: VAULT,
+    data: calls.ownerSwap([swapOf(SPY), swapOf(GOLD)], BigInt(now() + 1_800 + 120)),
+  })),
+  on(swapStep, 'a trade good for ever', 'deadline', () => ({
+    to: VAULT,
+    data: calls.ownerSwap([swapOf(SPY), swapOf(GOLD)], (1n << 64n) - 1n),
+  })),
+  on(depositStep, 'a trade beside a deposit whose deadline has passed', 'deadline', () =>
+    honest.deposit([calls.deposit(CASH), calls.ownerSwap([swapOf(SPY)], BigInt(now() - 1))]),
+  ),
+  on(createStep, 'a create whose deadline has passed', 'deadline', () =>
+    honest.create(createStep, { deadline: BigInt(now() - 1) }),
   ),
 
   // ---- a larger amount, and an approval of everything

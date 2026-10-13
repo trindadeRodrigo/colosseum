@@ -1,6 +1,7 @@
 /// <reference path="../types/javascript-lp-solver.d.ts" />
 import type {
   Asset,
+  Chain,
   ConstraintSheet,
   LiquidityProvider,
   PlanLeg,
@@ -50,6 +51,11 @@ export type SolveInput = {
   nowMonth?: string;
   /** Optional measured exit liquidity. Absent: stock caps are the registry caps only (behaviour unchanged). */
   liquidity?: LiquidityProvider;
+  /**
+   * The chain the plan lives on (gate ONE-CHAIN). An asset of another chain is never offered, whatever
+   * its row says. Absent: Solana, the chain the structurer builds on.
+   */
+  chain?: Chain;
 };
 
 export type SolveResult = {
@@ -67,7 +73,10 @@ export function solve(input: SolveInput): SolveResult {
   const nowMonth = input.nowMonth ?? currentMonth();
   const binding: string[] = [];
   const notes: string[] = [];
-  const eligible = input.assets.filter((a) => isEligible(a, sheet.profile) && a.id !== 'usdt');
+  const chain = input.chain ?? 'solana';
+  const eligible = input.assets.filter(
+    (a) => a.chain === chain && isEligible(a, sheet.profile) && a.id !== 'usdt',
+  );
   const byId = new Map(eligible.map((a) => [a.id, a]));
   const cash = byId.get('usdc');
   const brl = eligible.find((a) => a.kind === 'brl_stable');

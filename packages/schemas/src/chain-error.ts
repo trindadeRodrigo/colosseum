@@ -78,6 +78,12 @@ const CONTRACT_ONLY_ERRORS = [
   'DepositShortfall',
   /** `withdrawAll` was sent with too little gas to try every token. */
   'GasTooLow',
+  /** The guardian stopped new money on the chain: no deposit until the admin lifts it. Withdrawing works. */
+  'DepositsPaused',
+  /** The deposit would pass a cap the admin set on one vault or on all vaults together. None is set by default. */
+  'DepositCapReached',
+  /** Creating a vault is limited to a list the admin keeps, and this wallet is not on it. */
+  'CreationNotOpen',
   /** The caller is not the admin, or not the admin-to-be, that the call is for. */
   'NotAdmin',
   /** An address given as a token or a router holds no code. */
@@ -121,6 +127,8 @@ const ADAPTER_ERRORS = [
   'AllowanceTooLow',
   /** Built too long ago to be sent. */
   'Expired',
+  /** A trade would now give less than the least its order stated: the terms are not changed for it. */
+  'PriceMoved',
   /** Bytes this server did not build are never relayed. */
   'NotBuiltHere',
   /** The RPC or the quote source did not answer. */
@@ -168,7 +176,46 @@ export const CONTRACT_ERROR_CODE = {
   VersionMismatch: 'VersionMismatch',
   /** The chain's config names no registry, so nothing can be followed there yet. */
   RegistryNotSet: 'NotSupported',
+  /** An owner's trade sent after the deadline it was signed with: built too long ago to be sent. */
+  DeadlinePassed: 'Expired',
+  // IBasketVault, the keeper's path (EVM-3): the program's names where the rule is the same.
+  NotKeeper: 'NotKeeper',
+  AutoFollowOff: 'AutoFollowOff',
+  KeeperPaused: 'KeeperPaused',
+  NotCashLeg: 'NotCashLeg',
+  NotTowardTarget: 'NotTowardTarget',
+  PastTarget: 'PastTarget',
+  Cooldown: 'Cooldown',
+  LossCapReached: 'LossCapReached',
+  AssetNotPriced: 'AssetNotPriced',
+  KeeperAssetOff: 'KeeperAssetOff',
+  PriceOutOfRange: 'PriceOutOfRange',
+  PriceStale: 'PriceStale',
+  PriceDeviation: 'PriceDeviation',
+  /** The chain's sequencer is down or came back less than an hour ago: its prices wait, as a stale one does. */
+  SequencerDown: 'PriceStale',
+  MarketClosed: 'MarketClosed',
+  /** The guardian halted keeper trades in the asset: the market is closed to the keeper for it. */
+  AssetHalted: 'MarketClosed',
+  /** The issuer paused the token: closed to the keeper until the issuer lifts it. */
+  AssetPaused: 'MarketClosed',
+  MultiplierWindow: 'MultiplierWindow',
+  /** What came in is worth less than what went out, less the tolerance: the program's ReceivedTooLittle. */
+  ValueTooLow: 'ReceivedTooLittle',
+  NothingTraded: 'NothingTraded',
+  /** The vault is worth more than the keeper's checks measure: the program refuses it as AssetNotPriced. */
+  ValueTooLarge: 'AssetNotPriced',
+  NewAssetNeedsOwner: 'NewAssetNeedsOwner',
+  VersionNotEffective: 'VersionNotEffective',
   // IVaultConfig
+  DepositsArePaused: 'DepositsPaused',
+  NotAllowedToCreate: 'CreationNotOpen',
+  VaultCapReached: 'DepositCapReached',
+  TotalCapReached: 'DepositCapReached',
+  /** Decimals stated for a token or a feed that are not its own: a setting outside what it may be. */
+  DecimalsMismatch: 'ParamOutOfBounds',
+  /** `noteDeposit` from a caller that is not a vault of the factory, as an admin's call from another is. */
+  NotAVault: 'NotAdmin',
   NotAdmin: 'NotAdmin',
   NotPendingAdmin: 'NotAdmin',
   /** A guardian's call from a caller who holds neither that role nor the admin's. */
@@ -195,8 +242,6 @@ export const CONTRACT_ERROR_CODE = {
   ParamOutOfBounds: 'ParamOutOfBounds',
   // IVaultFactory
   VaultExists: 'VaultExists',
-  /** Auto-follow cannot be switched on at creation until the keeper path exists. */
-  AutoFollowUnavailable: 'NotSupported',
   BeaconNotTheAdmins: 'HandoverNotDone',
   // IIndexRegistry
   CreatorLimit: 'CreatorLimit',
@@ -209,6 +254,13 @@ export const CONTRACT_ERROR_CODE = {
   // VaultBeacon
   /** The beacon's key cannot be given up: there is no such step. */
   RenounceDisabled: 'NotSupported',
+  // PoolAverageFeed and TickPrice (contracts/src/price): an asset's one-hour average from its pool
+  /** The feed gives no answer, with its reason; the vault reads that as its own AssetNotPriced. */
+  NotPriced: 'AssetNotPriced',
+  /** The pool's average tick is past the ticks the maths takes: no price can be stated. */
+  TickOutOfRange: 'AssetNotPriced',
+  /** A feed deployed with a window, a floor, a band, tokens or decimals it cannot work with. */
+  InvalidSetup: 'ParamOutOfBounds',
 } as const satisfies Record<string, ChainErrorCode>;
 
 /**
@@ -224,7 +276,7 @@ export const CHAIN_ERROR_RETRYABLE: Record<ChainErrorCode, boolean> = {
   MintNotAccepted: false,
   RouterNotAllowed: false,
   SpentTooMuch: false,
-  /** The price moved past the slippage: a new build takes a fresh quote. */
+  /** The price moved past the least the step accepts; it can come back, and a new build tries again. */
   ReceivedTooLittle: true,
   OtherAccountDebited: false,
   AccountTampered: false,
@@ -265,6 +317,10 @@ export const CHAIN_ERROR_RETRYABLE: Record<ChainErrorCode, boolean> = {
   DepositShortfall: false,
   /** A new build states a higher `evm.gas`. */
   GasTooLow: true,
+  /** Neither passes by sending again: the admin lifts the pause or raises the cap, or the person deposits less. */
+  DepositsPaused: false,
+  DepositCapReached: false,
+  CreationNotOpen: false,
   NotAdmin: false,
   NoCode: false,
   AssetIsRouter: false,
@@ -289,6 +345,8 @@ export const CHAIN_ERROR_RETRYABLE: Record<ChainErrorCode, boolean> = {
   NoGas: false,
   AllowanceTooLow: false,
   Expired: true,
+  /** The order is made again, at the price now: nothing about this one changes. */
+  PriceMoved: false,
   NotBuiltHere: false,
   Unavailable: true,
   Unknown: false,
@@ -306,15 +364,22 @@ export type ChainErrorInfo = z.infer<typeof ChainErrorInfo>;
 export class ChainError extends Error {
   readonly code: ChainErrorCode;
   readonly retryable: boolean;
+  /**
+   * The transaction was refused before it left this process (a relay's preflight): it can never land,
+   * so a caller that remembered it as sent may forget it.
+   */
+  readonly unsent: boolean;
   constructor(
     code: ChainErrorCode,
     message: string,
     retryable: boolean = CHAIN_ERROR_RETRYABLE[code],
+    options: { unsent?: boolean } = {},
   ) {
     super(message);
     this.name = 'ChainError';
     this.code = code;
     this.retryable = retryable;
+    this.unsent = options.unsent ?? false;
   }
   toJSON(): ChainErrorInfo {
     return { code: this.code, message: this.message, retryable: this.retryable };

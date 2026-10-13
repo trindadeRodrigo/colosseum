@@ -1,0 +1,18 @@
+# The keeper on a Linux machine, one unit per chain: `systemctl enable --now tenonfi-keeper@robinhood`.
+# Its environment is a file only the keeper's user reads (/etc/tenonfi/keeper-<chain>.env), holding the
+# RPC URL, the path to the key and the alert URLs. The key file lives outside the checkout.
+[Unit]
+Description=Tenonfi keeper (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=tenonfi
+WorkingDirectory=/opt/tenonfi
+EnvironmentFile=/etc/tenonfi/keeper-%i.env
+ExecStart=/opt/tenonfi/scripts/keeper/run.sh %i
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

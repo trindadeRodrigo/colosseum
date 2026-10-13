@@ -4,5 +4,11 @@ export const DISCLAIMER = {
   en: 'This tool is not licensed investment advice. It structures and explains an allocation from a goal you state; the decision and custody are yours. The distributor embedding this tool holds the client relationship.',
 } as const;
 
-export const DISCLAIMER_SHORT =
-  'Not licensed investment advice. Policy in your wallet, not a fund.';
+/**
+ * The one-line pointer a compact panel may carry beside the full block (disclaimer-block.md), in the
+ * view's language. The Portuguese is a translation of the English line: the spec gives none.
+ */
+export const DISCLAIMER_SHORT = {
+  pt: 'Não é consultoria de investimentos licenciada. Política na sua carteira, não um fundo.',
+  en: 'Not licensed investment advice. Policy in your wallet, not a fund.',
+} as const;

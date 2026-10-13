@@ -8,22 +8,102 @@ import { Component, FamilyMeta, Recipe } from './recipe';
 // recipe per chain. `compose()` in packages/engine/src/personal builds it; the numbers in
 // `PersonalParams` are Rodrigo's.
 
+/** ISO 4217, three capitals: the currency a goal is counted in (most goals are in dollars). */
+export const GoalCurrency = z.string().regex(/^[A-Z]{3}$/);
+export type GoalCurrency = z.infer<typeof GoalCurrency>;
+
+/** A dated withdrawal the plan must pay: a month, an amount and its currency. */
+export const Obligation = z.object({
+  /** YYYY-MM. */
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+  amount: z.number().positive(),
+  currency: GoalCurrency,
+});
+export type Obligation = z.infer<typeof Obligation>;
+
+/** A theme: a shared portfolio's slug, which is at most 64 characters (the slug rule of the routes). */
+export const ThemeSlug = z.string().min(1).max(64);
+
+/**
+ * A share of the plan with its own strategy (gate SLEEVES, Oct 5): a goal with dates, a theme from a
+ * curated list, or the safest liquid yield. `shareBps` is of the whole plan.
+ */
+export const PlanSleeve = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('goal'), shareBps: Bps.min(1) }),
+  z.object({ kind: z.literal('theme'), shareBps: Bps.min(1), theme: ThemeSlug }),
+  z.object({ kind: z.literal('safe_yield'), shareBps: Bps.min(1) }),
+]);
+export type PlanSleeve = z.infer<typeof PlanSleeve>;
+
+/** Sleeves add up to the whole plan, and the goal and safe-yield sleeves appear at most once each. */
+export const PlanSleeves = z
+  .array(PlanSleeve)
+  .min(1)
+  .refine((xs) => xs.reduce((n, x) => n + x.shareBps, 0) === 10_000, {
+    message: 'sleeve shares must add up to exactly 10,000',
+  })
+  .refine(
+    (xs) =>
+      xs.filter((x) => x.kind === 'goal').length <= 1 &&
+      xs.filter((x) => x.kind === 'safe_yield').length <= 1,
+    { message: 'at most one goal sleeve and one safe-yield sleeve' },
+  )
+  .refine(
+    (xs) => {
+      const themes = xs.flatMap((x) => (x.kind === 'theme' ? [x.theme] : []));
+      return new Set(themes).size === themes.length;
+    },
+    { message: 'a theme appears once' },
+  );
+export type PlanSleeves = z.infer<typeof PlanSleeves>;
+
 export const BasketSheet = z.object({
   basketType: z.literal('standard'),
   goal: z.enum(['grow', 'income', 'protect']),
   amountUsd: z.number().min(10).max(1_000_000),
   horizonMonths: z.number().int().min(1).max(480),
+  /**
+   * The person gave no date for the goal ("no hard cap", "sem prazo"; gate GLIDE-OPT-IN, Oct 6).
+   * `horizonMonths` then holds a starting parameter, not the person's date: nothing shows it, no
+   * date is made from it, and the glide is off. Left out: the goal has its date.
+   */
+  horizonOpen: z.boolean().optional(),
   risk: z.enum(['low', 'medium', 'high']),
   /** Family slugs. */
-  themes: z.array(z.string().min(1)).max(3),
-  /** ISO two-letter, self-declared. */
-  country: z.string().regex(/^[A-Z]{2}$/),
+  themes: z.array(ThemeSlug).max(3),
+  /**
+   * ISO two-letter, self-declared. Optional and unused in planning (gate COUNTRY-REMOVED, Rodrigo,
+   * Oct 6): no plan is shaped by it. Kept so stored sheets that carry one still parse.
+   */
+  country: z
+    .string()
+    .regex(/^[A-Z]{2}$/)
+    .optional(),
   chains: z.array(ChainId).min(1),
   incomeTargetUsdMonthly: z.number().positive().optional(),
   rules: z.object({ useHoldings: z.boolean(), glide: z.boolean() }),
   language: Language,
+  /** The goal's currency. Left out: dollars. */
+  currency: GoalCurrency.optional(),
+  /** Dated withdrawals, in the goal's currency or another. Left out: none. */
+  obligations: z.array(Obligation).max(480).optional(),
+  /** The person's split of the plan. Left out: one goal sleeve at 10,000 (`sleevesOf`). */
+  sleeves: PlanSleeves.optional(),
+  /**
+   * Whether a sleeve that has grown is brought back to its share: the person's choice, never the
+   * engine's (gate SLEEVES). Left out: false.
+   */
+  restoreSplit: z.boolean().optional(),
 });
 export type BasketSheet = z.infer<typeof BasketSheet>;
+
+/** The sleeves of a sheet: its own, or one goal sleeve at the whole plan. */
+export const sleevesOf = (sheet: Pick<BasketSheet, 'sleeves'>): PlanSleeve[] =>
+  sheet.sleeves ?? [{ kind: 'goal', shareBps: 10_000 }];
+
+/** The currency of a sheet's goal: its own, or dollars. */
+export const currencyOf = (sheet: Pick<BasketSheet, 'currency'>): GoalCurrency =>
+  sheet.currency ?? 'USD';
 
 /**
  * What the sentence parser fills (DESIGN-VAULT section 7): every field of the sheet, each null when the
@@ -34,6 +114,8 @@ export const BasketSheetDraft = z.object({
   goal: BasketSheet.shape.goal.nullable(),
   amountUsd: BasketSheet.shape.amountUsd.nullable(),
   horizonMonths: BasketSheet.shape.horizonMonths.nullable(),
+  // Added on Oct 6 (gate GLIDE-OPT-IN): left out, the text did not say the goal has no date.
+  horizonOpen: z.boolean().nullable().optional(),
   risk: BasketSheet.shape.risk.nullable(),
   themes: BasketSheet.shape.themes.nullable(),
   country: BasketSheet.shape.country.nullable(),
@@ -41,6 +123,11 @@ export const BasketSheetDraft = z.object({
   incomeTargetUsdMonthly: z.number().positive().nullable(),
   rules: BasketSheet.shape.rules.nullable(),
   language: BasketSheet.shape.language.nullable(),
+  // Added on Oct 5 (ENG-3 slice 2): a draft written before them reads as "the text did not say".
+  currency: GoalCurrency.nullable().default(null),
+  obligations: z.array(Obligation).nullable().default(null),
+  sleeves: PlanSleeves.nullable().default(null),
+  restoreSplit: z.boolean().nullable().default(null),
 });
 export type BasketSheetDraft = z.infer<typeof BasketSheetDraft>;
 
@@ -93,7 +180,8 @@ export type BasketLine = z.infer<typeof BasketLine>;
 
 export const BasketCard = z.object({
   moneyTodayUsd: z.number().nonnegative(),
-  termMonths: z.number().int().positive(),
+  /** The goal's term; null for a goal with no date (`horizonOpen`), shown as "no date set". */
+  termMonths: z.number().int().positive().nullable(),
   cashFlow: z.enum(['none', 'monthly', 'at_end']),
   expectedReturn: z.object({
     lowPct: z.number(),
@@ -116,9 +204,25 @@ export type Verdict = z.infer<typeof Verdict>;
 
 export const ObservationRef = Sourced.extend({
   id: z.string().min(1),
-  kind: z.enum(['yield', 'price', 'liquidity']),
+  kind: z.enum(['yield', 'price', 'liquidity', 'fx']),
 });
 export type ObservationRef = z.infer<typeof ObservationRef>;
+
+/**
+ * One of the person's sleeves as the plan was made (gate SLEEVES, ENG-3 slice 4): its share, its
+ * dollars, and for the safe-yield and theme sleeves what it holds by token, cash included, before the
+ * lines are rounded to whole basis points. The goal sleeve's `holds` is empty: it is the rest of every
+ * line. A stored plan keeps this so each sleeve can be rebalanced against its own targets.
+ */
+export const PlanSplitSleeve = z.object({
+  kind: z.enum(['goal', 'theme', 'safe_yield']),
+  /** A theme sleeve's slug. */
+  theme: z.string().min(1).optional(),
+  shareBps: Bps.min(1),
+  amountUsd: z.number().nonnegative(),
+  holds: z.array(z.object({ assetId: AssetId, amountUsd: z.number().nonnegative() })),
+});
+export type PlanSplitSleeve = z.infer<typeof PlanSplitSleeve>;
 
 export const BasketProposalBase = z.object({
   sheet: BasketSheet,
@@ -140,6 +244,20 @@ export const BasketProposalBase = z.object({
   flags: z.array(z.string()),
   observations: z.array(ObservationRef),
   disclaimer: z.string(),
+  /** Present when the person split the plan (gate SLEEVES): each sleeve and its targets. Additive. */
+  split: z.array(PlanSplitSleeve).optional(),
+  /**
+   * Present on a plan made as one of the three candidates (gate THREE-PLANS): which one, so the table
+   * it was made with (`paramsHash`) can be rebuilt to rebalance it. The ids of `PlanCandidateId`,
+   * written here because plan-candidates.ts imports this file. Additive.
+   */
+  candidate: z.enum(['cover', 'spread', 'carry']).optional(),
+  /**
+   * Who chose the weights: the engine, or, for a mix taken from the conversation or chosen by the
+   * person (gate ANY-COMPOSITION), the model or the person, as the client said. Left out: the
+   * engine. Additive.
+   */
+  origin: z.enum(['engine', 'model', 'person']).optional(),
 });
 
 export const BasketProposal = BasketProposalBase.refine(

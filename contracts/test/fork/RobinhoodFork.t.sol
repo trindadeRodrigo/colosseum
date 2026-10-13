@@ -4,6 +4,7 @@ pragma solidity 0.8.37;
 import {console2} from "forge-std/console2.sol";
 import {BasketVault} from "../../src/BasketVault.sol";
 import {VaultFixture} from "../helpers/VaultFixture.sol";
+import {ForkBlock} from "./ForkBlock.sol";
 
 interface IToken {
     function balanceOf(address account) external view returns (uint256);
@@ -15,13 +16,12 @@ interface IToken {
 ///
 /// Opt-in: every test here is skipped unless `RH_FORK_URL` is set, for example
 ///   RH_FORK_URL=https://robinhood.drpc.org pnpm test:contracts
-/// It reads a fork at the block the rig pinned and sends nothing to any network.
+/// It reads a fork at one block (`ForkBlock`: `RH_FORK_BLOCK`, or its default) and sends nothing to any network.
 ///
 /// What it settles: the gas the vault's sweep gives one token (`SWEEP_BALANCE_GAS`, `SWEEP_TRANSFER_GAS`)
 /// against what the real tokens use, and that no gas limit makes `withdrawAll` succeed while leaving one of
 /// them behind. Before the fix there was such a window, 8,000 to 16,000 gas wide, with these two tokens.
 abstract contract RobinhoodForkTest is VaultFixture {
-    uint256 internal constant PINNED_BLOCK = 77_417_307;
     address internal constant NVDA = 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC;
     address internal constant USDG = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
     address internal constant NVDA_HOLDER = 0xd4EB21209C4D6093f80B5b84f5C45cc093EA14a3;
@@ -50,7 +50,7 @@ abstract contract RobinhoodForkTest is VaultFixture {
         string memory url = vm.envOr("RH_FORK_URL", string(""));
         if (bytes(url).length == 0) return;
         forked = true;
-        vm.createSelectFork(url, PINNED_BLOCK);
+        vm.createSelectFork(url, ForkBlock.number());
         _deployPlatform();
 
         vm.prank(NVDA_HOLDER);

@@ -1,0 +1,44 @@
+{
+  "slug": "crypto-economy",
+  "name": {
+    "en": "Crypto economy",
+    "pt": "Economia cripto"
+  },
+  "chain": "solana",
+  "version": 1,
+  "curator": "Rodrigo",
+  "status": "confirmed",
+  "decidedOn": "2026-10-07",
+  "gate": "LABELS-CONFIRMED",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/solana.json, and confirmed by Rodrigo on 2026-10-07 with the members it was proposed with (gate LABELS-CONFIRMED). Companies whose business or core plan is crypto. A company that only holds bitcoin in its treasury (GameStop, Tesla) is left out, and so is STRC, a preferred stock.",
+  "members": [
+    {
+      "symbol": "COINx",
+      "reason": {
+        "en": "Coinbase runs exchanges where customers trade crypto, and holds crypto in custody",
+        "pt": "a Coinbase opera corretoras onde clientes negociam cripto, e faz a custódia de cripto"
+      }
+    },
+    {
+      "symbol": "CRCLx",
+      "reason": {
+        "en": "Circle issues the USDC and EURC stablecoins",
+        "pt": "a Circle emite as stablecoins USDC e EURC"
+      }
+    },
+    {
+      "symbol": "HOODx",
+      "reason": {
+        "en": "Robinhood offers crypto trading and staking, and owns the Bitstamp exchange",
+        "pt": "a Robinhood oferece negociação e staking de cripto, e é dona da corretora Bitstamp"
+      }
+    },
+    {
+      "symbol": "MSTRx",
+      "reason": {
+        "en": "the company behind MSTR, formerly MicroStrategy, holds bitcoin as its main treasury reserve asset",
+        "pt": "a empresa por trás de MSTR, antes MicroStrategy, mantém bitcoin como principal ativo de reserva de tesouraria"
+      }
+    }
+  ]
+}

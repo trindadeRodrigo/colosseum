@@ -37,6 +37,7 @@ contract DeployTest is Test {
         cfg.keeper = keeper;
         cfg.publishDelay = 300;
         cfg.params = Params(125, 200, 50, 3600, 52_200, 72_000);
+        cfg.priceDevBps = 200;
     }
 
     function test_deploy_fromTheLocalFile() public {
@@ -163,6 +164,100 @@ contract DeployTest is Test {
         script.deploy(cfg, deployer);
     }
 
+    /// Robinhood Chain's test network: one key, the deployer's, holds the admin and the beacon; nothing is
+    /// listed until the test tokens, feeds and exchange exist; the closed days ahead are set. A dry run of
+    /// the file against the network gives the same transactions.
+    function test_deploy_theTestNetworkFile() public {
+        Deploy.Config memory cfg = script.readConfig("script/config/46630.json");
+        assertTrue(cfg.adminIsDeployer);
+        vm.chainId(46_630);
+        // The file lists what the test network kit deployed there (TNET-2): code at each address, as there.
+        // STOP is enough: the config reads no token and no feed, and a router must not answer as a token.
+        for (uint256 i; i < cfg.assets.length; ++i) {
+            vm.etch(cfg.assets[i].token, hex"00");
+            if (cfg.assets[i].config.feed != address(0)) vm.etch(cfg.assets[i].config.feed, hex"00");
+            if (cfg.assets[i].config.averageFeed != address(0)) vm.etch(cfg.assets[i].config.averageFeed, hex"00");
+        }
+        for (uint256 i; i < cfg.routers.length; ++i) {
+            vm.etch(cfg.routers[i].router, hex"00");
+        }
+        Deploy.Deployed memory d = script.deploy(cfg, deployer);
+        VaultFactory factory = VaultFactory(d.factory);
+        assertEq(factory.admin(), deployer);
+        assertEq(factory.pendingAdmin(), address(0));
+        assertEq(VaultBeacon(d.beacon).owner(), deployer);
+        assertEq(VaultBeacon(d.beacon).pendingOwner(), address(0));
+        assertEq(factory.guardian(), address(0), "the admin makes the guardian's calls");
+        assertEq(factory.keeper(), address(0), "set when the keeper key is made");
+        assertEq(factory.priceDevBps(), 200);
+        (, uint16 lossCap,,,,) = factory.params();
+        assertEq(lossCap, 100, "a person is told 2% in any seven days");
+        assertEq(IndexRegistry(d.registry).publishDelay(), 300);
+        assertTrue(factory.closedDay(20_783), "Thanksgiving 2026");
+        assertTrue(factory.closedDay(21_176));
+        // The kit's test cash and its eleven test stock tokens, each with the keeper's switch on.
+        assertEq(factory.assets().length, 12);
+        assertEq(factory.cashToken(), cfg.cashToken);
+        for (uint256 i = 1; i < cfg.assets.length; ++i) {
+            assertEq(factory.asset(cfg.assets[i].token).flags, 1);
+        }
+        assertEq(cfg.routers.length, 1);
+        assertEq(factory.routerPull(cfg.routers[0].router), 2, "Universal Router 2.1.2 pulls through Permit2");
+        _assertIsTheKitsRecord(cfg);
+        // 6 creations, the registry, the guardian, the keeper, the price deviation, 12 assets, the cash
+        // token, the router and 12 closed days: the 36 the deploy sent on Oct 5.
+        assertEq(script.sent(), 6 + 4 + 12 + 1 + 1 + 12);
+    }
+
+    /// The filled file names what the kit deployed, as its own record says: the cash, the router, and each
+    /// token in the kit's order with its price contract and its average.
+    function _assertIsTheKitsRecord(Deploy.Config memory cfg) internal view {
+        string memory kit = vm.readFile("script/testnet/deployed/46630.json");
+        assertEq(cfg.cashToken, vm.parseJsonAddress(kit, ".cash"));
+        assertEq(cfg.assets[0].token, cfg.cashToken, "the cash is listed first");
+        assertEq(cfg.routers[0].router, vm.parseJsonAddress(kit, ".router"));
+        uint256 n;
+        while (vm.keyExistsJson(kit, string.concat(".tokens[", vm.toString(n), "]"))) ++n;
+        assertEq(cfg.assets.length, n + 1);
+        for (uint256 i; i < n; ++i) {
+            string memory e = string.concat(".tokens[", vm.toString(i), "]");
+            Deploy.Asset memory a = cfg.assets[i + 1];
+            assertEq(a.token, vm.parseJsonAddress(kit, string.concat(e, ".address")));
+            assertEq(a.config.feed, vm.parseJsonAddress(kit, string.concat(e, ".feed")));
+            assertEq(a.config.averageFeed, vm.parseJsonAddress(kit, string.concat(e, ".average")));
+            assertEq(a.config.pauseProbe, a.token, "the issuer's pause is read on the token");
+            assertGt(a.config.minPrice, 0);
+            assertLe(uint256(a.config.maxPrice), 2 * uint256(a.config.minPrice));
+        }
+    }
+
+    /// `settings()`: what a test network lists once its tokens exist, written into the deployed factory.
+    function test_writeSettings_listsOnADeployedFactory() public {
+        Deploy.Deployed memory d = script.deploy(_config(), deployer);
+        MockToken cash = new MockToken(6);
+        MockToken stock = new MockToken(18);
+        MockRouter router = new MockRouter(true);
+        Deploy.Config memory cfg = _config();
+        cfg.cashToken = address(cash);
+        cfg.assets = new Deploy.Asset[](2);
+        cfg.assets[0] = Deploy.Asset(address(cash), _asset(6, 0, 5000));
+        cfg.assets[1] = Deploy.Asset(address(stock), _asset(18, 1, 2500));
+        cfg.assets[1].config.flags = 1;
+        cfg.assets[1].config.averageFeed = makeAddr("average");
+        cfg.assets[1].config.minPrice = 150e8;
+        cfg.assets[1].config.maxPrice = 250e8;
+        cfg.routers = new Deploy.Router[](1);
+        cfg.routers[0] = Deploy.Router(address(router), 2);
+        cfg.priceDevBps = 150;
+        script.writeSettings(cfg, VaultFactory(d.factory));
+        VaultFactory factory = VaultFactory(d.factory);
+        assertEq(factory.cashToken(), address(cash));
+        assertEq(factory.asset(address(stock)).flags, 1);
+        assertEq(factory.asset(address(stock)).maxPrice, 250e8);
+        assertEq(factory.routerPull(address(router)), 2);
+        assertEq(factory.priceDevBps(), 150);
+    }
+
     function test_deploy_refusesAFileWithNoAdmin() public {
         Deploy.Config memory cfg = _config();
         cfg.admin = address(0);
@@ -198,6 +293,13 @@ contract DeployTest is Test {
         assertEq(cfg.assets[1].config.pauseSelector, bytes4(keccak256("paused()")));
         assertEq(cfg.assets[1].config.scheduleSelector, bytes4(keccak256("effectiveAt()")));
         assertEq(cfg.assets[1].config.haltUntil, 0);
+        assertEq(cfg.assets[0].config.flags, 0);
+        assertEq(cfg.assets[1].config.flags, 1);
+        assertEq(cfg.assets[1].config.averageFeed, 0x6666666666666666666666666666666666666666);
+        assertEq(cfg.assets[1].config.minPrice, 150e8);
+        assertEq(cfg.assets[1].config.maxPrice, 250e8);
+        assertEq(cfg.priceDevBps, 200);
+        assertFalse(cfg.adminIsDeployer);
         assertEq(cfg.routers.length, 1);
         assertEq(cfg.routers[0].router, 0x5555555555555555555555555555555555555555);
         assertEq(cfg.routers[0].pull, 2);
@@ -275,7 +377,11 @@ contract DeployTest is Test {
             pauseProbe: address(0),
             pauseSelector: bytes4(0),
             scheduleSelector: bytes4(0),
-            haltUntil: 0
+            haltUntil: 0,
+            flags: 0,
+            averageFeed: address(0),
+            minPrice: 0,
+            maxPrice: 0
         });
     }
 

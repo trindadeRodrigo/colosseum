@@ -1,15 +1,32 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from 'vitest';
-import { LIVE_SPECIMEN } from './fixtures/mock';
-import { PIN_CLOSE_MS, PIN_OPEN_MS } from './provenance';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LIVE_SPECIMEN, SANDBOX_OBS } from './fixtures/mock';
+import { pinSourceOfPrice } from './price-source';
+import { PIN_CLOSE_MS, PIN_OPEN_MS, type PinSource, pinWords, sourceLine } from './provenance';
 import { click, find, fire, mount, press, settle, unmountAll } from './test/dom';
 import { pinOnPage, twoPins } from './test/events.cases';
 
-afterEach(unmountAll);
+afterEach(async () => {
+  await unmountAll();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 const pin = (host: HTMLElement) => find<HTMLButtonElement>(host, '[data-ui="pin"]');
 const popovers = (host: HTMLElement) => host.querySelectorAll('[data-ui="pin-popover"]');
 const figure = (host: HTMLElement) => find(host, '[data-ui="figure"]');
+const details = (host: HTMLElement) => find<HTMLButtonElement>(host, '[data-ui="pin-details"]');
+const lines = (host: HTMLElement) =>
+  [...find(host, '[data-ui="pin-summary"]').children].map((line) => line.textContent);
+/** The price of the screenshot Thom sent: a test network's price account, as the reader writes it. */
+const ACCOUNT = 'HSk67BDSrh8486PHxqVgyHMHCbwrnstLbcGfKYdG3q9g';
+const OWNER = '2ticePjZZ6e34bNUgUXz7v3uHm3jS8jvV13gesdvKn4f';
+const PRICE: PinSource = {
+  source: `price account ${ACCOUNT} (Scope layout, owner ${OWNER}), entry 484`,
+  fetchedAt: '2026-10-09T18:26:20Z',
+  method: "value / 10^exponent of the entry; age is the cluster's clock less the entry's time",
+  provenance: 'sandbox',
+};
 const pointerDown = (target: Element) =>
   fire(target, new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
 /**
@@ -23,22 +40,46 @@ async function move(from: Element | null, to: Element | null, pointerType = 'mou
 }
 
 describe('ProvenancePin, opened and closed (provenance-pin.md)', () => {
-  it('opens on a click with source, time and method, and closes on a second click', async () => {
+  it('opens on a click with the plain words, the API’s own one step away, and closes on a second click', async () => {
     const host = await mount(pinOnPage(LIVE_SPECIMEN));
     expect(pin(host).getAttribute('aria-expanded')).toBe('false');
     expect(popovers(host)).toHaveLength(0);
     await click(pin(host));
     expect(pin(host).getAttribute('aria-expanded')).toBe('true');
-    const line = `${LIVE_SPECIMEN.source} · ${LIVE_SPECIMEN.fetchedAt} · ${LIVE_SPECIMEN.method}`;
-    expect(find(host, '[data-ui="pin-source"]').textContent).toContain(line);
+    expect(lines(host)[0]).toBe('From a sample feed');
+    expect(pin(host).getAttribute('aria-describedby')).toBe(
+      find(host, '[data-ui="pin-summary"]').id,
+    );
+    // closed until asked for
+    expect(host.querySelector('[data-ui="pin-source"]')).toBeNull();
+    await click(details(host));
+    expect(details(host).getAttribute('aria-expanded')).toBe('true');
+    const facts = find(host, '[data-ui="pin-source"]').textContent ?? '';
+    expect(facts).toContain(LIVE_SPECIMEN.source);
+    expect(facts).toContain('1 Oct 2026, 14:02:11 UTC');
+    expect(facts).toContain(LIVE_SPECIMEN.method);
+    expect(find(host, '[data-ui="pin-source"] time').getAttribute('datetime')).toBe(
+      LIVE_SPECIMEN.fetchedAt,
+    );
+    await click(details(host));
+    expect(host.querySelector('[data-ui="pin-source"]')).toBeNull();
     await click(pin(host));
     expect(popovers(host)).toHaveLength(0);
+  });
+
+  it('opens with its details closed again the next time', async () => {
+    const host = await mount(pinOnPage(LIVE_SPECIMEN));
+    await click(pin(host));
+    await click(details(host));
+    await click(pin(host));
+    await click(pin(host));
+    expect(details(host).getAttribute('aria-expanded')).toBe('false');
   });
 
   it('closes on Escape and gives focus back to the pin when focus was inside', async () => {
     const host = await mount(pinOnPage(LIVE_SPECIMEN));
     await click(pin(host));
-    find(host, '[data-ui="pin-source"]').focus();
+    details(host).focus();
     await press(document, 'Escape');
     expect(popovers(host)).toHaveLength(0);
     expect(pin(host).getAttribute('aria-expanded')).toBe('false');
@@ -64,7 +105,7 @@ describe('ProvenancePin, opened and closed (provenance-pin.md)', () => {
   it('closes on a press anywhere else, and stays open on a press inside it', async () => {
     const host = await mount(pinOnPage(LIVE_SPECIMEN));
     await click(pin(host));
-    await pointerDown(find(host, '[data-ui="pin-source"]'));
+    await pointerDown(details(host));
     await pointerDown(find(host, '[data-ui="pin-popover"]'));
     expect(popovers(host)).toHaveLength(1);
     await pointerDown(find(host, '#elsewhere'));
@@ -155,12 +196,298 @@ describe('ProvenancePin and focus', () => {
     const host = await mount(pinOnPage(LIVE_SPECIMEN));
     pin(host).focus();
     await click(pin(host));
-    const source = find(host, '[data-ui="pin-source"]');
+    const source = details(host);
     await fire(source, new FocusEvent('focusin', { bubbles: true }));
     source.focus();
     source.blur(); // a press on the popover's text: focus goes to no element
     await settle();
     expect(popovers(host)).toHaveLength(1);
+  });
+});
+
+describe('ProvenancePin, reached without a mouse', () => {
+  it('opens when the keyboard brings focus to it, and closes when focus goes elsewhere', async () => {
+    const host = await mount(pinOnPage(LIVE_SPECIMEN));
+    await fire(pin(host), new FocusEvent('focusin', { bubbles: true }));
+    expect(popovers(host)).toHaveLength(1);
+    expect(pin(host).getAttribute('aria-expanded')).toBe('true');
+    await fire(find(host, '#elsewhere'), new FocusEvent('focusin', { bubbles: true }));
+    expect(popovers(host)).toHaveLength(0);
+  });
+
+  it('stays open on Enter once focus has opened it, and closes on the next', async () => {
+    const host = await mount(pinOnPage(LIVE_SPECIMEN));
+    await fire(pin(host), new FocusEvent('focusin', { bubbles: true }));
+    await click(pin(host)); // Enter and Space click a button
+    expect(popovers(host)).toHaveLength(1);
+    await click(pin(host));
+    expect(popovers(host)).toHaveLength(0);
+  });
+
+  it('opens on a tap: the press, the focus the press brings, then the click', async () => {
+    const host = await mount(pinOnPage(LIVE_SPECIMEN));
+    await fire(pin(host), new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' }));
+    await fire(pin(host), new FocusEvent('focusin', { bubbles: true }));
+    // the focus was the press's own: it has not opened it, so the click that follows does not close it
+    expect(popovers(host)).toHaveLength(0);
+    await click(pin(host));
+    expect(popovers(host)).toHaveLength(1);
+    // and a second tap closes it
+    await fire(pin(host), new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' }));
+    await click(pin(host));
+    expect(popovers(host)).toHaveLength(0);
+  });
+
+  it('does not open again when Escape gives it focus back', async () => {
+    const host = await mount(pinOnPage(LIVE_SPECIMEN));
+    await click(pin(host));
+    details(host).focus();
+    await press(document, 'Escape');
+    expect(document.activeElement).toBe(pin(host));
+    expect(popovers(host)).toHaveLength(0);
+  });
+});
+
+describe('what the popover says (gate TOOLTIP-WORDS)', () => {
+  it('says the price of the screenshot in plain words, with no account and no formula', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-09T18:28:20Z'));
+    const host = await mount(pinOnPage(PRICE, { value: '$1.0000', what: 'Price' }));
+    await click(pin(host));
+    expect(lines(host)).toEqual([
+      'Price from the test network’s price feed',
+      'Read 2 minutes ago',
+      'Test network, not live',
+    ]);
+    const said = find(host, '[data-ui="pin-popover"]').textContent ?? '';
+    expect(said).not.toContain(ACCOUNT);
+    expect(said).not.toContain('exponent');
+    // the exact time is on the words, for whoever asks the element
+    expect(find(host, '[data-ui="pin-read"] time').getAttribute('datetime')).toBe(PRICE.fetchedAt);
+  });
+
+  it('reads the clock when it opens, and again the next time', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-09T18:26:40Z'));
+    const host = await mount(pinOnPage(PRICE));
+    await click(pin(host));
+    expect(lines(host)[1]).toBe('Read less than a minute ago');
+    await click(pin(host));
+    vi.setSystemTime(new Date('2026-10-09T21:26:20Z'));
+    await click(pin(host));
+    expect(lines(host)[1]).toBe('Read 3 hours ago');
+    await click(pin(host));
+    vi.setSystemTime(new Date('2026-10-12T18:26:20Z'));
+    await click(pin(host));
+    expect(lines(host)[1]).toBe('Read 3 days ago');
+  });
+
+  it('says a stale reading first, with the age the API states and the feed’s own limit', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-09T18:26:25Z')); // the read is seconds old; the price is not
+    const stale = { ...PRICE, staleAgeSec: 19 * 3600, staleLimitSec: 120 };
+    const host = await mount(pinOnPage(stale, { what: 'Price' }));
+    await click(pin(host));
+    expect(lines(host)).toEqual([
+      'Last updated 19 hours ago, older than this feed’s 2 minute limit',
+      'Price from the test network’s price feed',
+      'Test network, not live',
+    ]);
+    // a test-network figure keeps its hatched glyph, stale or not: it is never drawn as live
+    expect(find(host, '[data-ui="pin-glyph"]').getAttribute('data-state')).toBe('mock');
+    const live = await mount(pinOnPage({ ...stale, provenance: 'live' }, { what: 'Price' }));
+    expect(find(live, '[data-ui="stale-tag"]').textContent).toBe('stale · 19 h');
+    await click(pin(live));
+    expect(lines(live)).toEqual([
+      'Last updated 19 hours ago, older than this feed’s 2 minute limit',
+      'Price from the Kamino Scope price feed',
+    ]);
+  });
+
+  it('says a stale reading with no stated limit, and one with no age, without making either up', async () => {
+    const host = await mount(pinOnPage({ ...LIVE_SPECIMEN, staleAgeSec: 3 * 3600 }));
+    await click(pin(host));
+    expect(lines(host)[0]).toBe('Last updated 3 hours ago, which is stale');
+    const none = await mount(pinOnPage({ ...LIVE_SPECIMEN, staleAgeSec: Number.NaN }));
+    await click(pin(none));
+    expect(lines(none)[0]).toBe('Stale, and its age is not known');
+  });
+
+  it('does not guess at a source it has no name for: the details hold it', async () => {
+    const odd = { ...LIVE_SPECIMEN, source: 'ledger 7 of the back office' };
+    const host = await mount(pinOnPage(odd));
+    await click(pin(host));
+    expect(lines(host)[0]).toBe('Source details below');
+    await click(details(host));
+    expect(find(host, '[data-ui="pin-source"]').textContent).toContain(odd.source);
+  });
+
+  it('says what the number is only when the screen names it: a source does not say', async () => {
+    const host = await mount(pinOnPage(SANDBOX_OBS, { what: 'Exit cost' }));
+    await click(pin(host));
+    expect(lines(host)[0]).toBe('Exit cost from the test network’s exchange');
+    // a vault's value stands on a price feed, and is not called a price
+    const value = await mount(pinOnPage(PRICE));
+    await click(pin(value));
+    expect(lines(value)[0]).toBe('From the test network’s price feed');
+  });
+});
+
+describe('how fresh, and only what is known (review of #214, finding 1)', () => {
+  it('says a read as a read: the time of the read is not the age of what was read', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-09T18:26:30Z'));
+    const host = await mount(pinOnPage(PRICE, { what: 'Price' }));
+    await click(pin(host));
+    expect(lines(host)[1]).toBe('Read less than a minute ago');
+    expect(find(host, '[data-ui="pin-popover"]').textContent).not.toMatch(/Updated/);
+  });
+
+  it('says a price’s own age where the API states it, however fresh the read', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-09T18:26:30Z')); // read ten seconds ago
+    // a stock price 25 hours old, inside Robinhood Chain testnet's 26 hour limit: not stale
+    const old = pinSourceOfPrice({
+      ...PRICE,
+      source: `Chainlink feed 0x52908400098527886E0F7030069857D2E4169EE7 on Robinhood Chain testnet`,
+      ageSeconds: 25 * 3600,
+      maxAgeSeconds: 93_600,
+    });
+    expect(old.staleAgeSec).toBeNull();
+    const host = await mount(pinOnPage(old, { what: 'Price' }));
+    await click(pin(host));
+    expect(lines(host)).toEqual([
+      'Price from the Chainlink price feed on Robinhood Chain testnet',
+      'Updated 25 hours ago',
+      'Test network, not live',
+    ]);
+    expect(find(host, '[data-ui="pin-popover"]').textContent).not.toContain('less than a minute');
+  });
+});
+
+describe('a price’s age now, not at the read (re-check of #214)', () => {
+  const read = { ...PRICE, fetchedAt: '2026-10-09T18:00:00Z' };
+
+  it('adds the time since the read to the age the API stated', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-09T18:50:00Z'));
+    // thirty seconds old when the snapshot was read, fifty minutes ago
+    const host = await mount(pinOnPage({ ...read, ageSec: 30 }, { what: 'Price' }));
+    await click(pin(host));
+    expect(lines(host)[1]).toBe('Updated 50 minutes ago');
+    expect(find(host, '[data-ui="pin-popover"]').textContent).not.toContain('less than a minute');
+  });
+
+  it('brings a stale price’s age to now too', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-09T20:00:00Z'));
+    const stale = pinSourceOfPrice({ ...read, ageSeconds: 600, maxAgeSeconds: 120 });
+    const host = await mount(pinOnPage(stale, { what: 'Price' }));
+    await click(pin(host));
+    expect(lines(host)[0]).toBe('Last updated 2 hours ago, older than this feed’s 2 minute limit');
+  });
+
+  it('says only the read until the browser’s clock is known', () => {
+    expect(pinWords({ ...read, ageSec: 30 }).lines[1]).toEqual({
+      key: 'read',
+      text: 'Read 9 Oct 2026, 18:00:00 UTC',
+    });
+  });
+});
+
+describe('the details of a source', () => {
+  const clipboard = () => {
+    const writeText = vi.fn(async (_: string) => {});
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    return writeText;
+  };
+
+  it('shortens each address in the words, and keeps the whole line on screen to read and select', async () => {
+    const host = await mount(pinOnPage(PRICE));
+    await click(pin(host));
+    await click(details(host));
+    const shown = [...host.querySelectorAll('[data-ui="pin-address"] .font-mono')].map(
+      (el) => el.textContent,
+    );
+    expect(shown).toEqual(['HSk6…3q9g', '2tic…Kn4f']);
+    const facts = find(host, '[data-ui="pin-source"]');
+    expect(facts.textContent).toContain('(Scope layout, owner ');
+    expect(facts.textContent).toContain(PRICE.method);
+    // the whole of it is in the page, with no clipboard needed (review of #214, finding 2)
+    const line = find(facts, '[data-ui="pin-line"]');
+    expect(line.textContent).toBe(sourceLine(PRICE));
+    expect(line.textContent).toContain(ACCOUNT);
+    expect(line.textContent).toContain(OWNER);
+    expect(line.className).toContain('select-all');
+    expect(find(host, '[data-ui="pin-popover"]').className).not.toContain('font-mono');
+  });
+
+  it('says so, in sight, when the copy was refused, and points at the line', async () => {
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      clipboard: {
+        writeText: async () => {
+          throw new Error('NotAllowedError');
+        },
+      },
+    });
+    const host = await mount(pinOnPage(PRICE));
+    await click(pin(host));
+    await click(details(host));
+    expect(host.querySelector('[data-ui="pin-copy-failed"]')).toBeNull();
+    await click(find(host, '[data-ui="pin-copy"]'));
+    const failed = find(host, '[data-ui="pin-copy-failed"]');
+    expect(failed.textContent).toBe('Couldn’t copy here. The whole line is below to select.');
+    expect(failed.className).not.toContain('sr-only');
+    expect(failed.getAttribute('role')).toBe('status');
+  });
+
+  it('copies an address whole, and says so', async () => {
+    const writeText = clipboard();
+    const host = await mount(pinOnPage(PRICE));
+    await click(pin(host));
+    await click(details(host));
+    const [first] = [...host.querySelectorAll<HTMLButtonElement>('[data-ui="pin-copy-address"]')];
+    expect(first?.getAttribute('aria-label')).toBe('Copy address HSk6…3q9g');
+    await click(first as HTMLButtonElement);
+    expect(writeText).toHaveBeenCalledWith(ACCOUNT);
+    expect(find(host, '[data-ui="pin-popover"] [data-ui="pin-copied"]').textContent).toBe('Copied');
+  });
+
+  it('copies the line the API wrote: source, time in ISO 8601 UTC, method', async () => {
+    const writeText = clipboard();
+    const host = await mount(pinOnPage(PRICE));
+    await click(pin(host));
+    await click(details(host));
+    await click(find(host, '[data-ui="pin-copy"]'));
+    expect(writeText).toHaveBeenCalledWith(sourceLine(PRICE));
+    expect(sourceLine(PRICE)).toBe(`${PRICE.source} · 2026-10-09T18:26:20Z · ${PRICE.method}`);
+  });
+
+  it('claims no copy where there is no clipboard, and says it could not', async () => {
+    vi.stubGlobal('navigator', { ...navigator, clipboard: undefined });
+    const host = await mount(pinOnPage(PRICE));
+    await click(pin(host));
+    await click(details(host));
+    await click(find(host, '[data-ui="pin-copy"]'));
+    expect(find(host, '[data-ui="pin-popover"] [data-ui="pin-copied"]').textContent).toBe('');
+    expect(find(host, '[data-ui="pin-copy-failed"]').textContent).toMatch(/^Couldn’t copy here/);
+  });
+
+  it('links an address to the explorer only where the screen hands it one', async () => {
+    const host = await mount(pinOnPage(PRICE));
+    await click(pin(host));
+    await click(details(host));
+    expect(host.querySelectorAll('[data-ui="pin-explorer"]')).toHaveLength(0);
+    const linked = await mount(
+      pinOnPage({ ...PRICE, explorer: 'https://solscan.io/account/{address}?cluster=devnet' }),
+    );
+    await click(pin(linked));
+    await click(details(linked));
+    const [link] = [...linked.querySelectorAll<HTMLAnchorElement>('[data-ui="pin-explorer"]')];
+    expect(link?.getAttribute('href')).toBe(`https://solscan.io/account/${ACCOUNT}?cluster=devnet`);
+    expect(link?.getAttribute('rel')).toBe('noopener');
+    expect(link?.getAttribute('aria-label')).toBe('View HSk6…3q9g on the explorer');
   });
 });
 

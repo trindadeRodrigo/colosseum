@@ -3,7 +3,8 @@ import {
   type Address,
   type Base58EncodedBytes,
   type Commitment,
-  createSolanaRpc,
+  createDefaultRpcTransport,
+  createSolanaRpcFromTransport,
   type GetBalanceApi,
   type GetBlockHeightApi,
   type GetGenesisHashApi,
@@ -18,6 +19,7 @@ import {
   getBase58Decoder,
   getBase64Encoder,
   type Rpc,
+  type RpcTransport,
   type SendTransactionApi,
   type SimulateTransactionApi,
 } from '@solana/kit';
@@ -57,12 +59,28 @@ export type VaultWriteRpc = Rpc<
 
 export type RawAccount = { address: Address; owner: Address; lamports: bigint; data: Uint8Array };
 
+/** How long one call to the node may take before it counts as not answered. */
+export const RPC_TIMEOUT_MS = 30_000;
+
 /**
  * A client for the builders and the probe, from a URL the caller holds. The URL is never logged and
- * never put in a message: an RPC address can carry a key.
+ * never put in a message: an RPC address can carry a key. Every call gives up after `timeoutMs`, so a
+ * connection the node holds open and never answers fails that call (`ask` says it did not answer)
+ * instead of stalling whoever waits on it, the keeper's round included.
  */
-export function createVaultRpc(url: string): VaultNodeRpc {
-  return createSolanaRpc(url);
+export function createVaultRpc(url: string, timeoutMs = RPC_TIMEOUT_MS): VaultNodeRpc {
+  return createSolanaRpcFromTransport(withTimeout(createDefaultRpcTransport({ url }), timeoutMs));
+}
+
+/** A transport whose every request is aborted after `ms`, and still by the caller's own signal. */
+export function withTimeout<T extends RpcTransport>(transport: T, ms: number): T {
+  return (<R>(config: Parameters<RpcTransport>[0]) => {
+    const timeout = AbortSignal.timeout(ms);
+    return transport<R>({
+      ...config,
+      signal: config.signal ? AbortSignal.any([config.signal, timeout]) : timeout,
+    });
+  }) as T;
 }
 
 /** The write side's calls and the node's genesis hash: what a server checks at start (`assertNode`). */

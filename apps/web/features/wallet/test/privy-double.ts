@@ -1,4 +1,4 @@
-import { type ReactNode, useSyncExternalStore } from 'react';
+import { type ReactNode, useEffect, useRef, useSyncExternalStore } from 'react';
 
 // What stands in for Privy's hooks in the test of the bridge (privy-bridge.events.test.ts):
 //
@@ -7,12 +7,20 @@ import { type ReactNode, useSyncExternalStore } from 'react';
 //
 // It keeps a person the way Privy does: a list of linked accounts that grows when a wallet is made.
 // A call to make a wallet does not answer by itself: the test answers it, so it sees what the bridge
-// does while a call is on its way.
+// does while a call is on its way. It hands out identity tokens the way Privy does: one with the
+// sign-in, listing the wallets linked at that moment, and a new one from each `getIdentityToken()`,
+// which is a call to Privy's server that the double counts and can refuse with a 429.
 
 type Family = 'solana' | 'ethereum';
 type Linked = { type: string; chainType?: Family; walletClientType?: string; address?: string };
 type Person = { id: string; linkedAccounts: Linked[] };
-type Snapshot = { ready: boolean; authenticated: boolean; user: Person | null };
+type Snapshot = {
+  ready: boolean;
+  authenticated: boolean;
+  user: Person | null;
+  /** What `useIdentityToken()` answers: the token Privy holds. */
+  identityToken: string | null;
+};
 
 /** A call to make a wallet that has not answered yet. */
 export type PendingWallet = {
@@ -29,7 +37,7 @@ export type PendingWallet = {
 };
 
 const listeners = new Set<() => void>();
-let snapshot: Snapshot = { ready: true, authenticated: false, user: null };
+let snapshot: Snapshot = { ready: true, authenticated: false, user: null, identityToken: null };
 let inFlight = 0;
 
 const ADDRESS: Record<Family, string> = {
@@ -40,6 +48,27 @@ const ADDRESS: Record<Family, string> = {
 function show(next: Snapshot) {
   snapshot = next;
   for (const listener of listeners) listener();
+}
+
+const base64url = (value: unknown) =>
+  btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+/**
+ * An identity token as Privy's payload has it, unsigned (the API checks the signature; the bridge only
+ * reads it): whose, until when, and the linked accounts as a JSON string.
+ */
+export function identityTokenOf(person: Person, expiresInSeconds = 3600): string {
+  const linked = person.linkedAccounts
+    .filter((a) => a.type === 'wallet')
+    .map((a) => ({ type: 'wallet', address: a.address, chain_type: a.chainType }));
+  const payload = {
+    iss: 'privy.io',
+    aud: 'app-id',
+    sub: person.id,
+    exp: Math.floor(Date.now() / 1000) + expiresInSeconds,
+    linked_accounts: JSON.stringify(linked),
+  };
+  return `${base64url({ alg: 'ES256', typ: 'JWT' })}.${base64url(payload)}.signature`;
 }
 
 /** Adds a wallet to the person it was made for, if they are still the one signed in. */
@@ -58,13 +87,34 @@ export const privyDouble = {
   pending: [] as PendingWallet[],
   /** The most calls that were on their way at the same moment. */
   mostAtOnce: 0,
-  /** Starts over: Privy loaded, and this person signed in (or nobody). */
+  /** Calls made through the hooks of a provider that was no longer mounted. */
+  deadCalls: 0,
+  /** How many times the bridge asked Privy's server for an identity token. */
+  identityFetches: 0,
+  /** Privy's server answers an identity-token call with 429 while this is true. */
+  limited: false,
+  /** What a sign-in with a passkey answers: at once, unless a test holds it open. */
+  passkey: (async () => ({})) as () => Promise<unknown>,
+  /** Starts over: Privy loaded, and this person signed in (or nobody), with an identity token. */
   reset(user: Person | null = null) {
     privyDouble.calls.length = 0;
     privyDouble.pending.length = 0;
     privyDouble.mostAtOnce = 0;
+    privyDouble.deadCalls = 0;
+    privyDouble.identityFetches = 0;
+    privyDouble.limited = false;
+    privyDouble.passkey = async () => ({});
     inFlight = 0;
-    show({ ready: true, authenticated: user !== null, user });
+    show({
+      ready: true,
+      authenticated: user !== null,
+      user,
+      identityToken: user ? identityTokenOf(user) : null,
+    });
+  },
+  /** Privy now holds this identity token, as after a refresh of the session. */
+  holdIdentity(token: string | null) {
+    show({ ...snapshot, identityToken: token });
   },
   /** A person who signed in with a passkey and has no wallet yet. */
   passkeyPerson: (id = 'did:privy:one'): Person => ({ id, linkedAccounts: [{ type: 'passkey' }] }),
@@ -76,10 +126,10 @@ export const privyDouble = {
     ],
   }),
   signIn(user: Person) {
-    show({ ready: true, authenticated: true, user });
+    show({ ready: true, authenticated: true, user, identityToken: identityTokenOf(user) });
   },
   signOut() {
-    show({ ready: true, authenticated: false, user: null });
+    show({ ready: true, authenticated: false, user: null, identityToken: null });
   },
   linked: () => snapshot.user?.linkedAccounts ?? [],
 };
@@ -90,9 +140,22 @@ const subscribe = (listener: () => void) => {
 };
 const useSnapshot = () => useSyncExternalStore(subscribe, () => snapshot);
 
-const createWallet = (family: Family) => () =>
+/** Whether the component that called a hook is still mounted. */
+const useAlive = () => {
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  return alive;
+};
+
+const createWallet = (family: Family, alive: { current: boolean }) => () =>
   new Promise<unknown>((resolve, reject) => {
     privyDouble.calls.push(family);
+    if (!alive.current) privyDouble.deadCalls += 1;
     const owner = snapshot.user?.id;
     inFlight += 1;
     privyDouble.mostAtOnce = Math.max(privyDouble.mostAtOnce, inFlight);
@@ -132,7 +195,19 @@ const nothing = async () => ({});
 
 /** `@privy-io/react-auth`, as far as the bridge uses it. */
 export const reactAuth = {
-  getIdentityToken: async () => null,
+  getIdentityToken: async () => {
+    privyDouble.identityFetches += 1;
+    if (privyDouble.limited)
+      throw Object.assign(new Error('Too many requests'), {
+        status: 429,
+        privyErrorCode: 'too_many_requests',
+      });
+    if (!snapshot.user) return null;
+    const token = identityTokenOf(snapshot.user);
+    privyDouble.holdIdentity(token);
+    return token;
+  },
+  useIdentityToken: () => ({ identityToken: useSnapshot().identityToken }),
   PrivyProvider: ({ children }: { children: ReactNode }) => children,
   usePrivy: () => ({
     ...useSnapshot(),
@@ -143,9 +218,9 @@ export const reactAuth = {
     useSnapshot();
     return { ready: true, wallets: wallets('ethereum') };
   },
-  useCreateWallet: () => ({ createWallet: createWallet('ethereum') }),
+  useCreateWallet: () => ({ createWallet: createWallet('ethereum', useAlive()) }),
   useExportWallet: () => ({ exportWallet: nothing }),
-  useLoginWithPasskey: () => ({ loginWithPasskey: nothing }),
+  useLoginWithPasskey: () => ({ loginWithPasskey: () => privyDouble.passkey() }),
   useSignupWithPasskey: () => ({ signupWithPasskey: nothing }),
   useLoginWithSiwe: () => ({ generateSiweMessage: async () => '', loginWithSiwe: nothing }),
   useLoginWithSiws: () => ({ generateSiwsMessage: async () => '', loginWithSiws: nothing }),
@@ -156,7 +231,7 @@ export const reactAuth = {
 /** `@privy-io/react-auth/solana`, as far as the bridge uses it. */
 export const solana = {
   toSolanaWalletConnectors: () => ({}),
-  useCreateWallet: () => ({ createWallet: createWallet('solana') }),
+  useCreateWallet: () => ({ createWallet: createWallet('solana', useAlive()) }),
   useExportWallet: () => ({ exportWallet: nothing }),
   useSignMessage: () => ({ signMessage: nothing }),
   useSignTransaction: () => ({ signTransaction: nothing }),

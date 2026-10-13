@@ -438,7 +438,8 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     expect(LegRouteParams.parse(ids)).toEqual(ids);
     expect(OrderRouteParams.parse({ id: ids.id })).toEqual({ id: ids.id });
     const empty = { chains: [], disclaimer: schemas.DISCLAIMER.en };
-    expect(PortfolioResponse.parse(empty)).toEqual(empty);
+    // a server older than `unavailable` sends none: every chain it had was read
+    expect(PortfolioResponse.parse(empty)).toEqual({ ...empty, unavailable: [] });
     const chain = {
       chain: 'solana',
       name: 'Solana',
@@ -498,6 +499,10 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     expect(BasketSheet.safeParse({ ...sheet, horizonMonths: 481 }).success).toBe(false);
     expect(BasketSheet.safeParse({ ...sheet, themes: ['a', 'b', 'c', 'd'] }).success).toBe(false);
     expect(BasketSheet.safeParse({ ...sheet, country: 'Brazil' }).success).toBe(false);
+    // Gate COUNTRY-REMOVED (Oct 6): optional and unused in planning; a stored sheet with one parses.
+    const { country: _, ...noCountry } = sheet;
+    expect(BasketSheet.safeParse(noCountry).success).toBe(true);
+    expect(BasketSheet.safeParse({ ...sheet, country: 'BR' }).success).toBe(true);
     expect(BasketSheet.safeParse({ ...sheet, chains: [] }).success).toBe(false);
 
     const line = {
@@ -874,6 +879,11 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     expect(BasketAsset.safeParse({ ...asset, chain: 'solana' }).success).toBe(false);
     expect(BasketAsset.safeParse({ ...asset, id: 'base:nvda' }).success).toBe(false);
     expect(BasketAsset.safeParse({ ...asset, address: SOL }).success).toBe(false);
+    // A cash token may be counted in a currency of its own (the matching leg); nothing else may.
+    const reais = { ...asset, id: 'robinhood:brlx', symbol: 'BRLX', cls: 'cash', currency: 'BRL' };
+    expect(BasketAsset.safeParse(reais).success).toBe(true);
+    expect(BasketAsset.safeParse({ ...reais, currency: 'brl' }).success).toBe(false);
+    expect(BasketAsset.safeParse({ ...asset, currency: 'BRL' }).success).toBe(false);
   });
 
   it('holds a trade to two different assets on one chain, and a leg to its signer', () => {
@@ -998,6 +1008,15 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
       IndexNotFound: 'RecipeNotFound',
       VaultExists: 'VaultExists',
       NotSorted: 'BadInput',
+      // The keeper's path: the program's names, and the program's code where the rule is its own.
+      NotKeeper: 'NotKeeper',
+      PastTarget: 'PastTarget',
+      LossCapReached: 'LossCapReached',
+      PriceOutOfRange: 'PriceOutOfRange',
+      ValueTooLow: 'ReceivedTooLittle',
+      ValueTooLarge: 'AssetNotPriced',
+      AssetHalted: 'MarketClosed',
+      DeadlinePassed: 'Expired',
     });
     // A new code only where no program error means the same.
     const added = [...new Set(Object.values(CONTRACT_ERROR_CODE))].filter(
@@ -1026,6 +1045,12 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
         'NotSupported',
         'RecipeNotFound',
         'VaultExists',
+        // Added with the keeper path: an owner's trade sent after its deadline.
+        'Expired',
+        // Added with the mainnet setup: the guardian's stop on new money, and the deposit caps.
+        'DepositsPaused',
+        'DepositCapReached',
+        'CreationNotOpen',
       ].sort(),
     );
   });

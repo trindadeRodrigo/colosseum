@@ -1,7 +1,12 @@
 import { Q64, Reader } from './bytes';
 import type { ClState, InitTick } from './cl-math';
 
-/** Raydium CLMM (and byte-compatible forks such as Byreal). Offsets checked against live pools on 2026-10-01. */
+/**
+ * Raydium CLMM. Offsets checked against live pools on 2026-10-01. Byreal's pool account has this layout
+ * (`decodeClmmPool` reads it); most of its tick arrays do not: they are a second kind of account, which
+ * `decodeClmmTickArray` does not read, and its fee is its own (PLAN-UNIVERSE RU.13, 2026-10-07). Byreal is decoded
+ * in `byreal-clmm.ts` (RU.15), which uses the readers of this file as they are.
+ */
 export const RAYDIUM_CLMM_PROGRAM = 'CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK';
 export const BYREAL_CLMM_PROGRAM = 'REALQqNEomY6cQGZJUGwywTBD2UmDT32rZcNnfxQ5N2';
 export const CLMM_POOL_SIZE = 1544;

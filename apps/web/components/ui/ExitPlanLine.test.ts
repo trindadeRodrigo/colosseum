@@ -37,10 +37,10 @@ describe('ExitPlanLine (exit-plan-line.md)', () => {
     );
   });
 
-  it('marks a mocked tier with the hatch band and the plate, and leaves the others alone', () => {
+  it('marks a mocked tier with the hatch band and the named glyph, and leaves the others alone', () => {
     const partly = one(render(exitPlan.partlyMock), ui('exit-plan-line'));
     expect(all(partly, ui('hatch-band'))).toHaveLength(1);
-    expect(all(partly, ui('mock-plate'))).toHaveLength(1);
+    expect(all(partly, ui('sample-glyph'))).toHaveLength(1);
   });
 
   it('says a breach with the mark, the word and the reason', () => {
@@ -96,7 +96,9 @@ describe('ExitPlanPanel (exit-plan-line.md)', () => {
   it('marks the mocked tier in the table', () => {
     const table = one(root, tag('table'));
     const row = one(table, (e) => e.tag === 'tr' && e.attrs['data-mock'] === 'true');
-    expect(all(row, (e) => classes(e).includes('tf-hatch'))).toHaveLength(1);
-    expect(all(row, ui('mock-plate')).length).toBeGreaterThanOrEqual(1);
+    expect(
+      all(row, (e) => classes(e).includes('tf-hatch') && e.attrs['data-ui'] !== 'sample-glyph'),
+    ).toHaveLength(1);
+    expect(all(row, ui('sample-glyph')).length).toBeGreaterThanOrEqual(1);
   });
 });

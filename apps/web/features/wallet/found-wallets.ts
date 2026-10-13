@@ -17,10 +17,26 @@ export type AnnouncedWallet = {
   /** The wallet's reverse domain name: "io.metamask". It is what tells two wallets apart. */
   rdns: string;
   name: string;
+  icon?: string;
   provider: Eip1193;
 };
 
-type Announcement = { info?: { rdns?: unknown; name?: unknown }; provider?: unknown };
+type Announcement = {
+  info?: { rdns?: unknown; name?: unknown; icon?: unknown };
+  provider?: unknown;
+};
+
+/**
+ * A wallet's icon, as both standards give it: an image inline, as a `data:` URL. Anything else (a link
+ * to elsewhere, a script, something too big to be an icon) is not shown.
+ */
+export function iconOf(value: unknown): string | undefined {
+  return typeof value === 'string' &&
+    value.length < 100_000 &&
+    /^data:image\/(png|svg\+xml|jpeg|webp|gif)[;,]/i.test(value)
+    ? value
+    : undefined;
+}
 
 const isProvider = (value: unknown): value is Eip1193 =>
   typeof value === 'object' &&
@@ -36,7 +52,8 @@ export function readAnnouncement(detail: unknown): AnnouncedWallet | null {
     return null;
   const rdns = info.rdns.trim();
   const name = info.name.trim().slice(0, 40);
-  return rdns && name ? { rdns, name, provider } : null;
+  const icon = iconOf(info.icon);
+  return rdns && name ? { rdns, name, provider, ...(icon ? { icon } : {}) } : null;
 }
 
 /**
@@ -59,23 +76,46 @@ export function watchEvmWallets(
   return () => target.removeEventListener('eip6963:announceProvider', heard);
 }
 
+/**
+ * The Solana wallets of the standard's registry, one per name, in the order they registered. The
+ * standard gives a wallet no id but its name, so a second wallet calling itself "Phantom" could stand
+ * in for the first when one is chosen by name: it is not listed, and never signed with.
+ */
+export function onePerName<W extends { name: string }>(wallets: readonly W[]): W[] {
+  const seen = new Set<string>();
+  return wallets.filter((wallet) => {
+    const name = wallet.name.trim();
+    if (!name || seen.has(name)) return false;
+    seen.add(name);
+    return true;
+  });
+}
+
 export const evmWalletId = (rdns: string) => `evm:${rdns}`;
 export const solanaWalletId = (name: string) => `solana:${name}`;
 
 /** What the sign-in screen lists: Solana first, then EVM, each by name. */
 export function foundWallets(
-  solana: readonly { name: string }[],
+  solana: readonly { name: string; icon?: unknown }[],
   evm: readonly AnnouncedWallet[],
 ): FoundWallet[] {
   const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
+  const withIcon = (icon: unknown) => {
+    const found = iconOf(icon);
+    return found ? { icon: found } : {};
+  };
   return [
     ...[...solana].sort(byName).map((w) => ({
       id: solanaWalletId(w.name),
       name: w.name,
       family: 'solana' as const,
+      ...withIcon(w.icon),
     })),
-    ...[...evm]
-      .sort(byName)
-      .map((w) => ({ id: evmWalletId(w.rdns), name: w.name, family: 'evm' as const })),
+    ...[...evm].sort(byName).map((w) => ({
+      id: evmWalletId(w.rdns),
+      name: w.name,
+      family: 'evm' as const,
+      ...withIcon(w.icon),
+    })),
   ];
 }

@@ -1,6 +1,8 @@
 # Mood Board Direction: "The Open Joint"
 > Phase: discover | Brand: working-brand (unnamed) | Generated: 2026-10-01
 
+> **Superseded on 2026-10-08 by `IDENTITY-2` (docs/GATES.md).** Kept as dated history. The colour, type and shape positions below (wood as the only colour, Source Serif / Newsreader, square cuts, no blue, no gradients) no longer hold; the current system is in `../identity/INDEX.md` and `../patterns/working-brand.yml`. The joinery idea, the pre-lock subject and the anti-patterns (Japanese clichés, Teiten, crypto neon) still stand.
+
 **One direction, not three.** The deadline (Oct 4) and the research both point the same way. The category is 100% digital-abstract and blue/violet/mint, and no one owns material mechanism or provenance-as-identity.
 
 **The Open Joint:** two species of wood, cut precisely for each other, shown a moment before they lock, with the pin visible. Precision expressed as care. Every joint can be opened. The structure frames a view, and the view is the person's goal.

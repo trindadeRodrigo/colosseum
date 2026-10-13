@@ -11,7 +11,7 @@ You are a senior technical program lead with hands-on experience in DeFi risk an
 1. `HANDOFF-RISK.md` — the authoritative spec for this work. Where it conflicts with anything else, it wins.
 2. `docs/structurer/HANDOFF-IDEA1.md` — the product the layer joins.
 3. `docs/structurer/STATE.md`, `docs/GATES.md`, `docs/DATA-MODEL.md`, `docs/structurer/VERIFICATION.md` — what exists and what is gated.
-4. `eval/briefs/SHARED-CONTEXT.md` §"Idea 2", `eval/FEASIBILITY.md` §"Idea 2", `eval/IDEA2-MARKET.md` — the original risk-engine research. Use it for dependencies and evidence; the product definition in `HANDOFF-RISK.md` supersedes it.
+4. Removed: internal planning notes.
 5. The code the layer hooks into. Read these files, not summaries of them: `packages/schemas/src/{asset,plan,policy,constraint-sheet,enums}.ts`, `packages/engine/src/solver/index.ts`, `packages/engine/src/schedule/index.ts`, `packages/engine/src/risk/index.ts`, `packages/engine/src/policy/{drift,rebalance}.ts`, `packages/db/src/schema.ts`, `apps/api/src/routes/{plans,monitor}.ts`, `scripts/depth-snapshot.mjs`, `scripts/depth-import.ts`, `scripts/launchd/install.sh`, `packages/chain-solana/src/{prices,positions,kamino}.ts`, `packages/engine/src/feeds/yields.ts`.
 
 Do not rely on earlier conversations. If a fact is missing, write it as an assumption with a default and keep going.

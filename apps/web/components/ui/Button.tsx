@@ -2,6 +2,7 @@
 import type { ComponentPropsWithoutRef, KeyboardEvent, MouseEvent, ReactNode } from 'react';
 import { type ButtonSize, type ButtonVariant, buttonClass } from './button-class';
 import { cn } from './cn';
+import { WaitMark } from './WaitMark';
 
 // button.md. One primary per view, and a button that signs is always primary and names the action and
 // the amount ("Sign: swap 5 USDC → USDY"). A busy button changes its label; there is no spinner. A
@@ -22,6 +23,11 @@ type Shared = {
    */
   busy?: boolean;
   busyLabel?: string;
+  /**
+   * For a wait that can last: the loader beside the busy label, inside the button, in a place the
+   * button keeps. It is the brand's lattice, with words; never a spinner alone.
+   */
+  busyMark?: boolean;
   /** Muted, still focusable. Say why in words nearby and point `aria-describedby` at the sentence. */
   disabled?: boolean;
   /** Called when a disabled button is clicked: to move focus to the reason. */
@@ -59,6 +65,7 @@ export function Button({
   size = 'default',
   busy = false,
   busyLabel,
+  busyMark = false,
   disabled = false,
   onDisabledClick,
   pressed,
@@ -86,9 +93,14 @@ export function Button({
           {children}
         </span>
         <span
-          className={cn('col-start-1 row-start-1', !busy && 'invisible')}
+          className={cn(
+            'col-start-1 row-start-1',
+            busyMark && 'inline-flex items-center justify-center gap-2',
+            !busy && 'invisible',
+          )}
           aria-hidden={!busy || undefined}
         >
+          {busyMark && <WaitMark waiting={busy} size={18} tone="current" />}
           {busyLabel}
         </span>
       </span>

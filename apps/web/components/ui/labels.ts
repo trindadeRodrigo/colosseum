@@ -38,7 +38,7 @@ export type ConstraintSheetLabels = {
   editSheet: string;
   /** In the hint of a field the person changed after the goal was read. */
   edited: string;
-  /** Read once by a screen reader after the word MOCK, when the reading is not a live one. */
+  /** The name a screen reader hears for the sample glyph, when the reading is not a live one. */
   mockAnnounce: string;
 };
 export const CONSTRAINT_SHEET_LABELS: ConstraintSheetLabels = {
@@ -59,7 +59,7 @@ export const CONSTRAINT_SHEET_LABELS: ConstraintSheetLabels = {
   noPlan: 'No plan fits these limits.',
   editSheet: 'Edit sheet',
   edited: 'edited',
-  mockAnnounce: ': sample data, not live',
+  mockAnnounce: 'sample figure',
 };
 
 export type CompactNavLabels = { skip: string; main: string; menu: string };

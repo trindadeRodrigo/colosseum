@@ -193,9 +193,15 @@ declare module 'fastify' {
      * nothing is closed, whatever its method.
      */
     auth?: 'public' | 'user';
+    /**
+     * On a `public` route: a sign-in that is sent is read, so the route can answer the person their
+     * own (a plan they made, `GET /v1/baskets/{id}`). It is never needed: with none, or one that is not
+     * valid, the route answers as it does to nobody, and never 401.
+     */
+    optionalSignIn?: boolean;
   }
   interface FastifyRequest {
-    /** Set on routes whose `config.auth` is `user`. */
+    /** Set on routes whose `config.auth` is `user`, and on a public one that reads a sign-in sent. */
     principal: Principal | null;
     /** Why this request is turned away, once the hook that counts it has run. */
     refused: { status: number; error: string } | null;
@@ -213,7 +219,17 @@ export function identify(scope: FastifyInstance, given: TokenIssuer | null): voi
   scope.decorateRequest('refused', null);
   scope.addHook('onRequest', async (req) => {
     const rule = req.routeOptions.config.auth;
-    if (rule === 'public') return;
+    if (rule === 'public') {
+      // A public route that reads a sign-in when one is sent. Whatever is wrong with it, the caller
+      // is nobody here: the route is open, and a bad token opens nothing more.
+      if (!req.routeOptions.config.optionalSignIn || !issuer || !req.headers.authorization) return;
+      try {
+        req.principal = await authenticate(issuer, req.headers, req.ip);
+      } catch (e) {
+        if (!(e instanceof AuthError)) throw e;
+      }
+      return;
+    }
     if (rule !== 'user') {
       req.refused = { status: 403, error: 'this route is closed: it declares no sign-in rule' };
       return;

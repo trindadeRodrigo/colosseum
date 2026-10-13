@@ -11,6 +11,15 @@ import {MockToken, NoReturnToken} from "./mocks/Tokens.sol";
 /// Any contract will do as a router here: the config only checks that there is code at the address.
 contract RouterStub {}
 
+/// Answers `decimals()` with a number of its own, as a token or a feed does.
+contract DecimalsStub {
+    uint256 public decimals;
+
+    constructor(uint256 decimals_) {
+        decimals = decimals_;
+    }
+}
+
 /// The platform settings a vault reads, and who may change them.
 contract VaultConfigTest is Test {
     address internal admin = makeAddr("admin");
@@ -65,7 +74,11 @@ contract VaultConfigTest is Test {
             pauseProbe: address(0xBEEF),
             pauseSelector: bytes4(keccak256("paused()")),
             scheduleSelector: bytes4(keccak256("effectiveAt()")),
-            haltUntil: 0
+            haltUntil: 0,
+            flags: 0,
+            averageFeed: address(0),
+            minPrice: 0,
+            maxPrice: 0
         });
     }
 
@@ -194,11 +207,83 @@ contract VaultConfigTest is Test {
 
     function test_setAsset_listsAnAssetWithNoPriceSource() public {
         AssetConfig memory unpriced;
-        unpriced.tokenDecimals = 6;
+        unpriced.tokenDecimals = 18;
         vm.prank(admin);
         config.setAsset(tokenA, unpriced);
         assertTrue(config.isAsset(tokenA));
         assertEq(config.asset(tokenA).feed, address(0));
+    }
+
+    // ---- decimals are held to what the token and the feeds answer (M3)
+
+    /// The vault takes an asset's decimals from here and never asks the token. A token listed with the
+    /// wrong number would be valued a power of ten off; one valued too low and over its target could be
+    /// sold by the keeper for a fraction of its worth with every check passing.
+    function test_M3_setAsset_refusesDecimalsThatAreNotTheTokens() public {
+        AssetConfig memory a = _priced(makeAddr("feedA"), 8);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.DecimalsMismatch.selector, tokenA, 8, 18));
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
+        assertFalse(config.isAsset(tokenA));
+
+        a.tokenDecimals = 18;
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
+        // Changing them later is the same check.
+        a.tokenDecimals = 6;
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.DecimalsMismatch.selector, tokenA, 6, 18));
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
+        assertEq(config.asset(tokenA).tokenDecimals, 18);
+    }
+
+    function test_M3_setAsset_refusesDecimalsThatAreNotTheFeeds() public {
+        address feed8 = address(new DecimalsStub(8));
+        AssetConfig memory a = _priced(feed8, 18);
+        a.feedDecimals = 18;
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.DecimalsMismatch.selector, feed8, 18, 8));
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
+        a.feedDecimals = 8;
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
+    }
+
+    /// The average is read in the feed's units, so it must have the feed's decimals.
+    function test_M3_setAsset_refusesAnAverageFeedWithOtherDecimals() public {
+        address feed8 = address(new DecimalsStub(8));
+        address average18 = address(new DecimalsStub(18));
+        AssetConfig memory a = _priced(feed8, 18);
+        a.flags = 1;
+        a.averageFeed = average18;
+        a.minPrice = 100e8;
+        a.maxPrice = 200e8;
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.DecimalsMismatch.selector, average18, 8, 18));
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
+        a.averageFeed = address(new DecimalsStub(8));
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
+    }
+
+    /// An answer that is not a number of decimals at all is a mismatch, not a truncation.
+    function test_M3_setAsset_refusesAnAnswerTooLargeForDecimals() public {
+        address odd = address(new DecimalsStub(256 + 8));
+        AssetConfig memory a = _priced(odd, 18);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.DecimalsMismatch.selector, odd, 8, 255));
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
+    }
+
+    /// A token or a feed that does not answer `decimals()` is taken as stated: the check has nothing to
+    /// compare with. A mainnet's deploy script reads each one itself and refuses a file whose token or feed
+    /// does not answer.
+    function test_M3_setAsset_takesTheStatedDecimalsWhereNothingAnswers() public {
+        address silent = address(new RouterStub());
+        AssetConfig memory a = _priced(silent, 7);
+        vm.prank(admin);
+        config.setAsset(silent, a);
+        assertEq(config.asset(silent).tokenDecimals, 7);
     }
 
     /// A halt belongs to the guardian. A feed update by the admin must not lift it, and a listing
@@ -775,7 +860,7 @@ contract VaultConfigTest is Test {
 
     function test_setParams_storesThemInsideTheBounds() public {
         // The bounds themselves are allowed.
-        Params memory p = Params(300, 500, 1000, 600, 0, 86_400);
+        Params memory p = Params(300, 500, 500, 600, 0, 86_400);
         vm.prank(admin);
         vm.expectEmit(address(config));
         emit IVaultConfig.ParamsSet(p);
@@ -783,7 +868,7 @@ contract VaultConfigTest is Test {
         (uint16 tolerance, uint16 lossCap, uint16 band, uint32 cooldown, uint32 open, uint32 close) = config.params();
         assertEq(tolerance, 300);
         assertEq(lossCap, 500);
-        assertEq(band, 1000);
+        assertEq(band, 500);
         assertEq(cooldown, 600);
         assertEq(open, 0);
         assertEq(close, 86_400);
@@ -813,6 +898,117 @@ contract VaultConfigTest is Test {
         Params memory p = _params();
         p.assetCooldown = 599;
         _expectParamsRefused(p, "assetCooldown", 599);
+    }
+
+    function test_setParams_revertsOnBandAbove500() public {
+        Params memory p = _params();
+        p.bandBps = 501;
+        _expectParamsRefused(p, "bandBps", 501);
+    }
+
+    /// Seven days is the window of the loss cap: a longer cooldown is a pause by another name.
+    function test_setParams_revertsOnCooldownAboveSevenDays() public {
+        Params memory p = _params();
+        p.assetCooldown = 7 days;
+        vm.prank(admin);
+        config.setParams(p);
+        p.assetCooldown = 7 days + 1;
+        vm.prank(admin);
+        vm.expectRevert(
+            abi.encodeWithSelector(IVaultConfig.ParamOutOfBounds.selector, bytes32("assetCooldown"), 7 days + 1)
+        );
+        config.setParams(p);
+    }
+
+    // ---- the price deviation, a keeper limit of its own
+
+    function test_setPriceDevBps_storesItUpTo1000() public {
+        assertEq(config.priceDevBps(), 0, "a price must equal its average until the admin says otherwise");
+        vm.prank(admin);
+        vm.expectEmit(address(config));
+        emit IVaultConfig.PriceDevSet(1000);
+        config.setPriceDevBps(1000);
+        assertEq(config.priceDevBps(), 1000);
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.ParamOutOfBounds.selector, bytes32("priceDevBps"), 1001));
+        config.setPriceDevBps(1001);
+        assertEq(config.priceDevBps(), 1000);
+    }
+
+    function test_setPriceDevBps_revertsForNonAdmin() public {
+        address[2] memory callers = [stranger, guardian];
+        for (uint256 i; i < callers.length; ++i) {
+            vm.prank(callers[i]);
+            vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, callers[i]));
+            config.setPriceDevBps(100);
+        }
+    }
+
+    // ---- the keeper's switch on an asset, and its price range
+
+    /// An asset the keeper may trade: a feed, an average apart from it, and a range of at most a factor two.
+    function _keeperOn() internal returns (AssetConfig memory a) {
+        a = _good();
+        a.flags = 1;
+        a.averageFeed = makeAddr("averageA");
+        a.minPrice = 100e8;
+        a.maxPrice = 200e8;
+    }
+
+    function test_setAsset_theKeepersSwitch_goesOnWithAPriceToValueAt() public {
+        AssetConfig memory a = _keeperOn();
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
+        _assertSame(config.asset(tokenA), a);
+    }
+
+    function test_setAsset_theKeepersSwitch_needsAFeedAnAverageAndARange() public {
+        AssetConfig[4] memory bad;
+        bad[0] = _keeperOn();
+        bad[0].source = 0;
+        bad[0].feed = address(0);
+        bad[1] = _keeperOn();
+        bad[1].averageFeed = address(0);
+        bad[2] = _keeperOn();
+        bad[2].averageFeed = bad[2].feed;
+        bad[3] = _keeperOn();
+        bad[3].minPrice = 0;
+        bad[3].maxPrice = 0;
+        for (uint256 i; i < bad.length; ++i) {
+            vm.prank(admin);
+            vm.expectRevert(abi.encodeWithSelector(IVaultConfig.AssetNotPriced.selector, tokenA));
+            config.setAsset(tokenA, bad[i]);
+        }
+        assertFalse(config.isAsset(tokenA));
+    }
+
+    function test_setAsset_revertsOnAnyFlagButTheKeepersSwitch() public {
+        AssetConfig memory a = _keeperOn();
+        a.flags = 2;
+        _expectOutOfBounds("flags", 2, a);
+        a.flags = 3;
+        _expectOutOfBounds("flags", 3, a);
+    }
+
+    /// A range has a floor, a ceiling above it, and a ceiling at most twice the floor. With the switch off
+    /// a range may still be written, and none at all is allowed.
+    function test_setAsset_revertsOnARangeThatIsNotOne() public {
+        AssetConfig memory a = _keeperOn();
+        a.maxPrice = 200e8 + 1;
+        _expectOutOfBounds("maxPrice", 200e8 + 1, a);
+        a.maxPrice = 100e8;
+        _expectOutOfBounds("maxPrice", 100e8, a);
+        a.minPrice = 0;
+        a.maxPrice = 1;
+        _expectOutOfBounds("maxPrice", 1, a);
+        a.flags = 0;
+        a.minPrice = 1;
+        a.maxPrice = 0;
+        _expectOutOfBounds("maxPrice", 0, a);
+        a.minPrice = 100e8;
+        a.maxPrice = 200e8;
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
     }
 
     function test_setParams_revertsOnASessionPastMidnight() public {

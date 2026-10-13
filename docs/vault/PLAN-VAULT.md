@@ -1,12 +1,12 @@
 # PLAN-VAULT.md: the plan for the MVP
 
-Written on Thu Oct 1, at night. The freeze is Fri Oct 9 at 18:00 BRT and the submission is Mon Oct 12. What gets built is in `DESIGN-VAULT.md` (section 1 lists the nine MVP items); this file says when, in what order, who, and what is cut if we are late. The tasks themselves, with status and evidence, are rows in `STATE-VAULT.md`. This file does not repeat them. Where this file and section 16 of the design differ on a date, this file wins.
+Written on Thu Oct 1, at night. There is no feature freeze (decided on Oct 5, gate `NO-FREEZE`): building continues up to the submission on Mon Oct 12. What gets built is in `DESIGN-VAULT.md` (section 1 lists the nine MVP items); this file says when, in what order, who, and what is cut if we are late. The tasks themselves, with status and evidence, are rows in `STATE-VAULT.md`. This file does not repeat them. Where this file and section 16 of the design differ on a date, this file wins.
 
 ## Where we start
 
 - Done: the documents, the audit, green checks, the repo organised, the shared Claude setup (ORG-1 to ORG-4).
 - Not started: any product code for the vault. The two test rigs in `spikes/` pass on copies of mainnet; neither has run on mainnet itself.
-- Decided on Oct 2: no money goes onto mainnet for now, and the product is built and shown on test networks first. The $10 of model credit stays. Everything through Sunday is local and free anyway; what changes is under "Where it runs" below.
+- Decided on Oct 2: no money goes onto mainnet for now, and the product is built and shown on test networks first (amended on Oct 12 for one deployment and deposits on Robinhood Chain, gate `SPEND-FIRST-MAINNET-DEPOSIT`). The $10 of model credit stays. Everything through Sunday is local and free anyway; what changes is under "Where it runs" below.
 - One day behind the design. Its day plan had the program, the contracts, the personalization port and the sign-in page starting on Oct 1. They start on Oct 2, which now carries two days of starts. There is no spare day: Oct 8 is for the gates and Oct 9 for fixes. A slip costs a cut, in the order below.
 
 ## How the days are used
@@ -28,11 +28,11 @@ Each is a check anyone can run. If one is missed by a day, the cut beside it is 
 | When | What must be true | If missed |
 |---|---|---|
 | **M1** Sat Oct 3, night | The walking skeleton on the mock: a buy on each chain the mock runs goes through the API as an order with its legs on that one chain, the legs settle, and the result reads back through the API. Every figure labelled MOCK. The contract tests pass on `chain-mock`. The three-profile test is green on starting numbers | Nothing is cut. The TypeScript streams add nothing new until it passes |
-| **M2** Mon Oct 5, night | The program and the contracts are deployed and `authority-check` is green. On Solana devnet: create a vault, buy into it, see it, withdraw the tokens to the owner | The deploy moves to Tue morning. A chain not deployed by Tue 12:00 BRT is read-only, Base first |
+| **M2** Mon Oct 5, night | The program and the contracts are deployed and `authority-check` is green. On Solana devnet: create a vault, buy into it, see it, withdraw the tokens to the owner | The deploy moves to Tue morning. A chain not deployed by Tue 12:00 BRT is read-only, Base first; for Robinhood Chain the cut is Wed Oct 7 12:00 BRT (gate `RH-PARALLEL`) |
 | **M3** Tue Oct 6, night | The same owner path on Robinhood Chain with a passkey wallet. A shared portfolio is published and followed. Rehearsal 1 recorded on Solana and Robinhood Chain, with a first auto-follow cycle on each | Auto-follow on Robinhood Chain becomes owner-signed only |
 | **M4** Wed Oct 7, night | Auto-follow has run a full cycle on Solana in market hours and is filmed. Portfolio and rebalance work end to end. Risk sheets render. An outside agent builds a plan and a person approves it from the link | Auto-follow on Solana becomes the one-tap prompt. The five extra agent tools stay out |
 | **M5** Thu Oct 8 | `G-SEC` recorded per chain at 12:00 BRT. Then `launch()`, so the delay is 48 hours from here on. Then `G-LINK`. Only then is the link shared | A chain that misses tier 1 ships owner-signed. The link is not shared until `G-LINK` passes |
-| **Freeze** Fri Oct 9, 18:00 BRT | `main` tagged. After it: P0 fixes only, each with a test | n/a |
+| **Submission** Mon Oct 12 | `main` tagged at submission. No feature freeze before it (gate `NO-FREEZE`) | n/a |
 
 **Where it runs.** Decided on Oct 2: test networks first, mainnet maybe later. "Deployed" in M2 to M5 means on Solana devnet and the EVM test networks. The stock tokens, Jupiter and the price feeds do not exist there, so the deploy brings its own: test tokens with the same shape as the real ones, a test exchange, test prices. The app and the API say "test network" on every figure that comes from them. Two things keep this honest. The program and the contracts take their router and price source from config, so the same code runs on mainnet by changing config, not code. And the tests still run the vault against the real tokens and pools on copies of mainnet, as the rigs do. What exists on each test network and what we bring is in `research/test-networks.md`; it adds about eight half-days of work the plan did not have before Oct 2 (rows TNET-1 to TNET-7). On a test network the prices and the clock are ours, so the market's hours and the 48-hour delay are tested by setting them, and "in session" below means a person at the keyboard.
 
@@ -49,8 +49,8 @@ Slot ids point at rows in `STATE-VAULT.md`. "In session" means in market hours, 
 | **Tue Oct 6** | Morning: KEEP-2 (Robinhood Chain). WEB-4 (the shelf, publish and follow). API-3. AGT-2 (SDK and MCP on the real API, hosted) | **In session:** a buy with a passkey wallet on Solana, and one on Robinhood Chain; auto-follow cycles on both; rehearsal 1 (OPS-7). **M3** |
 | **Wed Oct 7** | WEB-5 (portfolio and rebalance). RISK-2 (sheets render). AGT-3 (skill, `llms.txt`). SEC-3 (tier 2 runs). Add-backs decided | **In session:** rehearsal 2 and the market-open footage (OPS-8). The last day a full auto-follow cycle can be shown. **M4** |
 | **Thu Oct 8** | Fixes only, from the rehearsals and the gates | **12:00 BRT:** `G-SEC` per chain. Then `launch()`, `G-LINK`, the pause drill, the link shared, a new version of the demo portfolio published (OPS-9). **M5** |
-| **Fri Oct 9** | Fixes only | Freeze at 18:00 BRT; tag (OPS-10) |
-| **Sat Oct 10** | P0 fixes, each with a test. README and the documents brought up to date | Record the remaining screens (OPS-11). The version published on Oct 8 takes effect today, with the market closed |
+| **Fri Oct 9** | Building continues (no freeze) | |
+| **Sat Oct 10** | Building continues; every change still with its tests. README and the documents brought up to date | Record the remaining screens (OPS-11). The version published on Oct 8 takes effect today, with the market closed |
 | **Sun Oct 11** | | Edit both videos. Fill the submission form (OPS-11) |
 | **Mon Oct 12** | | **In session:** the Oct 8 version rebalances at production settings; if it fails, auto-follow is switched off on that chain. Then submit, with time to spare (OPS-12) |
 
@@ -60,6 +60,7 @@ In this order, each on its date. A cut flips a flag; it does not delete code.
 
 1. **Sat Oct 3.** The new Jupiter build route: fall back to the route the rig proved.
 2. **Taken on Oct 2.** Base comes after Solana and Robinhood Chain. It comes back on Tue Oct 6 only if M3 is met on time (TNET-3).
+   **Oct 5 (gate `RH-PARALLEL`):** Robinhood Chain is built in parallel with Solana and its read-only cut moves to Wed Oct 7 12:00 BRT. Its owner path at M3 and cut 3 move with it. Base's Tuesday condition cannot be judged before then, so Base stays out unless Thom says otherwise.
 3. **Tue Oct 6 at M3, final on Wed Oct 7.** Auto-follow on Robinhood Chain: owner-signed only.
 4. **Wed Oct 7 at M4, final that night.** Auto-follow on Solana: followers get the one-tap prompt instead. Thursday's session opens 30 minutes before `G-SEC`, and after `launch()` a cycle takes 48 hours, so there is no later day to try again.
 
@@ -87,7 +88,7 @@ As in section 15 of the design. In short: Rodrigo owns the engine's numbers and 
 | Who runs the Solana sessions (deploy, config, rehearsals) | Thom and Rodrigo | Mon Oct 5 |
 | Which VM runs the keeper once it leaves a founder's machine | Thom | Mon Oct 5 |
 | Whether Vercel Hobby's non-commercial clause is acceptable for the hosted app | Thom | Mon Oct 5 |
-| Who fills the blocked countries per asset; until then the declared country skips no token | Thom and Rodrigo | Mon Oct 5, with the asset entries |
+| Where the legal restrictions on who may hold an asset are enforced: sign-up and the terms of service. Since Oct 6 the plan reads no country and skips no token for one (gate `COUNTRY-REMOVED`); `blockedCountries` stays on the asset as information | Thom and Rodrigo | Before the app is offered where an asset restricts its holders (stock tokens: US, CA, UK, CH and UAE persons) |
 | The short disclaimer ("Policy in your wallet, not a fund"), now that the assets sit in a vault the person owns | Rodrigo | Mon Oct 5, before the app is hosted |
 | The goal status for every kind of goal, and the odds (ENG-1) | Rodrigo | Wed Oct 7, with WEB-5 |
 | Where the Bearing data runs for the demo: a hosted collector or a dated snapshot | Rodrigo | Wed Oct 7 |

@@ -27,10 +27,10 @@ describe('Disclaimer (disclaimer-block.md)', () => {
     expect(forced).not.toContain('Simulation');
   });
 
-  it('is at body size, in the foreground colour, in a hairline box with no fill and no icon', () => {
+  it('is at body size, in the foreground colour, in a 10px hairline box with no fill and no icon', () => {
     const block = one(render(disclaimer.en), ui('disclaimer'));
     expect(classes(block)).toEqual(
-      expect.arrayContaining(['border', 'border-border', 'rounded-md', 'text-foreground']),
+      expect.arrayContaining(['border', 'border-border', 'rounded-lg', 'text-foreground']),
     );
     expect(classes(block).join(' ')).not.toMatch(/\bbg-|muted|text-(caption|source|xs|sm)/);
     const body = all(block, tag('p')).filter((p) => p.attrs.lang)[0];

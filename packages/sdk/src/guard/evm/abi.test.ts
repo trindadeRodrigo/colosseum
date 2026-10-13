@@ -46,9 +46,10 @@ describe('the ABI codec', () => {
     const swaps = vectors.calls.find((c) => c.signature.startsWith('ownerSwap'));
     const swapTypes = parseSignature(swaps?.signature ?? '').inputs;
     const data = hexDecode(swaps?.data ?? '0x');
-    // The offset of the list moved one word on, and a word put in the gap.
-    const moved = Uint8Array.from([...data.slice(0, 32), ...new Uint8Array(32), ...data.slice(32)]);
-    moved[31] = 0x40;
+    // The offset of the list moved one word on, and a word put in the gap after the head: the list's
+    // offset and the deadline.
+    const moved = Uint8Array.from([...data.slice(0, 64), ...new Uint8Array(32), ...data.slice(64)]);
+    moved[31] = 0x60;
     expect(() => decodeArgs(swapTypes, moved)).toThrow(/canonical/);
     // An offset that points past the end.
     const far = Uint8Array.from(data);

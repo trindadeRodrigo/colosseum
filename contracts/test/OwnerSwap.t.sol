@@ -33,13 +33,13 @@ abstract contract OwnerSwapTest is SwapFixture {
 
     function _run(Swap memory s) internal {
         vm.prank(owner);
-        vault.ownerSwap(_swaps(s));
+        vault.ownerSwap(_swaps(s), LATER);
     }
 
     function _expectRevert(Swap memory s, bytes memory err) internal {
         vm.prank(owner);
         vm.expectRevert(err);
-        vault.ownerSwap(_swaps(s));
+        vault.ownerSwap(_swaps(s), LATER);
     }
 
     /// Nothing moved and nothing is approved: what a refused swap must leave.
@@ -75,6 +75,30 @@ abstract contract OwnerSwapTest is SwapFixture {
         assertEq(stockA.balanceOf(address(vault)), 3 * unit);
         assertEq(vault.tokens().length, 2);
         _assertNoAllowance(address(vault), address(cash), address(viaPermit2));
+    }
+
+    /// A trade signed and not sent in time is not sent late: after its deadline it is refused, and so is a
+    /// batch that carries it. At the deadline itself it goes.
+    function test_ownerSwap_isRefusedAfterItsDeadline() public {
+        uint64 deadline = uint64(block.timestamp + 60);
+        Swap[] memory buy = _swaps(_swap(direct, address(cash), address(stockA), 600 * USD, 3 * unit));
+        vm.warp(deadline + 1);
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(IBasketVault.DeadlinePassed.selector, deadline, deadline + 1));
+        vault.ownerSwap(buy, deadline);
+
+        bytes[] memory batch = new bytes[](2);
+        batch[0] = abi.encodeCall(BasketVault.deposit, (100 * USD));
+        batch[1] = abi.encodeCall(BasketVault.ownerSwap, (buy, deadline));
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(IBasketVault.DeadlinePassed.selector, deadline, deadline + 1));
+        vault.multicall(batch);
+        _assertUntouched();
+
+        vm.warp(deadline);
+        vm.prank(owner);
+        vault.ownerSwap(buy, deadline);
+        assertEq(stockA.balanceOf(address(vault)), 3 * unit);
     }
 
     /// The way a router pulls is the config's word, not the caller's: a router listed as direct gets no
@@ -116,13 +140,13 @@ abstract contract OwnerSwapTest is SwapFixture {
         vm.expectRevert(
             abi.encodeWithSelector(IBasketVault.ReceivedTooLittle.selector, address(stockC), 5 * unit, 5 * unit + 1)
         );
-        vault.ownerSwap(swaps);
+        vault.ownerSwap(swaps, LATER);
         _assertUntouched();
         assertEq(vault.tokens().length, 1);
 
         swaps[2].minOut = 5 * unit;
         vm.prank(owner);
-        vault.ownerSwap(swaps);
+        vault.ownerSwap(swaps, LATER);
         assertEq(cash.balanceOf(address(vault)), 300 * USD);
         assertEq(stockA.balanceOf(address(vault)), 2 * unit);
         assertEq(stockB.balanceOf(address(vault)), 2 * unit);
@@ -133,7 +157,7 @@ abstract contract OwnerSwapTest is SwapFixture {
 
     function test_ownerSwap_anEmptyBatchDoesNothing() public {
         vm.prank(owner);
-        vault.ownerSwap(new Swap[](0));
+        vault.ownerSwap(new Swap[](0), LATER);
         _assertUntouched();
     }
 
@@ -145,7 +169,7 @@ abstract contract OwnerSwapTest is SwapFixture {
         for (uint256 i; i < callers.length; ++i) {
             vm.prank(callers[i]);
             vm.expectRevert(abi.encodeWithSelector(IBasketVault.NotOwner.selector, callers[i]));
-            vault.ownerSwap(swaps);
+            vault.ownerSwap(swaps, LATER);
         }
         _assertUntouched();
     }
@@ -239,7 +263,7 @@ abstract contract OwnerSwapTest is SwapFixture {
 
         vm.startPrank(owner);
         vault.deposit(10 * USD);
-        vault.ownerSwap(_swaps(_swap(direct, address(cash), address(stockA), 600 * USD, 3 * unit)));
+        vault.ownerSwap(_swaps(_swap(direct, address(cash), address(stockA), 600 * USD, 3 * unit)), LATER);
         vault.setTargets(new Weight[](0));
         vault.withdraw(address(stockA), unit);
         assertEq(vault.withdrawAll().length, 0);
@@ -520,7 +544,7 @@ abstract contract OwnerSwapTest is SwapFixture {
 
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(IBasketVault.RouterNotAllowed.selector, address(stockC)));
-        vault.ownerSwap(swaps);
+        vault.ownerSwap(swaps, LATER);
         assertEq(stockC.allowance(address(vault), attacker), 0);
         _assertUntouched();
     }
@@ -562,7 +586,7 @@ abstract contract OwnerSwapTest is SwapFixture {
             abi.encodeCall(BasketVault.withdraw, (address(cash), 1)),
             abi.encodeCall(BasketVault.withdrawAll, ()),
             abi.encodeCall(BasketVault.deposit, (0)),
-            abi.encodeCall(BasketVault.ownerSwap, (nested)),
+            abi.encodeCall(BasketVault.ownerSwap, (nested, LATER)),
             abi.encodeCall(BasketVault.setTargets, (new Weight[](0))),
             abi.encodeCall(IBasketVault.multicall, (batch))
         ];
@@ -573,11 +597,11 @@ abstract contract OwnerSwapTest is SwapFixture {
                 MockRouter.swapAndCall, (address(cash), address(stockA), 600 * USD, 3 * unit, address(mine), inner[i])
             );
             vm.expectRevert(abi.encodeWithSelector(IBasketVault.RouterFailed.selector, address(both), reentered));
-            both.act(address(mine), abi.encodeCall(BasketVault.ownerSwap, (_swaps(s))));
+            both.act(address(mine), abi.encodeCall(BasketVault.ownerSwap, (_swaps(s), LATER)));
 
             // The same through `multicall` as the outer call: a batch is not a way round the guard.
             bytes[] memory outer = new bytes[](1);
-            outer[0] = abi.encodeCall(BasketVault.ownerSwap, (_swaps(s)));
+            outer[0] = abi.encodeCall(BasketVault.ownerSwap, (_swaps(s), LATER));
             vm.expectRevert(abi.encodeWithSelector(IBasketVault.RouterFailed.selector, address(both), reentered));
             both.act(address(mine), abi.encodeCall(IBasketVault.multicall, (outer)));
         }
@@ -610,7 +634,7 @@ abstract contract OwnerSwapTest is SwapFixture {
             )
         );
         bytes memory create = abi.encodeCall(
-            factory.createVaultAndBuy, (planId, new Weight[](0), bytes32(0), 0, false, 1000 * USD, _swaps(s))
+            factory.createVaultAndBuy, (planId, new Weight[](0), bytes32(0), 0, false, 1000 * USD, _swaps(s), LATER)
         );
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -628,7 +652,7 @@ abstract contract OwnerSwapTest is SwapFixture {
     function test_A17_reentryByAStranger_isRefused() public {
         bytes[2] memory inner = [
             abi.encodeCall(BasketVault.withdrawAll, ()),
-            abi.encodeCall(BasketVault.start, (bytes32(0), 0, new Weight[](0), 0, new Swap[](0)))
+            abi.encodeCall(BasketVault.start, (bytes32(0), 0, new Weight[](0), false, 0, new Swap[](0)))
         ];
         bytes[2] memory reasons = [
             abi.encodeWithSelector(IBasketVault.NotOwner.selector, address(direct)),
@@ -651,7 +675,7 @@ abstract contract OwnerSwapTest is SwapFixture {
         bytes[] memory calls = new bytes[](4);
         calls[0] = abi.encodeCall(BasketVault.deposit, (500 * USD));
         calls[1] = abi.encodeCall(
-            BasketVault.ownerSwap, (_swaps(_swap(direct, address(cash), address(stockA), 600 * USD, 3 * unit)))
+            BasketVault.ownerSwap, (_swaps(_swap(direct, address(cash), address(stockA), 600 * USD, 3 * unit)), LATER)
         );
         calls[2] = abi.encodeCall(BasketVault.setTargets, (targets));
         calls[3] = abi.encodeCall(BasketVault.tokens, ());
@@ -672,7 +696,7 @@ abstract contract OwnerSwapTest is SwapFixture {
             abi.encodeCall(BasketVault.withdrawAll, ()),
             abi.encodeCall(BasketVault.setTargets, (new Weight[](0))),
             abi.encodeCall(
-                BasketVault.ownerSwap, (_swaps(_swap(direct, address(cash), address(stockA), 600 * USD, 3 * unit)))
+                BasketVault.ownerSwap, (_swaps(_swap(direct, address(cash), address(stockA), 600 * USD, 3 * unit)), LATER)
             )
         ];
         for (uint256 i; i < tries.length; ++i) {

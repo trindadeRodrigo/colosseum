@@ -14,12 +14,12 @@ const parts = (node: Parameters<typeof render>[0]) => {
 };
 
 describe('Composer (composer.md)', () => {
-  it('is the one rounded shape: a 20px box and a round send button', () => {
+  it('is the roundest box: 20px, with a round honey send button carrying ink', () => {
     const { box, send } = parts(composer.empty);
     expect(classes(box)).toEqual(
       expect.arrayContaining(['rounded-composer', 'border', 'border-input', 'bg-card', 'min-h-13']),
     );
-    expect(classes(send)).toEqual(expect.arrayContaining(['rounded-round', 'h-9', 'w-9']));
+    expect(classes(send)).toEqual(expect.arrayContaining(['rounded-full', 'h-9', 'w-9']));
     expect(classes(box).join(' ')).not.toMatch(/shadow|blur/);
   });
 
@@ -144,7 +144,7 @@ describe('Composer (composer.md)', () => {
     expect(control.attrs.autoComplete ?? control.attrs.autocomplete).toBe('email');
     expect(send.attrs['aria-label']).toBe('Subscribe');
     expect(text(send)).toBe('Subscribe');
-    expect(classes(send)).toContain('rounded-round');
+    expect(classes(send)).toContain('rounded-full');
     expect(classes(box)).toContain('rounded-composer');
   });
 });

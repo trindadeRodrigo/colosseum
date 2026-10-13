@@ -27,11 +27,15 @@ describe('PlanLegs (plan-leg.md)', () => {
     expect(labels).toHaveLength(4);
   });
 
-  it('draws the bar flat: 12px, square, with 2px gaps in the ground colour', () => {
+  it('draws the bar flat: 12px, pill ends, with 2px gaps in the ground colour', () => {
     expect(classes(bar)).toEqual(
       expect.arrayContaining(['flex', 'gap-0.5', 'bg-background', 'h-3']),
     );
-    for (const s of segments) expect(classes(s)).toContain('rounded-none');
+    // the bar's two ends are round (first and last segment), the joints between legs square
+    for (const s of segments)
+      expect(classes(s)).toEqual(
+        expect.arrayContaining(['first:rounded-l-full', 'last:rounded-r-full']),
+      );
     expect(classes(one(render(planLegs.hero), ui('plan-legs-bar')))).toContain('h-6');
   });
 
@@ -47,14 +51,16 @@ describe('PlanLegs (plan-leg.md)', () => {
     ]);
   });
 
-  it('hatches a mock leg instead of filling it, and labels it with the band and the plate', () => {
+  it('hatches a mock leg instead of filling it, and labels it with the band and the named glyph', () => {
     const mock = segments[3];
     expect(classes(mock as never)).toEqual(expect.arrayContaining(['tf-hatch', 'bg-card']));
     expect(classes(mock as never).some((c) => c.startsWith('bg-leg-'))).toBe(false);
     const label = labels[3];
     expect(all(label as never, ui('hatch-band'))).toHaveLength(1);
-    expect(all(label as never, ui('mock-plate'))).toHaveLength(1);
-    expect(text(label as never)).toContain('BRL leg·10%·—MOCK·integration in progress');
+    expect(all(label as never, ui('sample-glyph'))).toHaveLength(1);
+    // a leg with no rate says nothing about one: no dash in its place
+    expect(text(label as never)).toContain('BRL leg·10%·integration in progress');
+    expect(text(label as never)).not.toContain('MOCK');
     for (const live of labels.slice(0, 3))
       expect(all(live as never, ui('hatch-band'))).toHaveLength(0);
   });
@@ -67,8 +73,9 @@ describe('PlanLegs (plan-leg.md)', () => {
     expect(all(first as never, ui('pin'))).toHaveLength(1);
     const quoted = all(first as never, (e) => text(e) === 'quoted 4.35%').at(-1);
     expect(classes(quoted as never)).toContain('text-muted-foreground');
-    // a leg with no yield shows a dash, not a zero, and has no pin
-    expect(text(labels[2] as never)).toContain('Cash buffer·20%·—·reachable today');
+    // a leg with no yield says nothing about one: no zero, no dash, and no pin
+    expect(text(labels[2] as never)).toContain('Cash buffer·20%·reachable today');
+    expect(text(labels[2] as never)).not.toContain('—');
     expect(all(labels[2] as never, ui('pin'))).toHaveLength(0);
   });
 

@@ -1,0 +1,1 @@
+ALTER TABLE "proposals" ADD COLUMN "from_link" boolean DEFAULT false NOT NULL;

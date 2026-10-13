@@ -45,3 +45,12 @@ export function evmVaultAddress(
   );
   return `0x${hexEncode(hash.slice(12))}`;
 }
+
+/**
+ * The id of a creator's shared portfolio on an EVM chain, as `IndexRegistry.create` makes it:
+ * keccak256(abi.encode(creator, familyId)). The family id is 32 bytes as hex, with or without 0x.
+ */
+export function evmIndexId(creator: string, familyId: string): string {
+  const family = `0x${familyId.replace(/^0x/, '').toLowerCase()}`;
+  return `0x${hexEncode(keccak256(encodeArgs([ADDRESS, BYTES32], [creator.toLowerCase(), family])))}`;
+}

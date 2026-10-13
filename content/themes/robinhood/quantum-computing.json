@@ -1,0 +1,30 @@
+{
+  "slug": "quantum-computing",
+  "name": {
+    "en": "Quantum computing",
+    "pt": "Computação quântica"
+  },
+  "chain": "robinhood",
+  "version": 1,
+  "curator": "Rodrigo",
+  "status": "confirmed",
+  "decidedOn": "2026-10-07",
+  "gate": "LABELS-CONFIRMED",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/robinhood.json, and confirmed by Rodrigo on 2026-10-07 with the members it was proposed with (gate LABELS-CONFIRMED). Alphabet was proposed by the research on one sentence of its annual report and left out.",
+  "members": [
+    {
+      "symbol": "IONQ",
+      "reason": {
+        "en": "IonQ builds trapped-ion quantum computers and sells access to them",
+        "pt": "a IonQ constrói computadores quânticos de íons aprisionados e vende acesso a eles"
+      }
+    },
+    {
+      "symbol": "RGTI",
+      "reason": {
+        "en": "Rigetti builds and operates quantum computers based on superconducting qubits",
+        "pt": "a Rigetti constrói e opera computadores quânticos baseados em qubits supercondutores"
+      }
+    }
+  ]
+}

@@ -120,7 +120,13 @@ describe('the approved steps of an order', () => {
         { legs: [approve, { ...create, signer: 'keeper' }] },
         'unsupported',
       ],
-      ['a publish step', { legs: [approve, { ...create, kind: 'publish' }] }, 'unsupported'],
+      ['a keeper step', { legs: [approve, { ...create, kind: 'keeper_leg' }] }, 'unsupported'],
+      // Signed since AGT-4, once the screen says what is published: with nothing said, refused.
+      [
+        'a publish step with no terms',
+        { legs: [approve, { ...create, kind: 'publish' }] },
+        'order',
+      ],
     ];
     for (const [name, change, code] of cases)
       expect(
@@ -237,5 +243,55 @@ describe('the approved steps of an order', () => {
     expect(stepOf('withdraw', { basketId: '5' })).toMatchObject({ withdrawals: 'all' });
     for (const kind of ['set_targets', 'accept_version', 'set_auto_follow'])
       expect(refusalOf(() => stepOf(kind, { basketId: '5' }))?.code, kind).toBe('order');
+  });
+});
+
+// Add money: a buy that names a vault of the person's. Its order is a deposit and its swaps, and the
+// terms are the vault's number, from the person's own read of their vaults, with no plan beside it.
+describe('the approved steps of an order that adds to a vault', () => {
+  async function adding(chain: 'solana' | 'robinhood') {
+    const { w, order } = await bought(chain);
+    const legs = order.legs.map((l) => (l.kind === 'create_vault' ? { ...l, kind: 'deposit' } : l));
+    const terms: PlanTerms = { basketId: '424242' };
+    return { w, order: { ...order, legs } as typeof order, terms };
+  }
+
+  it.each(['solana', 'robinhood'] as const)(
+    'on %s holds every step to the vault named and the deposit to the amount reviewed',
+    async (chain) => {
+      const { w, order, terms } = await adding(chain);
+      const steps = approvedSteps(order, terms, w.deployment);
+      expect(steps.map((s) => s.kind)).not.toContain('create_vault');
+      for (const s of steps) expect(s).toMatchObject({ basketId: '424242', owner: w.owner });
+      const deposit = steps.find((s) => s.kind === 'deposit');
+      expect(deposit).toMatchObject({ amountRaw: order.depositRaw });
+    },
+  );
+
+  it('refuses an order whose deposit is not the amount it states: a figure changed after the review', async () => {
+    const { w, order, terms } = await adding('solana');
+    const changed = (cashRaw: string) => ({
+      ...order,
+      legs: order.legs.map((l) => (l.kind === 'deposit' ? { ...l, cashRaw } : l)),
+    });
+    for (const cashRaw of ['1000000001', '999999999', '0'])
+      expect(
+        refusalOf(() => approvedSteps(changed(cashRaw) as never, terms, w.deployment))?.code,
+        cashRaw,
+      ).toBe('order');
+    // and one that states another deposit than its step moves
+    expect(
+      refusalOf(() =>
+        approvedSteps({ ...order, depositRaw: '5000000000' } as never, terms, w.deployment),
+      )?.code,
+    ).toBe('order');
+  });
+
+  it('refuses one that deposits twice', async () => {
+    const { w, order, terms } = await adding('solana');
+    const [deposit] = order.legs.filter((l) => l.kind === 'deposit');
+    if (!deposit) throw new Error('a deposit');
+    const twice = { ...order, legs: [...order.legs, { ...deposit, id: 'again', seq: 99 }] };
+    expect(refusalOf(() => approvedSteps(twice as never, terms, w.deployment))?.code).toBe('order');
   });
 });

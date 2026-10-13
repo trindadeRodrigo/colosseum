@@ -1,0 +1,37 @@
+{
+  "slug": "fintech",
+  "name": {
+    "en": "Fintech and brokers",
+    "pt": "Fintech e corretoras"
+  },
+  "chain": "solana",
+  "version": 1,
+  "curator": "Rodrigo",
+  "status": "confirmed",
+  "decidedOn": "2026-10-07",
+  "gate": "LABELS-CONFIRMED",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/solana.json, and confirmed by Rodrigo on 2026-10-07 with the members it was proposed with (gate LABELS-CONFIRMED).",
+  "members": [
+    {
+      "symbol": "HOODx",
+      "reason": {
+        "en": "Robinhood is a retail broker for stocks, ETFs, options and crypto in one app",
+        "pt": "a Robinhood é uma corretora de varejo para ações, ETFs, opções e cripto em um aplicativo"
+      }
+    },
+    {
+      "symbol": "COINx",
+      "reason": {
+        "en": "Coinbase is a trading platform for consumers and institutions, with prime brokerage",
+        "pt": "a Coinbase é uma plataforma de negociação para pessoas e instituições, com prime brokerage"
+      }
+    },
+    {
+      "symbol": "CRCLx",
+      "reason": {
+        "en": "Circle runs a payments network that settles with its stablecoins",
+        "pt": "a Circle opera uma rede de pagamentos liquidada com suas stablecoins"
+      }
+    }
+  ]
+}

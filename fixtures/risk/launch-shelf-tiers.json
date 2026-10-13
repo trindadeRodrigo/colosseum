@@ -1,0 +1,447 @@
+{
+  "source": "docs/vault/research/open-questions/launch-shelf.seed.json (the launch shelf, a proposal: \"proposal, not approved; weights in bps; costs are price impact only\")",
+  "method": "the shelf tier of each token: A = leg up to $50k at <=35 bps impact; B = leg up to $10k at <=35 bps; C = leg up to about $1k-2k at <=30 bps; X = not listed at launch",
+  "fetchedAt": "2026-10-01T14:00:00.000Z",
+  "provenance": "live",
+  "note": "Copied for the API, which reads no research note at run time. A test-network token whose model Bearing does not measure takes its model's tier from here (gate ENG-DEVNET-EXIT-TWIN). Redone once the shelf is decided.",
+  "rows": [
+    {
+      "chain": "solana",
+      "symbol": "SPYx",
+      "tier": "A",
+      "issuer": "Backed (xStocks)"
+    },
+    {
+      "chain": "solana",
+      "symbol": "QQQx",
+      "tier": "A",
+      "issuer": "Backed (xStocks)"
+    },
+    {
+      "chain": "solana",
+      "symbol": "NVDAx",
+      "tier": "A",
+      "issuer": "Backed (xStocks)"
+    },
+    {
+      "chain": "solana",
+      "symbol": "TSLAx",
+      "tier": "A",
+      "issuer": "Backed (xStocks)"
+    },
+    {
+      "chain": "solana",
+      "symbol": "AAPLx",
+      "tier": "B",
+      "issuer": "Backed (xStocks)"
+    },
+    {
+      "chain": "solana",
+      "symbol": "GOOGLx",
+      "tier": "B",
+      "issuer": "Backed (xStocks)"
+    },
+    {
+      "chain": "solana",
+      "symbol": "METAx",
+      "tier": "B",
+      "issuer": "Backed (xStocks)"
+    },
+    {
+      "chain": "solana",
+      "symbol": "MSFTx",
+      "tier": "B",
+      "issuer": "Backed (xStocks)"
+    },
+    {
+      "chain": "solana",
+      "symbol": "AMZNx",
+      "tier": "B",
+      "issuer": "Backed (xStocks)"
+    },
+    {
+      "chain": "solana",
+      "symbol": "SPCXx",
+      "tier": "A",
+      "issuer": "Backed (xStocks)"
+    },
+    {
+      "chain": "solana",
+      "symbol": "MSTRx",
+      "tier": "A",
+      "issuer": "Backed (xStocks)"
+    },
+    {
+      "chain": "solana",
+      "symbol": "CRCLx",
+      "tier": "A",
+      "issuer": "Backed (xStocks)"
+    },
+    {
+      "chain": "solana",
+      "symbol": "HOODx",
+      "tier": "C",
+      "issuer": "Backed (xStocks)"
+    },
+    {
+      "chain": "solana",
+      "symbol": "COINx",
+      "tier": "C",
+      "issuer": "Backed (xStocks)"
+    },
+    {
+      "chain": "solana",
+      "symbol": "PLTRx",
+      "tier": "C",
+      "issuer": "Backed (xStocks)"
+    },
+    {
+      "chain": "solana",
+      "symbol": "GLDx",
+      "tier": "A",
+      "issuer": "Backed (xStocks)"
+    },
+    {
+      "chain": "solana",
+      "symbol": "jlUSDC",
+      "tier": "A",
+      "issuer": "Jupiter Lend"
+    },
+    {
+      "chain": "solana",
+      "symbol": "syrupUSDC",
+      "tier": "A",
+      "issuer": "Maple"
+    },
+    {
+      "chain": "solana",
+      "symbol": "SOL",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "JitoSOL",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "cbBTC",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "JUP",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "RAY",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "PUMP",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "MET",
+      "tier": "B"
+    },
+    {
+      "chain": "solana",
+      "symbol": "KMNO",
+      "tier": "B"
+    },
+    {
+      "chain": "solana",
+      "symbol": "JTO",
+      "tier": "C"
+    },
+    {
+      "chain": "solana",
+      "symbol": "PYTH",
+      "tier": "C"
+    },
+    {
+      "chain": "solana",
+      "symbol": "TRUMP",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "PENGU",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "BONK",
+      "tier": "B"
+    },
+    {
+      "chain": "solana",
+      "symbol": "Fartcoin",
+      "tier": "B"
+    },
+    {
+      "chain": "solana",
+      "symbol": "USELESS",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "WIF",
+      "tier": "C"
+    },
+    {
+      "chain": "solana",
+      "symbol": "MEW",
+      "tier": "B"
+    },
+    {
+      "chain": "solana",
+      "symbol": "POPCAT",
+      "tier": "C"
+    },
+    {
+      "chain": "solana",
+      "symbol": "SPX",
+      "tier": "C"
+    },
+    {
+      "chain": "base",
+      "symbol": "NVDAc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "AAPLc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "METAc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "GOOGLc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "AMZNc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "MSFTc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "MSTRc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "SNDKc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "SPCXc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "TSLAc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "AERO",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "cbBTC",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "cbETH",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "VIRTUAL",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "MORPHO",
+      "tier": "A"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "SPY",
+      "tier": "A",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "NVDA",
+      "tier": "A",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "GLD",
+      "tier": "A",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "META",
+      "tier": "A",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "SPCX",
+      "tier": "A",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "MSTR",
+      "tier": "B",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "CRCL",
+      "tier": "B",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "SGOV",
+      "tier": "A",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "GOOGL",
+      "tier": "A",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "USO",
+      "tier": "A",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "TSLA",
+      "tier": "A",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "AAPL",
+      "tier": "A",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "COIN",
+      "tier": "C",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "MU",
+      "tier": "B",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "QQQ",
+      "tier": "A",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "INTC",
+      "tier": "B",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "GME",
+      "tier": "B",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "AMZN",
+      "tier": "B",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "MSFT",
+      "tier": "B",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "PLTR",
+      "tier": "B",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "AMD",
+      "tier": "C",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "SLV",
+      "tier": "B",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "SNDK",
+      "tier": "C",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "TSM",
+      "tier": "B",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "DELL",
+      "tier": "C",
+      "issuer": "Robinhood"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "BABA",
+      "tier": "C",
+      "issuer": "Robinhood"
+    }
+  ],
+  "issuers": {
+    "source": "packages/engine/src/personal/testing.ts (STOCK_ISSUER and YIELD_ISSUER of the launch-shelf fixture): the xStocks issuer for Solana stock tokens, Robinhood for Robinhood Chain tokens, Jupiter Lend and Maple for jlUSDC and syrupUSDC",
+    "note": "A test-network token is counted under the issuer of the token it models (gate ENG-DEVNET-EXIT-TWIN). A row with no issuer names none: the token keeps its own."
+  }
+}

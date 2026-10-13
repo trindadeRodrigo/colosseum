@@ -126,7 +126,9 @@ describe('chain configs', () => {
     expect(c.robinhood.evmChainId).toBe(46630);
     expect(c.base.evmChainId).toBe(84532);
     // A test network has no Jupiter and no Universal Router: the router is ours and set at deploy.
-    for (const chain of Object.values(c)) expect(chain.router).toBeNull();
+    // Robinhood Chain's test network has its own since TNET-2; the others are still null.
+    expect(c.robinhood.router).toBe('0xd290cfe0738e1ab9cea9dc138bbec024dc3bd127');
+    expect([c.solana.router, c.base.router]).toEqual([null, null]);
   });
 
   it('runs the same chain on mainnet by config alone', () => {

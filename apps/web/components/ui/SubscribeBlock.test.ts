@@ -9,20 +9,20 @@ describe('SubscribeBlock (subscribe-block.md)', () => {
   const root = render(subscribe.rest);
   const block = one(root, ui('subscribe-block'));
 
-  it('is a section named by its heading, the one serif line', () => {
+  it('is a section named by its heading, the one display-face line: Inter Tight 600', () => {
     const heading = one(block, tag('h2'));
     expect(name(block, root)).toBe(text(heading));
     expect(classes(heading)).toEqual(
-      expect.arrayContaining(['font-display', 'font-normal', 'max-w-[20ch]']),
+      expect.arrayContaining(['font-display', 'font-semibold', 'max-w-[20ch]']),
     );
     expect(all(block, (e) => classes(e).includes('font-display'))).toHaveLength(1);
   });
 
-  it('sets the line above in the mono face, in the brand wood, in sentence case', () => {
+  it('sets the line above as a caption, in honey as text (honey-l on day), in sentence case', () => {
     const eyebrow = block.children[0];
     expect(typeof eyebrow === 'object' && text(eyebrow)).toBe('Follow along');
     expect(classes(eyebrow as never)).toEqual(
-      expect.arrayContaining(['font-mono', 'text-primary']),
+      expect.arrayContaining(['text-caption', 'text-honey-text']),
     );
     expect(classes(eyebrow as never)).not.toContain('uppercase');
   });
@@ -90,7 +90,8 @@ describe('SubscribeBlock (subscribe-block.md)', () => {
     const figure = one(render(subscribe.withPhoto), tag('figure'));
     const img = one(figure, tag('img'));
     expect(img.attrs.alt).toBe('Stacked offset beams against a forest');
-    expect(classes(img)).toEqual(expect.arrayContaining(['border', 'border-border', 'rounded-md']));
+    // hero media: a 16px corner
+    expect(classes(img)).toEqual(expect.arrayContaining(['border', 'border-border', 'rounded-xl']));
     expect(classes(img).join(' ')).not.toMatch(/filter|saturate|contrast|grayscale|opacity/);
     expect(text(one(figure, tag('figcaption')))).toBe('stacked offset beams · reference photo');
     expect(all(root, tag('figure'))).toHaveLength(0);

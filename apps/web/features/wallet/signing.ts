@@ -3,11 +3,21 @@ import { useContext, useEffect } from 'react';
 import type { WebWalletPort } from './port';
 import { WalletContext } from './WalletProvider';
 
-// The whole wallet port, with the members that sign, send and show a key. Nothing a product route is
-// built from may import this file: until the guard has checked the bytes against the order
-// (packages/sdk, AGT-1), no screen signs. components/shell/product-routes.test.ts lists who may: today
-// the wallet check under /dev, which is in no production build. The one leg executor is added to that
-// list, on purpose, when it exists.
+// The whole wallet port, with the members that sign, send and show a key. One file the app ships may
+// import this: the order runner (features/order/run-order.ts), which hands it to `execute()` of
+// packages/sdk, so that nothing is signed that the guard has not checked against the order (AGT-1).
+// components/shell/product-routes.test.ts holds that; the wallet check under /dev imports it too, and
+// is in no production build.
+
+/**
+ * Says a run of an order is open, until the function it returns is called: the wallet provider is not
+ * mounted again meanwhile (WalletProvider's `restart`), so a step is signed by the port it began on.
+ */
+export function useSigningHold(): () => () => void {
+  const value = useContext(WalletContext);
+  if (!value) throw new Error('useSigningHold() needs <WalletProvider> above it');
+  return value.hold;
+}
 
 export function useSigningPort(): WebWalletPort {
   const value = useContext(WalletContext);

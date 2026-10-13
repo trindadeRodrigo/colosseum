@@ -97,10 +97,9 @@ describe('PUT /v1/me/chain', () => {
     });
   });
 
-  it('says the chain was chosen before, cannot be chosen, or was not stored', async () => {
-    expect(
-      await failed(storeChain(async () => json({ error: 'picked once' }, 409), 'robinhood')),
-    ).toBe('taken');
+  it('says no wallet signs on the chain, it is not offered, or it was not stored', async () => {
+    const noWallet = json({ error: 'no wallet', code: 'NO_WALLET_FOR_CHAIN' }, 409);
+    expect(await failed(storeChain(async () => noWallet, 'solana'))).toBe('no_wallet');
     expect(await failed(storeChain(async () => json({ error: 'not yours' }, 422), 'base'))).toBe(
       'not_offered',
     );
@@ -126,11 +125,11 @@ describe('the throwaway wallet’s person, worked out the way the API does it', 
     expect(localPerson('test:1', solanaOnly, null).chainOptions).toEqual(['solana']);
   });
 
-  it('is on the chain of the one outside wallet, with nothing to choose', () => {
+  it('is on the chain of the one outside wallet, which is all it can switch to', () => {
     expect(localPerson('test:1', PHANTOM, null)).toMatchObject({
       chain: 'solana',
       chainSource: 'wallet',
-      chainOptions: [],
+      chainOptions: ['solana'],
     });
     expect(localPerson('test:1', METAMASK, null)).toMatchObject({
       chain: 'robinhood',
@@ -138,7 +137,7 @@ describe('the throwaway wallet’s person, worked out the way the API does it', 
     });
   });
 
-  it('needs a choice with outside wallets of both families, and keeps a choice once made', () => {
+  it('needs a choice with outside wallets of both families, and keeps a choice it can sign on', () => {
     const both = [...PHANTOM, ...METAMASK];
     expect(localPerson('test:1', both, null)).toMatchObject({
       chain: null,
@@ -147,8 +146,10 @@ describe('the throwaway wallet’s person, worked out the way the API does it', 
     expect(localPerson('test:1', EMBEDDED, 'robinhood')).toMatchObject({
       chain: 'robinhood',
       chainSource: 'picked',
-      chainOptions: [],
+      chainOptions: ['solana', 'robinhood'],
     });
+    // MetaMask alone cannot be on Solana, as the API would refuse it
+    expect(localPerson('test:1', METAMASK, 'solana')).toMatchObject({ chain: 'robinhood' });
     expect(SOLANA).toMatch(/^So1/);
   });
 });

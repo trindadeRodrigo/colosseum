@@ -62,8 +62,8 @@ contract VaultFactory is VaultConfig, UUPSUpgradeable, IVaultFactory {
         uint32 expectedVersion,
         bool autoFollow
     ) external returns (address vault) {
-        vault = _deploy(salt, autoFollow);
-        IBasketVault(vault).start(indexId, expectedVersion, targets, 0, new Swap[](0));
+        vault = _deploy(salt);
+        IBasketVault(vault).start(indexId, expectedVersion, targets, autoFollow, 0, new Swap[](0));
     }
 
     /// @inheritdoc IVaultFactory
@@ -74,10 +74,12 @@ contract VaultFactory is VaultConfig, UUPSUpgradeable, IVaultFactory {
         uint32 expectedVersion,
         bool autoFollow,
         uint256 cashAmount,
-        Swap[] calldata swaps
+        Swap[] calldata swaps,
+        uint64 deadline
     ) external returns (address vault) {
-        vault = _deploy(salt, autoFollow);
-        IBasketVault(vault).start(indexId, expectedVersion, targets, cashAmount, swaps);
+        require(block.timestamp <= deadline, DeadlinePassed(deadline, uint64(block.timestamp)));
+        vault = _deploy(salt);
+        IBasketVault(vault).start(indexId, expectedVersion, targets, autoFollow, cashAmount, swaps);
     }
 
     // ---- views
@@ -124,10 +126,10 @@ contract VaultFactory is VaultConfig, UUPSUpgradeable, IVaultFactory {
 
     /// Creates the caller's vault for `salt` and lists it. The owner is `msg.sender` and nothing else: no
     /// argument names one.
-    function _deploy(bytes32 salt, bool autoFollow) private returns (address vault) {
-        require(!autoFollow, AutoFollowUnavailable());
+    function _deploy(bytes32 salt) private returns (address vault) {
         FactoryStorage storage $ = _factory();
         address owner = msg.sender;
+        require(mayCreate(owner), NotAllowedToCreate(owner));
         require($.bySalt[owner][salt] == address(0), VaultExists($.bySalt[owner][salt]));
 
         vault = Create2.deploy(0, _salt(owner, salt), _creationCode($.beacon, owner, salt));
@@ -153,6 +155,10 @@ contract VaultFactory is VaultConfig, UUPSUpgradeable, IVaultFactory {
     function _isReserved(address target) internal view override returns (bool) {
         FactoryStorage storage $ = _factory();
         return super._isReserved(target) || target == $.beacon || $.isVault[target];
+    }
+
+    function _isVault(address target) internal view override returns (bool) {
+        return _factory().isVault[target];
     }
 
     /// The beacon's owner can replace the code of every vault. At launch that key is the admin and nobody

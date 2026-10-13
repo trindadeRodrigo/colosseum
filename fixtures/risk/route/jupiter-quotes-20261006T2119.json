@@ -1,0 +1,423 @@
+{
+  "source": "the collector's Jupiter quotes (~/.colosseum/risk/quotes/2026-10-06.jsonl, written by scripts/risk/collector: api.jup.ag/swap/v1/quote), the run of 2026-10-06T21:19Z, rows of QQQx and SPYx copied unchanged",
+  "fetched_at": "2026-10-06T21:19:01.017Z",
+  "method": "rows_copied_from_the_collector_file",
+  "provenance": "fixture",
+  "pairedWith": "fixtures/risk/route/qqqx-two-hop-20261006T2121.json.gz (pools read at 2026-10-06T21:21:16Z, within five minutes of every quote)",
+  "quotes": [
+    {
+      "runId": "2026-10-06T21:19:01.017Z",
+      "asset": "SPYx",
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "side": "sell",
+      "notionalUsd": 1000,
+      "refMidUsd": 784.0628728581665,
+      "amountIn": "127540792",
+      "outAmount": "1000187790",
+      "route": [
+        {
+          "pool": "27x6aSxcAm6SoazoxmmTtFg6fWMQuNmdKJmHagq1DUZy",
+          "label": "Byreal",
+          "percent": 33,
+          "inAmount": "42088460",
+          "outAmount": "330065243"
+        },
+        {
+          "pool": "Ph2aw6fSKja9MT39L27gwJcZi3F8hZL4xMnuVh36h8a",
+          "label": "PancakeSwap",
+          "percent": 4,
+          "inAmount": "5101628",
+          "outAmount": "40007306"
+        },
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "label": "Raydium CLMM",
+          "percent": 63,
+          "inAmount": "80350704",
+          "outAmount": "630115241"
+        }
+      ],
+      "error": null,
+      "source": "https://api.jup.ag/swap/v1/quote",
+      "method": "jupiter_quote_exact_in_sell",
+      "fetchedAt": "2026-10-06T21:19:01.017Z",
+      "provenance": "live"
+    },
+    {
+      "runId": "2026-10-06T21:19:01.017Z",
+      "asset": "SPYx",
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "side": "buy",
+      "notionalUsd": 1000,
+      "refMidUsd": 784.0628728581665,
+      "amountIn": "1000000000",
+      "outAmount": "127481518",
+      "route": [
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "label": "Raydium CLMM",
+          "percent": 100,
+          "inAmount": "1000000000",
+          "outAmount": "127481518"
+        }
+      ],
+      "error": null,
+      "source": "https://api.jup.ag/swap/v1/quote",
+      "method": "jupiter_quote_exact_in_buy",
+      "fetchedAt": "2026-10-06T21:19:02.460Z",
+      "provenance": "live"
+    },
+    {
+      "runId": "2026-10-06T21:19:01.017Z",
+      "asset": "SPYx",
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "side": "sell",
+      "notionalUsd": 10000,
+      "refMidUsd": 784.0628728581665,
+      "amountIn": "1275407922",
+      "outAmount": "9998779958",
+      "route": [
+        {
+          "pool": "Fae5dWVntUt6zbWu2voXxioDpMii7SqQwtsxBmoVCsHR",
+          "label": "Whirlpool",
+          "percent": 13,
+          "inAmount": "165803027",
+          "outAmount": "1299767756"
+        },
+        {
+          "pool": "27x6aSxcAm6SoazoxmmTtFg6fWMQuNmdKJmHagq1DUZy",
+          "label": "Byreal",
+          "percent": 24,
+          "inAmount": "306097896",
+          "outAmount": "2399745607"
+        },
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "label": "Raydium CLMM",
+          "percent": 63,
+          "inAmount": "803506999",
+          "outAmount": "6299266595"
+        }
+      ],
+      "error": null,
+      "source": "https://api.jup.ag/swap/v1/quote",
+      "method": "jupiter_quote_exact_in_sell",
+      "fetchedAt": "2026-10-06T21:19:03.790Z",
+      "provenance": "live"
+    },
+    {
+      "runId": "2026-10-06T21:19:01.017Z",
+      "asset": "SPYx",
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "side": "buy",
+      "notionalUsd": 10000,
+      "refMidUsd": 784.0628728581665,
+      "amountIn": "10000000000",
+      "outAmount": "1274505541",
+      "route": [
+        {
+          "pool": "Fae5dWVntUt6zbWu2voXxioDpMii7SqQwtsxBmoVCsHR",
+          "label": "Whirlpool",
+          "percent": 13,
+          "inAmount": "1300000000",
+          "outAmount": "165679999"
+        },
+        {
+          "pool": "27x6aSxcAm6SoazoxmmTtFg6fWMQuNmdKJmHagq1DUZy",
+          "label": "Byreal",
+          "percent": 18,
+          "inAmount": "1800000000",
+          "outAmount": "229410595"
+        },
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "label": "Raydium CLMM",
+          "percent": 69,
+          "inAmount": "6900000000",
+          "outAmount": "879414947"
+        }
+      ],
+      "error": null,
+      "source": "https://api.jup.ag/swap/v1/quote",
+      "method": "jupiter_quote_exact_in_buy",
+      "fetchedAt": "2026-10-06T21:19:05.190Z",
+      "provenance": "live"
+    },
+    {
+      "runId": "2026-10-06T21:19:01.017Z",
+      "asset": "SPYx",
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "side": "sell",
+      "notionalUsd": 100000,
+      "refMidUsd": 784.0628728581665,
+      "amountIn": "12754079227",
+      "outAmount": "99808050033",
+      "route": [
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "label": "Raydium CLMM",
+          "percent": 30,
+          "inAmount": "3826223760",
+          "outAmount": "29962468867"
+        },
+        {
+          "pool": "27x6aSxcAm6SoazoxmmTtFg6fWMQuNmdKJmHagq1DUZy",
+          "label": "Byreal",
+          "percent": 10,
+          "inAmount": "1275407920",
+          "outAmount": "9988071452"
+        },
+        {
+          "pool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+          "label": "Raydium CLMM",
+          "percent": 60,
+          "inAmount": "7652447547",
+          "outAmount": "59857509714"
+        }
+      ],
+      "error": null,
+      "source": "https://api.jup.ag/swap/v1/quote",
+      "method": "jupiter_quote_exact_in_sell",
+      "fetchedAt": "2026-10-06T21:19:06.586Z",
+      "provenance": "live"
+    },
+    {
+      "runId": "2026-10-06T21:19:01.017Z",
+      "asset": "SPYx",
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "side": "buy",
+      "notionalUsd": 100000,
+      "refMidUsd": 784.0628728581665,
+      "amountIn": "100000000000",
+      "outAmount": "12714130956",
+      "route": [
+        {
+          "pool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+          "label": "Raydium CLMM",
+          "percent": 38,
+          "inAmount": "38000000000",
+          "outAmount": "4830457725"
+        },
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "label": "Raydium CLMM",
+          "percent": 33,
+          "inAmount": "33000000000",
+          "outAmount": "4198456355"
+        },
+        {
+          "pool": "8FnX3xo2yYw3EUE6w3nQA4GfXGS9wpK6oj3veJpbFzLo",
+          "label": "BisonFi",
+          "percent": 29,
+          "inAmount": "29000000000",
+          "outAmount": "240117545861"
+        },
+        {
+          "pool": "BS9uyGV6XmNnPkM4f3xgxCdQEaFv7RSKs6fwrpvYHxfL",
+          "label": "Raydium CLMM",
+          "percent": 100,
+          "inAmount": "240117545861",
+          "outAmount": "3685216876"
+        }
+      ],
+      "error": null,
+      "source": "https://api.jup.ag/swap/v1/quote",
+      "method": "jupiter_quote_exact_in_buy",
+      "fetchedAt": "2026-10-06T21:19:07.999Z",
+      "provenance": "live"
+    },
+    {
+      "runId": "2026-10-06T21:19:01.017Z",
+      "asset": "QQQx",
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "side": "sell",
+      "notionalUsd": 1000,
+      "refMidUsd": 762.8565447786658,
+      "amountIn": "131086245",
+      "outAmount": "998903640",
+      "route": [
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "label": "Raydium CLMM",
+          "percent": 100,
+          "inAmount": "131086245",
+          "outAmount": "998903640"
+        }
+      ],
+      "error": null,
+      "source": "https://api.jup.ag/swap/v1/quote",
+      "method": "jupiter_quote_exact_in_sell",
+      "fetchedAt": "2026-10-06T21:19:42.748Z",
+      "provenance": "live"
+    },
+    {
+      "runId": "2026-10-06T21:19:01.017Z",
+      "asset": "QQQx",
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "side": "buy",
+      "notionalUsd": 1000,
+      "refMidUsd": 762.8565447786658,
+      "amountIn": "1000000000",
+      "outAmount": "130942528",
+      "route": [
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "label": "Raydium CLMM",
+          "percent": 100,
+          "inAmount": "1000000000",
+          "outAmount": "130942528"
+        }
+      ],
+      "error": null,
+      "source": "https://api.jup.ag/swap/v1/quote",
+      "method": "jupiter_quote_exact_in_buy",
+      "fetchedAt": "2026-10-06T21:19:44.073Z",
+      "provenance": "live"
+    },
+    {
+      "runId": "2026-10-06T21:19:01.017Z",
+      "asset": "QQQx",
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "side": "sell",
+      "notionalUsd": 10000,
+      "refMidUsd": 762.8565447786658,
+      "amountIn": "1310862450",
+      "outAmount": "9981866307",
+      "route": [
+        {
+          "pool": "FSLSua26xaXSLUG31SnyifgS6wgkRh5SirbCZW9zXNoG",
+          "label": "Byreal",
+          "percent": 12,
+          "inAmount": "157303488",
+          "outAmount": "1197581866"
+        },
+        {
+          "pool": "HXEEdnwBrFyCbGpR1ikrGSPgW5YYajq5zQZTXWeL99xh",
+          "label": "Manifest",
+          "percent": 7,
+          "inAmount": "91760368",
+          "outAmount": "698776787"
+        },
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "label": "Raydium CLMM",
+          "percent": 81,
+          "inAmount": "1061798594",
+          "outAmount": "8085507654"
+        }
+      ],
+      "error": null,
+      "source": "https://api.jup.ag/swap/v1/quote",
+      "method": "jupiter_quote_exact_in_sell",
+      "fetchedAt": "2026-10-06T21:19:45.400Z",
+      "provenance": "live"
+    },
+    {
+      "runId": "2026-10-06T21:19:01.017Z",
+      "asset": "QQQx",
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "side": "buy",
+      "notionalUsd": 10000,
+      "refMidUsd": 762.8565447786658,
+      "amountIn": "10000000000",
+      "outAmount": "1308433474",
+      "route": [
+        {
+          "pool": "HXEEdnwBrFyCbGpR1ikrGSPgW5YYajq5zQZTXWeL99xh",
+          "label": "Manifest",
+          "percent": 9,
+          "inAmount": "900000000",
+          "outAmount": "117804966"
+        },
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "label": "Raydium CLMM",
+          "percent": 91,
+          "inAmount": "9100000000",
+          "outAmount": "1190628508"
+        }
+      ],
+      "error": null,
+      "source": "https://api.jup.ag/swap/v1/quote",
+      "method": "jupiter_quote_exact_in_buy",
+      "fetchedAt": "2026-10-06T21:19:46.811Z",
+      "provenance": "live"
+    },
+    {
+      "runId": "2026-10-06T21:19:01.017Z",
+      "asset": "QQQx",
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "side": "sell",
+      "notionalUsd": 100000,
+      "refMidUsd": 762.8565447786658,
+      "amountIn": "13108624509",
+      "outAmount": "99026786220",
+      "route": [
+        {
+          "pool": "FSLSua26xaXSLUG31SnyifgS6wgkRh5SirbCZW9zXNoG",
+          "label": "Byreal",
+          "percent": 17,
+          "inAmount": "2228466165",
+          "outAmount": "16832179364"
+        },
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "label": "Raydium CLMM",
+          "percent": 83,
+          "inAmount": "10880158344",
+          "outAmount": "82194606856"
+        }
+      ],
+      "error": null,
+      "source": "https://api.jup.ag/swap/v1/quote",
+      "method": "jupiter_quote_exact_in_sell",
+      "fetchedAt": "2026-10-06T21:19:48.221Z",
+      "provenance": "live"
+    },
+    {
+      "runId": "2026-10-06T21:19:01.017Z",
+      "asset": "QQQx",
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "side": "buy",
+      "notionalUsd": 100000,
+      "refMidUsd": 762.8565447786658,
+      "amountIn": "100000000000",
+      "outAmount": "12978736970",
+      "route": [
+        {
+          "pool": "FSLSua26xaXSLUG31SnyifgS6wgkRh5SirbCZW9zXNoG",
+          "label": "Byreal",
+          "percent": 12,
+          "inAmount": "12000000000",
+          "outAmount": "1556740263"
+        },
+        {
+          "pool": "8FnX3xo2yYw3EUE6w3nQA4GfXGS9wpK6oj3veJpbFzLo",
+          "label": "BisonFi",
+          "percent": 6,
+          "inAmount": "6000000000",
+          "outAmount": "49691626088"
+        },
+        {
+          "pool": "B6FEtQdwsq8Wuw4G52pW9WEWEA7ALGfyUgXDRKigDSHH",
+          "label": "Raydium CLMM",
+          "percent": 100,
+          "inAmount": "49691626088",
+          "outAmount": "778425906"
+        },
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "label": "Raydium CLMM",
+          "percent": 82,
+          "inAmount": "82000000000",
+          "outAmount": "10643570801"
+        }
+      ],
+      "error": null,
+      "source": "https://api.jup.ag/swap/v1/quote",
+      "method": "jupiter_quote_exact_in_buy",
+      "fetchedAt": "2026-10-06T21:19:49.632Z",
+      "provenance": "live"
+    }
+  ]
+}

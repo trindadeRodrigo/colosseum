@@ -177,6 +177,8 @@ export type KeeperContext = {
    * vault holds that cannot be valued. Null when a leg in a tradable position could.
    */
   blocked: ChainErrorCode | null;
+  /** The cluster's clock at the read, in unix seconds: what the program compares an effective time with. */
+  clock: number;
 };
 
 /** `provenance` is 'live' on mainnet and 'sandbox' on a test network or a local validator. */
@@ -882,6 +884,7 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
             : snap.onchain.keeperPaused
               ? 'KeeperPaused'
               : (held?.reference ?? null),
+          clock: Number(snap.clock.unixTimestamp),
         };
       }),
 

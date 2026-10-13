@@ -371,11 +371,41 @@ contract ShortAnswerToken is MockToken {
 
 /// A token with a back door: anyone can move anyone's balance, as an issuer's seizure or a hook would. A
 /// router uses it to take what the vault never approved.
+///
+/// It also answers as Robinhood Chain's stock tokens do about their state: `effectiveAt()`, when the next
+/// change of the multiplier takes effect (zero: none), and `paused()`. Either can be made to revert.
 contract BackdoorToken is MockToken {
+    uint256 internal schedule;
+    bool internal isPaused;
+    bool internal silent;
+
     constructor(uint8 decimals_) MockToken(decimals_) {}
 
     function seize(address from, address to, uint256 amount) external {
         require(_move(from, to, amount), InsufficientBalance());
+    }
+
+    function setSchedule(uint256 effectiveAt_) external {
+        schedule = effectiveAt_;
+    }
+
+    function setPaused(bool on) external {
+        isPaused = on;
+    }
+
+    /// `effectiveAt()` and `paused()` revert.
+    function setSilent(bool on) external {
+        silent = on;
+    }
+
+    function effectiveAt() external view returns (uint256) {
+        require(!silent);
+        return schedule;
+    }
+
+    function paused() external view returns (bool) {
+        require(!silent);
+        return isPaused;
     }
 }
 

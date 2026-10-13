@@ -1,0 +1,32 @@
+[
+  {
+    "assetId": "solana:jlusdc",
+    "quotedYield": 0.0414,
+    "haircutYield": 0.03105,
+    "haircutRule": "HC-LEND-VAR, taken by hand: a quarter off a variable lending rate",
+    "source": "docs/vault/research/design-v2/personalization-proto/run.mjs",
+    "method": "illustrative_value_written_by_hand_not_a_reading",
+    "fetchedAt": "2026-10-01T00:00:00.000Z",
+    "provenance": "fixture"
+  },
+  {
+    "assetId": "solana:syrupusdc",
+    "quotedYield": 0.052,
+    "haircutYield": 0.0468,
+    "haircutRule": "HC-REALISED, taken by hand: a tenth off a realised yield",
+    "source": "docs/vault/research/design-v2/personalization-proto/run.mjs",
+    "method": "illustrative_value_written_by_hand_not_a_reading",
+    "fetchedAt": "2026-10-01T00:00:00.000Z",
+    "provenance": "fixture"
+  },
+  {
+    "assetId": "robinhood:sgov",
+    "quotedYield": 0.04,
+    "haircutYield": 0.028,
+    "haircutRule": "HC-AGGREGATOR, taken by hand: three tenths off an issuer-reported figure",
+    "source": "docs/vault/research/design-v2/personalization-proto/run.mjs",
+    "method": "illustrative_value_written_by_hand_not_a_reading",
+    "fetchedAt": "2026-10-01T00:00:00.000Z",
+    "provenance": "fixture"
+  }
+]

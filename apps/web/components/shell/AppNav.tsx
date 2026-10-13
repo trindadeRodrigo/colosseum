@@ -1,149 +1,97 @@
 'use client';
-import { chainFamily } from '@colosseum/schemas';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
-import { useAccount } from '../../features/account/AccountProvider';
+import { useAccountControl } from '../../features/account/AccountControl';
 import { useWalletPort } from '../../features/wallet/WalletProvider';
 import { useT } from '../../i18n/I18nProvider';
-import { Button } from '../ui/Button';
-import { buttonClass } from '../ui/button-class';
-import { cn } from '../ui/cn';
-import { shorten } from '../ui/format';
-import { MockPlate } from '../ui/MockPlate';
+import { CompactNav } from '../ui/CompactNav';
 import { Mark } from './Mark';
+import { ThemeToggle } from './ThemeToggle';
 
-// The product's top bar (STYLE.md, Navigation): a plain bar on the ground with a hairline under it,
-// the mark and the wordmark at the left. No glass and no blur. The goal comes first: it is the one
-// link there is until the next screens are built. The landing's compact bar is another component
-// (components/ui/CompactNav.tsx).
+// The product's bar is his landing's compact bar (compact-nav.md, hero-3d.html), compact from the
+// start because no product page has a stage: the mark and the wordmark, then his items mapped to the
+// product's routes, then the wallet. A solid bar with a hairline, fixed at the top; no glass, no blur.
+//
+//   Invest      the goal and its plan (/goal)
+//   Portfolio   the person's vaults (/monitor), for someone signed in
+//   Analytics   Bearing's analytics (/analytics/stocks), current on every page under /analytics,
+//               its methodology too, which its side menu links (no Resources item: Thom, Oct 6)
+//   the account one control, the same on the landing's bar (Thom, Oct 9; AccountControl.tsx): a still
+//               placeholder until it is known who is here, "Sign in" for nobody, and for a person
+//               "Account", opening their wallets (one for each chain they have one on, each with
+//               "Copy address" and the explorer) and "Sign out" (AccountMenu.tsx). The bar shows and
+//               switches no chain (gate CHAIN-AT-THE-PLAN): where a plan starts is chosen on /goal
+//
+//   Products    the shelf of shared portfolios (/shelf), and a portfolio's page under it
+//
+// On a phone the links are in the sheet under the menu button, under the same account block (the
+// wallets, "Sign out"); the bar's control is the same "Account".
 //
 // Nothing here is the wallet adapter's button, which renders one thing on the server and another in
 // the browser. What the bar shows about the person comes from the wallet port, and it shows nothing
 // about them until the port has loaded, so the server and the browser draw the same bar.
 
-const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring';
-const LINK = cn(
-  'py-2 text-[0.9375rem]/5 font-medium text-muted-foreground transition-colors hover:text-foreground',
-  'aria-[current=page]:text-foreground aria-[current=page]:underline aria-[current=page]:decoration-primary aria-[current=page]:decoration-2 aria-[current=page]:underline-offset-[6px]',
-  FOCUS,
-);
+/** The product's routes in the bar, his order; `signedIn` marks the one a visitor does not get. */
+const ROUTES = [
+  { href: '/shelf', key: 'products', also: ['/indexes', '/publish'] },
+  { href: '/goal', key: 'invest', also: ['/plan', '/orders'] },
+  // the portfolio section's board (/portfolio); the older monitor and a vault's page are under it
+  {
+    href: '/portfolio',
+    key: 'portfolio',
+    signedIn: true,
+    also: ['/portfolio', '/monitor', '/vaults'],
+  },
+  // Bearing's analytics: every page of the section is under it
+  { href: '/analytics/stocks', key: 'analytics', also: ['/analytics'] },
+] as const;
 
-/** The product's routes, in the order of the bar. */
-const ROUTES = [{ href: '/goal', key: 'goal' }] as const;
+/** The page a link stands for is the one in view: its own path, or one under it that it leads to. */
+const isCurrent = (pathname: string, route: (typeof ROUTES)[number]) =>
+  pathname === route.href ||
+  ('also' in route &&
+    route.also.some((p) => pathname.startsWith(`${p}/`) || (p === '/monitor' && pathname === p)));
 
 export function AppNav() {
   const t = useT();
   const pathname = usePathname();
-  return (
-    <header data-ui="app-nav" className="border-b border-border">
-      <div className="flex min-h-14 flex-wrap items-center justify-between gap-x-6 gap-y-2 py-2">
-        <div className="flex items-center gap-6">
-          <Link
-            href="/goal"
-            aria-label={t.shell.home}
-            className={cn('flex shrink-0 items-center gap-2.5 text-foreground', FOCUS)}
-          >
-            <span className="text-primary">
-              <Mark size={24} />
-            </span>
-            {/* The wordmark is a logo, not the screen's serif line. Always lowercase. */}
-            <span className="font-display text-[1.25rem] leading-none font-normal tracking-[-0.01em]">
-              tenonfi
-            </span>
-          </Link>
-          <nav aria-label={t.shell.nav} className="flex items-center gap-4">
-            {ROUTES.map((route) => (
-              <Link
-                key={route.href}
-                href={route.href}
-                aria-current={pathname === route.href ? 'page' : undefined}
-                className={LINK}
-              >
-                {t.shell[route.key]}
-              </Link>
-            ))}
-          </nav>
-        </div>
-        <AccountControl />
-      </div>
-    </header>
-  );
-}
-
-/** Who is signed in, in the bar: "Sign in" for nobody, the wallet of the plan's chain and "Sign out". */
-function AccountControl() {
-  const t = useT();
   const port = useWalletPort();
-  const { account } = useAccount();
-  const [busy, setBusy] = useState(false);
-  const [stillIn, setStillIn] = useState(false);
-  const [said, setSaid] = useState('');
-  const signIn = useRef<HTMLAnchorElement>(null);
-  // The person pressed "Sign out" here. When they are out, that button is gone: focus goes to what
-  // took its place, and a screen reader is told.
-  const leaving = useRef(false);
-  const signedOut = port.status === 'signed-out';
-  useEffect(() => {
-    if (!signedOut || !leaving.current) return;
-    leaving.current = false;
-    signIn.current?.focus();
-    setSaid(t.shell.signedOut);
-  }, [signedOut, t]);
-
-  async function signOut() {
-    setBusy(true);
-    setStillIn(false);
-    setSaid('');
-    leaving.current = true;
-    try {
-      await port.signOut();
-    } catch {
-      // Signing out fails only when the provider cannot be reached: the person is still signed in,
-      // and is told so.
-      leaving.current = false;
-      setStillIn(true);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // Only the wallet of the chain the plan lives on is shown: the other family's is never used.
-  const wallet = account.status === 'ready' ? port.active(chainFamily(account.chain)) : null;
+  const account = useAccountControl();
+  const signedIn = port.status !== 'signed-out' && port.userId !== null;
+  const exact = ROUTES.some((route) => route.href === pathname);
   return (
-    <>
-      <span role="status" data-ui="account-said" className="sr-only">
-        {said}
-      </span>
-      {/* Before the wallet has loaded there is nothing to say: an empty box of the same height. A
-          person who is signed in while it still loads (their wallets are being made, or could not
-          be) is known by then, and always has the way out: a wallet that never arrives must not
-          hold them here. */}
-      {port.status === 'loading' && port.userId === null ? (
-        <span aria-hidden="true" className="h-8 min-w-20" />
-      ) : signedOut ? (
-        <Link ref={signIn} href="/sign-in" className={buttonClass({ size: 'dense' })}>
-          {t.shell.signIn}
-        </Link>
-      ) : (
-        <div data-ui="account" className="flex flex-wrap items-center justify-end gap-3">
-          {port.test && <MockPlate labels={{ announce: t.shell.mockAnnounce }} />}
-          {wallet && (
-            <span className="font-mono text-source text-muted-foreground" title={wallet.address}>
-              <span className="sr-only">{t.shell.account}: </span>
-              {shorten(wallet.address)}
-            </span>
-          )}
-          <Button size="dense" busy={busy} busyLabel={t.shell.signingOut} onClick={signOut}>
-            {t.shell.signOut}
-          </Button>
-          {stillIn && (
-            <p role="alert" className="basis-full text-right text-caption text-destructive">
-              {t.shell.signOutFailed}
-            </p>
-          )}
+    <CompactNav
+      symbol={<Mark size={24} />}
+      wordmark="tenonfi"
+      homeLabel={t.shell.home}
+      homeHref="/"
+      contentId="content"
+      compact
+      linkAs={Link}
+      links={ROUTES.filter((route) => !('signedIn' in route) || signedIn).map((route) => ({
+        label: t.shell[route.key],
+        href: route.href,
+        // the link whose own page this is wins over one it is under
+        current: (exact ? pathname === route.href : isCurrent(pathname, route)) && 'page',
+      }))}
+      action={
+        <div className="flex items-center gap-2">
+          {/* On a phone the bar has no room for it beside the account: it sits in the menu's sheet. */}
+          <span className="hidden sm:contents">
+            <ThemeToggle />
+          </span>
+          <div className="ml-2 flex items-center gap-2">{account.action}</div>
         </div>
-      )}
-    </>
+      }
+      sheetHead={
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">{account.sheetHead}</div>
+          <span className="contents sm:hidden">
+            <ThemeToggle />
+          </span>
+        </div>
+      }
+      labels={{ skip: t.shell.skip, main: t.shell.nav, menu: t.shell.menu }}
+    />
   );
 }

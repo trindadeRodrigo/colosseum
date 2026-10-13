@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { buttonClass } from './button-class';
 import { cn } from './cn';
+import { Hint } from './Hint';
 import { Icon } from './Icon';
 import { COPY_BUTTON_LABELS, type CopyButtonLabels } from './labels';
 
@@ -16,10 +17,12 @@ export type CopyButtonProps = {
   /** What is copied, for the accessible name: "signature". */
   what?: string;
   labels?: Partial<CopyButtonLabels>;
+  /** What the tooltip says, where it says more than the name: the whole value beside a shortened one. */
+  title?: string;
   className?: string;
 };
 
-export function CopyButton({ value, what, labels, className }: CopyButtonProps) {
+export function CopyButton({ value, what, labels, title, className }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
@@ -44,16 +47,17 @@ export function CopyButton({ value, what, labels, className }: CopyButtonProps) 
 
   return (
     <>
-      <button
-        type="button"
-        data-ui="copy-button"
-        aria-label={name}
-        title={name}
-        onClick={copy}
-        className={cn(buttonClass({ variant: 'icon', size: 'dense' }), className)}
-      >
-        <Icon name={copied ? 'Check' : 'Copy'} size={16} />
-      </button>
+      <Hint tip={title ?? name}>
+        <button
+          type="button"
+          data-ui="copy-button"
+          aria-label={name}
+          onClick={copy}
+          className={cn(buttonClass({ variant: 'icon', size: 'dense' }), className)}
+        >
+          <Icon name={copied ? 'Check' : 'Copy'} size={16} />
+        </button>
+      </Hint>
       <span role="status" className="sr-only">
         {copied ? text.copied : ''}
       </span>

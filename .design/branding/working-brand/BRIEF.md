@@ -96,6 +96,8 @@ N/A — new brand
 - **Brands admired:** Patagonia, Headspace (purpose, humanity); Nexa Finance (clarity of the hyper-personalisation story); Teiten (founder's own prior brand — admired for being *unique*, taking a reference and polishing it into its own world; **its visual grammar is not to be reused here**).
 
 ## Visual Direction
+> **2026-10-08 (IDENTITY-2, docs/GATES.md):** the joinery direction stands, but the Oct 1 execution of it (wood as the only colour, warm black, a serif) was replaced on the founder's word by "Honey on night". The governing image for colour is now the daylight timber interior, not master.jpg; master.jpg stays the reference for the *subject* (the pre-lock moment, the pin). See `identity/INDEX.md`.
+
 - **Mood / aesthetic:** **Japanese wood joinery** (kigumi / sashimono / kumimono bracket sets). Precision-cut pieces that lock together without nails or glue — easily, reliably, with balance and beauty. Metaphor: *we cut the self-joining pieces; the client connects them to their needs; the structure comes together and holds.* The joint itself is the transparency: you can see why it holds.
 - **Reference links:** `visual-refferences/` (repo root):
   - **`master.jpg` — the governing image.** Two wood species (warm darker hardwood + pale hinoki/spruce) shown *apart, a moment before they lock*, on pure black; every cut exposed, a pin passing through. Shows precision, readiness, and transparency at once.

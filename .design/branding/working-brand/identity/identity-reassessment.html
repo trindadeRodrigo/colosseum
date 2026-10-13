@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tenonfi · identity re-assessment</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* proposed · dark ("night") */
+    --night:#0C0D12; --night-2:#13151C; --night-3:#1A1D26; --line:#262A36; --line-2:#363B4B;
+    --text:#F3F1EC; --muted:#9A9DAD; --muted-2:#6E7282;
+    --honey:#F5A83A; --honey-deep:#D9881B; --honey-tint:rgba(245,168,58,.14);
+    --leaf:#3FC47C; --leaf-tint:rgba(63,196,124,.14);
+    --madder:#EF5A6F; --madder-tint:rgba(239,90,111,.14);
+    --clay:#F0703A; --clay-tint:rgba(240,112,58,.14);
+    --chalk:#78B4E8; --chalk-tint:rgba(120,180,232,.14);
+    --wood:#E9C48E; --wood-deep:#B9803F;
+    /* proposed · light ("day") */
+    --paper:#F7F5F0; --paper-2:#FFFFFF; --paper-3:#EFECE5; --line-l:#E3DFD6; --line-l2:#C9C4B9;
+    --ink:#15161C; --muted-l:#6A6D78;
+    --honey-l:#A8640A; --leaf-l:#1B7F45; --madder-l:#B52F44; --clay-l:#A8481A; --chalk-l:#2A73B0;
+    /* current (for the before) */
+    --c-black:#0D0B09; --c-char:#1A1714; --c-char2:#24201B; --c-washi:#ECE4D6; --c-hinoki:#E6D3B7; --c-hinoki-deep:#C9AE86; --c-stone:#A49A8E; --c-hair:#3A322A;
+    --sans:"Inter",system-ui,sans-serif; --display:"Inter Tight","Inter",sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#0A0B0F;color:var(--text);font:15px/1.5 var(--sans)}
+  body{padding:0 0 80px}
+  h1,h2,h3{font-family:var(--display);letter-spacing:-.02em;margin:0}
+  h1{font-size:40px;font-weight:600;line-height:1.1}
+  h2{font-size:22px;font-weight:600;margin-bottom:6px}
+  h3{font-size:14px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+  p{margin:0 0 10px;max-width:72ch;color:var(--muted)}
+  p b{color:var(--text);font-weight:600}
+  .wrap{max-width:1360px;margin:0 auto;padding:0 40px}
+  header.page{padding:48px 0 28px;border-bottom:1px solid var(--line)}
+  header.page p{max-width:80ch;margin-top:12px;font-size:15px}
+  .kicker{font:500 12px/1 var(--mono);color:var(--honey);letter-spacing:.08em;text-transform:uppercase;margin-bottom:14px}
+  section{padding:40px 0 8px;border-bottom:1px solid var(--line)}
+  .lede{color:var(--muted);max-width:84ch;margin-bottom:20px}
+  .grid{display:grid;gap:20px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  .cap{font:500 12px/1.4 var(--mono);color:var(--muted-2);margin-top:8px}
+  .cap b{color:var(--muted);font-weight:500}
+  .tag{display:inline-block;font:500 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:5px 7px;border-radius:4px;border:1px solid var(--line-2);color:var(--muted)}
+  .tag.bad{color:var(--madder);border-color:rgba(239,90,111,.4)}
+  .tag.good{color:var(--leaf);border-color:rgba(63,196,124,.4)}
+
+  /* ---------- frames (mini screens) ---------- */
+  .frame{border-radius:10px;overflow:hidden;border:1px solid var(--line);position:relative}
+  .frame.cur{background:var(--c-black);color:var(--c-washi);font-family:"IBM Plex Sans",var(--sans)}
+  .frame.night{background:var(--night);color:var(--text)}
+  .frame.day{background:var(--paper);color:var(--ink);border-color:var(--line-l)}
+  .nav{display:flex;align-items:center;gap:22px;padding:12px 18px;border-bottom:1px solid var(--line);font-size:13px}
+  .cur .nav{border-color:var(--c-hair)}
+  .day .nav{border-color:var(--line-l)}
+  .nav .brand{display:flex;align-items:center;gap:8px;font-family:var(--display);font-weight:600;font-size:15px;letter-spacing:-.01em;margin-right:8px}
+  .cur .nav .brand{font-family:"Newsreader",serif;font-weight:500;font-size:17px}
+  .nav a{color:inherit;opacity:.7;text-decoration:none}
+  .nav a.on{opacity:1;position:relative}
+  .nav a.on::after{content:"";position:absolute;left:0;right:0;bottom:-13px;height:2px;background:var(--honey)}
+  .cur .nav a.on::after{background:var(--c-hinoki)}
+  .nav .sp{flex:1}
+  .btn{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:13px;padding:8px 14px;border-radius:8px;border:1px solid transparent;cursor:default;white-space:nowrap}
+  .btn.pri{background:var(--honey);color:var(--ink)}
+  .btn.sec{background:transparent;border-color:var(--line-2);color:inherit}
+  .day .btn.sec{border-color:var(--line-l2)}
+  .cur .btn.pri{background:var(--c-hinoki);color:var(--c-black);border-radius:2px}
+  .cur .btn.sec{border-color:#7A6D5F;border-radius:2px}
+  .btn.pill{border-radius:999px}
+  .hero{padding:26px 18px 20px;display:grid;grid-template-columns:1.1fr .9fr;gap:20px;align-items:center;position:relative}
+  .hero h1{font-size:30px}
+  .cur .hero h1{font-family:"Newsreader",serif;font-weight:500;letter-spacing:0;font-size:34px;line-height:1.05}
+  .hero p{font-size:13px;margin-top:10px;max-width:40ch}
+  .cur .hero p{color:var(--c-stone)}
+  .day .hero p{color:var(--muted-l)}
+  .glow{position:absolute;inset:0;pointer-events:none;background:radial-gradient(60% 90% at 78% 30%,rgba(245,168,58,.22),rgba(245,168,58,0) 70%)}
+  .day .glow{background:radial-gradient(60% 90% at 78% 30%,rgba(245,168,58,.28),rgba(245,168,58,0) 70%)}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .cur .stats{border-color:var(--c-hair)}
+  .day .stats{border-color:var(--line-l)}
+  .stat{padding:12px 18px;border-right:1px solid var(--line)}
+  .cur .stat{border-color:var(--c-hair)}
+  .day .stat{border-color:var(--line-l)}
+  .stat:last-child{border-right:0}
+  .stat .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:500}
+  .cur .stat .l{color:var(--c-stone)}
+  .day .stat .l{color:var(--muted-l)}
+  .stat .v{font-family:var(--display);font-weight:600;font-size:20px;letter-spacing:-.02em;margin-top:2px;font-variant-numeric:tabular-nums}
+  .stat .v small{font-family:var(--sans);font-size:12px;font-weight:500;margin-left:6px}
+  .up{color:var(--leaf)} .dn{color:var(--madder)}
+  .day .up{color:var(--leaf-l)} .day .dn{color:var(--madder-l)}
+  .cur .up,.cur .dn{color:var(--c-hinoki-deep)}
+
+  /* goal card */
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:18px}
+  .card{background:var(--night-2);border:1px solid var(--line);border-radius:10px;padding:16px}
+  .cur .card{background:var(--c-char);border-color:var(--c-hair);border-radius:2px}
+  .day .card{background:var(--paper-2);border-color:var(--line-l)}
+  .card .eyebrow{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:500}
+  .cur .card .eyebrow{color:var(--c-stone)}
+  .day .card .eyebrow{color:var(--muted-l)}
+  .card .amt{font-family:var(--display);font-weight:600;font-size:26px;letter-spacing:-.02em;margin:6px 0 2px;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:8px}
+  .cur .card .amt{font-family:"Newsreader",serif;font-weight:500;letter-spacing:0}
+  .card .sub{font-size:12.5px;color:var(--muted)}
+  .cur .card .sub{color:var(--c-stone)}
+  .day .card .sub{color:var(--muted-l)}
+  .badge{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:4px 9px;border-radius:999px;margin-top:10px}
+  .badge i{width:8px;height:8px;border-radius:2px;display:inline-block;background:currentColor}
+  .badge.on{background:var(--leaf-tint);color:var(--leaf)}
+  .badge.watch{background:var(--clay-tint);color:var(--clay)}
+  .badge.off{background:var(--madder-tint);color:var(--madder)}
+  .day .badge.on{color:var(--leaf-l)} .day .badge.watch{color:var(--clay-l)} .day .badge.off{color:var(--madder-l)}
+  .cur .badge{border-radius:0;background:transparent;border:1px solid var(--c-hair);color:#7FA37A}
+  .cur .badge.watch{color:#D9A441}
+  .bar{height:6px;border-radius:999px;background:var(--line);margin-top:12px;overflow:hidden}
+  .bar b{display:block;height:100%;width:62%;background:var(--honey)}
+  .cur .bar{border-radius:0;background:var(--c-hair)} .cur .bar b{background:var(--c-hinoki)}
+  .day .bar{background:var(--paper-3)}
+  /* provenance pin */
+  .pin{display:inline-flex;align-items:center;justify-content:center;width:18px;height:12px;border:1.5px solid var(--muted-2);border-radius:3px;position:relative;vertical-align:middle}
+  .pin::after{content:"";width:5px;height:5px;border-radius:50%;background:var(--honey);position:absolute}
+  .pin.stale::after{background:transparent;border:1.5px solid var(--honey);width:4px;height:4px}
+  .pin.mock{border-color:var(--muted-2);background:repeating-linear-gradient(45deg,transparent 0 2px,var(--muted-2) 2px 3px)}
+  .pin.mock::after{display:none}
+  .cur .pin{border-radius:0;border-color:var(--c-stone)} .cur .pin::after{background:var(--c-hinoki)}
+  .day .pin{border-color:var(--line-l2)} .day .pin::after{background:var(--honey-l)}
+  .mock{display:inline-flex;align-items:center;gap:6px;font:500 11px/1 var(--mono);letter-spacing:.08em;padding:4px 7px;border:1px solid var(--line-2);border-radius:4px;color:var(--muted)}
+  .mock i{width:10px;height:10px;background:repeating-linear-gradient(45deg,transparent 0 2px,var(--muted) 2px 3px)}
+
+  /* table */
+  table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+  th{font-weight:500;color:var(--muted);text-align:right;padding:8px 12px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+  td{padding:9px 12px;text-align:right;border-bottom:1px solid var(--line);vertical-align:middle}
+  th:first-child,td:first-child{text-align:left}
+  tr:last-child td{border-bottom:0}
+  .cur th,.cur td{border-color:var(--c-hair);font-family:"IBM Plex Sans Condensed","IBM Plex Sans",var(--sans)}
+  .cur th{color:var(--c-stone)}
+  .day th,.day td{border-color:var(--line-l)} .day th{color:var(--muted-l)}
+  td .d{display:block;font-size:11px;margin-top:1px}
+  .asset{display:flex;align-items:center;gap:8px;font-weight:600}
+  .asset .dot{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,var(--wood),var(--wood-deep))}
+  .cur .asset .dot{background:var(--c-hinoki-deep);border-radius:0}
+  .asset .chip{font:500 10px/1 var(--mono);letter-spacing:.05em;padding:3px 6px;border-radius:999px;background:var(--honey-tint);color:var(--honey)}
+  .cur .asset .chip{border-radius:0;background:transparent;border:1px solid var(--c-hair);color:var(--c-stone)}
+  .day .asset .chip{color:var(--honey-l)}
+  tr.sel td{background:var(--honey-tint)}
+  .cur tr.sel td{background:var(--c-char2)}
+  svg.spark{width:84px;height:26px;display:block;margin-left:auto}
+
+  /* chips, inputs */
+  .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 18px}
+  .chip{font-size:12px;font-weight:500;padding:6px 11px;border-radius:999px;border:1px solid var(--line-2);color:var(--muted)}
+  .chip.on{background:var(--honey-tint);border-color:transparent;color:var(--honey)}
+  .cur .chip{border-radius:0;border-color:#7A6D5F;color:var(--c-stone)} .cur .chip.on{background:var(--c-char2);color:var(--c-hinoki)}
+  .day .chip{border-color:var(--line-l2);color:var(--muted-l)} .day .chip.on{color:var(--honey-l)}
+  .input{flex:1;min-width:200px;font-size:13px;padding:9px 12px;border-radius:8px;border:1px solid var(--line-2);background:var(--night-3);color:var(--muted)}
+  .input.focus{outline:2px solid var(--chalk);outline-offset:2px;color:var(--text)}
+  .cur .input{border-radius:2px;background:var(--c-char2);border-color:#7A6D5F} .cur .input.focus{outline-color:var(--c-hinoki)}
+  .day .input{background:var(--paper-2);border-color:var(--line-l2);color:var(--muted-l)} .day .input.focus{outline-color:var(--chalk-l);color:var(--ink)}
+
+  /* swatches */
+  .sw{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+  .s{border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+  .s .c{height:64px}
+  .s .m{padding:8px 10px;background:var(--night-2);font:500 11px/1.5 var(--mono)}
+  .s .m b{display:block;color:var(--text);font-weight:600;font-family:var(--sans);font-size:12.5px}
+  .s .m span{color:var(--muted)}
+  .s .m .r{color:var(--muted-2);display:block}
+  .s .m .r.ok{color:var(--leaf)}
+  .s .m .r.lo{color:var(--clay)}
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center}
+  .wheel{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-top:8px}
+  .wheel div{height:28px;border-radius:5px}
+  .note{background:var(--night-2);border:1px solid var(--line);border-left:3px solid var(--honey);border-radius:8px;padding:14px 16px;margin:14px 0}
+  .note p{margin:0;max-width:none}
+  ul{margin:6px 0 14px;padding-left:18px;color:var(--muted)} li{margin:4px 0;max-width:80ch} li b{color:var(--text);font-weight:600}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+  .type .l{font:500 11px/1.4 var(--mono);color:var(--muted-2);margin:10px 0 2px;text-transform:uppercase;letter-spacing:.06em}
+  .spec{font:400 12px/1.6 var(--mono);color:var(--muted)}
+  .spec b{color:var(--text);font-weight:500}
+  table.rules{font-size:13px} table.rules th,table.rules td{text-align:left;padding:8px 10px;vertical-align:top} table.rules td:first-child{color:var(--text);font-weight:500;width:28%}
+  .photo{border-radius:10px;overflow:hidden;border:1px solid var(--line);height:220px;background:#000 center/cover}
+  .alts{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .alt{background:var(--night-2);border:1px solid var(--line);border-radius:10px;padding:14px}
+  .alt .hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .alt .hd b{font-family:var(--display);font-weight:600;font-size:15px}
+  .alt .hd span{font:500 11px/1 var(--mono);color:var(--muted-2)}
+  .alt .btn{margin-right:6px}
+  .alt .mini{margin-top:12px;border-top:1px solid var(--line);padding-top:10px;font-size:12px;color:var(--muted);display:flex;gap:12px;align-items:center}
+  .alt .mini .k{font-variant-numeric:tabular-nums;color:var(--text);font-weight:600}
+  .alt p{font-size:12.5px;margin-top:10px}
+  .logo-note{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .lg{height:120px;border-radius:10px;display:flex;align-items:center;justify-content:center;gap:14px;font-family:var(--display);font-weight:600;font-size:22px;letter-spacing:-.02em;border:1px solid var(--line)}
+  .lg svg{width:36px;height:36px}
+  @media (max-width:900px){.g2,.g3,.g4,.two,.compare,.alts,.logo-note{grid-template-columns:1fr}.sw{grid-template-columns:repeat(3,1fr)}.wrap{padding:0 16px}.hero{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="page">
+  <div class="kicker">Identity · re-assessment · 2026-10-08 · proposal, not a decision</div>
+  <h1>Why the brand reads dead, and what to change</h1>
+  <p>Benchmark: Meteora (measured on 2026-10-08: ground #0D0D13, surface #12121C, text #F9F9FB, muted #9595B2, accent #F54B00 with 16% tints, second accent #6E45FF, deltas #24C98D / #F04438, Inter, pills and 4–8 px radii, the product in the first viewport). This sheet keeps the idea the strategy committed to, <b>made to measure, every joint shown</b>, and replaces the material register that was built on it. Every sample below is the same screen in the current system and in the proposed one.</p>
+</header>
+
+<!-- 1 · DIAGNOSIS -->
+<section>
+  <h2>1 · The diagnosis</h2>
+  <p class="lede">The current palette has no chroma. Its most saturated brand colour, hardwood, sits at OKLCH chroma 0.06. Meteora's accent sits at about 0.21. The two "species" are two browns on a brown-black, which is wood panelling, not wood in light. The rules then banned everything that makes a screen feel alive: blue, gradients, glow, green and red, rounded corners, a saturated accent, white. And the governing photograph was a studio shot of wood in the dark, so the palette was sampled from shadow. The daylight photograph already in the prototype has honey, amber, leaf green and sky in it.</p>
+  <div class="compare">
+    <div>
+      <div class="frame cur">
+        <div class="nav"><span class="brand"><svg width="18" height="18" viewBox="0 0 32 32" fill="#E6D3B7"><rect x="2" y="12" width="5" height="10"/><rect x="7" y="13" width="23" height="8"/><rect x="11" y="3" width="9" height="27"/><circle cx="25" cy="17" r="2" fill="#0D0B09"/></svg>tenonfi</span><a class="on">Plans</a><a>Bearing</a><a>Docs</a><span class="sp"></span><span class="btn sec">Connect wallet</span></div>
+        <div class="hero"><div><h1>No product fits everyone. So we make the pieces.</h1><p>Tell us what your money needs to do. tenonfi builds the portfolio that gets it there, and shows you how.</p><div style="margin-top:14px"><span class="btn pri">Start a plan</span></div></div><div></div></div>
+        <div class="stats"><div class="stat"><div class="l">Plans running</div><div class="v">1,284</div></div><div class="stat"><div class="l">Exit depth measured</div><div class="v">$41.2M</div></div><div class="stat"><div class="l">On track</div><div class="v">91%</div></div></div>
+        <div class="cards">
+          <div class="card"><div class="eyebrow">Apartment fund · Jun 2028</div><div class="amt">$12,480 <span class="pin"></span></div><div class="sub">6.4% net · cash in 7 days</div><span class="badge on"><i></i>On track</span><div class="bar"><b></b></div></div>
+          <div class="card"><div class="eyebrow">Trip fund · Mar 2027</div><div class="amt">$3,120 <span class="pin stale"></span></div><div class="sub">4.9% net · stale · 3 h</div><span class="badge watch"><i></i>Watch</span><div class="bar"><b style="width:38%"></b></div></div>
+        </div>
+      </div>
+      <div class="cap"><b>Current.</b> Warm black, hinoki on char, Newsreader. Everything within 1.3:1 of everything else except the text. <span class="tag bad">dead</span></div>
+    </div>
+    <div>
+      <div class="frame night">
+        <div class="nav"><span class="brand"><svg width="18" height="18" viewBox="0 0 32 32"><rect x="4" y="4" width="24" height="24" rx="5" fill="#F5A83A"/><rect x="12" y="12" width="12" height="8" rx="1.5" fill="#0C0D12"/><circle cx="20" cy="16" r="2" fill="#F5A83A"/></svg>tenonfi</span><a class="on">Plans</a><a>Bearing</a><a>Docs</a><span class="sp"></span><span class="btn sec">Connect wallet</span></div>
+        <div class="hero"><div class="glow"></div><div><h1>Tell it the goal. Get the portfolio cut for it.</h1><p>A plan made to measure, with an exit plan before it invests, in your own vault. Every number carries its source.</p><div style="margin-top:14px"><span class="btn pri">Start a plan</span> <span class="btn sec">See a plan</span></div></div><div></div></div>
+        <div class="stats"><div class="stat"><div class="l">Plans running</div><div class="v">1,284 <small class="up">+12%</small></div></div><div class="stat"><div class="l">Exit depth measured</div><div class="v">$41.2M <small class="up">+3.1%</small></div></div><div class="stat"><div class="l">On track</div><div class="v">91% <small class="dn">−2 pts</small></div></div></div>
+        <div class="cards">
+          <div class="card"><div class="eyebrow">Apartment fund · Jun 2028</div><div class="amt">$12,480 <span class="pin"></span></div><div class="sub">6.4% net · cash in 7 days</div><span class="badge on"><i></i>On track</span><div class="bar"><b></b></div></div>
+          <div class="card"><div class="eyebrow">Trip fund · Mar 2027</div><div class="amt">$3,120 <span class="pin stale"></span></div><div class="sub">4.9% net · stale · 3 h</div><span class="badge watch"><i></i>Watch</span><div class="bar"><b style="width:38%"></b></div></div>
+        </div>
+      </div>
+      <div class="cap"><b>Proposed.</b> Cool near-black, honey as the one brand colour, leaf and madder for direction, Inter Tight. Same content, same components. <span class="tag good">alive</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 2 · PALETTE -->
+<section>
+  <h2>2 · The palette: light on wood, not wood in the dark</h2>
+  <p class="lede">One brand colour, <b>honey</b>: fresh-cut hinoki in sunlight. It is the only warm hue in the chrome, so it owns attention. The ground goes cool (a trace of blue in the black, as Meteora's) so the warm colour glows instead of sinking. Direction colours come from the daylight photograph: <b>leaf</b> from the forest in the window, <b>madder</b> for off track, <b>clay</b> for watch. <b>Chalk</b> is the carpenter's snap line, a pale blue used only for guides, selection and focus, never as a brand colour. Wood itself leaves the UI chrome and lives in imagery and the logo.</p>
+  <h3>Dark · "night" (app, Bearing, video)</h3>
+  <div class="sw" style="margin:10px 0 18px">
+    <div class="s"><div class="c" style="background:#0C0D12"></div><div class="m"><b>night</b><span>#0C0D12</span><span class="r">ground</span></div></div>
+    <div class="s"><div class="c" style="background:#13151C"></div><div class="m"><b>night-2</b><span>#13151C</span><span class="r">surface</span></div></div>
+    <div class="s"><div class="c" style="background:#1A1D26"></div><div class="m"><b>night-3</b><span>#1A1D26</span><span class="r">raised, inputs</span></div></div>
+    <div class="s"><div class="c" style="background:#262A36"></div><div class="m"><b>line</b><span>#262A36</span><span class="r">hairline · line-2 #363B4B controls</span></div></div>
+    <div class="s"><div class="c" style="background:#F3F1EC"></div><div class="m"><b>text</b><span>#F3F1EC</span><span class="r" data-c="#F3F1EC,#0C0D12"></span></div></div>
+    <div class="s"><div class="c" style="background:#9A9DAD"></div><div class="m"><b>muted</b><span>#9A9DAD</span><span class="r" data-c="#9A9DAD,#13151C"></span></div></div>
+    <div class="s"><div class="c" style="background:#F5A83A"></div><div class="m"><b>honey</b><span>#F5A83A</span><span class="r" data-c="#F5A83A,#0C0D12"></span></div></div>
+    <div class="s"><div class="c" style="background:#D9881B"></div><div class="m"><b>honey-deep</b><span>#D9881B</span><span class="r">hover, pressed</span></div></div>
+    <div class="s"><div class="c" style="background:#3FC47C"></div><div class="m"><b>leaf</b><span>#3FC47C</span><span class="r" data-c="#3FC47C,#0C0D12"></span></div></div>
+    <div class="s"><div class="c" style="background:#EF5A6F"></div><div class="m"><b>madder</b><span>#EF5A6F</span><span class="r" data-c="#EF5A6F,#0C0D12"></span></div></div>
+    <div class="s"><div class="c" style="background:#F0703A"></div><div class="m"><b>clay</b><span>#F0703A</span><span class="r" data-c="#F0703A,#0C0D12"></span></div></div>
+    <div class="s"><div class="c" style="background:#78B4E8"></div><div class="m"><b>chalk</b><span>#78B4E8</span><span class="r" data-c="#78B4E8,#0C0D12"></span></div></div>
+  </div>
+  <h3>Light · "day" (docs, consumer plan, embed default)</h3>
+  <div class="sw" style="margin:10px 0 18px">
+    <div class="s"><div class="c" style="background:#F7F5F0"></div><div class="m"><b>paper</b><span>#F7F5F0</span><span class="r">ground</span></div></div>
+    <div class="s"><div class="c" style="background:#FFFFFF"></div><div class="m"><b>paper-2</b><span>#FFFFFF</span><span class="r">cards. White is allowed again</span></div></div>
+    <div class="s"><div class="c" style="background:#15161C"></div><div class="m"><b>ink</b><span>#15161C</span><span class="r" data-c="#15161C,#F7F5F0"></span></div></div>
+    <div class="s"><div class="c" style="background:#6A6D78"></div><div class="m"><b>muted-l</b><span>#6A6D78</span><span class="r" data-c="#6A6D78,#FFFFFF"></span></div></div>
+    <div class="s"><div class="c" style="background:#A8640A"></div><div class="m"><b>honey-l</b><span>#A8640A</span><span class="r" data-c="#A8640A,#FFFFFF"></span></div></div>
+    <div class="s"><div class="c" style="background:#1B7F45"></div><div class="m"><b>leaf-l</b><span>#1B7F45</span><span class="r" data-c="#1B7F45,#FFFFFF"></span></div></div>
+    <div class="s"><div class="c" style="background:#B52F44"></div><div class="m"><b>madder-l</b><span>#B52F44</span><span class="r" data-c="#B52F44,#FFFFFF"></span></div></div>
+    <div class="s"><div class="c" style="background:#A8481A"></div><div class="m"><b>clay-l</b><span>#A8481A</span><span class="r" data-c="#A8481A,#FFFFFF"></span></div></div>
+    <div class="s"><div class="c" style="background:#2A73B0"></div><div class="m"><b>chalk-l</b><span>#2A73B0</span><span class="r" data-c="#2A73B0,#FFFFFF"></span></div></div>
+    <div class="s"><div class="c" style="background:#E9C48E"></div><div class="m"><b>wood</b><span>#E9C48E</span><span class="r">imagery and logo only</span></div></div>
+    <div class="s"><div class="c" style="background:#B9803F"></div><div class="m"><b>wood-deep</b><span>#B9803F</span><span class="r">imagery and logo only</span></div></div>
+    <div class="s"><div class="c" style="background:#F5A83A"></div><div class="m"><b>honey</b><span>#F5A83A</span><span class="r" data-c="#15161C,#F5A83A">ink on honey </span></div></div>
+  </div>
+  <div class="note"><p><b>The button rule that makes it ours.</b> Honey is light, so the primary button is always <b>ink on honey</b>, in both modes. Meteora is white on orange, Jupiter is black on lime, Binance is black on yellow. Black on honey next to a cool black ground, with wood photography, is a combination nobody on Solana holds. Honey text on white needs the deeper <b>honey-l</b>; honey itself is for fills, bars, the pin and large type only.</p></div>
+  <div class="cap">Ratios are WCAG 2.x, computed on this page. AA text needs 4.5:1, large text and controls 3:1.</div>
+</section>
+
+<!-- 3 · APPLIED -->
+<section>
+  <h2>3 · Applied: Bearing, the plan, controls</h2>
+  <p class="lede">The dense register, where Meteora is strongest. Numbers tabular, deltas signed and coloured, sparklines coloured by direction, the selected row tinted with the brand colour at 14%. The provenance pin, the MOCK plate and the disclaimer stay exactly as the product rules say.</p>
+  <div class="grid g2">
+    <div>
+      <div class="frame cur">
+        <div class="row"><span class="chip on">All</span><span class="chip">Stocks</span><span class="chip">Stablecoins</span><span class="chip">Lending</span><span class="input">Search asset or pool</span><span class="btn pri">Simulate</span></div>
+        <table><thead><tr><th>Asset · pool</th><th>Trend 24h</th><th>Capacity ≤1%</th><th>Exit cost 100k</th><th>TVL</th><th>Status</th></tr></thead><tbody>
+          <tr><td><span class="asset"><span class="dot"></span>TSLAx-USDC <span class="chip">CLMM</span></span></td><td><svg class="spark" viewBox="0 0 84 26"><polyline fill="none" stroke="#C9AE86" stroke-width="1.5" points="0,20 12,16 24,18 36,10 48,12 60,6 72,8 84,4"/></svg></td><td>$412K<span class="d up">+18%</span></td><td>0.62%<span class="d dn">+0.08</span></td><td>$13.3M</td><td><span class="pin"></span></td></tr>
+          <tr class="sel"><td><span class="asset"><span class="dot"></span>GLDx-USDC <span class="chip">CLMM</span></span></td><td><svg class="spark" viewBox="0 0 84 26"><polyline fill="none" stroke="#C9AE86" stroke-width="1.5" points="0,6 12,10 24,8 36,14 48,16 60,20 72,18 84,22"/></svg></td><td>$96K<span class="d dn">−7%</span></td><td>1.41%<span class="d dn">+0.31</span></td><td>$4.1M</td><td><span class="pin stale"></span></td></tr>
+          <tr><td><span class="asset"><span class="dot"></span>USDY-USDC <span class="chip">Lending</span></span></td><td><svg class="spark" viewBox="0 0 84 26"><polyline fill="none" stroke="#C9AE86" stroke-width="1.5" points="0,14 12,13 24,14 36,12 48,13 60,12 72,12 84,11"/></svg></td><td>—</td><td>—</td><td>$2.0M</td><td><span class="mock"><i></i>MOCK</span></td></tr>
+        </tbody></table>
+      </div>
+      <div class="cap"><b>Current.</b> Deltas in the same beige as everything else, one-colour sparklines, square chips.</div>
+    </div>
+    <div>
+      <div class="frame night">
+        <div class="row"><span class="chip on">All</span><span class="chip">Stocks</span><span class="chip">Stablecoins</span><span class="chip">Lending</span><span class="input focus">Search asset or pool</span><span class="btn pri">Simulate</span></div>
+        <table><thead><tr><th>Asset · pool</th><th>Trend 24h</th><th>Capacity ≤1%</th><th>Exit cost 100k</th><th>TVL</th><th>Status</th></tr></thead><tbody>
+          <tr><td><span class="asset"><span class="dot"></span>TSLAx-USDC <span class="chip">CLMM</span></span></td><td><svg class="spark" viewBox="0 0 84 26"><polyline fill="none" stroke="#3FC47C" stroke-width="1.5" points="0,20 12,16 24,18 36,10 48,12 60,6 72,8 84,4"/></svg></td><td>$412K<span class="d up">+18%</span></td><td>0.62%<span class="d dn">+0.08</span></td><td>$13.3M</td><td><span class="pin"></span></td></tr>
+          <tr class="sel"><td><span class="asset"><span class="dot"></span>GLDx-USDC <span class="chip">CLMM</span></span></td><td><svg class="spark" viewBox="0 0 84 26"><polyline fill="none" stroke="#EF5A6F" stroke-width="1.5" points="0,6 12,10 24,8 36,14 48,16 60,20 72,18 84,22"/></svg></td><td>$96K<span class="d dn">−7%</span></td><td>1.41%<span class="d dn">+0.31</span></td><td>$4.1M</td><td><span class="pin stale"></span></td></tr>
+          <tr><td><span class="asset"><span class="dot"></span>USDY-USDC <span class="chip">Lending</span></span></td><td><svg class="spark" viewBox="0 0 84 26"><polyline fill="none" stroke="#9A9DAD" stroke-width="1.5" points="0,14 12,13 24,14 36,12 48,13 60,12 72,12 84,11"/></svg></td><td>—</td><td>—</td><td>$2.0M</td><td><span class="mock"><i></i>MOCK</span></td></tr>
+        </tbody></table>
+      </div>
+      <div class="cap"><b>Proposed.</b> Leaf and madder carry direction, honey carries selection and the pin, chalk is the focus ring. Pills for chips, 8 px on controls.</div>
+    </div>
+  </div>
+  <div class="grid g2" style="margin-top:20px">
+    <div>
+      <div class="frame day">
+        <div class="nav"><span class="brand"><svg width="18" height="18" viewBox="0 0 32 32"><rect x="4" y="4" width="24" height="24" rx="5" fill="#F5A83A"/><rect x="12" y="12" width="12" height="8" rx="1.5" fill="#15161C"/><circle cx="20" cy="16" r="2" fill="#F5A83A"/></svg>tenonfi</span><a class="on">Plans</a><a>Bearing</a><a>Docs</a><span class="sp"></span><span class="btn pri">Start a plan</span></div>
+        <div class="hero"><div class="glow"></div><div><h1>Your apartment fund is on track.</h1><p>Rates dipped this month, so the plan moved a little into treasuries. You still land in June 2028, with a week's access to cash any time.</p></div><div></div></div>
+        <div class="cards">
+          <div class="card"><div class="eyebrow">Apartment fund · Jun 2028</div><div class="amt">$12,480 <span class="pin"></span></div><div class="sub">6.4% net · cash in 7 days</div><span class="badge on"><i></i>On track</span><div class="bar"><b></b></div></div>
+          <div class="card"><div class="eyebrow">Exit plan</div><div class="amt">7 days <span class="pin"></span></div><div class="sub">to cash, at ≤ 0.4% cost, measured by Bearing</div><span class="badge watch"><i></i>Watch · depth fell 9%</span><div class="bar"><b style="width:71%"></b></div></div>
+        </div>
+      </div>
+      <div class="cap"><b>Proposed, light.</b> The consumer and embed register. White cards on warm paper, honey-l for links, the same leaf / clay / madder.</div>
+    </div>
+    <div>
+      <div class="frame night" style="padding:18px">
+        <h3 style="margin-bottom:10px">Controls</h3>
+        <div class="row" style="padding:0 0 12px"><span class="btn pri">Primary</span><span class="btn sec">Secondary</span><span class="btn pri pill">Pill, composer only</span><span class="btn sec" style="color:var(--madder);border-color:rgba(239,90,111,.4)">Destructive</span></div>
+        <div class="row" style="padding:0 0 12px"><span class="badge on" style="margin:0"><i></i>On track</span><span class="badge watch" style="margin:0"><i></i>Watch</span><span class="badge off" style="margin:0"><i></i>Off track</span><span class="mock"><i></i>MOCK</span><span class="tag" style="color:var(--chalk);border-color:rgba(120,180,232,.4)">test network</span></div>
+        <div class="row" style="padding:0 0 12px"><span class="input">Amount</span><span class="input focus">Goal date</span></div>
+        <h3 style="margin:8px 0 10px">Chart colours</h3>
+        <svg viewBox="0 0 520 90" style="width:100%;height:90px;display:block">
+          <defs><linearGradient id="g1" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#F5A83A" stop-opacity=".35"/><stop offset="1" stop-color="#F5A83A" stop-opacity="0"/></linearGradient></defs>
+          <line x1="0" y1="70" x2="520" y2="70" stroke="#262A36"/>
+          <path d="M0,60 C40,58 60,40 100,42 S160,30 200,28 S260,36 300,22 S360,18 400,14 S470,10 520,8 L520,70 L0,70 Z" fill="url(#g1)"/>
+          <path d="M0,60 C40,58 60,40 100,42 S160,30 200,28 S260,36 300,22 S360,18 400,14 S470,10 520,8" fill="none" stroke="#F5A83A" stroke-width="2"/>
+          <path d="M0,62 C60,62 120,54 200,50 S360,46 520,40" fill="none" stroke="#9A9DAD" stroke-width="1.5" stroke-dasharray="4 4"/>
+          <path d="M0,64 C60,66 120,64 200,66 S360,70 520,68" fill="none" stroke="#EF5A6F" stroke-width="1.5" stroke-dasharray="4 4"/>
+          <line x1="300" y1="0" x2="300" y2="70" stroke="#78B4E8" stroke-dasharray="2 3"/>
+          <text x="306" y="12" fill="#78B4E8" font-family="IBM Plex Mono" font-size="10">today</text>
+        </svg>
+        <div class="cap">Base case honey with a light fill, stress cases dashed (muted, madder), the chalk line marks today. Dashed still means projected.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 · ALTERNATE ACCENTS -->
+<section>
+  <h2>4 · If not honey: three alternates on the same system</h2>
+  <p class="lede">Everything else on this sheet holds with any of these. Only the brand colour, its tint and its deep hover change. Pick the hue, and the token sheet follows.</p>
+  <div class="alts">
+    <div class="alt" style="--a:#F5A83A;--at:rgba(245,168,58,.14)"><div class="hd"><b>Honey</b><span>#F5A83A · recommended</span></div><span class="btn" style="background:var(--a);color:#15161C">Start a plan</span><span class="chip" style="background:var(--at);border-color:transparent;color:var(--a)">Selected</span><div class="mini"><span class="k">$12,480</span><span class="pin" style="--honey:var(--a)"></span><span class="badge on" style="margin:0"><i></i>On track</span></div><p>Hinoki in sunlight. Warm, nobody's on Solana, black text on it. Sits between Meteora's orange and Binance yellow without being either.</p></div>
+    <div class="alt" style="--a:#F2612E;--at:rgba(242,97,46,.14)"><div class="hd"><b>Ember</b><span>#F2612E</span></div><span class="btn" style="background:var(--a);color:#FFFFFF">Start a plan</span><span class="chip" style="background:var(--at);border-color:transparent;color:var(--a)">Selected</span><div class="mini"><span class="k">$12,480</span><span class="pin" style="--honey:var(--a)"></span><span class="badge on" style="margin:0"><i></i>On track</span></div><p>Closest to the benchmark and to Helius. Hottest, most "DeFi". The risk is being read as a Meteora skin.</p></div>
+    <div class="alt" style="--a:#F2566B;--at:rgba(242,86,107,.14)"><div class="hd"><b>Rose</b><span>#F2566B</span></div><span class="btn" style="background:var(--a);color:#FFFFFF">Start a plan</span><span class="chip" style="background:var(--at);border-color:transparent;color:var(--a)">Selected</span><div class="mini"><span class="k">$12,480</span><span class="pin" style="--honey:var(--a)"></span><span class="badge on" style="margin:0"><i></i>On track</span></div><p>Rose madder, saturated. Distinctive and warm, but it collides with "off track" and with Tensor and Magic Eden. Off track would move to clay.</p></div>
+    <div class="alt" style="--a:#5FB8F0;--at:rgba(95,184,240,.14)"><div class="hd"><b>Chalk</b><span>#5FB8F0</span></div><span class="btn" style="background:var(--a);color:#15161C">Start a plan</span><span class="chip" style="background:var(--at);border-color:transparent;color:var(--a)">Selected</span><div class="mini"><span class="k">$12,480</span><span class="pin" style="--honey:var(--a)"></span><span class="badge on" style="margin:0"><i></i>On track</span></div><p>The carpenter's snap line as the brand. Calm and trustworthy, but it is the category colour (Ondo, Glider, Kamino) and the warmth is gone.</p></div>
+  </div>
+</section>
+
+<!-- 5 · TYPE, SHAPE, LIGHT, IMAGERY -->
+<section>
+  <h2>5 · Type, shape, light, imagery</h2>
+  <div class="two">
+    <div class="type">
+      <div class="l">Display · Inter Tight 600, −2% tracking</div>
+      <div style="font:600 34px/1.1 var(--display);letter-spacing:-.02em">Cut for one goal.<br>Every joint shown.</div>
+      <div class="l">UI · Inter 400/500/600 · tabular figures</div>
+      <div style="font-size:15px">Your apartment fund is on track. Rates dipped this month, so the plan moved a little into treasuries. You land in June 2028.</div>
+      <div class="l">Numbers · Inter Tight 600, tabular</div>
+      <div style="font:600 28px/1 var(--display);letter-spacing:-.02em;font-variant-numeric:tabular-nums">$12,480 · 6.4% · 7 days</div>
+      <div class="l">Provenance, code · IBM Plex Mono</div>
+      <div class="spec">source <b>kamino</b> · fetched_at <b>2026-10-08T14:02:11Z</b> · method <b>on-chain reserve read</b></div>
+      <div class="l">Dropped</div>
+      <div class="spec">Newsreader as a product face. It gave the dead screens their funeral register. If a serif survives at all it is one line on the marketing site, never in the app, Bearing or the embed. <b>Alternative pair if Inter feels too generic:</b> Geist + Geist Mono, same rules.</div>
+    </div>
+    <div>
+      <table class="rules">
+        <tr><td>Shape</td><td>Radius 10 px cards, 8 px controls, pills for chips and tags, the composer stays 20 px. The "square only" rule is dropped: joinery is carried by construction motifs (dimension lines, exploded views, the pin), not by sharp corners.</td></tr>
+        <tr><td>Light</td><td>Gradients are allowed as <b>light</b>, never as two hues: a honey radial at 14–22% behind heroes and on primary hover, a honey fill under the base-case curve. No glass, no blur, no neon glow.</td></tr>
+        <tr><td>Tints</td><td>Every state colour has a 14% tint for fills (selected rows, chips, badges). This is what makes Meteora read alive at density: colour sits in surfaces, not only in text.</td></tr>
+        <tr><td>Imagery</td><td>Wood in daylight replaces wood in the studio. Governing image: the timber interior with the forest in the window (already in the prototype as the closing image). Renders of the joint are lit warm, placed on the cool night ground, so the two temperatures do the work the two species used to do.</td></tr>
+        <tr><td>First viewport</td><td>The product, not a manifesto. Meteora opens on the table. Tenonfi opens on the composer with a sample plan beneath it, numbers and pins visible before any scroll.</td></tr>
+        <tr><td>Kept, unchanged</td><td>Provenance pin after every figure. Hatch + MOCK, "test network" for sandbox. The single disclaimer. No return promises. Status always word + shape + colour. The brand recedes in the embed.</td></tr>
+      </table>
+      <div class="photo" style="background-image:url('../patterns/prototypes/assets/closing.jpg')"></div>
+      <div class="cap">The daylight photograph already in the prototype. Honey, amber, leaf and sky are all in it. The palette above is sampled from here, not from the black studio shot.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 · LOGO -->
+<section>
+  <h2>6 · The logo comes after this decision</h2>
+  <p class="lede">The mark is drawn on the new palette, two-tone where it helps (honey on night, ink on honey for the app tile), so it is not worth redrawing before the colour is chosen. The three placeholders below only show how a mark behaves in the new system. The real variations (end view with wedges, the joint a moment before it locks, an axonometric in two tones, a lettermark) come as a separate sheet once section 4 is settled.</p>
+  <div class="logo-note">
+    <div class="lg" style="background:#0C0D12"><svg viewBox="0 0 32 32"><rect x="4" y="4" width="24" height="24" rx="6" fill="#F5A83A"/><rect x="12" y="12" width="12" height="8" rx="1.5" fill="#0C0D12"/><circle cx="20" cy="16" r="2" fill="#F5A83A"/></svg>tenonfi</div>
+    <div class="lg" style="background:#F7F5F0;color:#15161C;border-color:#E3DFD6"><svg viewBox="0 0 32 32"><rect x="4" y="4" width="24" height="24" rx="6" fill="#15161C"/><rect x="12" y="12" width="12" height="8" rx="1.5" fill="#F5A83A"/><circle cx="20" cy="16" r="2" fill="#15161C"/></svg>tenonfi</div>
+    <div class="lg" style="background:#F5A83A;color:#15161C;border-color:transparent"><svg viewBox="0 0 32 32"><rect x="4" y="4" width="24" height="24" rx="6" fill="#15161C"/><rect x="12" y="12" width="12" height="8" rx="1.5" fill="#F5A83A"/><circle cx="20" cy="16" r="2" fill="#15161C"/></svg>tenonfi</div>
+  </div>
+  <div class="cap">Placeholders: a tile, the tenon end, the pin. Not a proposal for the mark.</div>
+</section>
+
+<!-- 7 · WHAT CHANGES IN THE DOCUMENTS -->
+<section>
+  <h2>7 · What this changes in the brand documents</h2>
+  <div class="two">
+    <div>
+      <h3>Rules dropped</h3>
+      <ul>
+        <li><b>Wood is the only colour.</b> Replaced by one brand colour plus direction colours, with wood in imagery.</li>
+        <li><b>No blue anywhere.</b> Chalk is allowed for guides, focus and selection lines. Still no blue brand, no blue gradients.</li>
+        <li><b>No gradients, no glow.</b> Gradients as light are allowed; two-hue gradients, glass and neon stay out.</li>
+        <li><b>Square only, 2 px radius.</b> Replaced by the shape row above.</li>
+        <li><b>No pure white.</b> White cards on warm paper are allowed.</li>
+        <li><b>Earth-pigment status colours.</b> Replaced by leaf, clay and madder at full saturation, still always with a word and a shape.</li>
+        <li><b>Newsreader as the answer voice.</b> Dropped from product surfaces.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Rules kept</h3>
+      <ul>
+        <li>Made to measure, every joint shown. Sage × Caregiver. The voice.</li>
+        <li>Provenance pin, hatch + MOCK, "test network", the disclaimer, no return promises, status as word + shape + colour.</li>
+        <li>No Japanese clichés. Nothing that reads as Teiten. No mascots, no rockets, no leaderboards.</li>
+        <li>The brand recedes in the partner embed.</li>
+        <li>Light and dark are peers. Dark is native for Bearing and the video, light for docs, the plan and the embed.</li>
+      </ul>
+      <h3>Then</h3>
+      <p>On a yes to a hue and this sheet: rewrite the identity colour and typography chunks, regenerate tokens, STYLE.md and the component specs from the new values (the GSP guidelines phase does that part well), reskin the landing prototype, and draw the logo variations on the new palette.</p>
+    </div>
+  </div>
+</section>
+</div>
+<script>
+  // WCAG contrast, printed next to each swatch
+  function lum(h){h=h.replace('#','');const c=[0,2,4].map(i=>parseInt(h.substr(i,2),16)/255).map(v=>v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4));return .2126*c[0]+.7152*c[1]+.0722*c[2]}
+  function ratio(a,b){const l1=lum(a),l2=lum(b);return (Math.max(l1,l2)+.05)/(Math.min(l1,l2)+.05)}
+  document.querySelectorAll('[data-c]').forEach(el=>{const [f,b]=el.dataset.c.split(',');const r=ratio(f,b);el.textContent=(el.textContent||'')+'on '+b+' '+r.toFixed(2)+':1';el.classList.add(r>=4.5?'ok':r>=3?'lo':'')});
+</script>
+</body>
+</html>

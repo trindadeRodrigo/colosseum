@@ -1,0 +1,10 @@
+Legend,
+Permissionless,Anyone can mint or deposit with a wallet.
+Hybrid,"KYC needed to mint/redeem with the issuer, but the token moves freely — obtainable without KYC from DEX pools, lending markets or third-party wrappers."
+Permissioned,Only allowlisted wallets can hold or receive the token; no route without KYC.
+(verify),Best read where the protocol's current setup could not be confirmed.
+Caveats,
+Geo / ToS,'Permissionless' only means the contract doesn't stop you; geo-blocks and terms of service (often excluding US persons) still apply.
+Yields,"Variable and point-in-time (research as of Oct 6, 2026); sources and dates are in the full report. Re-check live dashboards before investing."
+Stale figures,"Hylo, Fragmetric and Kyros yields predate mid-2026."
+Discontinued / impaired,"Lido stSOL (discontinued), Solstice strcUSX (wound down), Credix (defunct on-chain), Drift-linked assets (April 2026 exploit)."

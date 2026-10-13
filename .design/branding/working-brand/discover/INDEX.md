@@ -16,7 +16,7 @@
 5. **Provenance is unclaimed as identity.** The pin becomes the provenance glyph on every number, section-hatch marks MOCK, and both survive in the white-label embed.
 
 ## Direction
-"The Open Joint": two wood species (hinoki #E6D3B7 / hardwood #7A5A3A) on warm black #0D0B09 or daylight paper #F6F1E8. IBM Plex Sans / Plex Mono plus Source Serif 4 display. Photographed real joints combined with hairline exploded-view drawings. Single-axis slide-and-lock motion.
+"The Open Joint" (2026-10-01; **superseded on 2026-10-08 by `IDENTITY-2`, docs/GATES.md**): two wood species (hinoki #E6D3B7 / hardwood #7A5A3A) on warm black #0D0B09 or daylight paper #F6F1E8, IBM Plex Sans / Plex Mono plus a serif display. What carried over: photographed real joints with hairline exploded-view drawings, single-axis slide-and-lock motion, the pin as provenance. The current system is "Honey on night" (`../identity/INDEX.md`).
 
 ## Naming territories
 1. Joint and pin. 2. True / plumb / square. 3. Fit and measure. 4. Structure and load path (best kept for the risk-layer noun). 5. Grain and species. Lead with 1 × 2.

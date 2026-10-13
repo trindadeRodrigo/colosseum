@@ -2,7 +2,7 @@
 
 *Written 2026-09-30. Companion to `docs/structurer/HANDOFF-IDEA1.md`. This file is the spec a planner needs to write the build plan for the risk layer. It assumes access to this repository.*
 
-**Supporting files:** `docs/structurer/HANDOFF-IDEA1.md` (the structurer), `eval/briefs/SHARED-CONTEXT.md` §"Idea 2" (the original risk-engine concept), `eval/FEASIBILITY.md` §"Idea 2" (dependencies and half-day plan), `eval/IDEA2-MARKET.md` (evidence corrections, redemption rails, risk providers, EVM markets), `eval/FINAL.md` §6 (why Idea 1 won and the "cheap hedge" that already started), `docs/structurer/STATE.md`, `docs/GATES.md`, `docs/DATA-MODEL.md` (what exists today).
+**Supporting files:** `docs/structurer/HANDOFF-IDEA1.md` (the structurer), `docs/structurer/STATE.md`, `docs/GATES.md`, `docs/DATA-MODEL.md` (what exists today).
 
 ---
 
@@ -13,7 +13,7 @@ The Idea 1 MVP exists in this repo (`main`, commits D1-AM through D6-PM plus par
 - Goal → typed `ConstraintSheet` → deterministic solver (rules + LP) → BRL schedule with stresses → per-leg risk sheet → real mainnet execution (Jupiter swaps, Kamino deposit, xStocks buys) → stored policy → one mainnet rebalance under the policy → monitoring page → three-endpoint API with OpenAPI → unbranded embed.
 - Packages: `schemas`, `db` (Drizzle/Postgres, 15 tables), `engine`, `chain-solana`, `chain-evm` (stub). Apps: `api` (Fastify), `web` (Next.js). Tests in `tests/`.
 - **A depth cron already runs** (`scripts/depth-snapshot.mjs`, launchd job `com.colosseum.depth-snapshot`, every 15 min, from `~/.colosseum/depth/`): Jupiter **buy-side** quotes at $50 / $500 / $5k / $50k for SPYx, QQQx, USDY, syrupUSDC. Rows land in `depth_observations` via `pnpm depth:import`. This is the seed of the risk layer. It must keep running untouched through Oct 12 (the weekend of Oct 3–4 cannot be re-collected).
-- Hackathon constraints still apply to `main`: feature freeze Fri Oct 9 18:00 BRT, submission Oct 12. Remaining Idea 1 integrations (BRS via Nora, EVM adapter, second rebalance, deploy) are gated and tracked in `docs/GATES.md`; they are **not** part of this handoff.
+- Hackathon constraints still apply to `main`: no feature freeze (gate `NO-FREEZE`, Oct 5), submission Oct 12. Remaining Idea 1 integrations (BRS via Nora, EVM adapter, second rebalance, deploy) are gated and tracked in `docs/GATES.md`; they are **not** part of this handoff.
 
 ## 2. What we are adding, in one paragraph
 
@@ -75,7 +75,7 @@ Out of scope for this handoff (later work the founder listed): the agent layer, 
 | `packages/db` | `depth_observations` | keep; add `risk_depth_curves`, `risk_liquidity_scores`, `risk_redemption_models`, `risk_market_params`, `risk_market_snapshots`, `risk_assessments` |
 | `scripts/` | `depth-snapshot.mjs`, `depth-import.ts` | add `risk-collect.mjs`, `risk-import.ts`, `risk-report.ts`; leave the originals alone until Oct 12, then fold the old collector into the new one |
 
-The running jobs are not listed in this section; nine are loaded, all `com.colosseum.*`: `depth-snapshot`, `risk-pools`, `risk-quotes`, `risk-refresh`, `risk-lending`, `risk-lending-import`, `risk-prices`, and since 2026-10-03 02:39Z the two of PLAN-ANALYTICS item 18, installed by `scripts/risk/jobs/install.sh` from `~/.colosseum/risk` with their files in `~/.colosseum/risk/data` (`RISK_DATA_DIR`): `risk-facts-split` at minute 15 (split snapshot, then cost breakdown) and `risk-facts-lending` at minute 20 (lending report, then facts import).
+The running jobs are not listed in this section; nine are loaded, all `com.colosseum.*`: `depth-snapshot`, `risk-pools`, `risk-quotes`, `risk-refresh`, `risk-lending`, `risk-lending-import`, `risk-prices`, and since 2026-10-03 02:39Z the two of PLAN-ANALYTICS item 18, installed by `scripts/risk/jobs/install.sh` from `~/.colosseum/risk` with their files in `~/.colosseum/risk/data` (`RISK_DATA_DIR`): `risk-facts-split` at minute 15 (split snapshot, then cost breakdown) and `risk-facts-lending` at minute 20 (lending report, then facts import). A tenth is built and not loaded (PLAN-UNIVERSE RU.12, 2026-10-07): `risk-raw-arrays` at minute 25, installed by `scripts/risk/raw-arrays/install-job.sh` on the founder's word, which records the pool account and every tick or bin array of the concentrated-liquidity pools of the tracked stocks that the pool collector does not record, into `~/.colosseum/risk/raw-arrays` (`scripts/risk/raw-arrays/README.md`).
 
 ## 6. Acceptance checks per phase
 

@@ -60,6 +60,9 @@ const OWNED_PREFIXES = ['CHAIN_', 'AUTO_FOLLOW_', 'KEEPER_'];
 /** Every variable the flags and the chain configs read. */
 export const KNOWN_ENV_KEYS: readonly string[] = [
   ...PER_CHAIN.flatMap((prefix) => ChainId.options.map((chain) => envKey(prefix, chain))),
+  // The second switch a mainnet chain needs (apps/api/src/orders/chains.ts, MAINNET_SWITCH). Only
+  // Robinhood Chain may be on a mainnet, so there is one name, not one per chain.
+  'CHAIN_MAINNET_ROBINHOOD',
   'KEEPER_ENABLED',
   'AGENT_SURFACE',
   'LEGACY_STRUCTURER',

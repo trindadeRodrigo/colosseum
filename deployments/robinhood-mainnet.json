@@ -1,0 +1,306 @@
+{
+  "network": "robinhood-mainnet",
+  "chain": "robinhood",
+  "provenance": "live",
+  "evmChainId": 4663,
+  "deployBlock": 86877019,
+  "contracts": {
+    "factory": "0xae4ae2f2a5c2ee50c5a7574cf355cd5b068e7a80",
+    "registry": "0xee6baaec7ec5cd946dad57e1edb3f10c794c8afc",
+    "beacon": "0xac27328a77962cd0b6095e7c4074946622d6d77d",
+    "vaultLogic": "0x16c06e495bd685ac55502f1c699a52762e32d855",
+    "factoryLogic": "0x95c04d3f271b901784ee19997e7dbe4bf1dbba16",
+    "registryLogic": "0x666439873b2b4121b290dc91fb82308e1e760646"
+  },
+  "roles": {
+    "admin": "0x749f6aeb956b9f490e316599068ba8a6bd248342",
+    "guardian": "0x0a1c3312c808b23d019bf241028f6b5624f4cc98",
+    "keeper": "0x0000000000000000000000000000000000000000",
+    "priceWriter": null,
+    "tokenIssuer": null
+  },
+  "sequencerFeed": null,
+  "priceBoundBps": 200,
+  "staleRailBps": 1000,
+  "sessionPriceAge": 3600,
+  "maxTradeUsdNotLive": 20000,
+  "staleRailMaxAge": 345600,
+  "routers": [
+    {
+      "address": "0x204faca1764b154221e35c0d20abb3c525710498",
+      "pull": 2
+    }
+  ],
+  "cash": {
+    "id": "robinhood:usdg",
+    "symbol": "USDG",
+    "name": "Global Dollar",
+    "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+    "decimals": 6
+  },
+  "assets": [
+    {
+      "id": "robinhood:nvda",
+      "symbol": "NVDA",
+      "name": "NVIDIA",
+      "address": "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec",
+      "decimals": 18,
+      "modelOf": "NVDA",
+      "kind": "stock",
+      "feed": "0x379ec4f7c378f34a1b47e4f3cbebcbac3e8e9f15",
+      "feedDecimals": 8,
+      "averageFeed": "0x0000000000000000000000000000000000000000",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 2500,
+      "keeperOn": false,
+      "range": null,
+      "pool": {
+        "fee": 100,
+        "tickSpacing": 1
+      },
+      "maxTradeUsd": 50000,
+      "average": {
+        "pool": "0xd4eb21209c4d6093f80b5b84f5c45cc093ea14a3",
+        "minLiquidity": "1900000000000000000",
+        "usable": true
+      }
+    },
+    {
+      "id": "robinhood:spy",
+      "symbol": "SPY",
+      "name": "SPDR S&P 500 ETF Trust",
+      "address": "0x117cc2133c37b721f49de2a7a74833232b3b4c0c",
+      "decimals": 18,
+      "modelOf": "SPY",
+      "kind": "etf",
+      "feed": "0x319724394d3a0e3669269846abe664cd621f9f6a",
+      "feedDecimals": 8,
+      "averageFeed": "0x0000000000000000000000000000000000000000",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 5000,
+      "keeperOn": false,
+      "range": null,
+      "pool": {
+        "fee": 3000,
+        "tickSpacing": 60
+      },
+      "maxTradeUsd": 250000,
+      "average": {
+        "pool": "0xa7bb1ac63bbab0c44316e6c8c455213441689167",
+        "minLiquidity": "110000000000000000",
+        "usable": true
+      }
+    },
+    {
+      "id": "robinhood:aapl",
+      "symbol": "AAPL",
+      "name": "Apple",
+      "address": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+      "decimals": 18,
+      "modelOf": "AAPL",
+      "kind": "stock",
+      "feed": "0x6b22a786baa607d76728168703a39ea9c99f2cd0",
+      "feedDecimals": 8,
+      "averageFeed": "0x0000000000000000000000000000000000000000",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 2500,
+      "keeperOn": false,
+      "range": null,
+      "pool": {
+        "fee": 3000,
+        "tickSpacing": 60
+      },
+      "maxTradeUsd": 50000,
+      "average": {
+        "pool": "0xaae0d815ee56e4092a5e5c2911e676fea50b2d6d",
+        "minLiquidity": "200000000000000000",
+        "usable": true
+      }
+    },
+    {
+      "id": "robinhood:msft",
+      "symbol": "MSFT",
+      "name": "Microsoft",
+      "address": "0xe93237c50d904957cf27e7b1133b510c669c2e74",
+      "decimals": 18,
+      "modelOf": "MSFT",
+      "kind": "stock",
+      "feed": "0x45c3c877c15e6ba2ebb19ea114ea508d14c1af2e",
+      "feedDecimals": 8,
+      "averageFeed": "0x0000000000000000000000000000000000000000",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 500,
+      "keeperOn": false,
+      "range": null,
+      "pool": {
+        "fee": 3000,
+        "tickSpacing": 60
+      },
+      "maxTradeUsd": 5000,
+      "average": {
+        "pool": "0xeb60bcd1d920ad6e102690ccfc6fb488899e1510",
+        "minLiquidity": "80000000000000000",
+        "usable": true
+      }
+    },
+    {
+      "id": "robinhood:googl",
+      "symbol": "GOOGL",
+      "name": "Alphabet Class A",
+      "address": "0x2e0847e8910a9732eb3fb1bb4b70a580adad4fe3",
+      "decimals": 18,
+      "modelOf": "GOOGL",
+      "kind": "stock",
+      "feed": "0xf6f373a037c30f0e5010d854385ca89185ae638b",
+      "feedDecimals": 8,
+      "averageFeed": "0x0000000000000000000000000000000000000000",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 500,
+      "keeperOn": false,
+      "range": null,
+      "pool": {
+        "fee": 3000,
+        "tickSpacing": 60
+      },
+      "maxTradeUsd": 25000,
+      "average": {
+        "pool": "0x34d0dc122cf9a8eb296fc5e0d3a233625d7d19b7",
+        "minLiquidity": "490000000000000000",
+        "usable": true
+      }
+    },
+    {
+      "id": "robinhood:amzn",
+      "symbol": "AMZN",
+      "name": "Amazon",
+      "address": "0x12f190a9f9d7d37a250758b26824b97ce941bf54",
+      "decimals": 18,
+      "modelOf": "AMZN",
+      "kind": "stock",
+      "feed": "0xd5a1508ced74c084ebf3cbe853e2c968fb2a651c",
+      "feedDecimals": 8,
+      "averageFeed": "0x0000000000000000000000000000000000000000",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 50,
+      "keeperOn": false,
+      "range": null,
+      "pool": {
+        "fee": 2400,
+        "tickSpacing": 24
+      },
+      "maxTradeUsd": 2500,
+      "average": {
+        "pool": "0x8ac92da74ab5f3b1d024dc1943ad7e15dc4179ef",
+        "minLiquidity": "410000000000000000",
+        "usable": true
+      }
+    },
+    {
+      "id": "robinhood:meta",
+      "symbol": "META",
+      "name": "Meta Platforms",
+      "address": "0xc0d6457c16cc70d6790dd43521c899c87ce02f35",
+      "decimals": 18,
+      "modelOf": "META",
+      "kind": "stock",
+      "feed": "0x7c38c00c30bee9378381e7b6135d7283356d71b1",
+      "feedDecimals": 8,
+      "averageFeed": "0x0000000000000000000000000000000000000000",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 5000,
+      "keeperOn": false,
+      "range": null,
+      "pool": {
+        "fee": 3000,
+        "tickSpacing": 60
+      },
+      "maxTradeUsd": 250000,
+      "average": {
+        "pool": "0x107a7cb40d8665360ba10e59471af06150a50922",
+        "minLiquidity": "60000000000000000",
+        "usable": false
+      }
+    },
+    {
+      "id": "robinhood:tsla",
+      "symbol": "TSLA",
+      "name": "Tesla",
+      "address": "0x322f0929c4625ed5bad873c95208d54e1c003b2d",
+      "decimals": 18,
+      "modelOf": "TSLA",
+      "kind": "stock",
+      "feed": "0x4a1166a659a55625345e9515b32adecea5547c38",
+      "feedDecimals": 8,
+      "averageFeed": "0x0000000000000000000000000000000000000000",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 2500,
+      "keeperOn": false,
+      "range": null,
+      "pool": {
+        "fee": 3000,
+        "tickSpacing": 60
+      },
+      "maxTradeUsd": 50000,
+      "average": {
+        "pool": "0xf4acdaeeb7022862a763c9b1b885e11191c889e3",
+        "minLiquidity": "130000000000000000",
+        "usable": true
+      }
+    },
+    {
+      "id": "robinhood:gld",
+      "symbol": "GLD",
+      "name": "SPDR Gold Trust",
+      "address": "0xc9a981fee1f9dec688bb123ccdecc63d0debfc4e",
+      "decimals": 18,
+      "modelOf": "GLD",
+      "kind": "gold",
+      "feed": "0x470a51258068043bd43dc0a56245625c9fe86eb0",
+      "feedDecimals": 8,
+      "averageFeed": "0x0000000000000000000000000000000000000000",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 50,
+      "keeperOn": false,
+      "range": null,
+      "pool": {
+        "fee": 2100,
+        "tickSpacing": 21
+      },
+      "maxTradeUsd": 1000,
+      "average": {
+        "pool": "0xba2f1ed4ceb2169d538d1e614d847e83c5a55913",
+        "minLiquidity": "880000000000000000",
+        "usable": false
+      }
+    }
+  ],
+  "retired": [],
+  "timelock": {
+    "address": "0x749f6aeb956b9f490e316599068ba8a6bd248342",
+    "minDelay": 172800,
+    "proposers": ["0x4568bc6cc821b34095059fd46102eaa22a675fdc"],
+    "cancellers": ["0x4568bc6cc821b34095059fd46102eaa22a675fdc"],
+    "executors": ["0x4568bc6cc821b34095059fd46102eaa22a675fdc"],
+    "safe": {
+      "threshold": 2,
+      "owners": [
+        "0x0a1c3312c808b23d019bf241028f6b5624f4cc98",
+        "0xac3cbbcd6e51dbfaf4e79d5e8cf54a1622d71e0e"
+      ]
+    }
+  },
+  "expected": {
+    "launched": false,
+    "publishDelay": 172800,
+    "keeperEnabled": false
+  }
+}

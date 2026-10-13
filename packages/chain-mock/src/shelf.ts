@@ -9,7 +9,8 @@ type Row = {
   slug: string;
   symbol: Record<ChainId, string>;
   cls: BasketAsset['cls'];
-  underlying: string;
+  /** One for every chain, or each chain's own: gold is PAXG on Solana and GLD on Robinhood Chain. */
+  underlying: string | Record<ChainId, string>;
   session: BasketAsset['session'];
   /** Round numbers, so nobody reads one as a market price. */
   usdPerToken: string;
@@ -44,7 +45,7 @@ const ROWS: Row[] = [
     slug: 'gold',
     symbol: { solana: 'mGOLD', robinhood: 'mGOLD', base: 'mGOLD' },
     cls: 'gold',
-    underlying: 'XAU',
+    underlying: { solana: 'PAXG', robinhood: 'GLD', base: 'XAU' },
     session: 'always',
     usdPerToken: '200',
   },
@@ -82,7 +83,8 @@ export function mockAssets(chain: ChainId): BasketAsset[] {
     ...common,
     id: mockCashId(chain),
     address: mockAddress(chain, 'asset:usdc'),
-    symbol: 'USDC',
+    // The dollar of the chain it stands in for: Robinhood Chain's is tUSDG.
+    symbol: chain === 'robinhood' ? 'tUSDG' : 'USDC',
     decimals: 6,
     cls: 'cash',
     underlying: 'USD',
@@ -101,7 +103,7 @@ export function mockAssets(chain: ChainId): BasketAsset[] {
         symbol: r.symbol[chain],
         decimals: r.cls === 'dollar_yield' ? 6 : STOCK_DECIMALS[chain],
         cls: r.cls,
-        underlying: r.underlying,
+        underlying: typeof r.underlying === 'string' ? r.underlying : r.underlying[chain],
         priceKind,
         priceRef: `mock:${r.slug}`,
         session: r.session,

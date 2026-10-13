@@ -29,6 +29,7 @@ import {
   EXIT_TIERS,
   FIGURE,
   FIXTURE_OBS,
+  HEAT_CELLS,
   LEGS,
   LIVE_SPECIMEN,
   MOCK_OBS,
@@ -39,17 +40,19 @@ import {
   sheetGroups,
 } from '../../../../components/ui/fixtures/mock';
 import { GoalCard } from '../../../../components/ui/GoalCard';
+import { type HeatmapState, HeatmapTile } from '../../../../components/ui/HeatmapTile';
 import { Icon, type IconName } from '../../../../components/ui/Icon';
 import { LatticeStatus } from '../../../../components/ui/Lattice';
 import { MockFrame, MockPlate, StalePlate } from '../../../../components/ui/MockPlate';
 import { PlanLegs } from '../../../../components/ui/PlanLegs';
 import { ProvenancePin } from '../../../../components/ui/ProvenancePin';
+import type { PinSource } from '../../../../components/ui/provenance';
 import { Status, StatusBadge } from '../../../../components/ui/StatusMark';
 import { SubscribeBlock, type SubscribeStatus } from '../../../../components/ui/SubscribeBlock';
 
 // The showcase of the design system: every primitive in every state, light beside dark, with the name
 // of its spec. Development only (see page.dev.tsx). Everything on it is made up, and every panel says
-// so with the MOCK plate; the live and stale pins are specimens of a state, not of data.
+// so as sample (a hatched pin, a quiet line); the live and stale pins are specimens of a state, not of data.
 
 const noop = () => {};
 const SPECS = '.design/branding/working-brand/patterns/components';
@@ -113,6 +116,31 @@ function Section({
   );
 }
 
+/** The heatmap tile on made-up depth: dollars sellable at ≤ 2%, every figure pinned. */
+function HeatSample({ obs, state }: { obs: PinSource; state: HeatmapState }) {
+  const usdM = (v: number) => `$${(v / 1e6).toFixed(2)}M`;
+  const pin = (v: number) => <ProvenancePin value={usdM(v)} obs={obs} />;
+  const values = HEAT_CELLS.map((c) => c.value);
+  return (
+    <HeatmapTile
+      head="xAAPL · sellable at ≤ 2% impact"
+      kpi={pin(Math.min(...values))}
+      emph="thinnest: Sat 03:00 UTC"
+      cells={HEAT_CELLS}
+      deeper="high"
+      fmt={usdM}
+      what="at ≤ 2%"
+      zone="UTC"
+      least={pin(Math.min(...values))}
+      most={pin(Math.max(...values))}
+      cellFigure={(c) => pin(c.value)}
+      meta="USD · n=412 · method v1.3 · as of 2026-10-01 14:00 UTC"
+      state={state}
+      aria="Sample: dollars sellable at ≤ 2% by hour of week"
+    />
+  );
+}
+
 /** The look of a state that needs a pointer or the keyboard, held still for the page. */
 const HOVER: CSSProperties = { backgroundColor: 'var(--tf-primary-hover)' };
 const PRESSED: CSSProperties = { backgroundColor: 'var(--tf-primary-pressed)' };
@@ -128,8 +156,10 @@ const SWATCHES = [
   ['primary', 'bg-primary'],
   ['primary-hover', 'bg-primary-hover'],
   ['primary-pressed', 'bg-primary-pressed'],
-  ['border (hair)', 'bg-border'],
-  ['input (member)', 'bg-input'],
+  ['honey-tint', 'bg-honey-tint'],
+  ['wood', 'bg-wood'],
+  ['border (line)', 'bg-border'],
+  ['input (control edge)', 'bg-input'],
   ['destructive', 'bg-destructive'],
   ['status-on', 'bg-status-on'],
   ['status-on-bg', 'bg-status-on-bg'],
@@ -149,26 +179,28 @@ const SWATCHES = [
 ] as const;
 
 const TYPE = [
-  ['display', 'font-display text-display font-normal', 'Your apartment fund is on track.'],
-  ['h1', 'font-display text-h1 font-normal', 'Made to measure.'],
-  ['h2', 'text-h2 font-semibold', 'Every joint shown'],
-  ['h3', 'text-h3 font-semibold', 'Access to cash'],
-  ['h4', 'text-h4 font-medium', 'How we read your goal'],
-  ['body-lg', 'text-body-lg', 'The serif gives the answer.'],
-  ['body', 'text-body', 'The sans explains. 0123456789'],
+  ['display', 'font-display text-display font-semibold', 'Your apartment fund is on track.'],
+  ['h1', 'font-display text-h1 font-semibold', 'Made to measure.'],
+  ['h2', 'font-display text-h2 font-semibold', 'Every joint shown'],
+  ['h3', 'font-display text-h3 font-semibold', 'Access to cash'],
+  ['h4', 'text-h4 font-semibold', 'How we read your goal'],
+  ['body-lg', 'text-body-lg', 'The display face states.'],
+  ['body', 'text-body', 'The UI face explains. 0123456789'],
   ['body-sm', 'text-body-sm', 'Up to $4,000 within a day.'],
   ['caption', 'text-caption font-medium', 'On track · June 2028'],
   ['source', 'font-mono text-source', 'sample · 2026-10-01T14:02:11Z · v1'],
-  ['b-kpi', 'font-mono text-b-kpi font-medium', '$1.2M'],
-  ['b-cell', 'font-condensed text-b-cell', 'Bearing table cell 1,234.50'],
+  ['figure-lg', 'font-display text-figure-lg font-semibold tabular-nums', '$12,480'],
+  ['sample-line', 'text-sample-line text-sample-foreground', 'Sample figures · test network'],
+  ['b-kpi', 'font-display text-b-kpi font-semibold tabular-nums', '$1.2M'],
+  ['b-cell', 'text-b-cell tabular-nums', 'Bearing table cell 1,234.50'],
 ] as const;
 
 const ICONS: IconName[] = ['ArrowUp', 'ArrowUpRight', 'Check', 'ChevronDown', 'Copy', 'Menu', 'X'];
 
 const NAV_LINKS = [
   { label: 'Products', href: '#products' },
-  { label: 'Invest', href: '#invest', current: true },
-  { label: 'Resources', href: '#resources' },
+  { label: 'Invest', href: '#invest', current: 'true' as const },
+  { label: 'Analytics', href: '#analytics' },
 ];
 
 /** An example partner: neutral colours, their own face, their own radius. Not ours. */
@@ -188,7 +220,7 @@ const PARTNER: CSSProperties = {
 
 type Parsed = { readonly parsed: true };
 const PARSED: Parsed = { parsed: true };
-const CREDIT = { name: 'tenonfi', href: '#embed-shell-md', symbol: <Mark size={16} /> };
+const CREDIT = { name: 'tenonfi', href: '#embed-shell-md', symbol: <Mark size={16} mono /> };
 
 function WhyThisPlan() {
   const [parted, setParted] = useState(false);
@@ -491,7 +523,7 @@ export function Showcase() {
             <CardHeader title="Trip fund" meta="March 2029" />
           </Card>
         </Specimen>
-        <Specimen state="MOCK: band on the edge, plate at the top right">
+        <Specimen state="sample: band on the edge, one quiet line at the foot">
           <Card mock>
             <CardHeader title="Sample plan" meta="as of 14:02 UTC" />
             <CardBody>
@@ -545,17 +577,17 @@ export function Showcase() {
             <ProvenancePin value={FIGURE.rate} obs={STALE_SPECIMEN} />
           </p>
         </Specimen>
-        <Specimen state="MOCK: hatched, no pin, the plate">
+        <Specimen state="sample: the hatched pin, named for a screen reader">
           <p className="text-h4 font-medium">
             <ProvenancePin value={FIGURE.rate} obs={MOCK_OBS} />
           </p>
         </Specimen>
-        <Specimen state="a test network (sandbox): MOCK">
+        <Specimen state="a test network (sandbox): sample">
           <p className="text-h4 font-medium">
             <ProvenancePin value="$1.0412" obs={SANDBOX_OBS} />
           </p>
         </Specimen>
-        <Specimen state="a fixture: MOCK">
+        <Specimen state="a fixture: sample">
           <p className="text-body">
             <ProvenancePin value="5.4012 BRL/USD" obs={FIXTURE_OBS} />
           </p>
@@ -600,15 +632,15 @@ export function Showcase() {
 
       <Section
         spec="mock-plate.md"
-        title="MOCK plate"
-        note="The hatch and the word, together, every time. Text never sits on the hatch."
+        title="Sample mark"
+        note="Sample is never shown as live, and never by a boxed word: a hatched glyph named for a screen reader, and one quiet line per card. Text never sits on the hatch."
       >
         <Specimen state="inline: after a figure and its hatched pin">
           <p className="text-h4 font-medium">
             <ProvenancePin value={FIGURE.rate} obs={MOCK_OBS} />
           </p>
         </Specimen>
-        <Specimen state="badge: the band and the plate, for a pane header or a source line">
+        <Specimen state="glyph: for a pane header, a source line or a chain name">
           <MockPlate announce={false} />
         </Specimen>
         <Specimen state="stale plate: a stale panel or tile">
@@ -767,7 +799,7 @@ export function Showcase() {
         title="Plan legs"
         note="At most four legs in the bar: a fifth is refused as an engine error. Hover a label, or Tab to its pin, to mark its segment."
       >
-        <Specimen state="four legs: live, stale, no yield, MOCK" wide>
+        <Specimen state="four legs: live, stale, no yield, sample" wide>
           <PlanLegs legs={LEGS} profile="income" />
         </Specimen>
         <Specimen state="hero (24px), plan-lock: legs seat, then pins drop" wide>
@@ -942,7 +974,7 @@ export function Showcase() {
             />
           </div>
         </Specimen>
-        <Specimen state="suggestion chips sit outside it, square" wide>
+        <Specimen state="suggestion chips sit outside it, as pills" wide>
           <div className="flex flex-wrap gap-2">
             <Button variant="chip">$40,000 by June 2028</Button>
             <Button variant="chip">R$ 5.000 a month from 2029</Button>
@@ -1016,12 +1048,13 @@ export function Showcase() {
             <ExitPlanLine tiers={[EXIT_FIRST, { text: 'the rest within 7 days', mock: true }]} />
           </EmbedShell>
         </Specimen>
-        <Specimen state="the partner’s muted colour is too faint: no hatch, MOCK stays">
+        <Specimen state="the partner’s muted colour is too faint: no hatch, the quiet line stays">
           <EmbedShell
             label="Plan by tenonfi"
             title="Trip fund"
             credit={{ name: 'tenonfi', href: '#embed-shell-md' }}
             suppressHatch
+            sample={{ line: 'Sample figures' }}
           >
             <ExitPlanLine tiers={[EXIT_FIRST, { text: 'the rest within 7 days', mock: true }]} />
           </EmbedShell>
@@ -1061,13 +1094,25 @@ export function Showcase() {
         </Specimen>
       </Section>
 
+      <Section
+        spec="bearing-heatmap-tile.md"
+        title="Bearing heatmap tile"
+        note="Hours with no sample are the ground with an en dash, never hatched: the hatch means sample or stale. The grid is one tab stop; the arrow keys move through the hours."
+      >
+        <Specimen state="live" wide>
+          <HeatSample obs={LIVE_SPECIMEN} state={{ kind: 'live' }} />
+        </Specimen>
+        <Specimen state="stale: band and plate, the pin hollow" wide>
+          <HeatSample obs={STALE_SPECIMEN} state={{ kind: 'stale', ageSec: 9 * 3600 }} />
+        </Specimen>
+        <Specimen state="sample: band and glyph, the pin hatched" wide>
+          <HeatSample obs={MOCK_OBS} state={{ kind: 'mock' }} />
+        </Specimen>
+      </Section>
+
       <div className="tf-app light border-t border-border px-6 py-10">
         <h2 className="text-h3 font-semibold">Not built</h2>
         <ul className="mt-3 flex max-w-(--tf-measure-body) list-disc flex-col gap-2 pl-5 text-body-sm">
-          <li>
-            bearing-heatmap-tile.md: it needs the condensed face, which is loaded with the first
-            Bearing screen, and a decision on how a cell with no sample is drawn.
-          </li>
           <li>
             goal-showcase-case.md: a marketing composite that needs photographs and a chart that has
             no spec of its own yet.

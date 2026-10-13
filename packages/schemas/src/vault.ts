@@ -58,6 +58,28 @@ export const VaultPosition = Holding.extend({
 });
 export type VaultPosition = z.infer<typeof VaultPosition>;
 
+/** The most characters a vault's name has. */
+export const VAULT_NAME_MAX = 60;
+/**
+ * A vault's name, as its owner wrote it: trimmed, one to sixty characters, on one line, with no
+ * control character (a tab, a line break, a bidirectional override). It is text and is shown as text.
+ */
+export const VaultName = z
+  .string()
+  .trim()
+  .min(1, 'a name has at least one character')
+  .max(VAULT_NAME_MAX, `a name has at most ${VAULT_NAME_MAX} characters`)
+  .refine((s) => !/[\p{Cc}\p{Cf}\u2028\u2029]/u.test(s), 'a name has no control character');
+export type VaultName = z.infer<typeof VaultName>;
+
+/**
+ * A vault's number among its owner's vaults, from 1 (gate `VAULT-NUMBER`): a vault with no name is
+ * called "Vault #N". It is the owner's own count across every chain, given once in the order the
+ * server came to hold their vaults and never changed after. Only the owner is answered it.
+ */
+export const VaultNumber = z.number().int().positive();
+export type VaultNumber = z.infer<typeof VaultNumber>;
+
 export const VaultState = z.object({
   chain: ChainId,
   address: Address,

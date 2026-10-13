@@ -9,10 +9,7 @@ You are a senior technical program lead with hands-on Solana and DeFi integratio
 ## Inputs (read all of them before writing anything)
 
 1. `HANDOFF-IDEA1.md` — the authoritative spec. Where it conflicts with anything else, it wins.
-2. `eval/FINAL.md` — the decision and scores; §6 lists the weaknesses the build must fix.
-3. `eval/FEASIBILITY.md` — dependencies and the original half-day plan (superseded, but reuse what still holds).
-4. `eval/IDEA1-MARKET.md` — competitors and asset table.
-5. `eval/PANEL.md` — one-liners and misreadings to avoid.
+2. Removed: internal planning notes.
 
 Do not use earlier conversations or assumptions outside these files. If a fact is missing, say so in the plan as an assumption with a default, and keep going.
 
@@ -22,7 +19,7 @@ Do not use earlier conversations or assumptions outside these files. If a fact i
 - Granularity: **half-day slots** (D1-AM, D1-PM, … D12-PM). Every slot has one concrete deliverable and one check that proves it.
 - Solo by default. Mark slots a second builder could take with `[B2]`; the default assignment for B2 is execution and policy plumbing. The plan must still close solo.
 - Front-load the founder's weak areas: Solana execution plumbing and consumer UX. Their strengths (credit, structuring, FX, data pipelines, risk models) go later and faster.
-- **No partner outreach tasks.** The founder handles Nora, Chainless and Picnic outside the plan. The plan only contains the technical consequences of those conversations.
+- **No partner outreach tasks.** The founder handles the partner conversations outside the plan. The plan only contains the technical consequences of those conversations.
 - **G-Nora gate:** no BRS-specific development before the gate passes (mint/redeem integration, BRS execution step, BRS cap and provenance, BRS tests). Before the gate, the engine is built currency-generic with an abstract "BRL leg" (zero yield, no FX risk vs goal, parameterised cap and mint path). The gate's latest date is end of D6 (Oct 6). The plan must contain **both branches** and stay on schedule under either.
 - **Policy mechanism decision by end of D2.** Spike delegated execution (Squads spending limits, token delegate approvals, or a minimal custom program) and pick one, or fall back to user-signed rebalance that the policy checks and proposes. The fallback is decided on a date, not discovered on D10.
 - **EVM adapter (S1) decision by D5.** Only if a partner confirms a pilot chain and the core MVP is on schedule.
@@ -48,8 +45,8 @@ Do not use earlier conversations or assumptions outside these files. If a fact i
 5. **Decision log with cut-offs.** A table: decision, options, default if no information arrives, cut-off date, who decides, what changes in the slot table on each outcome. Include: policy mechanism; G-Nora; EVM S1; solver form; feature freeze; second builder yes/no.
 6. **Risk register.** At least 10 rows: risk, likelihood (H/M/L), impact, early signal, mitigation, owner, slot where it is retired. Must include: delegated execution not achievable; Nora gate slips; xStocks liquidity too thin on weekend recording; live yields lower than dossier figures breaking the "R$3k/month" example; LLM parser producing invalid constraint sheets; Jupiter API key/rate limits; Kamino SDK breaking change; time overrun on UI; founder's own funds too small for convincing demo numbers; regulatory framing ("not licensed advice").
 7. **Acceptance checks mapping.** Reproduce the checklist from `HANDOFF-IDEA1.md` §4.5 and map each item to the slot that satisfies it and the artifact that proves it.
-8. **Video plan.** A 3-minute script outline that follows the pitch guardrails in §9 (lead with the BRL schedule under stress and the risk sheet; "policy in your wallet, not a fund" in the first sentence; the one-slide Glider/Ondo answer; Nexa as analog not opener; claim only what is live or signed). Shot list with what must exist on screen for each shot and which slot produces it.
-9. **Submission checklist.** Repo hygiene, prior-work disclosure text (teiten, analysis-rules/haircut discipline, the 13.5k-contract tokenized-credit DB, partner relationships), dated in-window commits, explorer links, LOI documents, Discord question about Solana+Base double eligibility, and the "not licensed advice" disclaimer placement.
+8. **Video plan.** A 3-minute script outline that follows the pitch guardrails in §9 (lead with the BRL schedule under stress and the risk sheet; "policy in your wallet, not a fund" in the first sentence; claim only what is live or signed). Shot list with what must exist on screen for each shot and which slot produces it.
+9. **Submission checklist.** Repo hygiene, prior-work disclosure text (teiten, analysis-rules/haircut discipline, the 13.5k-contract tokenized-credit DB, partner relationships), dated in-window commits, explorer links, and the "not licensed advice" disclaimer placement.
 10. **Open questions for the founder** (≤ 10). Only questions whose answer changes the plan. For each, give the default you assumed so the plan is usable without an answer.
 11. **Plan self-check.** Before you finish, confirm in writing: (a) both G-Nora branches close by Oct 11; (b) no BRS-specific dev appears before the gate; (c) no outreach tasks appear; (d) every §8 unverified item has a D1 verification task; (e) every §4.5 acceptance check maps to a slot; (f) the first mainnet tx is ≤ D3; (g) freeze date is set and respected by later slots; (h) no yield or APY figure appears as a fact anywhere in the plan.
 

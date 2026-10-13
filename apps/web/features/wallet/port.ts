@@ -47,7 +47,7 @@ export type ChainNetwork = {
   provenance: Provenance;
   /**
    * False when the API has the chain switched off: nothing can be built there, so the chain is not
-   * offered at the pick (ChainPick) and a plan is not asked for on it (GoalScreen).
+   * offered where a plan's chain is chosen (GoalChain) and a plan is not asked for on it.
    */
   on: boolean;
 };
@@ -86,6 +86,11 @@ export interface WebWalletPort extends WalletPort {
   network(chain: ChainId): ChainNetwork | null;
   /** Signs a line of text: base58 on Solana, 0x hex on EVM. Not in WalletPort; the dev page uses it. */
   signMessage(family: Chain, text: string): Promise<string>;
+  /**
+   * WalletPort's call, and with `fresh` after the API refused the sign-in: tokens newer than those
+   * sent, if the wallet can get them.
+   */
+  authHeaders(options?: { fresh?: boolean }): Promise<Record<string, string>>;
 }
 
 /**
@@ -250,7 +255,20 @@ export function createWalletPort(
     }
     if (!isHex(tx.payload, { strict: true }) || tx.payload.length % 2 !== 0)
       throw fail('bad_transaction', 'the call data is not whole bytes of hex');
-    return { to: to as `0x${string}`, data: tx.payload, value, chainId: tx.evm.chainId };
+    const call = { to: to as `0x${string}`, data: tx.payload, value, chainId: tx.evm.chainId };
+    // The server states the nonce, the gas and the whole fee (the gas at its price per gas): the price
+    // per gas is that fee over the gas, with no tip, which keeps gas times price at the stated fee.
+    const fee = RawAmount.safeParse(tx.preview.feeNativeRaw);
+    const { nonce, gas } = tx.evm;
+    if (nonce === undefined || gas === undefined || !fee.success || BigInt(fee.data) === 0n)
+      return call;
+    return {
+      ...call,
+      nonce,
+      gas: BigInt(gas),
+      maxFeePerGas: BigInt(fee.data) / BigInt(gas),
+      maxPriorityFeePerGas: 0n,
+    };
   };
 
   /** The most the wallet may commit to fees on this transaction. */
@@ -264,8 +282,8 @@ export function createWalletPort(
 
   /**
    * The signed transaction is the call that was asked, in a form this app signs, with a fee under the
-   * ceiling, signed by this account. The wallet fills in the nonce, the gas and the fee, so on EVM
-   * this is the only place the whole of what was signed is seen.
+   * ceiling, signed by this account. The wallet is handed the nonce, gas and fee the server stated and
+   * may sign with others, so on EVM this is the only place the whole of what was signed is seen.
    */
   const sameCall = async (
     account: WalletAccount,
@@ -418,11 +436,11 @@ export function createWalletPort(
         await driver.exportKey(family, rawOf(account));
       }),
 
-    authHeaders: () =>
+    authHeaders: (options) =>
       guard(async () => {
         // Signed out is not a failure: a route that needs no sign-in takes the same call.
         if (driver.status !== 'ready') return {};
-        const tokens = await driver.tokens();
+        const tokens = await driver.tokens(options);
         if (!tokens) return {};
         if (!tokens.access) throw new WalletPortError('expired', 'the session has ended: sign in');
         const headers: Record<string, string> = { authorization: `Bearer ${tokens.access}` };

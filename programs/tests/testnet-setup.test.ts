@@ -1,6 +1,6 @@
-import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   type Address,
   createKeyPairSignerFromPrivateKeyBytes,
@@ -46,6 +46,20 @@ import { type DeployedAsset, type Deployment, guardSolanaEntry, setUp } from './
 import { mintExtensionEntries, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from './src/tokens';
 
 const CONFIG_FILE = join(REPO_ROOT, 'scripts', 'testnet', 'solana', 'devnet.config.json');
+// The record a set-up writes after it retired a token. The API's start reads it in
+// tests/solana-vault/deployment.test.ts; here it is held to the shape this set-up writes today.
+// Write it again with WRITE_FIXTURES=1 in the change that moves that shape.
+const RETIRED_RECORD = join(REPO_ROOT, 'fixtures', 'testnet', 'solana-retired-record.json');
+
+/** Every key and the kind of every value, with the values themselves left out. */
+const shapeOf = (value: unknown): unknown =>
+  Array.isArray(value)
+    ? value.map(shapeOf)
+    : value && typeof value === 'object'
+      ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, shapeOf(v)]))
+      : value === null
+        ? 'null'
+        : typeof value;
 
 // The set-up of a Solana test network (scripts/testnet/solana/setup.ts), run here in LiteSVM with
 // the config file that is committed for devnet: the same steps, the same transactions, and then a
@@ -63,6 +77,11 @@ describe('the test-network set-up', () => {
   const lines: string[] = [];
 
   const file = () => JSON.parse(readFileSync(CONFIG_FILE, 'utf8'));
+  /** The tokens the committed config lists with their keeper switch off and their range kept. */
+  const switchedOff = (): string[] =>
+    file()
+      .tokens.filter((t: { keeper: { on?: boolean } | null }) => t.keeper?.on === false)
+      .map((t: { id: string }) => t.id);
   const withRoles = (config: ReturnType<typeof file>) => ({
     ...config,
     roles: {
@@ -142,13 +161,14 @@ describe('the test-network set-up', () => {
       'tMSTRx',
       'tCRCLx',
       'tHOODx',
-      'tGLDx',
       'tjlUSDC',
       'tsyrupUSDC',
+      'tPAXG',
     ]);
     expect(deployment.cash).toMatchObject({ symbol: 'tUSDC', tokenProgram: 'token', decimals: 6 });
     for (const token of [deployment.cash, ...deployment.assets]) {
-      expect(token.name).toBe(`Test ${token.modelOf} (test network, no value)`);
+      const realName = token.modelOf === 'PAXG' ? 'Paxos Gold' : token.modelOf;
+      expect(token.name).toBe(`Test ${realName} (test network, no value)`);
       const account = data(token.mint);
       const program = token.tokenProgram === 'token-2022' ? TOKEN_2022_PROGRAM : TOKEN_PROGRAM;
       expect([token.symbol, account.programAddress]).toEqual([token.symbol, program]);
@@ -163,7 +183,7 @@ describe('the test-network set-up', () => {
     // SPYx on mainnet: metadata pointer 18, permanent delegate 12, default account state 6, scaled
     // UI amount 25, pausable 26, confidential transfer 4, transfer hook 14, and its metadata 19.
     const real = [18, 12, 6, 25, 26, 4, 14, 19];
-    for (const asset of deployment.assets.filter((a) => a.tokenProgram === 'token-2022')) {
+    for (const asset of deployment.assets.filter((a) => a.kind === 'stock')) {
       const account = data(asset.mint);
       const types = mintExtensionEntries(new Uint8Array(account.data)).map((e) => e.type);
       expect([asset.symbol, types]).toEqual([asset.symbol, real]);
@@ -177,6 +197,22 @@ describe('the test-network set-up', () => {
       const scaled = extensions.find((e) => e.__kind === 'ScaledUiAmountConfig');
       expect(scaled).toMatchObject({ authority: admin.address });
     }
+    // PAXG on mainnet (Oct 5): close authority 3, permanent delegate 12, transfer fee 1 (zero),
+    // confidential transfer 4 and its fee 16, transfer hook 14, metadata pointer 18, metadata 19.
+    const paxg = deployment.assets.find((a) => a.id === 'solana:paxg');
+    if (!paxg) throw new Error('no PAXG');
+    const paxgMint = data(paxg.mint);
+    expect(mintExtensionEntries(new Uint8Array(paxgMint.data)).map((e) => e.type)).toEqual([
+      3, 12, 1, 4, 16, 14, 18, 19,
+    ]);
+    const paxgExtensions = decodeMint(paxgMint).data.extensions;
+    const fee = (isSome(paxgExtensions) ? paxgExtensions.value : []).find(
+      (e) => e.__kind === 'TransferFeeConfig',
+    );
+    expect(fee).toMatchObject({
+      transferFeeConfigAuthority: admin.address,
+      newerTransferFee: { transferFeeBasisPoints: 0 },
+    });
     const spyx = deployment.assets.find((a) => a.id === 'solana:spyx');
     if (!spyx) throw new Error('no SPYx');
     const mint = decodeMint(data(spyx.mint)).data;
@@ -244,7 +280,7 @@ describe('the test-network set-up', () => {
     expect(deployment.closedDays).toEqual(dates);
   });
 
-  it('lists every token with the entries of the index table, and switches the keeper on', async () => {
+  it('lists every token with the entries of the index table, and switches the keeper on but where the config turns it off', async () => {
     const table: { assets: { symbol: string; priceIndex: number; twapIndex: number }[] } =
       JSON.parse(
         readFileSync(join(REPO_ROOT, 'fixtures', 'solana-vault', 'scope-indexes.json'), 'utf8'),
@@ -263,15 +299,21 @@ describe('the test-network set-up', () => {
           twapIndex: real?.twapIndex ?? asset.twapIndex,
           decimals: asset.decimals,
           session: asset.session,
-          flags: ASSET_KEEPER,
+          flags: switchedOff().includes(asset.id) ? 0 : ASSET_KEEPER,
           minPrice: BigInt(asset.range?.minPrice ?? 0),
           maxPrice: BigInt(asset.range?.maxPrice ?? 0),
         }),
       ]);
+      const configured = file().tokens.find((t: { id: string }) => t.id === asset.id);
       expect([asset.symbol, asset.indexSource]).toEqual([
         asset.symbol,
-        real ? 'scope-indexes' : 'test-network',
+        real ? 'scope-indexes' : (configured?.indexSource ?? 'test-network'),
       ]);
+    }
+    for (const id of switchedOff()) {
+      const off = deployment.assets.find((a) => a.id === id);
+      expect(off?.keeperOn).toBe(false);
+      expect(off?.range).not.toBeNull();
     }
     // The dollar token is never a position, so it is not on the list.
     expect(listed.some((e) => e.mint === deployment.cash.mint)).toBe(false);
@@ -304,6 +346,10 @@ describe('the test-network set-up', () => {
     expect(entry.cash).toBe('solana:usdc');
     expect(Object.keys(entry.assets)).toHaveLength(14);
     for (const id of Object.keys(entry.assets)) expect(id).toMatch(/^solana:[a-z0-9][a-z0-9-]*$/);
+    // Each with the decimals its mint was made with, the cash's six among them.
+    for (const token of [deployment.cash, ...deployment.assets])
+      expect(entry.assets[token.id]?.decimals, token.id).toBe(token.decimals);
+    expect(entry.assets['solana:usdc']?.decimals).toBe(6);
     const addresses = [
       entry.program,
       entry.router,
@@ -343,6 +389,34 @@ describe('the test-network set-up', () => {
     expect(lived.acceptedVersion).toBe(1);
   });
 
+  it('switches a listed token off and keeps its range, as the devnet run of Oct 5 did for gold', async () => {
+    // The last token of the committed config, switched off by `"on": false` in its keeper entry.
+    const id = file().tokens.at(-1).id as string;
+    const token = deployment.assets.find((a) => a.id === id) as DeployedAsset;
+    const entryOf = async () => (await readAssets(svm)).assets.find((e) => e.mint === token.mint);
+    expect(await entryOf()).toMatchObject({ flags: ASSET_KEEPER });
+    const offConfig = withRoles(file());
+    const changed = offConfig.tokens.find((t: { id: string }) => t.id === id);
+    changed.keeper = { ...changed.keeper, on: false };
+    // One upsert_asset, flags 0, the same range.
+    const printed: string[] = [];
+    const off = await run(planOf(offConfig), { log: (line) => printed.push(line) });
+    expect(off.transactions).toBe(1);
+    expect(
+      printed.some((line) => line.includes(`upsert_asset ${token.symbol}: flags 0, range`)),
+    ).toBe(true);
+    expect(await entryOf()).toMatchObject({
+      flags: 0,
+      minPrice: BigInt(token.range?.minPrice ?? 0),
+      maxPrice: BigInt(token.range?.maxPrice ?? 0),
+    });
+    expect(off.deployment.assets.find((a) => a.id === id)).toMatchObject({ keeperOn: false });
+    expect((await run(planOf(offConfig))).transactions).toBe(0);
+    // Back to the committed config: on again.
+    expect((await run()).transactions).toBe(1);
+    expect((await run()).transactions).toBe(0);
+  });
+
   it('refuses a config with a role left out, a range its first price is outside of, or an entry used twice', () => {
     const base = { ...file(), roles: { guardian: null, defaultKeeper: null, priceWriter: null } };
     expect(() => planOf(base)).toThrow(/roles\.guardian is not set/);
@@ -358,6 +432,9 @@ describe('the test-network set-up', () => {
     const unknown = withRoles(file());
     unknown.tokens[0].modelOf = 'MSFTx';
     expect(() => planOf(unknown)).toThrow(/MSFTx has no entry/);
+    const notBoolean = withRoles(file());
+    notBoolean.tokens[0].keeper = { ...notBoolean.tokens[0].keeper, on: 'no' };
+    expect(() => planOf(notBoolean)).toThrow(/keeper\.on is true or false/);
   });
 
   it('runs on devnet and on this machine, and refuses mainnet wherever it is served from', () => {
@@ -488,13 +565,22 @@ describe('the test-network set-up, on a network that differs from its config', (
         symbol: 'tTSLAx',
         mint: tsla.mint,
         tokenProgram: 'token-2022',
+        decimals: tsla.decimals,
         keeperOn: false,
       },
     ]);
     expect(guardSolanaEntry(dropped.deployment).assets['solana:tslax']).toEqual({
       mint: tsla.mint,
       tokenProgram: 'token-2022',
+      decimals: tsla.decimals,
     });
+    // The record as the set-up writes it to a file, which the API's start reads.
+    const written = JSON.parse(JSON.stringify(dropped.deployment));
+    if (process.env.WRITE_FIXTURES === '1') {
+      mkdirSync(dirname(RETIRED_RECORD), { recursive: true });
+      writeFileSync(RETIRED_RECORD, `${JSON.stringify(written, null, 2)}\n`);
+    }
+    expect(shapeOf(JSON.parse(readFileSync(RETIRED_RECORD, 'utf8')))).toEqual(shapeOf(written));
     // A second run sends nothing and still records it, from the record it wrote.
     const again = await run(fewer, { previous: dropped.deployment });
     expect(again.transactions).toBe(0);
@@ -522,12 +608,14 @@ describe('the test-network set-up, on a network that differs from its config', (
         symbol: null,
         mint: tsla.mint,
         tokenProgram: 'token-2022',
+        decimals: tsla.decimals,
         keeperOn: false,
       },
     ]);
     expect(guardSolanaEntry(dropped.deployment).assets['solana:tslax']).toEqual({
       mint: tsla.mint,
       tokenProgram: 'token-2022',
+      decimals: tsla.decimals,
     });
     expect((await run(config(null))).transactions).toBe(1);
   });

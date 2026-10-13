@@ -74,6 +74,16 @@
       "decimals": 8,
       "priceIndex": 338,
       "twapIndex": 273
+    },
+    {
+      "symbol": "PAXG",
+      "mint": "5GgRAEmv8ZxF2PR5hY72Qs5x1bnQ6UK2RbTPoqJ3wSwW",
+      "decimals": 6,
+      "priceIndex": 454,
+      "twapIndex": 168,
+      "source": "Kamino's PAXG reserve 5MHbdvbQTegtPfFikifciBopmdEmZvWXDUpcHkQaz1w4 (\"PAX Gold\") on mainnet, decoded with decodeKaminoReserve (packages/risk/src/lending/kamino.ts): liquidity mint and decimals as this row says, scopePriceFeed the table's price account, scopePriceChain [454], scopeTwapChain [168] (gate GOLD-PAXG). Not in the frozen registry of Oct 1",
+      "method": "kamino_reserve_decode",
+      "fetchedAt": "2026-10-05T21:01:40.000Z"
     }
   ]
 }

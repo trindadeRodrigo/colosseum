@@ -435,7 +435,9 @@ describe('the guard on Solana: bytes that cannot be read are refused as malforme
       [{ basketId: '-1' }, 'order'],
       [{ owner: '0x' }, 'order'],
       [{ amountRaw: '1.5' }, 'order'],
-      [{ kind: 'publish' }, 'unsupported'],
+      // A publish step with none of its terms cannot mean anything.
+      [{ kind: 'publish' }, 'order'],
+      [{ kind: 'adopt_version' }, 'unsupported'],
       [{ kind: 'keeper_leg' }, 'unsupported'],
     ];
     for (const [change, code] of steps)

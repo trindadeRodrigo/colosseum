@@ -68,6 +68,7 @@ const weight = () => [address(), u(Math.floor(next() * 10_000))];
 const WEIGHTS = '(address,uint16)[]';
 const SWAPS = '(address,address,address,uint256,uint256,bytes)[]';
 const MAX = (1n << 256n) - 1n;
+const MAX64 = (1n << 64n) - 1n;
 
 const CALLS = [
   ['approve(address,uint256)', [address(), u(1_000_000_000)]],
@@ -83,15 +84,15 @@ const CALLS = [
   [`setTargets(${WEIGHTS})`, [[]]],
   [`setTargets(${WEIGHTS})`, [[weight()]]],
   [`setTargets(${WEIGHTS})`, [[weight(), weight(), weight()]]],
-  [`ownerSwap(${SWAPS})`, [[swap(0)]]],
-  [`ownerSwap(${SWAPS})`, [[swap(5), swap(32), swap(100)]]],
+  [`ownerSwap(${SWAPS},uint64)`, [[swap(0)], u(1_791_213_000)]],
+  [`ownerSwap(${SWAPS},uint64)`, [[swap(5), swap(32), swap(100)], u(MAX64)]],
   ['multicall(bytes[])', [[b(36), b(0), b(133)]]],
   [
     `createVault(bytes32,${WEIGHTS},bytes32,uint32,bool)`,
     [bytes(32), [weight(), weight()], bytes(32), u(0), false],
   ],
   [
-    `createVaultAndBuy(bytes32,${WEIGHTS},bytes32,uint32,bool,uint256,${SWAPS})`,
+    `createVaultAndBuy(bytes32,${WEIGHTS},bytes32,uint32,bool,uint256,${SWAPS},uint64)`,
     [
       bytes(32),
       [weight(), weight(), weight()],
@@ -100,11 +101,12 @@ const CALLS = [
       false,
       u(1_000_000_000),
       [swap(64), swap(1)],
+      u(1_791_213_000),
     ],
   ],
   [
-    `createVaultAndBuy(bytes32,${WEIGHTS},bytes32,uint32,bool,uint256,${SWAPS})`,
-    [bytes(32), [], bytes(32), u(3), true, u(0), []],
+    `createVaultAndBuy(bytes32,${WEIGHTS},bytes32,uint32,bool,uint256,${SWAPS},uint64)`,
+    [bytes(32), [], bytes(32), u(3), true, u(0), [], u(0)],
   ],
 ];
 const calls = CALLS.map(([signature, args]) => {

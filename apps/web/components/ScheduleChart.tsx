@@ -1,6 +1,9 @@
 type Row = { month: string; withdrawalBrl: number; balanceBrl: number; liquidityOk: boolean };
 
-/** Plain SVG: base-case BRL balance line plus optional stress lines; withdrawals as bars; red ticks where liquidity breaks. */
+/**
+ * Plain SVG: the base-case BRL balance in honey (2px), the stress cases dashed in muted and madder, and
+ * madder ticks where liquidity breaks. Colours are the tokens', so dark mode follows (IDENTITY-2).
+ */
 export function ScheduleChart({
   base,
   stresses,
@@ -21,7 +24,7 @@ export function ScheduleChart({
     rows
       .map((r, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(r.balanceBrl).toFixed(1)}`)
       .join(' ');
-  const colors = ['#9ca3af', '#f59e0b', '#ef4444', '#8b5cf6', '#10b981'];
+  const colors = ['var(--muted-foreground)', 'var(--destructive)'];
   const fmt = (v: number) =>
     v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}k` : v.toFixed(0);
   return (
@@ -33,8 +36,20 @@ export function ScheduleChart({
     >
       {[0, 0.5, 1].map((f) => (
         <g key={f}>
-          <line x1={P.l} x2={W - P.r} y1={y(maxBal * f)} y2={y(maxBal * f)} stroke="#e5e7eb" />
-          <text x={P.l - 6} y={y(maxBal * f) + 4} fontSize="10" textAnchor="end" fill="#6b7280">
+          <line
+            x1={P.l}
+            x2={W - P.r}
+            y1={y(maxBal * f)}
+            y2={y(maxBal * f)}
+            stroke="var(--border)"
+          />
+          <text
+            x={P.l - 6}
+            y={y(maxBal * f) + 4}
+            fontSize="10"
+            textAnchor="end"
+            fill="var(--muted-foreground)"
+          >
             R${fmt(maxBal * f)}
           </text>
         </g>
@@ -49,7 +64,7 @@ export function ScheduleChart({
           strokeDasharray="4 3"
         />
       ))}
-      <path d={path(base)} fill="none" stroke="#111827" strokeWidth="2" />
+      <path d={path(base)} fill="none" stroke="var(--tf-honey)" strokeWidth="2" />
       {base.map((r, i) =>
         r.liquidityOk ? null : (
           <line
@@ -58,7 +73,7 @@ export function ScheduleChart({
             x2={x(i)}
             y1={H - P.b}
             y2={H - P.b - 8}
-            stroke="#ef4444"
+            stroke="var(--destructive)"
             strokeWidth="2"
           />
         ),
@@ -72,7 +87,7 @@ export function ScheduleChart({
             y={H - 8}
             fontSize="10"
             textAnchor={i === arr.length - 1 ? 'end' : 'middle'}
-            fill="#6b7280"
+            fill="var(--muted-foreground)"
           >
             {r.month}
           </text>

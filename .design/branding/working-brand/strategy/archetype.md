@@ -105,21 +105,21 @@ See voice-and-tone.md for the operational rules.
 
 ## Visual tendencies
 
-Archetype defaults: Sage = clean typography, structured layouts, data visualisation, muted palettes. Caregiver = soft colours, calming palettes, nurturing imagery, rounded shapes. **We take the Sage's structure and the Caregiver's warmth, and we decline the Caregiver's rounded softness.** Joinery is square.
+Archetype defaults: Sage = clean typography, structured layouts, data visualisation, muted palettes. Caregiver = soft colours, calming palettes, nurturing imagery, rounded shapes. **We take the Sage's structure and the Caregiver's warmth.** Softness is allowed in the chrome (8–10 px radii, pills for chips); the joinery lives in the drawings, the pin and the photography, not in the corners. *(Revised 2026-10-08 on `IDENTITY-2`, docs/GATES.md: the Oct 1 "Open Joint" execution was replaced by "Honey on night"; the archetype is unchanged.)*
 
-| Archetype trait | How it lands in the "Open Joint" direction (discover/mood-board-direction.md) |
+| Archetype trait | How it lands in "Honey on night" (identity/INDEX.md) |
 |---|---|
-| Sage: structure, clarity | Lattice grid, hairline rules, exploded-view and dimension-line drawings, tabular figures, the pin as provenance glyph |
+| Sage: structure, clarity | A 12-column grid, hairline rules, exploded-view and dimension-line drawings, tabular figures with signed deltas, the pin as provenance glyph |
 | Sage: truth made visible | Through-joints and the visible pin. MOCK shown as section hatch plus the word MOCK, so a mock never looks like finished timber |
-| Caregiver: warmth | Two wood species (hinoki pale, hardwood dark) on warm black or daylight paper. Never cold navy, never pure white |
+| Caregiver: warmth | One warm colour, honey (fresh-cut hinoki in sunlight), on a cool near-black or warm paper, with wood in daylight in the photography. Never cold navy, never a grey ground |
 | Caregiver: calm | Generous negative space on consumer surfaces. One goal and one sentence above the fold. Slide-and-lock motion with no bounce, no confetti |
-| Caregiver: attention to the person | The serif display voice used only for the personal line ("Your apartment fund is on track"). Photography shows hands fitting pieces, never faces staring at phones |
-| Not Caregiver-rounded | Radius 0–2px on brand surfaces. Softness comes from colour temperature and light, not from blobs or pills |
+| Caregiver: attention to the person | The personal line ("Your apartment fund is on track") is the headline of the plan view, addressed by name to one goal, in the display face. Photography shows hands fitting pieces, never faces staring at phones |
+| Caregiver-soft, within limits | 8–10 px radii and pills for chips and badges; never pills on buttons, never blobs. Softness also comes from colour temperature and light (the honey glow) |
 
 ### Style base connection (`humanist-literary`, `minimal-dark`, `swiss-minimalist`)
 Custom tokens borrow structure only, and every preset's accent colour is dropped.
-- **`humanist-literary` ↔ Caregiver.** Its warm paper ground and serif/sans split give the personal register ("a letter about your goal"). Its terracotta accent is dropped because it sits in cinnabar/Teiten territory.
-- **`minimal-dark` ↔ Sage at depth.** Layered warm darkness for the risk dashboard and dark mode, matching the quiet authority of a measuring instrument. Its glass cards, cool black and amber accent are dropped. Hinoki and hardwood replace the accent.
+- **`humanist-literary` ↔ Caregiver.** Its warm paper ground gives the personal register on light surfaces. Its serif and its terracotta accent are dropped (the serif read as a magazine, the terracotta sits in cinnabar/Teiten territory).
+- **`minimal-dark` ↔ Sage at depth.** Three layers of cool near-black for the risk dashboard and dark mode, with one accent, honey, in 14% tints. Its glass cards and glow are dropped.
 - **`swiss-minimalist` ↔ Sage's structure.** Grid discipline and typographic hierarchy for API docs and the embed, where Rafael judges quality by docs. Its red and blue accents are dropped.
 
 The blend works because each preset maps to one register of the archetype: Caregiver warmth (literary), Sage depth (dark), and Sage structure (Swiss). The joinery language (pin, tenon, hatch, exploded view) is what makes them one brand.

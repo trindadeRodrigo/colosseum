@@ -18,8 +18,18 @@ export type WalletReason =
   | 'passkey_cancelled'
   /** The provider has no account for the passkey that was used. */
   | 'passkey_unknown'
+  /** The passkey picked is not one the provider registered for this app (Privy's `passkey_not_registered`). */
+  | 'passkey_not_registered'
+  /** The provider takes no new accounts for this app (Privy's `max_accounts_reached`). */
+  | 'accounts_full'
+  /** The app lets in invited people only, and this sign-in is not one (Privy's `allowlist_rejected`). */
+  | 'not_invited'
+  /** The browser blocks the storage a sign-in needs (Privy's `session_storage_unavailable`). */
+  | 'no_storage'
   /** The browser has no passkeys at all. */
   | 'passkey_unsupported'
+  /** The provider takes no sign-in from this page's address (Privy's `invalid_origin`, 403). */
+  | 'origin_refused'
   /** The wallet that was picked is not in the browser any more. */
   | 'wallet_gone'
   /** The wallet is there and gave no account or no signature: locked, or closed without a word. */
@@ -69,6 +79,11 @@ function classify(e: Loose, text: string): [WalletErrorCode, WalletReason | null
   // Privy answers 403 "Login with passkey not allowed" when the method is off in its dashboard.
   if (privy === 'disallowed_login_method' || /login with [\w ]+ not allowed/i.test(text))
     return ['unsupported', 'method_off'];
+  if (privy === 'passkey_not_registered' || /passkey.{0,40}not (been )?registered/i.test(text))
+    return ['unknown', 'passkey_not_registered'];
+  if (privy === 'max_accounts_reached') return ['unknown', 'accounts_full'];
+  if (privy === 'allowlist_rejected') return ['unknown', 'not_invited'];
+  if (privy === 'session_storage_unavailable') return ['unsupported', 'no_storage'];
   // A closed or timed-out passkey prompt: the browser's NotAllowedError, which Privy rewords.
   if (
     privy === 'passkey_not_allowed' ||
@@ -78,6 +93,8 @@ function classify(e: Loose, text: string): [WalletErrorCode, WalletReason | null
     return ['rejected', 'passkey_cancelled'];
   if (privy === 'user_does_not_exist') return ['unknown', 'passkey_unknown'];
   if (/webauthn is not supported/i.test(text)) return ['unsupported', 'passkey_unsupported'];
+  if (privy === 'invalid_origin' || /origin not allowed/i.test(text))
+    return ['unsupported', 'origin_refused'];
   if (privy === 'too_many_requests' || e.status === 429) return ['unknown', 'too_many'];
   if (
     privy === 'client_request_timeout' ||

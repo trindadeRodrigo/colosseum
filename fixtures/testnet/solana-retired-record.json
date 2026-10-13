@@ -1,0 +1,386 @@
+{
+  "network": "solana-devnet",
+  "chain": "solana",
+  "provenance": "sandbox",
+  "genesisHash": null,
+  "programs": {
+    "basket": "529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW",
+    "mockRouter": "2ticePjZZ6e34bNUgUXz7v3uHm3jS8jvV13gesdvKn4f"
+  },
+  "accounts": {
+    "config": "CUtvcsFQa85WyNcuGaMyZUaZgBe1qVo3qBwQEXHX8F13",
+    "assets": "DJyjxAdYrfLgew2G81eZPFJuXksZYARAXCXi7cepPoLg",
+    "priceAccount": "ukRnsJb9qPRLkkFkQ4aEqHtRM7vBc13Rx96KMW9gJ81",
+    "router": "3Vv916hKutMy4FLtzBoogR7SsXrLXDYV2PimuBQ3emEQ",
+    "lookupTable": null
+  },
+  "roles": {
+    "admin": "8Hk5PJAxGjUcDBwaoWoQZdxJBz375a3cyAB2fEN5u9Jt",
+    "guardian": "GYnuzXjDgwGKbow85HcYBUQQjyiFtvPebvoeJLgoN6Y4",
+    "defaultKeeper": "5GJW3W5qWuKWbnfkXoiPnUeBuW6aNo3g8q1hFMuaos8U",
+    "priceOwner": "2ticePjZZ6e34bNUgUXz7v3uHm3jS8jvV13gesdvKn4f",
+    "exchangeAdmin": "8Hk5PJAxGjUcDBwaoWoQZdxJBz375a3cyAB2fEN5u9Jt",
+    "priceWriter": null,
+    "tokenAuthority": "8Hk5PJAxGjUcDBwaoWoQZdxJBz375a3cyAB2fEN5u9Jt"
+  },
+  "params": {
+    "toleranceBps": 75,
+    "lossCapBps": 100,
+    "bandBps": 50,
+    "twapDevBps": 200,
+    "maxPriceAgeS": 120,
+    "assetCooldownS": 3600,
+    "publishDelayS": 60,
+    "sessionOpenUtcS": 52200,
+    "sessionCloseUtcS": 72000
+  },
+  "closedDays": [
+    "2026-11-26",
+    "2026-12-25",
+    "2027-01-01",
+    "2027-01-18",
+    "2027-02-15",
+    "2027-03-26",
+    "2027-05-31",
+    "2027-06-18",
+    "2027-07-05",
+    "2027-09-06",
+    "2027-11-25",
+    "2027-12-24"
+  ],
+  "cash": {
+    "id": "solana:usdc",
+    "symbol": "tUSDC",
+    "name": "Test USDC (test network, no value)",
+    "modelOf": "USDC",
+    "kind": "cash",
+    "mint": "3JSTW5EoUvMWkU6qUs2c1BYZv8E2pLxbQ3uqRx6Te4zd",
+    "tokenProgram": "token",
+    "decimals": 6,
+    "reserve": "7i45DXaRNFWo4u2bLAn4viYqgUxrGLDMywdAqXPUk7nN"
+  },
+  "assets": [
+    {
+      "id": "solana:spyx",
+      "symbol": "tSPYx",
+      "name": "Test SPYx (test network, no value)",
+      "modelOf": "SPYx",
+      "kind": "stock",
+      "mint": "BLhZhEbdL7K9cB8jJRqu6V5d2JL1p2ReQrvvsuJJm9c3",
+      "tokenProgram": "token-2022",
+      "decimals": 8,
+      "reserve": "CD4FsThXALihPdEFFas8mVN83VruuGXxuWbjxKU5sVhK",
+      "session": 1,
+      "priceIndex": 344,
+      "twapIndex": 279,
+      "indexSource": "scope-indexes",
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "602020000",
+        "maxPrice": "971000000"
+      },
+      "spreadBps": 15,
+      "pairs": {
+        "buy": "55YHPM3Pod75e14g9jmgvEjg1khabnNjX3BTg2YsZ7wW",
+        "sell": "ACwTeQbDWQzDZdNMM5E6v5CrtfkVb1vQw8S6ndHG8tXo"
+      }
+    },
+    {
+      "id": "solana:qqqx",
+      "symbol": "tQQQx",
+      "name": "Test QQQx (test network, no value)",
+      "modelOf": "QQQx",
+      "kind": "stock",
+      "mint": "f4Y9be8QyH2GzVSiDYQCWCQ38cevFy4A1dF7G5Wmgo9",
+      "tokenProgram": "token-2022",
+      "decimals": 8,
+      "reserve": "3BCufAgYj7sCCa8d7nUrksv1YL3SYLXmXBVYNYqrafCq",
+      "session": 1,
+      "priceIndex": 347,
+      "twapIndex": 281,
+      "indexSource": "scope-indexes",
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "585830000",
+        "maxPrice": "944880000"
+      },
+      "spreadBps": 15,
+      "pairs": {
+        "buy": "GJJ41yevxFyepke4xTnLbXjxSxzAoH3fUzVb8XvsM7e9",
+        "sell": "GTb8H5Gvb29h3ySRpP3fYz9wAjRYa3jrSZeZySJvTcA7"
+      }
+    },
+    {
+      "id": "solana:nvdax",
+      "symbol": "tNVDAx",
+      "name": "Test NVDAx (test network, no value)",
+      "modelOf": "NVDAx",
+      "kind": "stock",
+      "mint": "8eXPN6m99nZo6W1auPxC6uuFRQZXYjWDoRSzc2xwr4ue",
+      "tokenProgram": "token-2022",
+      "decimals": 8,
+      "reserve": "BjohJ3dkQryH62RSmzLCkXhqV6AYQhFoxS2DG3e41Esb",
+      "session": 1,
+      "priceIndex": 332,
+      "twapIndex": 269,
+      "indexSource": "scope-indexes",
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "184100000",
+        "maxPrice": "296940000"
+      },
+      "spreadBps": 15,
+      "pairs": {
+        "buy": "2QL6WuuEM1zCYuqSu56kTgjMbxGiDYzUt79GtcetpSZQ",
+        "sell": "7w7Mn5TovTvHDWexTdVcwr7BWbSjZnv5AKQDVe28QFLk"
+      }
+    },
+    {
+      "id": "solana:aaplx",
+      "symbol": "tAAPLx",
+      "name": "Test AAPLx (test network, no value)",
+      "modelOf": "AAPLx",
+      "kind": "stock",
+      "mint": "5bXATuUvm3bq7d8Fa7wqHgHVZJRBp94LyTCnxe4jR1eP",
+      "tokenProgram": "token-2022",
+      "decimals": 8,
+      "reserve": "ATurGLv7yyMTJZyuwrzWkLTYB6wo79ZsPsXW4pYwzMih",
+      "session": 1,
+      "priceIndex": 317,
+      "twapIndex": 259,
+      "indexSource": "scope-indexes",
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "259530000",
+        "maxPrice": "418600000"
+      },
+      "spreadBps": 15,
+      "pairs": {
+        "buy": "EpByT4pYtifmB66CcazZfrJakzd8oA5qgN47Uq8WcNA5",
+        "sell": "BpuTeAXoXFDWqeXmQ2nSanscEojpj9QsZ2hVESPCmDCy"
+      }
+    },
+    {
+      "id": "solana:googlx",
+      "symbol": "tGOOGLx",
+      "name": "Test GOOGLx (test network, no value)",
+      "modelOf": "GOOGLx",
+      "kind": "stock",
+      "mint": "GJNv5kEZh6J25G23rzWWwuFmZ5vZJNJ6raYxx3QoKcAz",
+      "tokenProgram": "token-2022",
+      "decimals": 8,
+      "reserve": "FvaAX4cBacQJjdNAH9sZMMsS9a53KD8Kg2LZDqQrR5jZ",
+      "session": 1,
+      "priceIndex": 326,
+      "twapIndex": 265,
+      "indexSource": "scope-indexes",
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "267960000",
+        "maxPrice": "432200000"
+      },
+      "spreadBps": 15,
+      "pairs": {
+        "buy": "ASfdCMkPkbYT6RXc4drZVntSEcFMx4saupZNYoZgfcMz",
+        "sell": "ES328fLG8mV8FQzeNBq4Aott8SWT8WP34nVN2jFse6yr"
+      }
+    },
+    {
+      "id": "solana:metax",
+      "symbol": "tMETAx",
+      "name": "Test METAx (test network, no value)",
+      "modelOf": "METAx",
+      "kind": "stock",
+      "mint": "8a4Q9mspEFDAiqbUHNu795t8zS2AFmHSyLU5gSQJhnKZ",
+      "tokenProgram": "token-2022",
+      "decimals": 8,
+      "reserve": "3dii2iQHwR6VBP1WmGgyi8ZZN6GAtJZhpvEkw2ZTBtof",
+      "session": 1,
+      "priceIndex": 329,
+      "twapIndex": 267,
+      "indexSource": "scope-indexes",
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "580080000",
+        "maxPrice": "935620000"
+      },
+      "spreadBps": 15,
+      "pairs": {
+        "buy": "AP8hGAxEgx84pNtD6n5oZqamZwroTydGDG2HEtpTx12A",
+        "sell": "23SbxvuPNHGiHQqLUaKuMNcmF8M86XVuHf2bAYGY3VgC"
+      }
+    },
+    {
+      "id": "solana:mstrx",
+      "symbol": "tMSTRx",
+      "name": "Test MSTRx (test network, no value)",
+      "modelOf": "MSTRx",
+      "kind": "stock",
+      "mint": "Dft6qd1jXvkcDKUaq3BND5UimtDLMrtQbLHA9njvwNad",
+      "tokenProgram": "token-2022",
+      "decimals": 8,
+      "reserve": "7ZLuTdibRQhtSMu8eXehhDUEHiCvYmBCV3UFMGz8XwMQ",
+      "session": 1,
+      "priceIndex": 335,
+      "twapIndex": 271,
+      "indexSource": "scope-indexes",
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "125940000",
+        "maxPrice": "203120000"
+      },
+      "spreadBps": 15,
+      "pairs": {
+        "buy": "2X2haUkJs7e4d4PzCYwJrq1cYEEppuG8XMLXAVAjA3k9",
+        "sell": "ACxcytvX1Q6pyEnYNZhnyFAqre3bMkKr2aT75FUUp2dy"
+      }
+    },
+    {
+      "id": "solana:crclx",
+      "symbol": "tCRCLx",
+      "name": "Test CRCLx (test network, no value)",
+      "modelOf": "CRCLx",
+      "kind": "stock",
+      "mint": "A2kA75p4QA19DFx5fnSqS4V4yEiTgZkgHSysSf4rtuXv",
+      "tokenProgram": "token-2022",
+      "decimals": 8,
+      "reserve": "5uFJ2z6Y9vx1Wv5pgfQKaBoJmLfJ9X2s1uiHj8MufZL7",
+      "session": 1,
+      "priceIndex": 323,
+      "twapIndex": 263,
+      "indexSource": "scope-indexes",
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "65200000",
+        "maxPrice": "105160000"
+      },
+      "spreadBps": 15,
+      "pairs": {
+        "buy": "N8q8uQi6N4PrRK5enveZ8YnGHbKZj1dCQX7QrgipzuQ",
+        "sell": "7Cau7bD6bAjMkXi5RdjjuUg5VM7wsZSEoteNa2QPwKCn"
+      }
+    },
+    {
+      "id": "solana:hoodx",
+      "symbol": "tHOODx",
+      "name": "Test HOODx (test network, no value)",
+      "modelOf": "HOODx",
+      "kind": "stock",
+      "mint": "Fv74JuawRAPktky8Y71HLpWtCwENasqAkod3DUNvHPjX",
+      "tokenProgram": "token-2022",
+      "decimals": 8,
+      "reserve": "H8dmQ5VbKKgAb4pVKmyhwUPyfViai5zaFCVsS3Re2Tsc",
+      "session": 1,
+      "priceIndex": 320,
+      "twapIndex": 261,
+      "indexSource": "scope-indexes",
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "88160000",
+        "maxPrice": "142190000"
+      },
+      "spreadBps": 15,
+      "pairs": {
+        "buy": "BTTizDMUFmv9Pc7u1SgjaNyMAixqnxyfpVyweJpSCqh7",
+        "sell": "6Xwuuf2yX9GSitiVwcfyNmXt5oJJQR6rxLvDuAF1LcmA"
+      }
+    },
+    {
+      "id": "solana:gldx",
+      "symbol": "tGLDx",
+      "name": "Test GLDx (test network, no value)",
+      "modelOf": "GLDx",
+      "kind": "gold",
+      "mint": "FS1UiLaFeMC8FfAGpwbJQVKUtnJ4T7Ffcy2TxAYdTZQF",
+      "tokenProgram": "token-2022",
+      "decimals": 8,
+      "reserve": "42hghjTEHa1h4CTto3Ltebd1M4ZwmjE3j43xFDkfr8ZL",
+      "session": 1,
+      "priceIndex": 480,
+      "twapIndex": 481,
+      "indexSource": "test-network",
+      "maxWeightBps": 5000,
+      "keeperOn": false,
+      "range": {
+        "minPrice": "262500000",
+        "maxPrice": "455000000"
+      },
+      "spreadBps": 15,
+      "pairs": {
+        "buy": "97w7ZYZPYAT5jM2CVazCoPWgqqZqnGjo1nvbuHzHbSaY",
+        "sell": "BuUw3sxb9uELL9DdjHU4XmhiipgrzzFvTFYhYvSwTsvn"
+      }
+    },
+    {
+      "id": "solana:jlusdc",
+      "symbol": "tjlUSDC",
+      "name": "Test jlUSDC (test network, no value)",
+      "modelOf": "jlUSDC",
+      "kind": "dollar_yield",
+      "mint": "7V5AqWrmrdD8LpMxAcfFxye8Riokk1S132f1a3U9P2Xw",
+      "tokenProgram": "token",
+      "decimals": 6,
+      "reserve": "2HGozNYgrTxZjQ1z6TeTGC4zJEEE3pcWHYvRfJzkbHbt",
+      "session": 0,
+      "priceIndex": 482,
+      "twapIndex": 483,
+      "indexSource": "test-network",
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "900000",
+        "maxPrice": "1500000"
+      },
+      "spreadBps": 5,
+      "pairs": {
+        "buy": "2PBLm9YWnN9xuWJZkKqZkhLjDVVuGwQBXik34Zq467np",
+        "sell": "6RmBZCtxBKBRz6hHFA5sBHApsfc7cXoy4axk2vLyte2U"
+      }
+    },
+    {
+      "id": "solana:syrupusdc",
+      "symbol": "tsyrupUSDC",
+      "name": "Test syrupUSDC (test network, no value)",
+      "modelOf": "syrupUSDC",
+      "kind": "dollar_yield",
+      "mint": "DsS9Uvn5nHAv6swDdWXLS6dUJdTDivHSLuSv2QDwh4c1",
+      "tokenProgram": "token",
+      "decimals": 6,
+      "reserve": "DGGv2uPDuZk28jRa5Kr5jiVfTTaZyRcpHYz355WSFjh3",
+      "session": 0,
+      "priceIndex": 484,
+      "twapIndex": 485,
+      "indexSource": "test-network",
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "900000",
+        "maxPrice": "1500000"
+      },
+      "spreadBps": 5,
+      "pairs": {
+        "buy": "7ptVXhyhQ5P2QHxxDgYvFEUub9aX4zgqnQyTDxHwX8wU",
+        "sell": "8YmGWYcu1ku6k1u1nVYWyM2TGXmc1c7Qb39XfooritYo"
+      }
+    }
+  ],
+  "retired": [
+    {
+      "id": "solana:tslax",
+      "symbol": "tTSLAx",
+      "mint": "ASsH3dG4etTD1zHKev7G3EWqVpLfNTCzS5Ns7ymD8YAo",
+      "tokenProgram": "token-2022",
+      "decimals": 8,
+      "keeperOn": false
+    }
+  ]
+}

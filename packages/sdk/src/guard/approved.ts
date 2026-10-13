@@ -21,6 +21,7 @@ const SIGNED_HERE: readonly string[] = [
   'accept_version',
   'set_auto_follow',
   'withdraw',
+  'publish',
 ];
 
 const refuse = (message: string, legId?: string) =>
@@ -65,7 +66,16 @@ export function approvedSteps(
       throw new GuardRefusal('unsupported', 'a step the keeper signs is never signed here', leg.id);
     if (!SIGNED_HERE.includes(leg.kind))
       throw new GuardRefusal('unsupported', `this guard signs no ${leg.kind} step`, leg.id);
+    // What a creator publishes is an order of its own: the terms describe one publish step, and no
+    // other step rides along under them.
+    if (plan.publish && leg.kind !== 'publish')
+      throw refuse(
+        'the order publishes a shared portfolio, and one of its steps does something else',
+        leg.id,
+      );
   }
+  if (plan.publish && legs.length !== 1)
+    throw refuse('the order publishes one shared portfolio, in one step');
 
   // The cash an order moves is said once, by the order (`depositRaw`), and one step moves it: the create
   // or the deposit. An approval exists only to serve that step, for that exact amount. An order that
@@ -167,6 +177,10 @@ export function approvedSteps(
           withdrawals: withdrawalsOf(leg),
           ...(plan.held ? { held: plan.held } : {}),
         };
+      case 'publish':
+        if (!plan.publish)
+          throw refuse('the step publishes a shared portfolio, and none was given', leg.id);
+        return { ...base, kind: 'publish', ...plan.publish };
       default:
         throw new GuardRefusal('unsupported', `this guard signs no ${leg.kind} step`, leg.id);
     }

@@ -14,6 +14,7 @@
     "sessionOpen": 52200,
     "sessionClose": 72000
   },
+  "priceDevBps": 200,
   "cashToken": "0x0000000000000000000000000000000000000000",
   "assets": [],
   "routers": [],

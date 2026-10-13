@@ -1,31 +1,33 @@
 # Identity
-> Phase: identity | Brand: Tenonfi (provisional; fallback "Tenon"; slug `working-brand`) | Generated: 2026-10-01
+> Phase: identity | Brand: Tenonfi (provisional; fallback "Tenon"; slug `working-brand`) | Generated: 2026-10-01 | Rewritten 2026-10-08 on `IDENTITY-2` and `LOGO-2` (docs/GATES.md)
 
-| Chunk | File | ~Lines |
-|-------|------|--------|
-| Logo Directions | [logo-directions.md](./logo-directions.md) | ~143 |
-| Color System | [color-system.md](./color-system.md) | ~190 |
-| Palettes (OKLCH, contrast) | [palettes.json](./palettes.json) | n/a |
-| Typography | [typography.md](./typography.md) | ~320 |
-| Imagery Style | [imagery-style.md](./imagery-style.md) | ~156 |
-| Iconography | [iconography.md](./iconography.md) | ~115 |
-| Brand Applications | [brand-applications.md](./brand-applications.md) | ~68 |
-| Logo comparison (visual) | [logo-comparison.html](./logo-comparison.html) | n/a |
+| Chunk | File | Note |
+|-------|------|------|
+| Logo | [logo-directions.md](./logo-directions.md) | "The face": construction, cuts, lockups, exports in `logo/` |
+| Color System | [color-system.md](./color-system.md) | Honey on night; day; direction colours; light as gradient |
+| Palettes (OKLCH, contrast) | [palettes.json](./palettes.json) | Generated from the tokens |
+| Typography | [typography.md](./typography.md) | Inter Tight · Inter · IBM Plex Mono |
+| Imagery Style | [imagery-style.md](./imagery-style.md) | Wood in daylight; renders lit warm on night |
+| Iconography | [iconography.md](./iconography.md) | Lucide retuned; the pin; the joint glyphs |
+| Brand Applications | [brand-applications.md](./brand-applications.md) | Goal card, plan, embed, docs, Bearing, video |
+| The identity decision (visual) | [identity-reassessment.html](./identity-reassessment.html) | Current vs proposed, the palette, the alternates (2026-10-08) |
+| The logo decision (visual) | [logo-options-2.html](./logo-options-2.html) | Five marks on the accepted palette (2026-10-08) |
 
-## Locked decisions
-- **Direction:** "The Open Joint", led by imagery. Wood is the only colour. Light and dark are peers.
-- **Logo:** **A, pinned through-tenon** (rail, post, tenon end, pin knock-out) + lowercase serif wordmark `tenonfi`. The fi ligature is removable, so it falls back to `tenon`. A small cut for ≤ 20 px. Lockups: `tenonfi Bearing`, "Powered by tenonfi". B (stacked cantilever) survives as pattern P2. C's idea survives as the provenance glyph.
-- **Provenance glyph:** the tenon end in outline with a solid pin. Live = solid pin, stale = hollow pin + "stale", MOCK = hatch + "MOCK".
-- **Palette:** paper #F6F1E8 · paper-raised #FBF8F2 · paper-sunk #EDE6DA · black #0D0B09 · char #1A1714 · char-2 #24201B · ink #1C1712 · washi #ECE4D6 · hinoki #E6D3B7 · hinoki-deep #C9AE86 · hardwood #7A5A3A · heartwood #5A3A1E · stone #6E655B / #A49A8E · hair #D9CDBB / #3A322A · member #8C7F70 / #7A6D5F. Semantic colours: forest #2F4A2A / #7FA37A, ochre #8A5A00 / #D9A441, madder #A8324A / #E58AA0.
-- **Type:** Newsreader (display, upright, consumer and marketing only) · IBM Plex Sans + Condensed (UI) · IBM Plex Mono (provenance, code, data).
-- **Joints:** J1 pinned through-tenon = logo, plan and provenance · J2 half-lap cross = structure and lattice · J3 ari-otoshi dovetail = exit plan · J4 kanawa tsugi = rebalance · J5 bracket set = Bearing.
-- **Patterns:** P1 square kumiko (coarse/medium/fine) · P2 stacked offset · P3 receding grid · P4 section hatch (MOCK only) · P5 bracket set (Bearing imagery). Never behind numbers. Nothing in the embed except the hatch.
-- **Hero assets first:** H1 Open Joint still · H2 Lock animation · H3 Plan exploded (SVG) · H4 Bearing lattice + bracket render.
+## Locked decisions (2026-10-08, Rodrigo)
+- **Identity:** "Honey on night". One brand colour, honey `#F5A83A`, with ink text on it in both modes. Night `#0C0D12` for the app, Bearing and the video; paper `#F7F5F0` with white cards for docs, the plan and the embed. Leaf, clay and madder for on track, watch and off track, each with a 14% tint and always with a word and a shape. Chalk `#78B4E8` as a line only. Gradients as light only. Wood in imagery only; the daylight timber interior (`../patterns/prototypes/assets/closing.jpg`) is the governing image.
+- **Logo:** "the face": a honey tile, the tenon end cut in (night on night, ink elsewhere), a square honey pin set toward the end. Three cuts (32, 24, 16). Wordmark `tenonfi` in Inter Tight 600, −2% tracking; fallback `tenon`; `tenonfi Bearing` with "Bearing" in Inter 500 muted.
+- **Provenance glyph:** the tenon end in line mode with the square pin. Live = solid, stale = hollow + "stale", sample (mock) = hatch, no pin, with the card's quiet line "Sample figures" (gate `MOCK-QUIET`, Thom, Oct 6: never a boxed MOCK word), sandbox = the same line with "test network".
+- **Type:** Inter Tight 600 (display, big numbers, the wordmark) · Inter (UI) · IBM Plex Mono (provenance, code, data). No serif in the product.
+- **Shape:** cards 10 px, controls 8 px, pills for chips and badges, the composer 20 px, app tiles 16 px.
+- **Joints:** J1 pinned through-tenon = logo and provenance · J2 half-lap = structure · J3 ari-otoshi dovetail = exit plan · J4 kanawa tsugi = rebalance · J5 bracket set = Bearing. Drawn with lines in the text colour, the key member in honey, dimension lines in chalk.
+- **Patterns:** P1 lattice on marketing grounds only · P4 hatch for MOCK and stale only · P5 bracket set in Bearing imagery. P2 and P3 are retired.
+- **Unchanged:** the strategy (made to measure, every joint shown; Sage × Caregiver; the voice) and the product rules (pin on every figure, the hatch with its sample line, the disclaimer, no return promises, the brand receding in the embed, no Japanese clichés, nothing like Teiten).
 
-## Changes from discover/
-- 3D renders are now **in** (founder request), held to material realism. Generative AI is for concepting only, never shipped.
-- The display serif changed from Source Serif 4 to **Newsreader** (humanist, warmer).
-- Added `washi` (text on dark), `paper-sunk`, and `member` lines for control boundaries.
+## Changes from the Oct 1 identity ("The Open Joint")
+- The wood-only palette (hinoki, hardwood, heartwood on warm black and daylight paper) is replaced. It was sampled from a studio photograph of wood in shadow and read dead.
+- Newsreader is dropped from product surfaces. Inter Tight takes display and the wordmark.
+- Square-only shapes, the ban on blue, on gradients and on white are lifted as described above. The bans on Japanese clichés, on Teiten's grammar and on a second brand colour stand.
+- Logo direction A (the elevation) and its construction are retired; the three-cut idea, the removable `fi` and the pin-as-provenance idea carry over.
 
 ## Next
-`/gsp-logo --enrich` (outlines, both cuts, ligature) · `/gsp-color --enrich` (OKLCH, contrast matrix, palettes.json) · `/gsp-typography --enrich` · `/gsp-visuals --imagery --enrich` (asset specs, motion tokens).
+Reskin `apps/web` on the new tokens (a slot of its own, after `../patterns/STYLE.md`), then the video assets on the new imagery rules.

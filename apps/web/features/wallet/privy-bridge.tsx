@@ -6,6 +6,7 @@ import {
   PrivyProvider,
   useCreateWallet,
   useExportWallet,
+  useIdentityToken,
   useLoginWithPasskey,
   useLoginWithSiwe,
   useLoginWithSiws,
@@ -34,9 +35,11 @@ import {
   type AnnouncedWallet,
   evmWalletId,
   foundWallets,
+  onePerName,
   solanaWalletId,
   watchEvmWallets,
 } from './found-wallets';
+import { identityTokens, walletKey } from './identity-token';
 import { createWalletPort, idleDriver, type ProblemKind } from './port';
 import {
   canSignIn,
@@ -66,12 +69,15 @@ function privyConfig(chains: WalletChains): PrivyClientConfig {
   });
   return {
     loginMethods: ['passkey', 'wallet'],
-    // Sign-in is our own screen (app/(app)/sign-in), on Privy's hooks that open no window of Privy's.
+    // Sign-in is our own dialog and page (features/account/SignInDialog.tsx, app/(app)/sign-in), on
+    // Privy's hooks that open no window of Privy's.
     // What is left of its appearance is the one window it still owns: the export of a key.
     appearance: {
       theme: 'light',
-      // STYLE.md: the primary is hardwood, and no blue or violet anywhere. Privy's default accent is violet.
-      accentColor: '#7A5A3A',
+      // STYLE.md: the primary is honey, with ink on it (IDENTITY-2); no blue or violet anywhere. Privy's
+      // default accent is violet. Privy picks the text on its accent by the accent's lightness: on honey
+      // that is its dark foreground, not white.
+      accentColor: '#F5A83A',
       walletChainType: 'ethereum-and-solana',
       // The only other login method is the passkey, and Privy insists on this when there is no email
       // or social login.
@@ -95,6 +101,16 @@ function privyConfig(chains: WalletChains): PrivyClientConfig {
   };
 }
 
+/** The identity token as Privy keeps it in a cookie, for a page that has not heard from Privy yet. */
+function identityCookie(): string | null {
+  if (typeof document === 'undefined') return null;
+  for (const pair of document.cookie.split(';')) {
+    const [name, ...value] = pair.trim().split('=');
+    if (name === 'privy-id-token') return decodeURIComponent(value.join('=')) || null;
+  }
+  return null;
+}
+
 /** Sign-in cannot work: the port says why, and stays signed out. */
 function Unconfigured({
   onPort,
@@ -107,7 +123,7 @@ function Unconfigured({
   return null;
 }
 
-export default function PrivyBridge({ onPort }: BridgeProps) {
+export default function PrivyBridge({ onPort, carry }: BridgeProps) {
   const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
   const setup = useMemo((): { chains: WalletChains; config: PrivyClientConfig } | string => {
     try {
@@ -132,7 +148,7 @@ export default function PrivyBridge({ onPort }: BridgeProps) {
     );
   return (
     <PrivyProvider appId={appId} config={setup.config}>
-      <PrivyDriver onPort={onPort} chains={setup.chains} api={check.chains} />
+      <PrivyDriver onPort={onPort} carry={carry} chains={setup.chains} api={check.chains} />
     </PrivyProvider>
   );
 }
@@ -151,11 +167,29 @@ const LISTED_TRIES = 40;
 const LISTED_EVERY_MS = 50;
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/**
+ * The calls that make wallets go one at a time across every mount of the driver (`carry`, which the
+ * wallet provider keeps): the provider can be mounted again ("Try again" for a slow sign-in,
+ * WalletProvider's `restart`) while a call of the driver before it is still open, and the same wallet
+ * is never asked for twice at once. A driver that starts waits for a call of the driver before it to
+ * end, this long at most: a call Privy dropped with the provider it belonged to never ends, and must
+ * not hold the person's wallets for ever. Between two attempts of one driver there is no such limit:
+ * the second always waits for the first.
+ */
+export const OPEN_CALL_WAIT_MS = 90_000;
+
 function PrivyDriver({
   onPort,
+  carry,
   chains,
   api,
 }: BridgeProps & { chains: WalletChains; api: readonly ChainStatus[] }) {
+  // Mounted with no provider above to keep it (a test of the bridge alone): this driver's own.
+  const [own] = useState(() => ({ making: Promise.resolve() }));
+  const line = carry ?? own;
+  // The last job in the line is this driver's own: only one left by a driver before it is waited
+  // for with a limit.
+  const mine = useRef<Promise<void> | null>(null);
   const privy = usePrivy();
   const evm = useWallets();
   const solana = useSolanaWallets();
@@ -173,14 +207,21 @@ function PrivyDriver({
   const { generateSiwsMessage, loginWithSiws } = useLoginWithSiws();
   const { createWallet } = useCreateWallet();
   const { createWallet: createSolanaWallet } = useCreateSolanaWallet();
+  // The identity token Privy holds: it comes with the sign-in and with each refresh of the session.
+  const { identityToken } = useIdentityToken();
+  const [identity] = useState(() => identityTokens(getIdentityToken));
 
   // The outside wallets in this browser: EVM wallets announce themselves, Solana wallets are in the
   // wallet standard's registry, which Privy's hook reads. Privy's own embedded wallet is not one.
   const [announced, setAnnounced] = useState<AnnouncedWallet[]>([]);
   useEffect(() => watchEvmWallets(window, setAnnounced), []);
-  const outside = (
-    standard.wallets as readonly (StandardSolanaWallet & { isPrivyWallet?: boolean })[]
-  ).filter((wallet) => !wallet.isPrivyWallet && inBrowser(wallet) && canSignIn(wallet));
+  // One wallet per name: the name is the standard's only handle on a wallet, so a second wallet with
+  // a name already listed is neither listed nor signed with (found-wallets.ts, `onePerName`).
+  const outside = onePerName(
+    (standard.wallets as readonly (StandardSolanaWallet & { isPrivyWallet?: boolean })[]).filter(
+      (wallet) => !wallet.isPrivyWallet && inBrowser(wallet) && canSignIn(wallet),
+    ),
+  );
   const found = foundWallets(outside, announced);
 
   // The accounts are the person's linked wallets that are connected in this browser, in Privy's order
@@ -208,6 +249,13 @@ function PrivyDriver({
     }
   }
 
+  // The wallets the identity token has to list, for the API to know them.
+  const linkedWallets = linked.flatMap((a) =>
+    a.type === 'wallet' && (a.chainType === 'ethereum' || a.chainType === 'solana')
+      ? [walletKey(a.chainType, a.address)]
+      : [],
+  );
+
   const userId = privy.user?.id ?? null;
   const session = privy.ready && privy.authenticated && userId !== null;
   // The wallets a passkey sign-in owes the person and Privy has not made: one of each family.
@@ -219,8 +267,24 @@ function PrivyDriver({
   const job = session ? `${userId}:${attempt}` : null;
   const [ended, setEnded] = useState<{ job: string; problem: string | null } | null>(null);
   const started = useRef<string | null>(null);
-  const queue = useRef<Promise<void>>(Promise.resolve());
   const waiting = useRef<Waiter[]>([]);
+  // This driver is unmounted: its loop makes nothing more, and a sign-in it was running is over. Set
+  // again by the effect, which strict mode runs twice.
+  const gone = useRef(false);
+  const leave = useRef<(e: unknown) => void>(() => {});
+  const left = useRef<Promise<never>>(new Promise<never>(() => {}));
+  useEffect(() => {
+    gone.current = false;
+    left.current = new Promise<never>((_, reject) => {
+      leave.current = reject;
+    });
+    // nobody may be waiting on it
+    left.current.catch(() => {});
+    return () => {
+      gone.current = true;
+      leave.current(fail('not_connected', 'the wallet was started again: sign in once more'));
+    };
+  }, []);
   // While a wallet is owed the person is not `ready`: with one wallet the API would offer one chain,
   // and the choice of chain cannot be undone.
   const walletsOwed: WalletsOwed | null =
@@ -238,6 +302,8 @@ function PrivyDriver({
   // port is rebuilt only when what it reports (status, user, accounts) changes.
   const live = {
     privy,
+    identityToken,
+    linkedWallets,
     evm: evm.wallets,
     solana: solana.wallets,
     announced,
@@ -275,8 +341,9 @@ function PrivyDriver({
       let problem: string | null = null;
       try {
         for (;;) {
-          // Another person signed in, or a new attempt began: this job makes nothing more.
-          if (ref.current.job !== job) return;
+          // Another person signed in, a new attempt began, or the provider was mounted again: this
+          // job makes nothing more. Read before each wallet, so a loop left behind stops at its next.
+          if (gone.current || ref.current.job !== job) return;
           // What is owed is read again before each wallet, as Privy lists it by then.
           const family = ref.current.owed.find((f) => !made.has(f));
           if (!family) break;
@@ -286,17 +353,27 @@ function PrivyDriver({
           });
           made.add(family);
         }
-        for (let look = 0; look < LISTED_TRIES && ref.current.owed.length > 0; look += 1)
+        for (
+          let look = 0;
+          look < LISTED_TRIES && !gone.current && ref.current.owed.length > 0;
+          look += 1
+        )
           await pause(LISTED_EVERY_MS);
         if (ref.current.owed.length > 0) problem = 'the wallet was made and is not listed yet';
       } catch (e) {
         problem = e instanceof Error ? e.message : 'no reason given';
       }
-      if (ref.current.job === job) setEnded({ job, problem });
+      if (!gone.current && ref.current.job === job) setEnded({ job, problem });
     };
-    // One job at a time, whatever starts the next: a wallet is never asked for twice at once.
-    queue.current = queue.current.then(run);
-  }, [job, work]);
+    // One job at a time, whatever starts the next and whichever mount it is of: a wallet is never
+    // asked for twice at once.
+    const before =
+      line.making === mine.current
+        ? line.making
+        : Promise.race([line.making, pause(OPEN_CALL_WAIT_MS)]);
+    line.making = before.then(run);
+    mine.current = line.making;
+  }, [job, work, line]);
 
   // Whoever waits in ensureWallets() hears how it ended.
   useEffect(() => {
@@ -342,21 +419,31 @@ function PrivyDriver({
         if (!now.privy.ready) throw fail('not_connected', 'the wallet is still loading');
         if (method === 'passkey') {
           // Two calls: a person with no passkey for this site yet has to be able to make one.
-          await (choice?.create ? now.signupWithPasskey() : now.loginWithPasskey());
+          // A provider mounted again while the prompt is open never answers this call: it ends here.
+          await Promise.race([
+            choice?.create ? now.signupWithPasskey() : now.loginWithPasskey(),
+            left.current,
+          ]);
           return;
         }
         const evmWallet = now.announced.find((w) => evmWalletId(w.rdns) === choice?.wallet);
         if (evmWallet)
-          return signInWithEvmWallet(evmWallet, {
-            generate: now.generateSiweMessage,
-            login: now.loginWithSiwe,
-          });
+          return Promise.race([
+            signInWithEvmWallet(evmWallet, {
+              generate: now.generateSiweMessage,
+              login: now.loginWithSiwe,
+            }),
+            left.current,
+          ]);
         const solanaWallet = now.outside.find((w) => solanaWalletId(w.name) === choice?.wallet);
         if (solanaWallet)
-          return signInWithSolanaWallet(solanaWallet, {
-            generate: now.generateSiwsMessage,
-            login: now.loginWithSiws,
-          });
+          return Promise.race([
+            signInWithSolanaWallet(solanaWallet, {
+              generate: now.generateSiwsMessage,
+              login: now.loginWithSiws,
+            }),
+            left.current,
+          ]);
         throw fail('wallet_gone', 'that wallet is not in this browser');
       },
       signOut: () => ref.current.privy.logout(),
@@ -387,7 +474,12 @@ function PrivyDriver({
       },
 
       async signEvm(address, request) {
-        const out = await ref.current.signTransaction(request, { address, ...quiet });
+        // Privy names the gas limit `gasLimit`, and fills in nothing it is not given.
+        const { gas, ...rest } = request;
+        const out = await ref.current.signTransaction(
+          { ...rest, ...(gas === undefined ? {} : { gasLimit: gas, type: 2 }) },
+          { address, ...quiet },
+        );
         return out.signature;
       },
       async sendEvm(address, request) {
@@ -436,12 +528,20 @@ function PrivyDriver({
           ? ref.current.exportWallet({ address })
           : ref.current.exportSolanaWallet({ address }),
 
-      async tokens() {
+      async tokens(options) {
+        // Privy refreshes the access token only when it is about to run out, and the identity token
+        // comes with it. Both are read as Privy holds them: nothing here asks Privy per call.
         const access = await ref.current.privy.getAccessToken();
-        // The identity token lists the linked wallets. It exists once it is switched on in the Privy
-        // dashboard; until then the API gets the access token alone.
-        const identity = access ? await getIdentityToken().catch(() => null) : null;
-        return { access, identity };
+        const now = ref.current;
+        const who = now.privy.user?.id;
+        if (!access || !who) return { access, identity: null };
+        const token = await identity({
+          userId: who,
+          held: now.identityToken ?? identityCookie(),
+          wallets: now.linkedWallets,
+          fresh: options?.fresh,
+        });
+        return { access, identity: token };
       },
     };
     return createWalletPort(driver, chains, null, { api });

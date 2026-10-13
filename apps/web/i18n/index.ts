@@ -27,6 +27,12 @@ export const isLang = (value: unknown): value is Lang =>
 /** The cookies the shell reads on the server. Each holds a choice the person made, and nothing else. */
 export const LANG_COOKIE = 'tf-lang';
 export const THEME_COOKIE = 'tf-theme';
+/**
+ * That a person is signed in on this browser, and nothing else: no id, no token. The landing page
+ * (`/`) reads it on the server to send them straight to their goal. It is a hint for where to go,
+ * never a proof of who someone is: the API checks the sign-in on every call.
+ */
+export const SIGNED_IN_COOKIE = 'tf-in';
 
 /**
  * The language of a request: the person's own choice if they made one, or the first of ours that

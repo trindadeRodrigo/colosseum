@@ -1,3 +1,4 @@
+import { byrealClState } from './byreal-clmm';
 import type { ClState } from './cl-math';
 import { decodeDlmmBinArray, decodeDlmmPair, dlmmFeeRate } from './meteora-dlmm';
 import { decodeWhirlpool, decodeWpTickArray, whirlpoolState } from './orca-whirlpool';
@@ -17,7 +18,8 @@ import { clSim, cpSim, dlmmSim, type PoolSim } from './simulate';
  */
 export type PoolRef = {
   address: string;
-  venue: 'raydium_clmm' | 'orca_whirlpool' | 'meteora_dlmm' | 'raydium_cpmm';
+  /** `byreal_clmm` is never in the collector's registry: only a caller that found the pool itself names it. */
+  venue: 'raydium_clmm' | 'orca_whirlpool' | 'meteora_dlmm' | 'raydium_cpmm' | 'byreal_clmm';
   assetMint: string;
   assetIsToken0: boolean;
   transferFeeBps0: number;
@@ -76,6 +78,17 @@ export function buildPoolSim(
     const s = whirlpoolState(h, arrays);
     return {
       sim: clSim(s, h.mintA === p.assetMint, fees),
+      feeRate: s.feeRate,
+      invariantRelErr: inv(s),
+    };
+  }
+  if (p.venue === 'byreal_clmm') {
+    // Raydium's pool account with Byreal's own arrays and fee. Unlike the four above, it is not built at all without
+    // its fee config, with a fee it cannot price or with arrays that do not add up exactly: `byrealClState` throws.
+    if (!config) throw new Error('byreal pool: no fee config read');
+    const { pool: h, state: s } = byrealClState(p.address, head, config, children);
+    return {
+      sim: clSim(s, h.mint0 === p.assetMint, fees),
       feeRate: s.feeRate,
       invariantRelErr: inv(s),
     };

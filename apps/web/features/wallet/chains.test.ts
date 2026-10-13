@@ -27,6 +27,21 @@ describe('walletChains', () => {
     expect(solanaCluster(solana)).toBe('solana:mainnet');
   });
 
+  it('labels each chain as what it is: Robinhood Chain live on mainnet beside Solana on its test network', () => {
+    const chains = walletChains({ NEXT_PUBLIC_CHAIN_NETWORK_ROBINHOOD: 'mainnet' });
+    expect([chains.robinhood.network, chains.robinhood.provenance]).toEqual(['mainnet', 'live']);
+    expect([chains.solana.network, chains.solana.provenance]).toEqual(['testnet', 'sandbox']);
+    expect(chains.robinhood.config.evmChainId).toBe(4663);
+  });
+
+  it('on mainnet, Robinhood Chain has an explorer, the one the chain viem ships names', () => {
+    const chain = walletChains({ NEXT_PUBLIC_CHAIN_NETWORK_ROBINHOOD: 'mainnet' }).robinhood;
+    const viem = toViemChain(chain);
+    expect(viem.testnet).toBe(false);
+    expect(viem.blockExplorers?.default.url).toBe('https://robinhoodchain.blockscout.com');
+    expect(viem.blockExplorers?.default.url).toBe(robinhood.blockExplorers.default.url);
+  });
+
   it('refuses a value it does not know, and `local`, naming the variable and not the value', () => {
     for (const value of ['local', 'devnet', 'https://secret.example/key']) {
       const run = () => walletChains({ NEXT_PUBLIC_CHAIN_NETWORK_BASE: value });

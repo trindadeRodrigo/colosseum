@@ -61,14 +61,21 @@ describe('CompactNav (compact-nav.md)', () => {
     expect(list.join(' ')).not.toMatch(/overflow-hidden/); // the focus ring is not clipped
   });
 
-  it('sets the wordmark in the serif, lowercase, smaller when compact, with the mark in the brand wood', () => {
+  it('sets the wordmark in Inter Tight 600 at −2%, lowercase, smaller when compact, beside the mark', () => {
     const word = (root: typeof full) => one(root, (e) => text(e) === 'tenonfi' && e.tag === 'span');
     expect(classes(word(full))).toEqual(
-      expect.arrayContaining(['font-display', 'font-normal', 'text-[24px]']),
+      expect.arrayContaining([
+        'font-display',
+        'font-semibold',
+        'tracking-[-0.02em]',
+        'text-[24px]',
+      ]),
     );
+    expect(classes(word(full)).join(' ')).not.toMatch(/font-normal|serif/);
     expect(classes(word(compact))).toContain('text-[20px]');
+    // the mark carries its own colours (honey tile, the cut, the pin): nothing tints it
     const home = one(compact, (e) => e.attrs['aria-label'] === 'tenonfi home');
-    expect(all(home, (e) => classes(e).includes('text-primary'))).toHaveLength(1);
+    expect(all(home, (e) => /text-(primary|honey)/.test(classes(e).join(' ')))).toHaveLength(0);
   });
 
   it('has one filled button, the call to action', () => {
@@ -78,14 +85,16 @@ describe('CompactNav (compact-nav.md)', () => {
     expect(filled[0]?.tag).toBe('a');
   });
 
-  it('marks the section in view and underlines it in the brand wood', () => {
+  it('marks the section in view in the foreground and underlines it in honey; links are muted until then', () => {
     const current = all(menu(compact), (e) => e.attrs['aria-current'] === 'true');
     expect(current.map(text)).toEqual(['Invest']);
     expect(classes(current[0] as never)).toEqual(
       expect.arrayContaining([
         'aria-[current=true]:decoration-primary',
         'aria-[current=true]:underline-offset-[6px]',
-        'hover:bg-accent',
+        'aria-[current=true]:text-foreground',
+        'text-muted-foreground',
+        'hover:text-foreground',
       ]),
     );
   });

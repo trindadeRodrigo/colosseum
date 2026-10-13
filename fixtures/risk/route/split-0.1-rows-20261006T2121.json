@@ -1,0 +1,2561 @@
+{
+  "source": "the split-0.1 rows of fixtures/risk/route/qqqx-two-hop-20261006T2121.json.gz, as scripts/risk/split-snapshot.ts of commit d58086c3 writes them (48 rows: 3 stocks, 2 sides, 8 sizes; no collector file beside them)",
+  "fetched_at": "2026-10-06T21:21:16.833Z",
+  "method": "routed_greedy_32_chunks with per-pool split, rows frozen on darwin arm64, Node 24",
+  "provenance": "fixture",
+  "sha256OfTheLinesWhereFrozen": "2a2c06759a8efd3f2eff214a7af977b4be080db4b38f27ac695439dd93e01c4a",
+  "rows": [
+    {
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "asset": "SPYx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 100,
+      "outUsd": 100.01817556833731,
+      "costPct": -0.018175568337319703,
+      "poolsUsed": 2,
+      "pools": 10,
+      "refPool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+      "refMidUsd": 784.0628728581665,
+      "split": {
+        "total": -0.00018175568337319703,
+        "poolFee": 0.00010002892544351872,
+        "transferFee": 0,
+        "basis": -0.00028925443518653873,
+        "impact": 0.000007469826369822959
+      },
+      "legs": [
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "amountIn": 0.1195694927605111,
+          "unfilledShare": 0,
+          "outUsd": 93.76680584985601,
+          "midUsd": 784.2857973451144,
+          "feeRate": 0.0001
+        },
+        {
+          "pool": "gef4pD5g6GJSjX7hfXKUfhCVpE89BzX9TXnXJNW6kSt",
+          "amountIn": 0.0079712995173674,
+          "unfilledShare": 0,
+          "outUsd": 6.251369718481298,
+          "midUsd": 784.3477041689785,
+          "feeRate": 0.0001
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "asset": "SPYx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 500,
+      "outUsd": 500.0791678333288,
+      "costPct": -0.015833566665768295,
+      "poolsUsed": 2,
+      "pools": 10,
+      "refPool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+      "refMidUsd": 784.0628728581665,
+      "split": {
+        "total": -0.00015833566665768295,
+        "poolFee": 0.00010002867870460101,
+        "transferFee": 0,
+        "basis": -0.00028678704601059046,
+        "impact": 0.00002842270064830647
+      },
+      "legs": [
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "amountIn": 0.6177757125959732,
+          "unfilledShare": 0,
+          "outUsd": 484.4517369153297,
+          "midUsd": 784.2857973451144,
+          "feeRate": 0.0001
+        },
+        {
+          "pool": "gef4pD5g6GJSjX7hfXKUfhCVpE89BzX9TXnXJNW6kSt",
+          "amountIn": 0.0199282487934185,
+          "unfilledShare": 0,
+          "outUsd": 15.627430917999094,
+          "midUsd": 784.3477041689785,
+          "feeRate": 0.0001
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "asset": "SPYx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 2500,
+      "outUsd": 2500.154071586929,
+      "costPct": -0.006162863477165992,
+      "poolsUsed": 2,
+      "pools": 10,
+      "refPool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+      "refMidUsd": 784.0628728581665,
+      "split": {
+        "total": -0.00006162863477165992,
+        "poolFee": 0.00011253191542089764,
+        "transferFee": 0,
+        "basis": -0.0002839669543535432,
+        "impact": 0.00010980640416098566
+      },
+      "legs": [
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "amountIn": 2.7899548310785884,
+          "unfilledShare": 0,
+          "outUsd": 2187.647663714412,
+          "midUsd": 784.2857973451144,
+          "feeRate": 0.0001
+        },
+        {
+          "pool": "Fae5dWVntUt6zbWu2voXxioDpMii7SqQwtsxBmoVCsHR",
+          "amountIn": 0.39856497586837,
+          "unfilledShare": 0,
+          "outUsd": 312.5064078725174,
+          "midUsd": 784.2835850177496,
+          "feeRate": 0.0002
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "asset": "SPYx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 10000,
+      "outUsd": 9997.525988474152,
+      "costPct": 0.02474011525848141,
+      "poolsUsed": 2,
+      "pools": 10,
+      "refPool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+      "refMidUsd": 784.0628728581665,
+      "split": {
+        "total": 0.0002474011525848141,
+        "poolFee": 0.00011878365714850474,
+        "transferFee": 0,
+        "basis": -0.0002837906031129936,
+        "impact": 0.00041240809854930295
+      },
+      "legs": [
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "amountIn": 10.362689372577615,
+          "unfilledShare": 0,
+          "outUsd": 8123.054541468377,
+          "midUsd": 784.2857973451144,
+          "feeRate": 0.0001
+        },
+        {
+          "pool": "Fae5dWVntUt6zbWu2voXxioDpMii7SqQwtsxBmoVCsHR",
+          "amountIn": 2.3913898552102197,
+          "unfilledShare": 0,
+          "outUsd": 1874.4714470057754,
+          "midUsd": 784.2835850177496,
+          "feeRate": 0.0002
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "asset": "SPYx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 50000,
+      "outUsd": 49929.95366429067,
+      "costPct": 0.14009267141866788,
+      "poolsUsed": 3,
+      "pools": 10,
+      "refPool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+      "refMidUsd": 784.0628728581665,
+      "split": {
+        "total": 0.0014009267141866788,
+        "poolFee": 0.00039377303043162156,
+        "transferFee": 0,
+        "basis": -0.00019511706159271752,
+        "impact": 0.0012022707453477747
+      },
+      "legs": [
+        {
+          "pool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+          "amountIn": 19.9282487934185,
+          "unfilledShare": 0,
+          "outUsd": 15595.475217887506,
+          "midUsd": 784.0628728581665,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "amountIn": 35.8708478281533,
+          "unfilledShare": 0,
+          "outUsd": 28091.396567627125,
+          "midUsd": 784.2857973451144,
+          "feeRate": 0.0001
+        },
+        {
+          "pool": "Fae5dWVntUt6zbWu2voXxioDpMii7SqQwtsxBmoVCsHR",
+          "amountIn": 7.9712995173674,
+          "unfilledShare": 0,
+          "outUsd": 6243.081878776034,
+          "midUsd": 784.2835850177496,
+          "feeRate": 0.0002
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "asset": "SPYx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 250000,
+      "outUsd": 249350.97437254942,
+      "costPct": 0.2596102509802356,
+      "poolsUsed": 3,
+      "pools": 10,
+      "refPool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+      "refMidUsd": 784.0628728581665,
+      "split": {
+        "total": 0.002596102509802356,
+        "poolFee": 0.0008343812018573692,
+        "transferFee": 0,
+        "basis": -0.00005322176003622067,
+        "impact": 0.0018149430679812073
+      },
+      "legs": [
+        {
+          "pool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+          "amountIn": 259.0672343144405,
+          "unfilledShare": 0,
+          "outUsd": 202553.23629756848,
+          "midUsd": 784.0628728581665,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "amountIn": 49.82062198354625,
+          "unfilledShare": 0,
+          "outUsd": 38996.177393797814,
+          "midUsd": 784.2857973451144,
+          "feeRate": 0.0001
+        },
+        {
+          "pool": "Fae5dWVntUt6zbWu2voXxioDpMii7SqQwtsxBmoVCsHR",
+          "amountIn": 9.96412439670925,
+          "unfilledShare": 0,
+          "outUsd": 7801.560681183137,
+          "midUsd": 784.2835850177496,
+          "feeRate": 0.0002
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "asset": "SPYx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 1000000,
+      "outUsd": 989722.4176262798,
+      "costPct": 1.0277582373720229,
+      "poolsUsed": 4,
+      "pools": 10,
+      "refPool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+      "refMidUsd": 784.0628728581665,
+      "split": {
+        "total": 0.010277582373720229,
+        "poolFee": 0.0008558521496767042,
+        "transferFee": 0,
+        "basis": 0.00005765809514124043,
+        "impact": 0.009364072128902284
+      },
+      "legs": [
+        {
+          "pool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+          "amountIn": 637.703961389392,
+          "unfilledShare": 0,
+          "outUsd": 495435.99248153623,
+          "midUsd": 784.0628728581665,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "BS9uyGV6XmNnPkM4f3xgxCdQEaFv7RSKs6fwrpvYHxfL",
+          "amountIn": 159.425990347348,
+          "unfilledShare": 0,
+          "outUsd": 123564.73233498572,
+          "midUsd": 783.0335449872457,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "amountIn": 398.56497586837,
+          "unfilledShare": 0,
+          "outUsd": 308930.75331148785,
+          "midUsd": 784.2857973451144,
+          "feeRate": 0.0001
+        },
+        {
+          "pool": "Fae5dWVntUt6zbWu2voXxioDpMii7SqQwtsxBmoVCsHR",
+          "amountIn": 79.712995173674,
+          "unfilledShare": 0,
+          "outUsd": 61790.939498269916,
+          "midUsd": 784.2835850177496,
+          "feeRate": 0.0002
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "asset": "SPYx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 5000000,
+      "outUsd": 2726831.853450949,
+      "costPct": 45.46336293098102,
+      "poolsUsed": 9,
+      "pools": 10,
+      "refPool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+      "refMidUsd": 784.0628728581665,
+      "split": {
+        "total": 0.4546336293098102,
+        "poolFee": 0.0009961702219081028,
+        "transferFee": 0,
+        "basis": 0.00009914204763104053,
+        "impact": 0.45353831704027103
+      },
+      "legs": [
+        {
+          "pool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+          "amountIn": 2789.95483107859,
+          "unfilledShare": 0.01871212867483925,
+          "outUsd": 1778831.2150026483,
+          "midUsd": 784.0628728581665,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "BS9uyGV6XmNnPkM4f3xgxCdQEaFv7RSKs6fwrpvYHxfL",
+          "amountIn": 398.56497586836997,
+          "unfilledShare": 0,
+          "outUsd": 301421.81029973435,
+          "midUsd": 783.0335449872457,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "amountIn": 597.847463802555,
+          "unfilledShare": 0,
+          "outUsd": 458061.62958049896,
+          "midUsd": 784.2857973451144,
+          "feeRate": 0.0001
+        },
+        {
+          "pool": "Fae5dWVntUt6zbWu2voXxioDpMii7SqQwtsxBmoVCsHR",
+          "amountIn": 797.1299517367399,
+          "unfilledShare": 0,
+          "outUsd": 148404.83262236213,
+          "midUsd": 784.2835850177496,
+          "feeRate": 0.0002
+        },
+        {
+          "pool": "7sHMnvE7WqP7vQFWJGEnMT4vZg6Za9K7PpddDoXJCqME",
+          "amountIn": 199.28248793418499,
+          "unfilledShare": 0.5261330259069339,
+          "outUsd": 27449.216094539555,
+          "midUsd": 784.1542692202204,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "2dN3fK8xTgYrwoCyt7EydAqVvPvCodYuwGqR2d8sKGFU",
+          "amountIn": 199.28248793418499,
+          "unfilledShare": 0,
+          "outUsd": 1320.750288906867,
+          "midUsd": 780.8021115254496,
+          "feeRate": 0.01
+        },
+        {
+          "pool": "5JWX8pQhJNpFMjPwKhFSSVWRpss4wSyoqgRGnBNJfyuX",
+          "amountIn": 199.28248793418499,
+          "unfilledShare": 0.8410483366772671,
+          "outUsd": 3846.1283181723943,
+          "midUsd": 782.8643005417237,
+          "feeRate": 0.002509375
+        },
+        {
+          "pool": "gef4pD5g6GJSjX7hfXKUfhCVpE89BzX9TXnXJNW6kSt",
+          "amountIn": 996.4124396709249,
+          "unfilledShare": 0,
+          "outUsd": 7487.436550546394,
+          "midUsd": 784.3477041689785,
+          "feeRate": 0.0001
+        },
+        {
+          "pool": "6uAw2iue69CTGsENLS3j2ur4NnBtbmGptFZ1ZZUje5PJ",
+          "amountIn": 199.28248793418499,
+          "unfilledShare": 0.9919808506095719,
+          "outUsd": 8.834693539449384,
+          "midUsd": 784.4829434876872,
+          "feeRate": 0.0005
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "asset": "SPYx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 100,
+      "outUsd": 99.96104546812163,
+      "costPct": 0.03895453187837683,
+      "poolsUsed": 1,
+      "pools": 10,
+      "refPool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+      "refMidUsd": 784.0628728581665,
+      "split": {
+        "total": 0.0003895453187837683,
+        "poolFee": 0.0001,
+        "transferFee": 0,
+        "basis": 0.0002842388421445685,
+        "impact": 0.000005306476639199795
+      },
+      "legs": [
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "amountIn": 100,
+          "unfilledShare": 0,
+          "outUsd": 99.96104546812163,
+          "midUsd": 784.2857973451144,
+          "feeRate": 0.0001
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "asset": "SPYx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 500,
+      "outUsd": 499.79455782976805,
+      "costPct": 0.041088434046387956,
+      "poolsUsed": 1,
+      "pools": 10,
+      "refPool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+      "refMidUsd": 784.0628728581665,
+      "split": {
+        "total": 0.00041088434046387956,
+        "poolFee": 0.0001,
+        "transferFee": 0,
+        "basis": 0.0002842388421445685,
+        "impact": 0.000026645498319311054
+      },
+      "legs": [
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "amountIn": 500,
+          "unfilledShare": 0,
+          "outUsd": 499.79455782976805,
+          "midUsd": 784.2857973451144,
+          "feeRate": 0.0001
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "asset": "SPYx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 2500,
+      "outUsd": 2498.7865826545135,
+      "costPct": 0.04853669381945647,
+      "poolsUsed": 2,
+      "pools": 10,
+      "refPool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+      "refMidUsd": 784.0628728581665,
+      "split": {
+        "total": 0.00048536693819456467,
+        "poolFee": 0.00010625,
+        "transferFee": 0,
+        "basis": 0.0002840625906443406,
+        "impact": 0.00009505434755022408
+      },
+      "legs": [
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "amountIn": 2343.75,
+          "unfilledShare": 0,
+          "outUsd": 2342.6165511958334,
+          "midUsd": 784.2857973451144,
+          "feeRate": 0.0001
+        },
+        {
+          "pool": "Fae5dWVntUt6zbWu2voXxioDpMii7SqQwtsxBmoVCsHR",
+          "amountIn": 156.25,
+          "unfilledShare": 0,
+          "outUsd": 156.17003145868009,
+          "midUsd": 784.2835850177496,
+          "feeRate": 0.0002
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "asset": "SPYx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 10000,
+      "outUsd": 9992.509596077007,
+      "costPct": 0.07490403922992828,
+      "poolsUsed": 3,
+      "pools": 10,
+      "refPool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+      "refMidUsd": 784.0628728581665,
+      "split": {
+        "total": 0.0007490403922992828,
+        "poolFee": 0.0002,
+        "transferFee": 0,
+        "basis": 0.0002571508219429454,
+        "impact": 0.0002918895703563374
+      },
+      "legs": [
+        {
+          "pool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+          "amountIn": 937.5,
+          "unfilledShare": 0,
+          "outUsd": 936.5090495740625,
+          "midUsd": 784.0628728581665,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "amountIn": 7500,
+          "unfilledShare": 0,
+          "outUsd": 7494.728109670655,
+          "midUsd": 784.2857973451144,
+          "feeRate": 0.0001
+        },
+        {
+          "pool": "Fae5dWVntUt6zbWu2voXxioDpMii7SqQwtsxBmoVCsHR",
+          "amountIn": 1562.5,
+          "unfilledShare": 0,
+          "outUsd": 1561.2724368322895,
+          "midUsd": 784.2835850177496,
+          "feeRate": 0.0002
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "asset": "SPYx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 50000,
+      "outUsd": 49918.22760402852,
+      "costPct": 0.16354479194296,
+      "poolsUsed": 4,
+      "pools": 10,
+      "refPool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+      "refMidUsd": 784.0628728581665,
+      "split": {
+        "total": 0.0016354479194296,
+        "poolFee": 0.000890625,
+        "transferFee": 0,
+        "basis": -0.00014578841490896222,
+        "impact": 0.0008906113343385623
+      },
+      "legs": [
+        {
+          "pool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+          "amountIn": 14062.5,
+          "unfilledShare": 0,
+          "outUsd": 14036.410847212914,
+          "midUsd": 784.0628728581665,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "BS9uyGV6XmNnPkM4f3xgxCdQEaFv7RSKs6fwrpvYHxfL",
+          "amountIn": 10937.5,
+          "unfilledShare": 0,
+          "outUsd": 10917.083934220365,
+          "midUsd": 783.0335449872457,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "amountIn": 18750,
+          "unfilledShare": 0,
+          "outUsd": 18725.364361703105,
+          "midUsd": 784.2857973451144,
+          "feeRate": 0.0001
+        },
+        {
+          "pool": "Fae5dWVntUt6zbWu2voXxioDpMii7SqQwtsxBmoVCsHR",
+          "amountIn": 6250,
+          "unfilledShare": 0,
+          "outUsd": 6239.368460892139,
+          "midUsd": 784.2835850177496,
+          "feeRate": 0.0002
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "asset": "SPYx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 250000,
+      "outUsd": 248561.4928985236,
+      "costPct": 0.5754028405905554,
+      "poolsUsed": 5,
+      "pools": 10,
+      "refPool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+      "refMidUsd": 784.0628728581665,
+      "split": {
+        "total": 0.0057540284059055535,
+        "poolFee": 0.00129091796875,
+        "transferFee": 0,
+        "basis": -0.0004111564375020374,
+        "impact": 0.004874266874657591
+      },
+      "legs": [
+        {
+          "pool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+          "amountIn": 78125,
+          "unfilledShare": 0,
+          "outUsd": 77665.31062960901,
+          "midUsd": 784.0628728581665,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "BS9uyGV6XmNnPkM4f3xgxCdQEaFv7RSKs6fwrpvYHxfL",
+          "amountIn": 85937.5,
+          "unfilledShare": 0,
+          "outUsd": 85382.68752103893,
+          "midUsd": 783.0335449872457,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "amountIn": 54687.5,
+          "unfilledShare": 0,
+          "outUsd": 54436.92384239746,
+          "midUsd": 784.2857973451144,
+          "feeRate": 0.0001
+        },
+        {
+          "pool": "Fae5dWVntUt6zbWu2voXxioDpMii7SqQwtsxBmoVCsHR",
+          "amountIn": 23437.5,
+          "unfilledShare": 0,
+          "outUsd": 23318.604885954042,
+          "midUsd": 784.2835850177496,
+          "feeRate": 0.0002
+        },
+        {
+          "pool": "5JWX8pQhJNpFMjPwKhFSSVWRpss4wSyoqgRGnBNJfyuX",
+          "amountIn": 7812.5,
+          "unfilledShare": 0,
+          "outUsd": 7757.966019524185,
+          "midUsd": 782.8643005417237,
+          "feeRate": 0.002509375
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "asset": "SPYx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 1000000,
+      "outUsd": 968625.6626375476,
+      "costPct": 3.137433736245243,
+      "poolsUsed": 4,
+      "pools": 10,
+      "refPool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+      "refMidUsd": 784.0628728581665,
+      "split": {
+        "total": 0.03137433736245243,
+        "poolFee": 0.00154375,
+        "transferFee": 0,
+        "basis": -0.0005631595935927867,
+        "impact": 0.030393746956045218
+      },
+      "legs": [
+        {
+          "pool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+          "amountIn": 343750,
+          "unfilledShare": 0,
+          "outUsd": 333053.57244382455,
+          "midUsd": 784.0628728581665,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "BS9uyGV6XmNnPkM4f3xgxCdQEaFv7RSKs6fwrpvYHxfL",
+          "amountIn": 468750,
+          "unfilledShare": 0,
+          "outUsd": 451870.6481126754,
+          "midUsd": 783.0335449872457,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "amountIn": 93750,
+          "unfilledShare": 0,
+          "outUsd": 92853.25072389426,
+          "midUsd": 784.2857973451144,
+          "feeRate": 0.0001
+        },
+        {
+          "pool": "Fae5dWVntUt6zbWu2voXxioDpMii7SqQwtsxBmoVCsHR",
+          "amountIn": 93750,
+          "unfilledShare": 0,
+          "outUsd": 90848.1913571535,
+          "midUsd": 784.2835850177496,
+          "feeRate": 0.0002
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "asset": "SPYx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 5000000,
+      "outUsd": 1716831.71903238,
+      "costPct": 65.6633656193524,
+      "poolsUsed": 8,
+      "pools": 10,
+      "refPool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+      "refMidUsd": 784.0628728581665,
+      "split": {
+        "total": 0.656633656193524,
+        "poolFee": 0.00096999894076976,
+        "transferFee": 0,
+        "basis": -0.00015757598876065795,
+        "impact": 0.6558212332415149
+      },
+      "legs": [
+        {
+          "pool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+          "amountIn": 781250,
+          "unfilledShare": 0,
+          "outUsd": 701554.7259694857,
+          "midUsd": 784.0628728581665,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "BS9uyGV6XmNnPkM4f3xgxCdQEaFv7RSKs6fwrpvYHxfL",
+          "amountIn": 781250,
+          "unfilledShare": 0,
+          "outUsd": 732079.8735174965,
+          "midUsd": 783.0335449872457,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "4pCZCVEiYyT4efNdXUdL2tJF8VGMgiMXrZWq6FiNXhRw",
+          "amountIn": 156250,
+          "unfilledShare": 0.23043747269870957,
+          "outUsd": 90889.11412381612,
+          "midUsd": 784.2857973451144,
+          "feeRate": 0.0001
+        },
+        {
+          "pool": "Fae5dWVntUt6zbWu2voXxioDpMii7SqQwtsxBmoVCsHR",
+          "amountIn": 1718750,
+          "unfilledShare": 0,
+          "outUsd": 182756.2007950275,
+          "midUsd": 784.2835850177496,
+          "feeRate": 0.0002
+        },
+        {
+          "pool": "7sHMnvE7WqP7vQFWJGEnMT4vZg6Za9K7PpddDoXJCqME",
+          "amountIn": 156250,
+          "unfilledShare": 0.8820985918026717,
+          "outUsd": 1950.1757238094176,
+          "midUsd": 784.1542692202204,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "2dN3fK8xTgYrwoCyt7EydAqVvPvCodYuwGqR2d8sKGFU",
+          "amountIn": 156250,
+          "unfilledShare": 0,
+          "outUsd": 1637.700204373739,
+          "midUsd": 780.8021115254496,
+          "feeRate": 0.01
+        },
+        {
+          "pool": "5JWX8pQhJNpFMjPwKhFSSVWRpss4wSyoqgRGnBNJfyuX",
+          "amountIn": 156250,
+          "unfilledShare": 0.8930983486290949,
+          "outUsd": 1753.2474794810987,
+          "midUsd": 782.8643005417237,
+          "feeRate": 0.002509375
+        },
+        {
+          "pool": "gef4pD5g6GJSjX7hfXKUfhCVpE89BzX9TXnXJNW6kSt",
+          "amountIn": 1093750,
+          "unfilledShare": 0,
+          "outUsd": 4210.681218889868,
+          "midUsd": 784.3477041689785,
+          "feeRate": 0.0001
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "asset": "QQQx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 100,
+      "outUsd": 99.91764220627451,
+      "costPct": 0.08235779372549601,
+      "poolsUsed": 4,
+      "pools": 7,
+      "refPool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+      "refMidUsd": 762.8565447786658,
+      "split": {
+        "total": 0.0008235779372549601,
+        "poolFee": 0.0009847972566829012,
+        "transferFee": 0,
+        "basis": -0.00035576338067838697,
+        "impact": 0.00019454406125044585
+      },
+      "legs": [
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "amountIn": 0.061446677387555534,
+          "unfilledShare": 0,
+          "outUsd": 46.82790764771884,
+          "midUsd": 762.8565447786658,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "3GVB4bXtcrP3MM376mrcJDwfTNThvyorLmVgSTf6kxFt",
+          "amountIn": 0.032771561273362955,
+          "unfilledShare": 0,
+          "outUsd": 24.978805600198545,
+          "midUsd": 763.5597511011199,
+          "feeRate": 0.0016
+        },
+        {
+          "pool": "8Z9m9PzPSMJymPHY7Rsbye4QCJHzxTrban5kcgujc6bw",
+          "amountIn": 0.028675116114192586,
+          "unfilledShare": 0,
+          "outUsd": 21.86359327363148,
+          "midUsd": 763.2140220457883,
+          "feeRate": 0.0005
+        },
+        {
+          "pool": "EibwWLHyuFeqgU6fvi6g5FtDLF9kQsQL5HQXvcJNkDN8",
+          "amountIn": 0.00819289031834074,
+          "unfilledShare": 0,
+          "outUsd": 6.24733568472564,
+          "midUsd": 763.1348918274102,
+          "feeRate": 0.0001
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "asset": "QQQx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 500,
+      "outUsd": 499.49340760708935,
+      "costPct": 0.10131847858212417,
+      "poolsUsed": 3,
+      "pools": 7,
+      "refPool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+      "refMidUsd": 762.8565447786658,
+      "split": {
+        "total": 0.0010131847858212417,
+        "poolFee": 0.0010063568245365412,
+        "transferFee": 0,
+        "basis": -0.00008690064311864781,
+        "impact": 0.00009372860440334835
+      },
+      "legs": [
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "amountIn": 0.573502322283852,
+          "unfilledShare": 0,
+          "outUsd": 437.04405589478057,
+          "midUsd": 762.8565447786658,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "3GVB4bXtcrP3MM376mrcJDwfTNThvyorLmVgSTf6kxFt",
+          "amountIn": 0.0409644515917037,
+          "unfilledShare": 0,
+          "outUsd": 31.222194236941327,
+          "midUsd": 763.5597511011199,
+          "feeRate": 0.0016
+        },
+        {
+          "pool": "8Z9m9PzPSMJymPHY7Rsbye4QCJHzxTrban5kcgujc6bw",
+          "amountIn": 0.0409644515917037,
+          "unfilledShare": 0,
+          "outUsd": 31.22715747536742,
+          "midUsd": 763.2140220457883,
+          "feeRate": 0.0005
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "asset": "QQQx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 2500,
+      "outUsd": 2496.9189535334667,
+      "costPct": 0.12324185866132709,
+      "poolsUsed": 2,
+      "pools": 7,
+      "refPool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+      "refMidUsd": 762.8565447786658,
+      "split": {
+        "total": 0.0012324185866132709,
+        "poolFee": 0.0010187960903381686,
+        "transferFee": 0,
+        "basis": -0.000028806461355150692,
+        "impact": 0.00024242895763025297
+      },
+      "legs": [
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "amountIn": 3.174744998357038,
+          "unfilledShare": 0,
+          "outUsd": 2418.88807726696,
+          "midUsd": 762.8565447786658,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "3GVB4bXtcrP3MM376mrcJDwfTNThvyorLmVgSTf6kxFt",
+          "amountIn": 0.10241112897925925,
+          "unfilledShare": 0,
+          "outUsd": 78.0308762665067,
+          "midUsd": 763.5597511011199,
+          "feeRate": 0.0016
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "asset": "QQQx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 10000,
+      "outUsd": 9980.23931792247,
+      "costPct": 0.197606820775309,
+      "poolsUsed": 2,
+      "pools": 7,
+      "refPool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+      "refMidUsd": 762.8565447786658,
+      "split": {
+        "total": 0.00197606820775309,
+        "poolFee": 0.0010187960903381686,
+        "transferFee": 0,
+        "basis": -0.000028806461355150692,
+        "impact": 0.000986078578770072
+      },
+      "legs": [
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "amountIn": 12.698979993428152,
+          "unfilledShare": 0,
+          "outUsd": 9668.597974924729,
+          "midUsd": 762.8565447786658,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "3GVB4bXtcrP3MM376mrcJDwfTNThvyorLmVgSTf6kxFt",
+          "amountIn": 0.409644515917037,
+          "unfilledShare": 0,
+          "outUsd": 311.6413429977404,
+          "midUsd": 763.5597511011199,
+          "feeRate": 0.0016
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "asset": "QQQx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 50000,
+      "outUsd": 49696.778813255594,
+      "costPct": 0.6064423734888136,
+      "poolsUsed": 3,
+      "pools": 7,
+      "refPool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+      "refMidUsd": 762.8565447786658,
+      "split": {
+        "total": 0.006064423734888136,
+        "poolFee": 0.0010655083156108733,
+        "transferFee": 0,
+        "basis": 0.00003630342956288533,
+        "impact": 0.004962611989714378
+      },
+      "legs": [
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "amountIn": 61.44667738755557,
+          "unfilledShare": 0,
+          "outUsd": 46598.91884937047,
+          "midUsd": 762.8565447786658,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "B6FEtQdwsq8Wuw4G52pW9WEWEA7ALGfyUgXDRKigDSHH",
+          "amountIn": 2.0482225795851847,
+          "unfilledShare": 0,
+          "outUsd": 1551.4948847716687,
+          "midUsd": 761.267120573333,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "3GVB4bXtcrP3MM376mrcJDwfTNThvyorLmVgSTf6kxFt",
+          "amountIn": 2.0482225795851847,
+          "unfilledShare": 0,
+          "outUsd": 1546.365079113456,
+          "midUsd": 763.5597511011199,
+          "feeRate": 0.0016
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "asset": "QQQx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 250000,
+      "outUsd": 243984.17912530474,
+      "costPct": 2.4063283498781063,
+      "poolsUsed": 2,
+      "pools": 7,
+      "refPool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+      "refMidUsd": 762.8565447786658,
+      "split": {
+        "total": 0.024063283498781063,
+        "poolFee": 0.0010934244505454095,
+        "transferFee": 0,
+        "basis": 0.00013021978183607206,
+        "impact": 0.02283963926639958
+      },
+      "legs": [
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "amountIn": 307.23338693777765,
+          "unfilledShare": 0,
+          "outUsd": 228812.0920550269,
+          "midUsd": 762.8565447786658,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "B6FEtQdwsq8Wuw4G52pW9WEWEA7ALGfyUgXDRKigDSHH",
+          "amountIn": 20.48222579585185,
+          "unfilledShare": 0,
+          "outUsd": 15172.087070277823,
+          "midUsd": 761.267120573333,
+          "feeRate": 0.0025
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "asset": "QQQx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 1000000,
+      "outUsd": 908700.0445559577,
+      "costPct": 9.129995544404235,
+      "poolsUsed": 3,
+      "pools": 7,
+      "refPool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+      "refMidUsd": 762.8565447786658,
+      "split": {
+        "total": 0.09129995544404235,
+        "poolFee": 0.0010936011757950177,
+        "transferFee": 0,
+        "basis": 0.00005952968199284429,
+        "impact": 0.09014682458625449
+      },
+      "legs": [
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "amountIn": 1228.9335477511106,
+          "unfilledShare": 0,
+          "outUsd": 852499.136778253,
+          "midUsd": 762.8565447786658,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "B6FEtQdwsq8Wuw4G52pW9WEWEA7ALGfyUgXDRKigDSHH",
+          "amountIn": 40.9644515917037,
+          "unfilledShare": 0,
+          "outUsd": 28013.85295800061,
+          "midUsd": 761.267120573333,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "FknDV1F5n6QaA7rLmjquDjuU6wcPMNm5RYq7zWbqhpZw",
+          "amountIn": 40.9644515917037,
+          "unfilledShare": 0,
+          "outUsd": 28187.054819703983,
+          "midUsd": 762.9927655434599,
+          "feeRate": 0.0025
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "asset": "QQQx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 5000000,
+      "outUsd": 1633060.9728333768,
+      "costPct": 67.33878054333246,
+      "poolsUsed": 7,
+      "pools": 7,
+      "refPool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+      "refMidUsd": 762.8565447786658,
+      "split": {
+        "total": 0.6733878054333247,
+        "poolFee": 0.0011896259815852752,
+        "transferFee": 0,
+        "basis": -0.00020762830132021312,
+        "impact": 0.6724058077530597
+      },
+      "legs": [
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "amountIn": 2662.6893534607407,
+          "unfilledShare": 0.0013338437217419144,
+          "outUsd": 1572723.4535212822,
+          "midUsd": 762.8565447786658,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "B6FEtQdwsq8Wuw4G52pW9WEWEA7ALGfyUgXDRKigDSHH",
+          "amountIn": 204.8222579585185,
+          "unfilledShare": 0.4451162046879931,
+          "outUsd": 35822.8541605952,
+          "midUsd": 761.267120573333,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "FknDV1F5n6QaA7rLmjquDjuU6wcPMNm5RYq7zWbqhpZw",
+          "amountIn": 204.8222579585185,
+          "unfilledShare": 0.7197328715416899,
+          "outUsd": 10650.158656232075,
+          "midUsd": 762.9927655434599,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "3GVB4bXtcrP3MM376mrcJDwfTNThvyorLmVgSTf6kxFt",
+          "amountIn": 2867.511611419259,
+          "unfilledShare": 0,
+          "outUsd": 11670.177376170408,
+          "midUsd": 763.5597511011199,
+          "feeRate": 0.0016
+        },
+        {
+          "pool": "eV4ogmq1yriacUmvXnFr2shVnXDrVidDvVcU24irEEo",
+          "amountIn": 204.8222579585185,
+          "unfilledShare": 0.9550712489973942,
+          "outUsd": 253.66526552601266,
+          "midUsd": 667.3220183390995,
+          "feeRate": 0.002
+        },
+        {
+          "pool": "8Z9m9PzPSMJymPHY7Rsbye4QCJHzxTrban5kcgujc6bw",
+          "amountIn": 204.8222579585185,
+          "unfilledShare": 0,
+          "outUsd": 1932.5756503455964,
+          "midUsd": 763.2140220457883,
+          "feeRate": 0.0005
+        },
+        {
+          "pool": "EibwWLHyuFeqgU6fvi6g5FtDLF9kQsQL5HQXvcJNkDN8",
+          "amountIn": 204.8222579585185,
+          "unfilledShare": 0.9922823852292441,
+          "outUsd": 8.088203225613169,
+          "midUsd": 763.1348918274102,
+          "feeRate": 0.0001
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "asset": "QQQx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 100,
+      "outUsd": 99.94235301472489,
+      "costPct": 0.057646985275117135,
+      "poolsUsed": 1,
+      "pools": 7,
+      "refPool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+      "refMidUsd": 762.8565447786658,
+      "split": {
+        "total": 0.0005764698527511714,
+        "poolFee": 0.0025,
+        "transferFee": 0,
+        "basis": -0.002087866613936562,
+        "impact": 0.00016433646668773333
+      },
+      "legs": [
+        {
+          "pool": "B6FEtQdwsq8Wuw4G52pW9WEWEA7ALGfyUgXDRKigDSHH",
+          "amountIn": 100,
+          "unfilledShare": 0,
+          "outUsd": 99.94235301472489,
+          "midUsd": 761.267120573333,
+          "feeRate": 0.0025
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "asset": "QQQx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 500,
+      "outUsd": 499.54421734146484,
+      "costPct": 0.0911565317070262,
+      "poolsUsed": 2,
+      "pools": 7,
+      "refPool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+      "refMidUsd": 762.8565447786658,
+      "split": {
+        "total": 0.000911565317070262,
+        "poolFee": 0.001609375,
+        "transferFee": 0,
+        "basis": -0.0008481958119117283,
+        "impact": 0.00015038612898199042
+      },
+      "legs": [
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "amountIn": 296.875,
+          "unfilledShare": 0,
+          "outUsd": 296.5696325250189,
+          "midUsd": 762.8565447786658,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "B6FEtQdwsq8Wuw4G52pW9WEWEA7ALGfyUgXDRKigDSHH",
+          "amountIn": 203.125,
+          "unfilledShare": 0,
+          "outUsd": 202.97458481644594,
+          "midUsd": 761.267120573333,
+          "feeRate": 0.0025
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "asset": "QQQx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 2500,
+      "outUsd": 2497.065739188427,
+      "costPct": 0.11737043246292655,
+      "poolsUsed": 2,
+      "pools": 7,
+      "refPool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+      "refMidUsd": 762.8565447786658,
+      "split": {
+        "total": 0.0011737043246292655,
+        "poolFee": 0.0011875,
+        "transferFee": 0,
+        "basis": -0.00026098332674207025,
+        "impact": 0.00024718765137133583
+      },
+      "legs": [
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "amountIn": 2187.5,
+          "unfilledShare": 0,
+          "outUsd": 2184.851496756196,
+          "midUsd": 762.8565447786658,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "B6FEtQdwsq8Wuw4G52pW9WEWEA7ALGfyUgXDRKigDSHH",
+          "amountIn": 312.5,
+          "unfilledShare": 0,
+          "outUsd": 312.21424243223123,
+          "midUsd": 761.267120573333,
+          "feeRate": 0.0025
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "asset": "QQQx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 10000,
+      "outUsd": 9981.121427109663,
+      "costPct": 0.18878572890336232,
+      "poolsUsed": 2,
+      "pools": 7,
+      "refPool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+      "refMidUsd": 762.8565447786658,
+      "split": {
+        "total": 0.0018878572890336232,
+        "poolFee": 0.00109375,
+        "transferFee": 0,
+        "basis": -0.00013049166337103513,
+        "impact": 0.0009245989524046582
+      },
+      "legs": [
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "amountIn": 9375,
+          "unfilledShare": 0,
+          "outUsd": 9357.003301770654,
+          "midUsd": 762.8565447786658,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "B6FEtQdwsq8Wuw4G52pW9WEWEA7ALGfyUgXDRKigDSHH",
+          "amountIn": 625,
+          "unfilledShare": 0,
+          "outUsd": 624.1181253390095,
+          "midUsd": 761.267120573333,
+          "feeRate": 0.0025
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "asset": "QQQx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 50000,
+      "outUsd": 49703.95689179786,
+      "costPct": 0.5920862164042751,
+      "poolsUsed": 2,
+      "pools": 7,
+      "refPool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+      "refMidUsd": 762.8565447786658,
+      "split": {
+        "total": 0.0059208621640427506,
+        "poolFee": 0.00109375,
+        "transferFee": 0,
+        "basis": -0.00013049166337103513,
+        "impact": 0.004957603827413786
+      },
+      "legs": [
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "amountIn": 46875,
+          "unfilledShare": 0,
+          "outUsd": 46595.72515233828,
+          "midUsd": 762.8565447786658,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "B6FEtQdwsq8Wuw4G52pW9WEWEA7ALGfyUgXDRKigDSHH",
+          "amountIn": 3125,
+          "unfilledShare": 0,
+          "outUsd": 3108.231739459579,
+          "midUsd": 761.267120573333,
+          "feeRate": 0.0025
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "asset": "QQQx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 250000,
+      "outUsd": 243141.13269899678,
+      "costPct": 2.7435469204012852,
+      "poolsUsed": 2,
+      "pools": 7,
+      "refPool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+      "refMidUsd": 762.8565447786658,
+      "split": {
+        "total": 0.027435469204012852,
+        "poolFee": 0.00109375,
+        "transferFee": 0,
+        "basis": -0.00013049166337103513,
+        "impact": 0.026472210867383886
+      },
+      "legs": [
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "amountIn": 234375,
+          "unfilledShare": 0,
+          "outUsd": 227915.67729694705,
+          "midUsd": 762.8565447786658,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "B6FEtQdwsq8Wuw4G52pW9WEWEA7ALGfyUgXDRKigDSHH",
+          "amountIn": 15625,
+          "unfilledShare": 0,
+          "outUsd": 15225.45540204973,
+          "midUsd": 761.267120573333,
+          "feeRate": 0.0025
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "asset": "QQQx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 1000000,
+      "outUsd": 659225.4562284141,
+      "costPct": 34.07745437715859,
+      "poolsUsed": 6,
+      "pools": 7,
+      "refPool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+      "refMidUsd": 762.8565447786658,
+      "split": {
+        "total": 0.3407745437715859,
+        "poolFee": 0.001133832784333337,
+        "transferFee": 0,
+        "basis": 0.000057377280814468646,
+        "impact": 0.3395833337064381
+      },
+      "legs": [
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "amountIn": 656250,
+          "unfilledShare": 0,
+          "outUsd": 599542.4162616414,
+          "midUsd": 762.8565447786658,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "B6FEtQdwsq8Wuw4G52pW9WEWEA7ALGfyUgXDRKigDSHH",
+          "amountIn": 62500,
+          "unfilledShare": 0,
+          "outUsd": 55882.32833842341,
+          "midUsd": 761.267120573333,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "FknDV1F5n6QaA7rLmjquDjuU6wcPMNm5RYq7zWbqhpZw",
+          "amountIn": 31250,
+          "unfilledShare": 0.9274584335961964,
+          "outUsd": 155.17508134491342,
+          "midUsd": 762.9927655434599,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "3GVB4bXtcrP3MM376mrcJDwfTNThvyorLmVgSTf6kxFt",
+          "amountIn": 187500,
+          "unfilledShare": 0,
+          "outUsd": 2085.622522386305,
+          "midUsd": 763.5597511011199,
+          "feeRate": 0.0016
+        },
+        {
+          "pool": "8Z9m9PzPSMJymPHY7Rsbye4QCJHzxTrban5kcgujc6bw",
+          "amountIn": 31250,
+          "unfilledShare": 0,
+          "outUsd": 1555.0061253736883,
+          "midUsd": 763.2140220457883,
+          "feeRate": 0.0005
+        },
+        {
+          "pool": "EibwWLHyuFeqgU6fvi6g5FtDLF9kQsQL5HQXvcJNkDN8",
+          "amountIn": 31250,
+          "unfilledShare": 0.987048173427261,
+          "outUsd": 4.90789924450719,
+          "midUsd": 763.1348918274102,
+          "feeRate": 0.0001
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "asset": "QQQx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 5000000,
+      "outUsd": 604763.7020615613,
+      "costPct": 87.90472595876876,
+      "poolsUsed": 6,
+      "pools": 7,
+      "refPool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+      "refMidUsd": 762.8565447786658,
+      "split": {
+        "total": 0.8790472595876877,
+        "poolFee": 0.001377107634970974,
+        "transferFee": 0,
+        "basis": 0.000675950852491504,
+        "impact": 0.8769942011002252
+      },
+      "legs": [
+        {
+          "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+          "amountIn": 625000,
+          "unfilledShare": 0,
+          "outUsd": 573499.3524871315,
+          "midUsd": 762.8565447786658,
+          "feeRate": 0.001
+        },
+        {
+          "pool": "B6FEtQdwsq8Wuw4G52pW9WEWEA7ALGfyUgXDRKigDSHH",
+          "amountIn": 156250,
+          "unfilledShare": 0.5476342002648743,
+          "outUsd": 27590.076447175157,
+          "midUsd": 761.267120573333,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "FknDV1F5n6QaA7rLmjquDjuU6wcPMNm5RYq7zWbqhpZw",
+          "amountIn": 156250,
+          "unfilledShare": 0.985491686719239,
+          "outUsd": 31.035016268983206,
+          "midUsd": 762.9927655434599,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "3GVB4bXtcrP3MM376mrcJDwfTNThvyorLmVgSTf6kxFt",
+          "amountIn": 3750000,
+          "unfilledShare": 0,
+          "outUsd": 2087.250356343241,
+          "midUsd": 763.5597511011199,
+          "feeRate": 0.0016
+        },
+        {
+          "pool": "8Z9m9PzPSMJymPHY7Rsbye4QCJHzxTrban5kcgujc6bw",
+          "amountIn": 156250,
+          "unfilledShare": 0,
+          "outUsd": 1555.0061747936056,
+          "midUsd": 763.2140220457883,
+          "feeRate": 0.0005
+        },
+        {
+          "pool": "EibwWLHyuFeqgU6fvi6g5FtDLF9kQsQL5HQXvcJNkDN8",
+          "amountIn": 156250,
+          "unfilledShare": 0.9974096346854522,
+          "outUsd": 0.9815798489014463,
+          "midUsd": 763.1348918274102,
+          "feeRate": 0.0001
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "asset": "AMZNx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 100,
+      "outUsd": 99.75704860010383,
+      "costPct": 0.2429513998961741,
+      "poolsUsed": 3,
+      "pools": 4,
+      "refPool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+      "refMidUsd": 256.0537228918411,
+      "split": {
+        "total": 0.002429513998961741,
+        "poolFee": 0.0024690142963651037,
+        "transferFee": 0,
+        "basis": -0.00009610793521123264,
+        "impact": 0.000056607637807869814
+      },
+      "legs": [
+        {
+          "pool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+          "amountIn": 0.24408940160733542,
+          "unfilledShare": 0,
+          "outUsd": 62.34260625175082,
+          "midUsd": 256.0537228918411,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "HWZk6MfN28mYqDN1igNETjN2kueEryL33oVgt92Wkv6N",
+          "amountIn": 0.12204470080366776,
+          "unfilledShare": 0,
+          "outUsd": 31.17550226671567,
+          "midUsd": 256.12062176366356,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "DXAbc6Q3BzfnWbJKVdVyEdLfvMprMNtxb8iz36W2ttZj",
+          "amountIn": 0.02440894016073355,
+          "unfilledShare": 0,
+          "outUsd": 6.2389400816373355,
+          "midUsd": 256.11296924649344,
+          "feeRate": 0.0020005
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "asset": "AMZNx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 500,
+      "outUsd": 498.6922058946406,
+      "costPct": 0.26155882107188333,
+      "poolsUsed": 2,
+      "pools": 4,
+      "refPool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+      "refMidUsd": 256.0537228918411,
+      "split": {
+        "total": 0.0026155882107188333,
+        "poolFee": 0.002500081646527958,
+        "transferFee": 0,
+        "basis": -0.00003265861118269311,
+        "impact": 0.00014816517537356857
+      },
+      "legs": [
+        {
+          "pool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+          "amountIn": 1.708625811251349,
+          "unfilledShare": 0,
+          "outUsd": 436.35023228276225,
+          "midUsd": 256.0537228918411,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "HWZk6MfN28mYqDN1igNETjN2kueEryL33oVgt92Wkv6N",
+          "amountIn": 0.2440894016073355,
+          "unfilledShare": 0,
+          "outUsd": 62.34197361187837,
+          "midUsd": 256.12062176366356,
+          "feeRate": 0.0025
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "asset": "AMZNx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 2500,
+      "outUsd": 2492.071122737154,
+      "costPct": 0.31715509051384316,
+      "poolsUsed": 2,
+      "pools": 4,
+      "refPool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+      "refMidUsd": 256.0537228918411,
+      "split": {
+        "total": 0.0031715509051384316,
+        "poolFee": 0.00250004082326398,
+        "transferFee": 0,
+        "basis": -0.000016329305591346552,
+        "impact": 0.0006878393874657984
+      },
+      "legs": [
+        {
+          "pool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+          "amountIn": 9.153352560275087,
+          "unfilledShare": 0,
+          "outUsd": 2336.2838813945773,
+          "midUsd": 256.0537228918411,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "HWZk6MfN28mYqDN1igNETjN2kueEryL33oVgt92Wkv6N",
+          "amountIn": 0.6102235040183387,
+          "unfilledShare": 0,
+          "outUsd": 155.7872413425768,
+          "midUsd": 256.12062176366356,
+          "feeRate": 0.0025
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "asset": "AMZNx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 10000,
+      "outUsd": 9947.696798781135,
+      "costPct": 0.5230320121886511,
+      "poolsUsed": 2,
+      "pools": 4,
+      "refPool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+      "refMidUsd": 256.0537228918411,
+      "split": {
+        "total": 0.005230320121886511,
+        "poolFee": 0.00250004082326398,
+        "transferFee": 0,
+        "basis": -0.000016329305591346552,
+        "impact": 0.0027466086042138784
+      },
+      "legs": [
+        {
+          "pool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+          "amountIn": 36.61341024110035,
+          "unfilledShare": 0,
+          "outUsd": 9325.898164130565,
+          "midUsd": 256.0537228918411,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "HWZk6MfN28mYqDN1igNETjN2kueEryL33oVgt92Wkv6N",
+          "amountIn": 2.4408940160733548,
+          "unfilledShare": 0,
+          "outUsd": 621.7986346505702,
+          "midUsd": 256.12062176366356,
+          "feeRate": 0.0025
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "asset": "AMZNx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 50000,
+      "outUsd": 49181.12953469333,
+      "costPct": 1.6377409306133295,
+      "poolsUsed": 2,
+      "pools": 4,
+      "refPool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+      "refMidUsd": 256.0537228918411,
+      "split": {
+        "total": 0.016377409306133295,
+        "poolFee": 0.0025000408232639785,
+        "transferFee": 0,
+        "basis": -0.000016329305591346555,
+        "impact": 0.013893697788460663
+      },
+      "legs": [
+        {
+          "pool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+          "amountIn": 183.06705120550163,
+          "unfilledShare": 0,
+          "outUsd": 46107.675002306074,
+          "midUsd": 256.0537228918411,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "HWZk6MfN28mYqDN1igNETjN2kueEryL33oVgt92Wkv6N",
+          "amountIn": 12.204470080366775,
+          "unfilledShare": 0,
+          "outUsd": 3073.4545323872603,
+          "midUsd": 256.12062176366356,
+          "feeRate": 0.0025
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "asset": "AMZNx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 250000,
+      "outUsd": 193861.95743031966,
+      "costPct": 22.45521702787213,
+      "poolsUsed": 3,
+      "pools": 4,
+      "refPool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+      "refMidUsd": 256.0537228918411,
+      "split": {
+        "total": 0.22455217027872132,
+        "poolFee": 0.002425592149894217,
+        "transferFee": 0,
+        "basis": -0.000017026163517089235,
+        "impact": 0.2221436042923442
+      },
+      "legs": [
+        {
+          "pool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+          "amountIn": 884.8240808265906,
+          "unfilledShare": 0,
+          "outUsd": 182045.92068248565,
+          "midUsd": 256.0537228918411,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "HWZk6MfN28mYqDN1igNETjN2kueEryL33oVgt92Wkv6N",
+          "amountIn": 61.022350401833876,
+          "unfilledShare": 0.15586324833505413,
+          "outUsd": 10417.394049577484,
+          "midUsd": 256.12062176366356,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "DXAbc6Q3BzfnWbJKVdVyEdLfvMprMNtxb8iz36W2ttZj",
+          "amountIn": 30.511175200916938,
+          "unfilledShare": 0.5516347086820443,
+          "outUsd": 1398.6426982565308,
+          "midUsd": 256.11296924649344,
+          "feeRate": 0.0020005
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "asset": "AMZNx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 1000000,
+      "outUsd": 187604.28208908855,
+      "costPct": 81.23957179109115,
+      "poolsUsed": 3,
+      "pools": 4,
+      "refPool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+      "refMidUsd": 256.0537228918411,
+      "split": {
+        "total": 0.8123957179109115,
+        "poolFee": 0.0023837417874735534,
+        "transferFee": 0,
+        "basis": -0.000004256540879272309,
+        "impact": 0.8100162326643172
+      },
+      "legs": [
+        {
+          "pool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+          "amountIn": 3661.34102411003,
+          "unfilledShare": 0,
+          "outUsd": 182045.92438973568,
+          "midUsd": 256.0537228918411,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "HWZk6MfN28mYqDN1igNETjN2kueEryL33oVgt92Wkv6N",
+          "amountIn": 122.04470080366775,
+          "unfilledShare": 0.577931624167527,
+          "outUsd": 5208.697024788743,
+          "midUsd": 256.12062176366356,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "DXAbc6Q3BzfnWbJKVdVyEdLfvMprMNtxb8iz36W2ttZj",
+          "amountIn": 122.04470080366775,
+          "unfilledShare": 0.8879086771705111,
+          "outUsd": 349.66067456413253,
+          "midUsd": 256.11296924649344,
+          "feeRate": 0.0020005
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "asset": "AMZNx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "sell",
+      "notionalUsd": 5000000,
+      "outUsd": 183157.596059438,
+      "costPct": 96.33684807881124,
+      "poolsUsed": 3,
+      "pools": 4,
+      "refPool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+      "refMidUsd": 256.0537228918411,
+      "split": {
+        "total": 0.9633684807881124,
+        "poolFee": 0.0023517483574945802,
+        "transferFee": 0,
+        "basis": -8.513081758405107e-7,
+        "impact": 0.9610175837387936
+      },
+      "legs": [
+        {
+          "pool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+          "amountIn": 18306.705120550167,
+          "unfilledShare": 0,
+          "outUsd": 182045.92451958562,
+          "midUsd": 256.0537228918411,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "HWZk6MfN28mYqDN1igNETjN2kueEryL33oVgt92Wkv6N",
+          "amountIn": 610.2235040183388,
+          "unfilledShare": 0.9155863248348887,
+          "outUsd": 1041.7394049406778,
+          "midUsd": 256.12062176366356,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "DXAbc6Q3BzfnWbJKVdVyEdLfvMprMNtxb8iz36W2ttZj",
+          "amountIn": 610.2235040183388,
+          "unfilledShare": 0.9775817354344697,
+          "outUsd": 69.93213491168024,
+          "midUsd": 256.11296924649344,
+          "feeRate": 0.0020005
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "asset": "AMZNx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 100,
+      "outUsd": 99.75211358705522,
+      "costPct": 0.24788641294477554,
+      "poolsUsed": 2,
+      "pools": 4,
+      "refPool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+      "refMidUsd": 256.0537228918411,
+      "split": {
+        "total": 0.0024788641294477554,
+        "poolFee": 0.002421953125,
+        "transferFee": 0,
+        "basis": 0.00003614515477938854,
+        "impact": 0.00002076584966836676
+      },
+      "legs": [
+        {
+          "pool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+          "amountIn": 84.375,
+          "unfilledShare": 0,
+          "outUsd": 84.16197877959142,
+          "midUsd": 256.0537228918411,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "DXAbc6Q3BzfnWbJKVdVyEdLfvMprMNtxb8iz36W2ttZj",
+          "amountIn": 15.625,
+          "unfilledShare": 0,
+          "outUsd": 15.590134807463802,
+          "midUsd": 256.11296924649344,
+          "feeRate": 0.0020005
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "asset": "AMZNx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 500,
+      "outUsd": 498.68553406844444,
+      "costPct": 0.26289318631110836,
+      "poolsUsed": 2,
+      "pools": 4,
+      "refPool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+      "refMidUsd": 256.0537228918411,
+      "split": {
+        "total": 0.0026289318631110836,
+        "poolFee": 0.002484390625,
+        "transferFee": 0,
+        "basis": 0.000007229030955877708,
+        "impact": 0.00013731220715520586
+      },
+      "legs": [
+        {
+          "pool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+          "amountIn": 484.375,
+          "unfilledShare": 0,
+          "outUsd": 483.0953992609806,
+          "midUsd": 256.0537228918411,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "DXAbc6Q3BzfnWbJKVdVyEdLfvMprMNtxb8iz36W2ttZj",
+          "amountIn": 15.625,
+          "unfilledShare": 0,
+          "outUsd": 15.590134807463802,
+          "midUsd": 256.11296924649344,
+          "feeRate": 0.0020005
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "asset": "AMZNx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 2500,
+      "outUsd": 2491.989780334347,
+      "costPct": 0.32040878662612515,
+      "poolsUsed": 2,
+      "pools": 4,
+      "refPool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+      "refMidUsd": 256.0537228918411,
+      "split": {
+        "total": 0.0032040878662612515,
+        "poolFee": 0.0025,
+        "transferFee": 0,
+        "basis": 0.00001632504036618021,
+        "impact": 0.0006877628258950713
+      },
+      "legs": [
+        {
+          "pool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+          "amountIn": 2343.75,
+          "unfilledShare": 0,
+          "outUsd": 2336.283881464553,
+          "midUsd": 256.0537228918411,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "HWZk6MfN28mYqDN1igNETjN2kueEryL33oVgt92Wkv6N",
+          "amountIn": 156.25,
+          "unfilledShare": 0,
+          "outUsd": 155.7058988697942,
+          "midUsd": 256.12062176366356,
+          "feeRate": 0.0025
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "asset": "AMZNx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 10000,
+      "outUsd": 9949.154044332128,
+      "costPct": 0.5084595566787198,
+      "poolsUsed": 2,
+      "pools": 4,
+      "refPool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+      "refMidUsd": 256.0537228918411,
+      "split": {
+        "total": 0.005084595566787198,
+        "poolFee": 0.0025,
+        "transferFee": 0,
+        "basis": 0.00001632504036618021,
+        "impact": 0.0025682705264210176
+      },
+      "legs": [
+        {
+          "pool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+          "amountIn": 9375,
+          "unfilledShare": 0,
+          "outUsd": 9327.679725195661,
+          "midUsd": 256.0537228918411,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "HWZk6MfN28mYqDN1igNETjN2kueEryL33oVgt92Wkv6N",
+          "amountIn": 625,
+          "unfilledShare": 0,
+          "outUsd": 621.474319136466,
+          "midUsd": 256.12062176366356,
+          "feeRate": 0.0025
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "asset": "AMZNx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 50000,
+      "outUsd": 49221.63789654338,
+      "costPct": 1.5567242069132292,
+      "poolsUsed": 2,
+      "pools": 4,
+      "refPool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+      "refMidUsd": 256.0537228918411,
+      "split": {
+        "total": 0.015567242069132292,
+        "poolFee": 0.0025,
+        "transferFee": 0,
+        "basis": 0.00001632504036618021,
+        "impact": 0.013050917028766111
+      },
+      "legs": [
+        {
+          "pool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+          "amountIn": 46875,
+          "unfilledShare": 0,
+          "outUsd": 46149.75897984639,
+          "midUsd": 256.0537228918411,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "HWZk6MfN28mYqDN1igNETjN2kueEryL33oVgt92Wkv6N",
+          "amountIn": 3125,
+          "unfilledShare": 0,
+          "outUsd": 3071.8789166969927,
+          "midUsd": 256.12062176366356,
+          "feeRate": 0.0025
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "asset": "AMZNx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 250000,
+      "outUsd": 215825.93798356224,
+      "costPct": 13.66962480657511,
+      "poolsUsed": 3,
+      "pools": 4,
+      "refPool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+      "refMidUsd": 256.0537228918411,
+      "split": {
+        "total": 0.1366962480657511,
+        "poolFee": 0.0024518408220334364,
+        "transferFee": 0,
+        "basis": 0.000019833827855064656,
+        "impact": 0.1342245734158626
+      },
+      "legs": [
+        {
+          "pool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+          "amountIn": 226562.5,
+          "unfilledShare": 0,
+          "outUsd": 200465.31753106226,
+          "midUsd": 256.0537228918411,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "HWZk6MfN28mYqDN1igNETjN2kueEryL33oVgt92Wkv6N",
+          "amountIn": 15625,
+          "unfilledShare": 0.025055412993296507,
+          "outUsd": 13466.348138399018,
+          "midUsd": 256.12062176366356,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "DXAbc6Q3BzfnWbJKVdVyEdLfvMprMNtxb8iz36W2ttZj",
+          "amountIn": 7812.5,
+          "unfilledShare": 0.45804380403076483,
+          "outUsd": 1894.2723141009687,
+          "midUsd": 256.11296924649344,
+          "feeRate": 0.0020005
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "asset": "AMZNx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 1000000,
+      "outUsd": 207781.32666175766,
+      "costPct": 79.22186733382424,
+      "poolsUsed": 4,
+      "pools": 4,
+      "refPool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+      "refMidUsd": 256.0537228918411,
+      "split": {
+        "total": 0.7922186733382424,
+        "poolFee": 0.0023211741406082374,
+        "transferFee": 0,
+        "basis": 0.00015935995268148842,
+        "impact": 0.7897381392449526
+      },
+      "legs": [
+        {
+          "pool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+          "amountIn": 906250,
+          "unfilledShare": 0,
+          "outUsd": 200465.3600624641,
+          "midUsd": 256.0537228918411,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "HWZk6MfN28mYqDN1igNETjN2kueEryL33oVgt92Wkv6N",
+          "amountIn": 31250,
+          "unfilledShare": 0.5125277064966484,
+          "outUsd": 6733.174069199507,
+          "midUsd": 256.12062176366356,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "DXAbc6Q3BzfnWbJKVdVyEdLfvMprMNtxb8iz36W2ttZj",
+          "amountIn": 31250,
+          "unfilledShare": 0.8645109510076908,
+          "outUsd": 473.56807852524355,
+          "midUsd": 256.11296924649344,
+          "feeRate": 0.0020005
+        },
+        {
+          "pool": "2GSuWELUCV3CcGNAHKnD1xpZ6H4nbqDc4SAv5b5U9wJ5",
+          "amountIn": 31250,
+          "unfilledShare": 0.9280385192009736,
+          "outUsd": 109.22445156878666,
+          "midUsd": 274.9303349757931,
+          "feeRate": 0.004
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    },
+    {
+      "assetMint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "asset": "AMZNx",
+      "fetchedAt": "2026-10-06T21:21:16.833Z",
+      "slot": 454020239,
+      "side": "buy",
+      "notionalUsd": 5000000,
+      "outUsd": 201928.55352438142,
+      "costPct": 95.96142892951237,
+      "poolsUsed": 4,
+      "pools": 4,
+      "refPool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+      "refMidUsd": 256.0537228918411,
+      "split": {
+        "total": 0.9596142892951237,
+        "poolFee": 0.002276734828121639,
+        "transferFee": 0,
+        "basis": 0.000031871990536273135,
+        "impact": 0.9573056824764659
+      },
+      "legs": [
+        {
+          "pool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+          "amountIn": 4531250,
+          "unfilledShare": 0,
+          "outUsd": 200465.36020452384,
+          "midUsd": 256.0537228918411,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "HWZk6MfN28mYqDN1igNETjN2kueEryL33oVgt92Wkv6N",
+          "amountIn": 156250,
+          "unfilledShare": 0.9025055412994047,
+          "outUsd": 1346.6348138388646,
+          "midUsd": 256.12062176366356,
+          "feeRate": 0.0025
+        },
+        {
+          "pool": "DXAbc6Q3BzfnWbJKVdVyEdLfvMprMNtxb8iz36W2ttZj",
+          "amountIn": 156250,
+          "unfilledShare": 0.97290219020156,
+          "outUsd": 94.71361570497241,
+          "midUsd": 256.11296924649344,
+          "feeRate": 0.0020005
+        },
+        {
+          "pool": "2GSuWELUCV3CcGNAHKnD1xpZ6H4nbqDc4SAv5b5U9wJ5",
+          "amountIn": 156250,
+          "unfilledShare": 0.9856077038402058,
+          "outUsd": 21.844890313740517,
+          "midUsd": 274.9303349757931,
+          "feeRate": 0.004
+        }
+      ],
+      "solUsd": 120.69390805347378,
+      "vsCollector": null,
+      "source": "Solana RPC getMultipleAccounts (pool and child accounts from the collector cache); Jupiter price API (SOL)",
+      "method": "routed_greedy_32_chunks with per-pool split (packages/risk/src/pools/route.ts)",
+      "methodVersion": "split-0.1",
+      "provenance": "live"
+    }
+  ]
+}

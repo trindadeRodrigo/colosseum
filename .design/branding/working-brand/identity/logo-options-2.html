@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tenonfi · logo options, round 2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{--night:#0C0D12;--night-2:#13151C;--line:#262A36;--line-2:#363B4B;--text:#F3F1EC;--muted:#9A9DAD;--muted-2:#6E7282;
+        --honey:#F5A83A;--honey-deep:#D9881B;--leaf:#3FC47C;--madder:#EF5A6F;--paper:#F7F5F0;--ink:#15161C;--muted-l:#6A6D78;--line-l:#E3DFD6;
+        --sans:"Inter",system-ui,sans-serif;--display:"Inter Tight","Inter",sans-serif;--mono:"IBM Plex Mono",ui-monospace,monospace}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#0A0B0F;color:var(--text);font:15px/1.5 var(--sans)}
+  body{padding-bottom:80px}
+  .wrap{max-width:1360px;margin:0 auto;padding:0 40px}
+  h1,h2{font-family:var(--display);letter-spacing:-.02em;margin:0}
+  h1{font-size:40px;font-weight:600;line-height:1.1}
+  h2{font-size:22px;font-weight:600}
+  h2 small{font:500 12px/1 var(--mono);color:var(--muted-2);margin-left:10px;letter-spacing:.04em}
+  p{margin:0 0 10px;color:var(--muted);max-width:76ch} p b{color:var(--text);font-weight:600}
+  .kicker{font:500 12px/1 var(--mono);color:var(--honey);letter-spacing:.08em;text-transform:uppercase;margin-bottom:14px}
+  header.page{padding:48px 0 28px;border-bottom:1px solid var(--line)}
+  header.page p{max-width:90ch;margin-top:12px}
+  section{padding:36px 0 28px;border-bottom:1px solid var(--line)}
+  .hd{display:flex;align-items:baseline;gap:14px;margin-bottom:6px}
+  .tag{display:inline-block;font:500 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:5px 7px;border-radius:4px;border:1px solid var(--line-2);color:var(--muted)}
+  .tag.rec{color:var(--honey);border-color:rgba(245,168,58,.45)}
+  .meta{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin:10px 0 18px}
+  .meta p{font-size:13.5px;margin:0}
+  .meta b{display:block;font:500 11px/1.6 var(--mono);color:var(--muted-2);text-transform:uppercase;letter-spacing:.06em}
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .panel{border-radius:10px;border:1px solid var(--line);padding:22px 24px;display:grid;grid-template-columns:1fr;gap:18px}
+  .night{background:var(--night);--acc:#F5A83A;--txt:#F3F1EC;--bg:#0C0D12;--cut:#0C0D12;--p-top:#FFC56B;--p-front:#F5A83A;--p-side:#C97E1C;--t-top:#FFFFFF;--t-front:#F3F1EC;--t-side:#CFCAC0;--mu:#9A9DAD}
+  .paper{background:var(--paper);color:var(--ink);border-color:var(--line-l);--acc:#F5A83A;--txt:#15161C;--bg:#F7F5F0;--cut:#15161C;--p-top:#FFC56B;--p-front:#F5A83A;--p-side:#C97E1C;--t-top:#4A4D5A;--t-front:#15161C;--t-side:#0B0C10;--mu:#6A6D78}
+  .sizes{display:flex;align-items:flex-end;gap:28px}
+  .sz{display:flex;flex-direction:column;align-items:center;gap:8px}
+  .sz span{font:500 10px/1 var(--mono);color:var(--mu)}
+  .lockups{display:flex;align-items:center;gap:36px;flex-wrap:wrap}
+  .lk{display:inline-flex;align-items:center;gap:.4em;font:600 1em/1 var(--display);letter-spacing:-.02em}
+  .lk svg{height:1.05em;width:1.05em}
+  .lk .b{font:500 .8em/1 var(--sans);color:var(--mu);letter-spacing:0;margin-left:.1em}
+  .tiles{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .tile{width:72px;height:72px;border-radius:16px;display:flex;align-items:center;justify-content:center}
+  .tile svg{width:44px;height:44px}
+  .tile.h{background:#F5A83A;--acc:#15161C;--txt:#F7F5F0;--bg:#F5A83A;--cut:#15161C;--p-top:#3F4250;--p-front:#15161C;--p-side:#0B0C10;--t-top:#FFFFFF;--t-front:#F7F5F0;--t-side:#D9D5CC}
+  .tile.n{background:#0C0D12;border:1px solid var(--line)}
+  .tile.w{background:#FFFFFF;border:1px solid var(--line-l)}
+  .partner{background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;padding:14px 16px;width:300px;font-family:var(--sans);color:#111827}
+  .partner .k{font-size:11px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em}
+  .partner .v{font:600 22px/1.2 var(--sans);margin:4px 0 8px}
+  .partner .cr{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#6B7280;--acc:#6B7280;--txt:#6B7280;--bg:#FFFFFF;--cut:#FFFFFF;--p-top:#9CA3AF;--p-front:#6B7280;--p-side:#4B5563;--t-top:#D1D5DB;--t-front:#9CA3AF;--t-side:#6B7280}
+  .partner .cr svg{width:13px;height:13px}
+  .partner .cr b{font:600 13px/1 var(--display);letter-spacing:-.02em;color:#374151}
+  .wm{font:600 1em/1 var(--display);letter-spacing:-.02em;position:relative;display:inline-block}
+  .wm .i{position:relative;display:inline-block}
+  .wm .i::after{content:"";position:absolute;left:.075em;top:.06em;width:.19em;height:.19em;border-radius:.04em;background:var(--acc)}
+  .lab{font:500 11px/1.5 var(--mono);color:var(--mu);margin-top:-8px}
+  .rec{background:var(--night-2);border:1px solid var(--line);border-left:3px solid var(--honey);border-radius:10px;padding:18px 20px;margin-top:8px}
+  .rec p{max-width:none}
+  ul{margin:6px 0 10px;padding-left:18px;color:var(--muted)} li{margin:4px 0;max-width:80ch} li b{color:var(--text);font-weight:600}
+  @media (max-width:900px){.pair,.meta{grid-template-columns:1fr}.wrap{padding:0 16px}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- V1 · the face: end view of a pinned through-tenon on a tile -->
+    <symbol id="v1" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="var(--acc)"/><rect x="7" y="10" width="18" height="12" rx="2" fill="var(--cut)"/><rect x="18" y="13.5" width="5" height="5" rx="1" fill="var(--acc)"/></symbol>
+    <symbol id="v1s" viewBox="0 0 16 16"><rect width="16" height="16" rx="4" fill="var(--acc)"/><rect x="3" y="5" width="10" height="6" rx="1" fill="var(--cut)"/><rect x="9" y="6.5" width="3" height="3" rx=".6" fill="var(--acc)"/></symbol>
+    <!-- V2 · a moment before it locks: mortise block and the tenon approaching -->
+    <symbol id="v2" viewBox="0 0 32 32"><rect x="0" y="2" width="16" height="28" rx="3" fill="var(--acc)"/><rect x="7" y="12.5" width="9" height="7" fill="var(--bg)"/><rect x="26" y="6" width="6" height="20" rx="2" fill="var(--txt)"/><rect x="21" y="12.5" width="6" height="7" rx="1" fill="var(--txt)"/><rect x="23" y="15" width="2" height="2" fill="var(--bg)"/></symbol>
+    <symbol id="v2s" viewBox="0 0 16 16"><rect x="0" y="1" width="8" height="14" rx="1.5" fill="var(--acc)"/><rect x="3.5" y="6" width="4.5" height="4" fill="var(--bg)"/><rect x="13" y="3" width="3" height="10" rx="1" fill="var(--txt)"/><rect x="10.5" y="6" width="3" height="4" rx=".5" fill="var(--txt)"/></symbol>
+    <!-- V3 · the joint, axonometric: post in one species, the tenon end through its side in the other, pinned -->
+    <symbol id="v3" viewBox="0 0 34 32"><polygon points="0,13 3,10 12,10 9,13" fill="var(--t-top)"/><rect x="0" y="13" width="9" height="8" fill="var(--t-front)"/><polygon points="8,6 14,0 26,0 20,6" fill="var(--p-top)"/><rect x="8" y="6" width="12" height="26" fill="var(--p-front)"/><polygon points="20,6 26,0 26,26 20,32" fill="var(--p-side)"/><polygon points="21,13 24,10 33,10 30,13" fill="var(--t-top)"/><rect x="21" y="13" width="9" height="8" fill="var(--t-front)"/><polygon points="30,13 33,10 33,18 30,21" fill="var(--t-side)"/><rect x="24" y="15.5" width="2.5" height="2.5" fill="var(--p-front)"/></symbol>
+    <symbol id="v3s" viewBox="0 0 16 16"><rect x="0" y="6" width="4.5" height="4" fill="var(--t-front)"/><polygon points="4,3 7,0 13,0 10,3" fill="var(--p-top)"/><rect x="4" y="3" width="6" height="13" fill="var(--p-front)"/><polygon points="10,3 13,0 13,13 10,16" fill="var(--p-side)"/><polygon points="10.5,6.5 12,5 16,5 14.5,6.5" fill="var(--t-top)"/><rect x="10.5" y="6.5" width="4" height="4" fill="var(--t-front)"/><polygon points="14.5,6.5 16,5 16,9 14.5,10.5" fill="var(--t-side)"/></symbol>
+    <!-- V4 · the t as a joint: stem in one member, crossbar in the other, half-lapped -->
+    <symbol id="v4" viewBox="0 0 32 32"><rect x="11" y="5" width="7" height="27" rx="2" fill="var(--acc)"/><rect x="11" y="26" width="12" height="6" rx="3" fill="var(--acc)"/><rect x="4" y="8" width="22" height="6" rx="1.5" fill="var(--txt)"/></symbol>
+    <symbol id="v4s" viewBox="0 0 16 16"><rect x="5.5" y="2.5" width="3.5" height="12.5" rx="1" fill="var(--acc)"/><rect x="5.5" y="12" width="6" height="3" rx="1.5" fill="var(--acc)"/><rect x="2" y="4" width="11" height="3" rx=".8" fill="var(--txt)"/></symbol>
+    <!-- V5 · wordmark-led: the i's dot is the pin; icon = the i -->
+    <symbol id="v5" viewBox="0 0 32 32"><rect x="12" y="12" width="8" height="20" rx="2" fill="var(--txt)"/><rect x="12" y="2" width="8" height="8" rx="2" fill="var(--acc)"/></symbol>
+    <symbol id="v5s" viewBox="0 0 16 16"><rect x="6" y="6" width="4" height="10" rx="1" fill="var(--txt)"/><rect x="6" y="1" width="4" height="4" rx="1" fill="var(--acc)"/></symbol>
+  </defs>
+</svg>
+<div class="wrap">
+<header class="page">
+  <div class="kicker">Identity · logo options, round 2 · 2026-10-08 · drawn on the accepted palette</div>
+  <h1>Five marks on honey and night</h1>
+  <p>Brief for every mark: say <b>cut to fit</b> and <b>every joint shown</b>, hold at 16 px, recede to a "Powered by" credit, carry "Bearing" without a second brand, and be built from honey, the ground and the ground's text colour only. Wordmark: <b>tenonfi</b>, lowercase, Inter Tight 600, −2% tracking. Each option is shown at 96 / 48 / 32 / 16 on night and on paper, as the primary lockup, as "tenonfi Bearing", as app tiles, and as the partner credit. Round 1's three directions are retired.</p>
+</header>
+
+<!-- V1 -->
+<section>
+  <div class="hd"><h2>1 · The face <small>end view of the pinned through-tenon</small></h2></div>
+  <div class="meta">
+    <p><b>Concept</b>What you see on the outside of a post where a through-tenon comes out: the end grain, and the pin that holds it. A tile, the tenon end cut into it, the pin set toward the end as a draw-bore pin is.</p>
+    <p><b>Says</b>"Held, and you can see what holds it." The pin is the only detail, so it is the provenance pin's parent.</p>
+    <p><b>Risk</b>Three nested shapes can read as a card with a dot or a toggle. The tile saves it in app contexts; alone on a page it is quiet. Best as the small cut of option 3.</p>
+  </div>
+  <div class="pair">
+    <div class="panel night">
+      <div class="sizes"><div class="sz"><svg width="96" height="96"><use href="#v1"/></svg><span>96</span></div><div class="sz"><svg width="48" height="48"><use href="#v1"/></svg><span>48</span></div><div class="sz"><svg width="32" height="32"><use href="#v1"/></svg><span>32</span></div><div class="sz"><svg width="16" height="16"><use href="#v1s"/></svg><span>16 cut</span></div></div>
+      <div class="lockups"><span class="lk" style="font-size:34px"><svg><use href="#v1"/></svg>tenonfi</span><span class="lk" style="font-size:22px"><svg><use href="#v1"/></svg>tenonfi<span class="b">Bearing</span></span></div>
+      <div class="tiles"><div class="tile h"><svg><use href="#v1"/></svg></div><div class="tile n"><svg><use href="#v1"/></svg></div></div>
+    </div>
+    <div class="panel paper">
+      <div class="sizes"><div class="sz"><svg width="96" height="96"><use href="#v1"/></svg><span>96</span></div><div class="sz"><svg width="48" height="48"><use href="#v1"/></svg><span>48</span></div><div class="sz"><svg width="32" height="32"><use href="#v1"/></svg><span>32</span></div><div class="sz"><svg width="16" height="16"><use href="#v1s"/></svg><span>16 cut</span></div></div>
+      <div class="lockups"><span class="lk" style="font-size:34px"><svg><use href="#v1"/></svg>tenonfi</span><span class="lk" style="font-size:22px"><svg><use href="#v1"/></svg>tenonfi<span class="b">Bearing</span></span></div>
+      <div class="partner"><div class="k">Savings goal · Apartment</div><div class="v">$12,480</div><span class="cr">Powered by <svg><use href="#v1s"/></svg><b>tenonfi</b></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- V2 -->
+<section>
+  <div class="hd"><h2>2 · A moment before it locks <small>mortise block, tenon approaching</small></h2></div>
+  <div class="meta">
+    <p><b>Concept</b>The governing idea of the brief, finally drawn: the post with its mortise cut, the rail with its tenon, a gap between them. Two members in two tones. The mortise is negative space, so the ground is part of the mark.</p>
+    <p><b>Says</b>"Cut for each other." The most literal "made to measure". The gap is the promise: it fits, you can see it will.</p>
+    <p><b>Risk</b>A socket and a plug. That is the right meaning, but a USB reading is possible at 16 px. The two tones and the pin hole hold it above icon level at 32 and up.</p>
+  </div>
+  <div class="pair">
+    <div class="panel night">
+      <div class="sizes"><div class="sz"><svg width="96" height="96"><use href="#v2"/></svg><span>96</span></div><div class="sz"><svg width="48" height="48"><use href="#v2"/></svg><span>48</span></div><div class="sz"><svg width="32" height="32"><use href="#v2"/></svg><span>32</span></div><div class="sz"><svg width="16" height="16"><use href="#v2s"/></svg><span>16 cut</span></div></div>
+      <div class="lockups"><span class="lk" style="font-size:34px"><svg><use href="#v2"/></svg>tenonfi</span><span class="lk" style="font-size:22px"><svg><use href="#v2"/></svg>tenonfi<span class="b">Bearing</span></span></div>
+      <div class="tiles"><div class="tile h"><svg><use href="#v2"/></svg></div><div class="tile n"><svg><use href="#v2"/></svg></div></div>
+    </div>
+    <div class="panel paper">
+      <div class="sizes"><div class="sz"><svg width="96" height="96"><use href="#v2"/></svg><span>96</span></div><div class="sz"><svg width="48" height="48"><use href="#v2"/></svg><span>48</span></div><div class="sz"><svg width="32" height="32"><use href="#v2"/></svg><span>32</span></div><div class="sz"><svg width="16" height="16"><use href="#v2s"/></svg><span>16 cut</span></div></div>
+      <div class="lockups"><span class="lk" style="font-size:34px"><svg><use href="#v2"/></svg>tenonfi</span><span class="lk" style="font-size:22px"><svg><use href="#v2"/></svg>tenonfi<span class="b">Bearing</span></span></div>
+      <div class="partner"><div class="k">Savings goal · Apartment</div><div class="v">$12,480</div><span class="cr">Powered by <svg><use href="#v2s"/></svg><b>tenonfi</b></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- V3 -->
+<section>
+  <div class="hd"><h2>3 · The joint <small>axonometric, two species, pinned</small></h2><span class="tag rec">recommended, with 1 as its small cut</span></div>
+  <div class="meta">
+    <p><b>Concept</b>A post in one species with the tenon end of a rail coming through its side in the other, held by a pin of the first. Three flat tones per member, no gradient, no outline. It is the master photograph reduced to its structure.</p>
+    <p><b>Says</b>"A real joint, and you can see through it." It is the only option that reads as wood and as joinery without being told. Honey post, pale tenon on night; the tenon goes ink on paper, so the two temperatures of the identity are in the mark.</p>
+    <p><b>Risk</b>Six faces at 16 px is too many, so the small cut drops the pin and the side faces. Isometric marks are common in infra brands (Vercel's triangle, Linear's lines), but none of them draws a joint.</p>
+  </div>
+  <div class="pair">
+    <div class="panel night">
+      <div class="sizes"><div class="sz"><svg width="96" height="96"><use href="#v3"/></svg><span>96</span></div><div class="sz"><svg width="48" height="48"><use href="#v3"/></svg><span>48</span></div><div class="sz"><svg width="32" height="32"><use href="#v3"/></svg><span>32</span></div><div class="sz"><svg width="16" height="16"><use href="#v3s"/></svg><span>16 cut</span></div><div class="sz"><svg width="16" height="16"><use href="#v1s"/></svg><span>16 · opt 1</span></div></div>
+      <div class="lockups"><span class="lk" style="font-size:34px"><svg><use href="#v3"/></svg>tenonfi</span><span class="lk" style="font-size:22px"><svg><use href="#v3"/></svg>tenonfi<span class="b">Bearing</span></span></div>
+      <div class="tiles"><div class="tile h"><svg><use href="#v3"/></svg></div><div class="tile n"><svg><use href="#v3"/></svg></div><div class="tile n"><svg><use href="#v1"/></svg></div></div>
+    </div>
+    <div class="panel paper">
+      <div class="sizes"><div class="sz"><svg width="96" height="96"><use href="#v3"/></svg><span>96</span></div><div class="sz"><svg width="48" height="48"><use href="#v3"/></svg><span>48</span></div><div class="sz"><svg width="32" height="32"><use href="#v3"/></svg><span>32</span></div><div class="sz"><svg width="16" height="16"><use href="#v3s"/></svg><span>16 cut</span></div><div class="sz"><svg width="16" height="16"><use href="#v1s"/></svg><span>16 · opt 1</span></div></div>
+      <div class="lockups"><span class="lk" style="font-size:34px"><svg><use href="#v3"/></svg>tenonfi</span><span class="lk" style="font-size:22px"><svg><use href="#v3"/></svg>tenonfi<span class="b">Bearing</span></span></div>
+      <div class="partner"><div class="k">Savings goal · Apartment</div><div class="v">$12,480</div><span class="cr">Powered by <svg><use href="#v3s"/></svg><b>tenonfi</b></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- V4 -->
+<section>
+  <div class="hd"><h2>4 · The t as a joint <small>lettermark, two members half-lapped</small></h2></div>
+  <div class="meta">
+    <p><b>Concept</b>A lowercase t built from two members: the stem in honey, the crossbar in the ground's text colour, lapped where they cross, with the t's foot so it never reads as a cross.</p>
+    <p><b>Says</b>"tenon", and that the name is made of parts. A letter, so it carries the brand on its own without the wordmark.</p>
+    <p><b>Risk</b>A lettermark says the least about fit or provenance. Letter t marks are plentiful (Tumblr, Trello's old mark, Typeform). It stands apart only through the two tones.</p>
+  </div>
+  <div class="pair">
+    <div class="panel night">
+      <div class="sizes"><div class="sz"><svg width="96" height="96"><use href="#v4"/></svg><span>96</span></div><div class="sz"><svg width="48" height="48"><use href="#v4"/></svg><span>48</span></div><div class="sz"><svg width="32" height="32"><use href="#v4"/></svg><span>32</span></div><div class="sz"><svg width="16" height="16"><use href="#v4s"/></svg><span>16 cut</span></div></div>
+      <div class="lockups"><span class="lk" style="font-size:34px"><svg><use href="#v4"/></svg>tenonfi</span><span class="lk" style="font-size:22px"><svg><use href="#v4"/></svg>tenonfi<span class="b">Bearing</span></span></div>
+      <div class="tiles"><div class="tile h"><svg><use href="#v4"/></svg></div><div class="tile n"><svg><use href="#v4"/></svg></div></div>
+    </div>
+    <div class="panel paper">
+      <div class="sizes"><div class="sz"><svg width="96" height="96"><use href="#v4"/></svg><span>96</span></div><div class="sz"><svg width="48" height="48"><use href="#v4"/></svg><span>48</span></div><div class="sz"><svg width="32" height="32"><use href="#v4"/></svg><span>32</span></div><div class="sz"><svg width="16" height="16"><use href="#v4s"/></svg><span>16 cut</span></div></div>
+      <div class="lockups"><span class="lk" style="font-size:34px"><svg><use href="#v4"/></svg>tenonfi</span><span class="lk" style="font-size:22px"><svg><use href="#v4"/></svg>tenonfi<span class="b">Bearing</span></span></div>
+      <div class="partner"><div class="k">Savings goal · Apartment</div><div class="v">$12,480</div><span class="cr">Powered by <svg><use href="#v4s"/></svg><b>tenonfi</b></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- V5 -->
+<section>
+  <div class="hd"><h2>5 · The pin on the i <small>wordmark-led; the icon is the i</small></h2></div>
+  <div class="meta">
+    <p><b>Concept</b>No symbol. The wordmark carries the brand, and the one touch of colour is the dot of the i, drawn as a square pin in honey. The icon is that i: a stem in the text colour and the pin above it.</p>
+    <p><b>Says</b>"Said, and pinned." The lightest system: the brand recedes to a word, which suits the embed.</p>
+    <p><b>Risk</b>The i alone reads as an information icon. And the wordmark lives in Inter Tight, which half the category also uses, so it is ownable only by the pin. Works well as the companion wordmark to options 2 or 3.</p>
+  </div>
+  <div class="pair">
+    <div class="panel night">
+      <div class="sizes"><div class="sz"><svg width="96" height="96"><use href="#v5"/></svg><span>96</span></div><div class="sz"><svg width="48" height="48"><use href="#v5"/></svg><span>48</span></div><div class="sz"><svg width="32" height="32"><use href="#v5"/></svg><span>32</span></div><div class="sz"><svg width="16" height="16"><use href="#v5s"/></svg><span>16 cut</span></div></div>
+      <div class="lockups"><span class="wm" style="font-size:40px">tenonf<span class="i">ı</span></span><span class="lk" style="font-size:22px"><span class="wm">tenonf<span class="i">ı</span></span><span class="b">Bearing</span></span></div>
+      <div class="tiles"><div class="tile h"><svg><use href="#v5"/></svg></div><div class="tile n"><svg><use href="#v5"/></svg></div></div>
+    </div>
+    <div class="panel paper">
+      <div class="sizes"><div class="sz"><svg width="96" height="96"><use href="#v5"/></svg><span>96</span></div><div class="sz"><svg width="48" height="48"><use href="#v5"/></svg><span>48</span></div><div class="sz"><svg width="32" height="32"><use href="#v5"/></svg><span>32</span></div><div class="sz"><svg width="16" height="16"><use href="#v5s"/></svg><span>16 cut</span></div></div>
+      <div class="lockups"><span class="wm" style="font-size:40px">tenonf<span class="i">ı</span></span><span class="lk" style="font-size:22px"><span class="wm">tenonf<span class="i">ı</span></span><span class="b">Bearing</span></span></div>
+      <div class="partner"><div class="k">Savings goal · Apartment</div><div class="v">$12,480</div><span class="cr">Powered by <b class="wm" style="font-size:13px;--acc:#F5A83A">tenonf<span class="i">ı</span></b></span></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Recommendation</h2>
+  <div class="rec">
+    <p><b>Option 3 as the mark, option 1 as its small cut, and the plain wordmark.</b> Three is the only drawing that says "wood joint" unprompted, and it puts both temperatures of the new identity in one shape: honey post, pale tenon on night, ink tenon on paper. One is literally the end of that tenon seen from outside, so the favicon and the credit stay the same joint at a size where the axonometric cannot survive. The provenance pin inherits the square pin from both. Two is the strongest story and the runner-up; take it if you want the "fit" told literally and accept the plug reading at 16 px. Four and five are there to show the alternatives were drawn, not to compete.</p>
+    <ul>
+      <li><b>If you pick 3 + 1:</b> I draw the three cuts to a pixel grid (32, 24, 16), the wordmark outlines, the lockups and tiles, export SVG, PNG and ICO, and write the construction and usage spec to replace logo-directions.md.</li>
+      <li><b>In parallel, on your yes to the identity:</b> record the decision, rewrite the colour and type chunks, regenerate tokens, STYLE.md and the component specs, then reskin the landing prototype on the new system.</li>
+      <li><b>Not yet:</b> anything in apps/web. The web app takes the tokens once STYLE.md is rewritten, not before.</li>
+    </ul>
+  </div>
+</section>
+</div>
+</body>
+</html>

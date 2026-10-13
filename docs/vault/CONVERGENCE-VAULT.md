@@ -57,7 +57,7 @@ docs/        GATES  PRIOR-WORK  DATA-MODEL  README
              vault/  risk/  structurer/
 ```
 
-`schemas` imports nothing. `risk` and `basket` import only `schemas`; `engine` may import `basket`. Only `api` and `keeper` join logic, chains and the database. `web` and `mcp` never import the database, the engine or a chain package. Only the keeper and scripts can reach a signing key.
+`schemas` imports nothing. `risk` and `basket` import only `schemas`; `engine` may import `basket`. Only `api`, `keeper` and `snapshot` (the worker that keeps each vault's history; gate `SNAPSHOT-WORKER`) join logic, chains and the database. `web` and `mcp` never import the database, the engine or a chain package. Only the keeper and scripts can reach a signing key.
 
 ## Decisions
 

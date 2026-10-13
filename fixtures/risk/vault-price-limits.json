@@ -1,0 +1,29 @@
+{
+  "source": "docs/vault/DESIGN-VAULT.md, the rule table, row 8 (fresh price) and row 9 (market open), and the line \"Fresh within 120 s\" of the table of what changed; for EVM also contracts/script/config/example.json as contracts/test/Deploy.t.sol reads it. Transcribed 2026-10-06 for PLAN-UNIVERSE RU.9; nothing is read from a deployed vault",
+  "method": "manual_transcription",
+  "fetchedAt": "2026-10-06T19:00:00Z",
+  "provenance": "fixture",
+  "chains": {
+    "solana": {
+      "maxAgeSeconds": 120,
+      "maxAgeNote": "Config.max_price_age_s: the Scope entry at most 120 s old",
+      "maxDistanceBps": 200,
+      "maxDistanceNote": "twap_dev_bps: the price within 200 bps of Scope's 1-hour average",
+      "maxDistancePlaceholder": true
+    },
+    "evm": {
+      "maxAgeSeconds": 93600,
+      "maxAgeNote": "the asset's maxAge: 26 h for an EVM stock",
+      "maxDistanceBps": 200,
+      "maxDistanceNote": "priceDevBps: the feed within 200 bps of its averageFeed, the value of the example deploy config; the factory's own value is set at deploy",
+      "maxDistancePlaceholder": true
+    }
+  },
+  "session": {
+    "label": "Mon to Fri, 14:30 to 20:00 UTC, closed days and half days out",
+    "weekdaysUtc": [1, 2, 3, 4, 5],
+    "fromUtcMinute": 870,
+    "toUtcMinute": 1200,
+    "closedDays": "fixtures/risk/us-market-holidays.json: closed and earlyClose13ET, half days counted as closed"
+  }
+}

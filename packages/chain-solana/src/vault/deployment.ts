@@ -13,7 +13,8 @@ const Token = z.strictObject({
   symbol: z.string().min(1),
   name: z.string().min(1),
   modelOf: z.string().min(1),
-  kind: z.enum(['stock', 'gold', 'dollar_yield', 'cash']),
+  // An index fund (SPYx, QQQx) is `etf`, as Robinhood Chain's record has it: one stock's cap is not its.
+  kind: z.enum(['stock', 'etf', 'gold', 'dollar_yield', 'cash']),
   mint: SolanaAddress,
   tokenProgram: z.enum(['token', 'token-2022']),
   decimals: z.number().int().min(0).max(18),
@@ -77,6 +78,8 @@ export const SolanaDeploymentRecord = z.strictObject({
       symbol: z.string().nullable(),
       mint: SolanaAddress,
       tokenProgram: z.enum(['token', 'token-2022']),
+      /** As the mint holds them: the set-up reads them from it. */
+      decimals: z.number().int().min(0).max(255),
       keeperOn: z.literal(false),
     }),
   ),

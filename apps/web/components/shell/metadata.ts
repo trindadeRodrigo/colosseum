@@ -16,11 +16,83 @@ export async function shellMetadata() {
 export async function goalMetadata() {
   const { lang } = await readPreferences();
   const t = dictionary(lang);
-  return { title: t.goal.composer.label, description: t.goal.title };
+  return { title: t.shell.invest, description: t.goal.title };
+}
+
+export async function monitorMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.shell.portfolio, description: t.portfolio.lead };
 }
 
 export async function signInMetadata() {
   const { lang } = await readPreferences();
   const t = dictionary(lang);
   return { title: t.shell.signIn, description: t.signIn.title };
+}
+
+export async function planMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.plan.title, description: t.plan.description };
+}
+
+export async function buyMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.buy.title, description: t.buy.funding.title };
+}
+
+export async function addMoneyMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.portfolio.add.title, description: t.buy.funding.title };
+}
+
+export async function orderMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.order.title, description: t.order.review.title };
+}
+
+export async function shelfMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.shared.meta.shelf, description: t.shared.shelf.lead };
+}
+
+export async function familyMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.shared.meta.family, description: t.shared.meta.familyDescription };
+}
+
+export async function familyBuyMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.shared.buy.title, description: t.shared.meta.familyDescription };
+}
+
+export async function publishMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.shared.meta.publish, description: t.shared.meta.publishDescription };
+}
+
+export async function vaultMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.shared.meta.vault, description: t.shared.vault.title };
+}
+
+export async function targetsMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.mix.editor.title, description: t.mix.editor.lead };
+}
+
+export async function withdrawMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.withdraw.meta, description: t.withdraw.title };
 }

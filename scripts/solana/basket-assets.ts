@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { deploymentAssets, SolanaDeploymentRecord } from '@colosseum/chain-solana/vault';
 import { basketAssets, createDb, type Db } from '@colosseum/db';
-import type { BasketAsset } from '@colosseum/schemas';
+import type { BasketAsset, ChainId } from '@colosseum/schemas';
 import { and, eq, inArray } from 'drizzle-orm';
 
 // Fills `basket_assets` with a Solana network's tokens from its deploy record, the list the API's
@@ -44,8 +44,26 @@ const columns = (a: BasketAsset) => ({
 });
 
 export async function fillBasketAssets(db: Db, record: SolanaDeploymentRecord): Promise<Filled[]> {
+  return fillChainAssets(
+    db,
+    'solana',
+    deploymentAssets(record),
+    record.retired.map((r) => r.mint),
+  );
+}
+
+/**
+ * The same for any chain: the assets a record makes (its `deploymentAssets`) and the addresses of the
+ * tokens it retired. The EVM chains' script (`scripts/robinhood/basket-assets.ts`) runs on this.
+ */
+export async function fillChainAssets(
+  db: Db,
+  chain: ChainId,
+  assets: BasketAsset[],
+  retired: string[],
+): Promise<Filled[]> {
   const out: Filled[] = [];
-  for (const asset of deploymentAssets(record)) {
+  for (const asset of assets) {
     const want = columns(asset);
     const [row] = await db.select().from(basketAssets).where(eq(basketAssets.id, asset.id));
     if (row) {
@@ -67,12 +85,11 @@ export async function fillBasketAssets(db: Db, record: SolanaDeploymentRecord): 
   // A token the deploy retired is no longer the network's to offer: its row goes. It stays listed on
   // chain, and a vault that holds it still sees it and withdraws it, under its mint. A row something
   // else still points at (a price observed for it) stays, and says so; the API leaves it out anyway.
-  const retired = record.retired.map((r) => r.mint);
   const rows = retired.length
     ? await db
         .select({ id: basketAssets.id, address: basketAssets.address })
         .from(basketAssets)
-        .where(and(eq(basketAssets.chainId, 'solana'), inArray(basketAssets.address, retired)))
+        .where(and(eq(basketAssets.chainId, chain), inArray(basketAssets.address, retired)))
     : [];
   for (const row of rows) {
     try {

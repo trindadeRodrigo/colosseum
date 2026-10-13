@@ -12,11 +12,14 @@ import {
   scanCss,
   scanSource,
   strangeFamilies,
+  stringsOf,
 } from './test/forbidden';
 
 // The forbidden things (STYLE.md, "Never"), looked for in the source of apps/web and in the stylesheet
-// the app is built from: a blue or a violet, a shadow, a corner that is not 0 or 2px outside the
-// composer, a typeface that is not one of the three, a font fetched from another origin.
+// the app is built from: a blue or a violet other than chalk as a line, a shadow other than the
+// popover's, a corner off the system's steps (0, 6, 8, 10, 16px, pills; 20px for the composer alone),
+// a typeface that is not one of the three, a gradient that is not the hatch or the light, a font
+// fetched from another origin.
 
 /**
  * What was written before the design system and still breaks it. WEB-2 rebuilds these pages on the
@@ -26,28 +29,29 @@ import {
  * sign-in control off the list: it is built on the primitives now.
  */
 const LEGACY: Record<string, readonly Kind[]> = {
-  // Rodrigo's pages and components: Tailwind's cool greys, blue links, 4px corners, chart colours,
-  // and two uppercase labels
+  // Rodrigo's pages and components: blue links, 4px corners, and two uppercase labels
+  // (Tailwind's cool greys are no longer a finding: the rule for blue reads them as the cool greys
+  // of night, IDENTITY-2)
   'app/(structurer)/layout.tsx': ['hue'],
-  'app/(structurer)/page.tsx': ['hue'],
-  'app/(structurer)/monitor/page.tsx': ['hue', 'radius'],
-  'app/(structurer)/embed/[id]/layout.tsx': ['hue', 'radius', 'case'],
-  'app/(structurer)/risk/page.tsx': ['hue'],
-  'app/(structurer)/risk/[asset]/page.tsx': ['hue'],
-  'app/(structurer)/risk/methodology/page.tsx': ['hue'],
-  'components/GoalFlow.tsx': ['hue', 'radius'],
   'components/PlanView.tsx': ['hue'],
   'components/Provenance.tsx': ['radius', 'case'],
-  'components/StatsCard.tsx': ['hue', 'radius'],
-  'components/ScheduleChart.tsx': ['hue'],
-  'components/risk/CostCurveChart.tsx': ['hue'],
-  'components/risk/HourOfWeekHeatmap.tsx': ['hue'],
-  // the wallet check, a development page (WAL-1), plain until it takes the primitives
-  'features/wallet/dev/DevWallet.tsx': ['hue'],
+};
+
+/**
+ * Pictures drawn at build by `next/og`, which reads no stylesheet and so no `var(--font-…)`: each
+ * names the brand's face itself, and that finding alone is excused. So are the two files where the faces
+ * are defined (app/fonts.ts, app/fonts-mono.ts): each face is told its own name there, since
+ * `next/font/local` would name it after its export.
+ */
+const DRAWN: Record<string, readonly string[]> = {
+  'app/opengraph-image.tsx': ["fontFamily: 'Inter Tight'", "fontFamily: 'Inter'"],
+  'app/fonts.ts': ['font-family'],
+  'app/fonts-mono.ts': ['font-family'],
 };
 
 /** The product's own routes and what they are built from: none of it may ever be on the list above. */
-const PRODUCT = /^(app\/\(app\)|components\/shell|features\/(account|goal)|i18n)\//;
+const PRODUCT =
+  /^(app\/\((app|marketing|embed)\)|components\/shell|features\/(account|goal|portfolio|landing|order|embed)|i18n)\//;
 
 /**
  * The stylesheet of @solana/wallet-adapter-react-ui, which the layout of the pages not yet rebuilt
@@ -60,6 +64,37 @@ const ADAPTER = {
   stylesheet: '@solana/wallet-adapter-react-ui/styles.css',
   kinds: ['hue', 'shadow', 'radius', 'font', 'host', 'align'] as readonly Kind[],
 };
+
+/**
+ * SVG drawings whose corners are their own geometry, not a surface's (an `rx` on a rect): the mark
+ * (logo-directions.md, "Cuts by size", in the nav, the icons and the link preview), the provenance
+ * pin (provenance-pin.md).
+ */
+const DRAWINGS = new Set([
+  'app/opengraph-image.tsx',
+  'components/shell/Mark.tsx',
+  'components/ui/ProvenancePin.tsx',
+  'scripts/make-icons.mjs',
+]);
+
+/** The only places the popover's shadow may sit: popovers, and the composer. */
+// Hint.tsx holds the one popover surface: the pin's popover and every tooltip are drawn by it.
+const SHADOWED = new Set([
+  'components/ui/Hint.tsx',
+  'components/ui/Composer.tsx',
+  // the list behind "More" on a vault's own page: a disclosure of links and buttons that opens on a
+  // press and stays, which the hover card (Hint) is not
+  'features/shared/MoreMenu.tsx',
+]);
+
+/** Uppercase is for captions and column heads at 12px or less (STYLE.md): it sits beside that size. */
+const CAPTION =
+  /(^|\s)(text-caption|text-b-head|text-xs|text-\[(1[01](\.\d+)?|12)px\])(\/\S+)?(\s|$)/;
+/** The class strings of a file that set uppercase without a caption's size. */
+const loudStrings = (file: string) =>
+  stringsOf(file, read(file)).filter(
+    (s) => /(^|\s)([\w-]+:)*uppercase(\s|$)/.test(s) && !CAPTION.test(s),
+  );
 
 /**
  * Where text may be centred, and by what. Centred or justified body text is forbidden (STYLE.md), so
@@ -110,6 +145,19 @@ function blame(findings: Finding[], root: postcss.Root): Blame[] {
   });
 }
 
+/** The popover's shadow, on a popover or the composer only. */
+const popover = (b: Blame) =>
+  b.finding.kind === 'shadow' &&
+  b.finding.classes.includes('shadow-popover') &&
+  b.files.length > 0 &&
+  b.files.every((file) => SHADOWED.has(file));
+
+/** Uppercase on a caption or a column head: every file that asks for it sets a caption's size beside it. */
+const caption = (b: Blame) =>
+  b.finding.kind === 'case' &&
+  b.files.length > 0 &&
+  b.files.every((file) => LEGACY[file]?.includes('case') || loudStrings(file).length === 0);
+
 /** Centred text that a spec allows: every file that uses the class is on the list. */
 const centred = (b: Blame) =>
   b.finding.kind === 'align' && b.files.length > 0 && b.files.every((file) => file in CENTRED);
@@ -120,7 +168,7 @@ const say = (b: Blame) =>
 describe('the forbidden things', () => {
   describe('the rule for blue and violet', () => {
     it('is a hue between 200° and 330° in OKLCH with a chroma of 0.008 or more', () => {
-      expect(BLUE).toEqual({ from: 200, to: 330, chroma: 0.008 });
+      expect(BLUE).toEqual({ from: 200, to: 330, chroma: 0.03 });
       const is = (c: string) => isBlueOrViolet(parseColor(c) as never);
       for (const blue of [
         '#0000ff',
@@ -130,22 +178,30 @@ describe('the forbidden things', () => {
         'oklch(48.8% 0.243 264.376)',
         '#512da8',
         '#CAE3F4',
-        '#6b7280',
+        // chalk is a blue by the rule: it is allowed by name, as a line, and nowhere else
+        '#78B4E8',
+        '#2A73B0',
       ])
         expect(is(blue), blue).toBe(true);
-      // every colour of the brand, the three status pigments included, and true greys
+      // every other colour of the brand: honey, the cool greys of night and the warm paper of day,
+      // the direction colours, and true greys
       for (const fine of [
-        '#F6F1E8',
-        '#1C1712',
-        '#7A5A3A',
-        '#E6D3B7',
-        '#6E655B',
-        '#2F4A2A',
-        '#8A5A00',
-        '#A8324A',
-        '#E58AA0',
-        '#FAEAEC',
-        '#0D0B09',
+        '#F5A83A',
+        '#9D5A00',
+        '#0C0D12',
+        '#13151C',
+        '#1A1D26',
+        '#262A36',
+        '#363B4B',
+        '#9A9DAD',
+        '#6E7282',
+        '#676A75',
+        '#15161C',
+        '#F7F5F0',
+        '#3FC47C',
+        '#F0703A',
+        '#EF5A6F',
+        '#B52F44',
         '#ffffff',
         '#000000',
         '#808080',
@@ -159,11 +215,28 @@ describe('the forbidden things', () => {
     const kinds = (css: string, vars = new Map<string, string>()) =>
       scanCss(postcss.parse(css), vars).map((f) => f.kind);
 
-    it('finds uppercase anywhere but on the MOCK plate', () => {
+    it('finds uppercase everywhere: a caption’s size is what excuses it, in the source', () => {
       expect(kinds('.label { text-transform: uppercase }')).toEqual(['case']);
       expect(kinds('.hover\\:uppercase:hover { text-transform: uppercase }')).toEqual(['case']);
-      expect(kinds('.tf-mock-plate { text-transform: uppercase }')).toEqual([]);
+      expect(kinds('.tf-mock-plate { text-transform: uppercase }')).toEqual(['case']);
       expect(kinds('.label { text-transform: none }')).toEqual([]);
+      expect(CAPTION.test('text-caption uppercase text-muted-foreground')).toBe(true);
+      expect(CAPTION.test('text-[11px] font-medium uppercase')).toBe(true);
+      expect(CAPTION.test('text-[12px]/4 font-medium uppercase')).toBe(true);
+      expect(CAPTION.test('text-h4 uppercase')).toBe(false);
+      expect(CAPTION.test('text-[14px] uppercase')).toBe(false);
+    });
+
+    it('finds a corner off the steps, a shadow other than the popover’s, and chalk anywhere but its names', () => {
+      for (const ok of ['0', '6px', '8px', '10px', '16px', '9999px'])
+        expect(kinds(`.a { border-radius: ${ok} }`), ok).toEqual([]);
+      for (const bad of ['2px', '4px', '12px', '20px', '24px'])
+        expect(kinds(`.a { border-radius: ${bad} }`), bad).toEqual(['radius']);
+      expect(kinds('.rounded-composer { border-radius: 20px }')).toEqual([]);
+      expect(kinds('.shadow-popover { --tw-shadow: 0 8px 24px rgba(0,0,0,.35) }')).toEqual([]);
+      expect(kinds('.shadow-lg { --tw-shadow: 0 8px 24px rgba(0,0,0,.35) }')).toEqual(['shadow']);
+      expect(kinds(':root { --ring: #2a73b0; --tf-chalk: #78b4e8 }')).toEqual([]);
+      expect(kinds('.a { color: #2a73b0 } .b { --tf-honey: #78b4e8 }')).toEqual(['hue', 'hue']);
     });
 
     it('finds italic text and a weight under 400, and leaves a font file’s own description alone', () => {
@@ -177,20 +250,30 @@ describe('the forbidden things', () => {
       ]);
       expect(kinds('.a { font-weight: 400 } .b { font-weight: 600 }')).toEqual([]);
       expect(
-        kinds('@font-face { font-family: Newsreader; font-style: normal; font-weight: 200 800 }'),
+        kinds(
+          '@font-face { font-family: "Inter Tight"; font-style: normal; font-weight: 100 900 }',
+        ),
       ).toEqual([]);
     });
 
-    it('finds a gradient anywhere but in the hatch', () => {
-      expect(kinds('.a { background-image: linear-gradient(to right, #7a5a3a, #e6d3b7) }')).toEqual(
+    it('finds a gradient anywhere but in the hatch and the light, by name', () => {
+      expect(
+        kinds(
+          ':root { --tf-glow: radial-gradient(60% 90% at 78% 30%, rgba(245,168,58,.28), rgba(245,168,58,0) 70%); --tf-curve-fill: linear-gradient(to bottom, rgba(245,168,58,.35), rgba(245,168,58,0)) }',
+        ),
+      ).toEqual([]);
+      expect(kinds(':root { --tf-honey: linear-gradient(#f5a83a, #e9c48e) }')).toEqual([
+        'gradient',
+      ]);
+      expect(kinds('.a { background-image: linear-gradient(to right, #f5a83a, #e9c48e) }')).toEqual(
         ['gradient'],
       );
-      expect(kinds('.a { --tw-gradient-stops: radial-gradient(#7a5a3a, #e6d3b7) }')).toEqual([
+      expect(kinds('.a { --tw-gradient-stops: radial-gradient(#f5a83a, #e9c48e) }')).toEqual([
         'gradient',
       ]);
       expect(
         kinds(
-          '.tf-hatch { background-image: repeating-linear-gradient(45deg, #6e655b 0 1px, transparent 1px 6px) }',
+          '.tf-hatch { background-image: repeating-linear-gradient(45deg, #676a75 0 1px, transparent 1px 6px) }',
         ),
       ).toEqual([]);
     });
@@ -203,7 +286,7 @@ describe('the forbidden things', () => {
       ).toEqual(['blur']);
       expect(kinds('.a { -webkit-backdrop-filter: saturate(1.8) }')).toEqual(['blur']);
       expect(kinds('.a { backdrop-filter: none }')).toEqual([]);
-      expect(kinds('.a { text-shadow: 0 0 8px #e6d3b7 }')).toEqual(['shadow']);
+      expect(kinds('.a { text-shadow: 0 0 8px #f5a83a }')).toEqual(['shadow']);
     });
 
     it('finds centred and justified text', () => {
@@ -228,7 +311,7 @@ describe('the forbidden things', () => {
         'blur',
         'blur',
       ]);
-      expect(found("const a = { background: 'linear-gradient(#7a5a3a, #e6d3b7)' };")).toEqual([
+      expect(found("const a = { background: 'linear-gradient(#f5a83a, #e9c48e)' };")).toEqual([
         'gradient',
       ]);
       expect(
@@ -248,8 +331,9 @@ describe('the forbidden things', () => {
     it('reads the app: the pages, the primitives and the showcase', () => {
       expect(files).toContain('app/globals.css');
       expect(files).toContain('components/ui/Button.tsx');
-      expect(files).toContain('app/(structurer)/page.tsx');
-      expect(files).toContain('app/(app)/goal/page.tsx');
+      expect(files).toContain('app/(structurer)/plans/[id]/page.tsx');
+      expect(files).toContain('app/(marketing)/page.tsx');
+      expect(files).toContain('app/(app)/monitor/page.tsx');
       expect(files).toContain('components/shell/AppNav.tsx');
       expect(files.some(notScanned)).toBe(false);
     });
@@ -260,7 +344,19 @@ describe('the forbidden things', () => {
     });
 
     it('finds nothing forbidden outside the pages listed as legacy', () => {
-      const fresh = found.filter((f) => !LEGACY[f.file]?.includes(f.kind));
+      const fresh = found.filter(
+        (f) =>
+          !LEGACY[f.file]?.includes(f.kind) &&
+          !(f.kind === 'font' && DRAWN[f.file]?.includes(f.what)) &&
+          !(f.kind === 'radius' && DRAWINGS.has(f.file) && /^r[xy]=/.test(f.what)),
+      );
+      // and each picture's excuse is still needed
+      for (const [file, excuses] of Object.entries(DRAWN))
+        for (const what of excuses)
+          expect(
+            found.some((f) => f.file === file && f.what === what),
+            `${file}: ${what}`,
+          ).toBe(true);
       expect(fresh.map((f) => `${f.file}: ${f.kind}: ${f.what}`)).toEqual([]);
     });
 
@@ -268,9 +364,33 @@ describe('the forbidden things', () => {
       expect(read(ADAPTER.importedBy)).toContain(ADAPTER.stylesheet);
     });
 
-    it('uses the composer’s rounded utilities in the composer only', () => {
+    it('uses the typing box’s corner only in the composer, and the token mark only in AssetMark', () => {
       for (const name of Object.keys(COMPOSER_RADIUS))
-        expect(users(name), name).toEqual(['components/ui/Composer.tsx']);
+        expect(users(name), name).toEqual(expect.arrayContaining(['components/ui/Composer.tsx']));
+      // the typing box, and the subscribe field that is its sibling (subscribe-block.md)
+      for (const name of Object.keys(COMPOSER_RADIUS))
+        for (const file of users(name))
+          expect(['components/ui/Composer.tsx', 'components/ui/SubscribeBlock.tsx']).toContain(
+            file,
+          );
+      // The token-only exception is scoped to the component, never the rest of PlanView.
+      const file = 'features/order/PlanView.tsx';
+      expect(users('rounded-asset')).toEqual([file]);
+      const source = read(file);
+      const assetMark = source.match(/export function AssetMark\([\s\S]*?\n}\n/)?.[0] ?? '';
+      expect(classTokens(file, assetMark).has('rounded-asset')).toBe(true);
+      expect(classTokens(file, source.replace(assetMark, '')).has('rounded-asset')).toBe(false);
+    });
+
+    it('sets uppercase only on captions and column heads, at 12px or less', () => {
+      const loud = scripts
+        .filter((file) => !LEGACY[file]?.includes('case'))
+        .flatMap((file) => loudStrings(file).map((s) => `${file}: ${s}`));
+      expect(loud).toEqual([]);
+    });
+
+    it('puts the popover’s shadow on a popover or the composer only', () => {
+      for (const file of users('shadow-popover')) expect([...SHADOWED]).toContain(file);
     });
   });
 
@@ -284,7 +404,7 @@ describe('the forbidden things', () => {
       b.files.length > 0 && b.files.every((file) => LEGACY[file]?.includes(b.finding.kind));
 
     it('compiles, with the tokens and the utilities the primitives use', () => {
-      expect(vars.get('--radius')).toBe('2px');
+      expect(vars.get('--radius')).toBe('8px');
       const selectors: string[] = [];
       root.walkRules((rule) => {
         selectors.push(rule.selector);
@@ -293,19 +413,22 @@ describe('the forbidden things', () => {
     });
 
     it('finds nothing forbidden that a legacy page does not account for', () => {
-      expect(blamed.filter((b) => !base(b) && !legacy(b) && !centred(b)).map(say)).toEqual([]);
+      expect(
+        blamed
+          .filter((b) => !base(b) && !legacy(b) && !centred(b) && !popover(b) && !caption(b))
+          .map(say),
+      ).toEqual([]);
     });
 
-    it('sets uppercase on the MOCK plate and nowhere else but two legacy labels', () => {
+    it('sets uppercase in one utility, asked for beside a caption’s size or by a legacy label', () => {
       const upper: string[] = [];
       root.walkDecls('text-transform', (decl) => {
         if (/uppercase/.test(decl.value)) upper.push((decl.parent as postcss.Rule).selector);
       });
-      expect(upper.sort()).toEqual(['.tf-mock-plate', '.uppercase']);
-      expect(users('uppercase').sort()).toEqual([
-        'app/(structurer)/embed/[id]/layout.tsx',
-        'components/Provenance.tsx',
-      ]);
+      expect(upper.sort()).toEqual(['.uppercase']);
+      expect(users('uppercase')).toContain('components/Provenance.tsx');
+      // the boxed MOCK is gone (MOCK-QUIET): no utility for it
+      expect(upper).not.toContain('.tf-mock-plate');
     });
 
     it('centres text only where a spec allows it, and every such place still does', () => {
@@ -315,12 +438,20 @@ describe('the forbidden things', () => {
       expect(blamed.filter(centred).length).toBeGreaterThan(0);
     });
 
-    it('draws one gradient, the hatch, and makes no utility for an italic, a light weight or a blur', () => {
-      const gradients: string[] = [];
+    it('draws the hatch and the light, and makes no utility for an italic, a light weight or a blur', () => {
+      const gradients = new Set<string>();
       root.walkDecls((decl) => {
-        if (/gradient\(/.test(decl.value)) gradients.push((decl.parent as postcss.Rule).selector);
+        if (/gradient\(/.test(decl.value))
+          gradients.add(
+            decl.prop.startsWith('--') ? decl.prop : (decl.parent as postcss.Rule).selector,
+          );
       });
-      expect(gradients).toEqual(['.tf-hatch']);
+      expect([...gradients].sort()).toEqual([
+        '--tf-curve-fill',
+        '--tf-glow',
+        '--tf-glow-l',
+        '.tf-hatch',
+      ]);
       const selectors = new Set<string>();
       root.walkRules((rule) => {
         selectors.add(rule.selector);
@@ -349,22 +480,33 @@ describe('the forbidden things', () => {
         'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
       );
       expect(users(SYSTEM_FACES.utility)).toEqual([SYSTEM_FACES.usedBy]);
-      // and the base class of the design system goes on one <body>: the product's
+      // and the base class of the design system goes on the product's <body> and the landing's
       expect(users('tf-app').filter((file) => !file.startsWith('app/(app)/dev/'))).toEqual([
+        'app/(marketing)/layout.tsx',
         'components/shell/AppDocument.tsx',
       ]);
     });
 
-    it('rounds nothing but the composer: 20px for the box, a round send button', () => {
+    it('keeps corners on the steps: 6, 8, 10 and 16px, pills, and the 20px typing box', () => {
       const corners = new Map<string, string>();
       root.walkDecls('border-radius', (decl) => {
         const rule = decl.parent as postcss.Rule;
         corners.set(rule.selector, decl.value);
       });
       expect(corners.get('.rounded-composer')).toBe('var(--tf-radius-composer)');
-      expect(corners.get('.rounded-round')).toBe('var(--tf-radius-round)');
-      expect(vars.get('--tf-radius-composer')).toBe('20px');
+      expect(corners.get('.rounded-asset')).toBe('var(--tf-radius-pill)');
+      expect(corners.get('.rounded-full')).toBe('var(--tf-radius-pill)');
       expect(corners.get('.rounded-md')).toBe('var(--radius)');
+      expect(corners.get('.rounded-lg')).toBe('var(--tf-radius-lg)');
+      expect(vars.get('--tf-radius-pill')).toBe('9999px');
+      expect(vars.get('--tf-radius-sm')).toBe('6px');
+      expect(vars.get('--tf-radius-lg')).toBe('10px');
+      expect(vars.get('--tf-radius-xl')).toBe('16px');
+      expect(vars.get('--tf-radius-composer')).toBe('20px');
+      // A 20px card is still a violation; the exception names only the typing box.
+      expect(
+        scanCss(postcss.parse('.card { border-radius: 20px }'), vars).map((f) => f.kind),
+      ).toEqual(['radius']);
     });
 
     it('has no legacy entry that could be deleted', () => {
@@ -433,7 +575,8 @@ describe('the forbidden things', () => {
               /(^|,)\s*(html|:host|code|kbd|samp|pre)\b/.test(b.finding.where);
             const legacy =
               b.files.length > 0 && b.files.every((f) => LEGACY[f]?.includes(b.finding.kind));
-            if (!known && !base && !legacy && !centred(b)) problems.push(say(b));
+            if (!known && !base && !legacy && !centred(b) && !popover(b) && !caption(b))
+              problems.push(say(b));
           }
         }
         expect(source).toBeDefined();
@@ -452,7 +595,7 @@ describe('the forbidden things', () => {
           faces.filter((f) =>
             new RegExp(`font-family:\\s*["']?${name}["']?\\s*[;}]`).test(`${f};`),
           );
-        for (const face of ['IBM Plex Sans', 'IBM Plex Mono', 'Newsreader']) {
+        for (const face of ['Inter', 'Inter Tight', 'IBM Plex Mono']) {
           expect(named(face).length, face).toBeGreaterThan(0);
           for (const rule of named(face)) {
             expect(rule).toMatch(/src:\s*url\((?!["']?https?:)/); // a file of this build, not another host

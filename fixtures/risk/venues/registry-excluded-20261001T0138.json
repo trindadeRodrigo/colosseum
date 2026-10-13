@@ -1,0 +1,594 @@
+{
+  "source": "RISK_HOME/registry.json (pnpm risk:registry: every candidate pool opened on chain; a pool of a program with no decoder is excluded with that program)",
+  "fetchedAt": "2026-10-01T01:38:24.027Z",
+  "method": "registry-0.1",
+  "provenance": "fixture",
+  "minPoolTvlUsd": 1000,
+  "excluded": [
+    {
+      "address": "B6B88oq7qAEhiLvy2xpdc1QCfsVB6BLF4NRUDyL4ikpt",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "H3QWHWz2nUdnGVqTtoPPWDHkfhh98g1bsTovSpU27254",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "3xXSruD3AY5VikQkqsBKJi67Xx5H5dkQNUq8Z3mFStER",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "8kniq3bfQqTtDTceadGjaLxYyAZCN7DSvbZaFXaUDU7G",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "DEE1TwNt54L4YdiTNHYjncpnSfJxtUmxmjc2WTcnF6m",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "6yqAPkDBCsFX5z1357hX13bKPxmU2Jk4kxBHfPrpUhpw",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "BAs1xegWdZoLsbAoPioYCDWBShDgod2Z8kPi4apHFA5o",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "2HdjwNbui8URfyiXqtFHpuRDgf7B779oU7g1dAdqnu31",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "HLVb3BFgeWzyUyagBZ7SYDMwypqtQpu8xf11AzL476v4",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "9Tue6n3GY96iMqPCaQ9D655MjydzPVxGfwk3fB9JQpoN",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "GPZ9TgVqbYBUxpF2SyTsSssM5JDR5EyiAFPnTAMW3DL6",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "65J4kLaw34Jj8EAEAg5QR75LAaz5cCRqMj1Qz6vvrcHq",
+      "venue": "fluxbeam",
+      "reason": "unsupported program FLUXubRmkEi2q6K3Y9kBPg9248ggaZVsoSFhtJHSrm1X"
+    },
+    {
+      "address": "6MNDJf3e4m1rjyd2cqvmaG9aba5epUh54thAMAAaUR5M",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "6xE7fA3fNGvkaLP3KaDoMEGaqFhDkrnawedWGUvbWq8v",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "7fYumLZFTFHXosfcbZcytR4FCp88jo8snpidS4DZ44i6",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "DGvB8KyD79wFBJ7Kr7mW54qSfi7Yk3UrhJkcnTSd6frb",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "7LPcTgCqSHzTnmpoPXdKGKF2UonbxxW6NbkaGhVjYFEv",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "GqLZc8XUwfBJvE3Cy6SYHCqfMbNfqQDK36WwAxdbnzm7",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "42uTmedA9KUcvuk4Beb2B73WmtNVmdc9B3LW7sD6MuXE",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "9NYt7XKV2ALGderQPgvzWefDN1iVq2KRGkAnFGxstpem",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "BGdbtCdMRaUAmNHQ3LrdDfXa9Tt6RFtAr3p1KtswyLEs",
+      "venue": "meteoradbc",
+      "reason": "unsupported program dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN"
+    },
+    {
+      "address": "B1jaoYH8VXBic3nccqDtjWFeqzyQAZUeZhZSaWRNKw7H",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "TwPNtZcAz1jhx6NqE9TmvUxiXsUahA67wp9MTUYKJWW",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "DCNfRPuiuRhs1rTRUmcH94yc1xx6XxeoQPnXveDxeCzB",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "HPcKsx1Bw4MHYLkYmsKkYbJo2r2wJrwmWriLAiA1NF4F",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "4xhwHD8uFS4qJbrYmbzSU9jNrkcRUJ5k9d7wCuPvQVnh",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "AsAYgWc6WfE4K8m5YnftgoDnHhcGxuYYhQxvC2qqyZ4Z",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "4ovnzJLjNDch8YRzzbfzGWAxNEQbaLYEVLG3jnx46ctZ",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "Cju7t5AndhKGKAi4T59drhAtHMEaBWSQkQpjfrHYQUmt",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "7e6m2mJ2mFCi7L9ayc38oV13VzMBcJ6rdwAHvXCmMoHX",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "68pWnZQahAWHp6Co1YCeBfNcpp2HTdFzTb7oYAVXoeP4",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "GpTKd8V6Nwe3F7i9jVV5bu4gVEtX5r1o87wApGoA62UP",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "BvnE4kw2fBcHfdM9yWeHdi8k92nCndGJt3E8PTcUEYvu",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "8sr4fowko8ZaUuHYqfg5SnWqHBcroDL1vHdY2f3EDvzy",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "EnaEiodQDrPrwHZqLnfZqgviVBdNxLwwibKBJ3zDR6MM",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "eFMSKpvQiyPZoTzd4ii9b9Q88RQr75oJoMbxpqknUSM",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "GLFMoXrd39y7j5L8A1E2wskdYBwFvhUHyVu8yBTS8MLB",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "3ZZrKagVq6t6bJP7KZhFXNvzknwh2JUKyEXBvXX7HCv2",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "2d1afJkTms5CL9LcWPQGXeJrRQxzRiAU4JXvwWeiqfnL",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "9wB9ejpxKXNukprAnkkjGsMV2JTMzjpQDc2oN2FCQxh2",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "9y6gKuGVysTeTmyeeW4Bc7geFBaXqhADuCkvtX6gg7iM",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "CwJrwRE1Mp6ocugc8sFirxS6UGtYnKyKK3ryyTbr4ay4",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "4WNU9y2d13kfNDVKfbKZqAnAfyrhRkdteFSFeBf2bidJ",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "DWFVXoap71nx32L9RxyYXi5sHhcPqzt5pKfbVAmyPzvr",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "CTjS3uxJrXVRCW1qeTGZyFqMtSsp84dkvQqQLqKkaeAd",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "8ZGWwV9sCAwLmcdZJ3DXSRHAUS3tQfsCqQEbpknD83oe",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "5KULY2KVHCtfpHfNLeijMyvXTQeFg8CeWefMqooFuNym",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "8PoD2sDLBTYi4eVq5aWjL9L4BaEic7JsX7r6dn3hcZUK",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "CuYDoGV1vgxTJnDshQBY5wMootcZREUncH9twJkm172y",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "5q3JUKNfdh4jF4vNrcoNzq9gTemavSpffdV5ubCpvQ9r",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "EC8u3Fw993k9LHqyuQA2qddFdnG5qxrG3mGSxdxKSQcq",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "FrS5n9s1qK6Xrv8GWYsW1fbWN1XQwc9msFKggn2ukC8C",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "4NLbL13JSzhiG293XBztJwpRBX6Spa59Uq99FoX2suYT",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "3KL6RX6Do4dugBPEwaPvVGwJN21uSYGbEfAkKsq8yR8D",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "3bDw1XqDEwsfsifLwSiHXCoByi6FWxZxXCdTNMpHfAW9",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "8UtKupHcNkTvUDysq79mHTkHsddDD51PLVYPWCpbtzjN",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "DQh9jveSQQjDaYujG2VWyWdL9XC7bfSLjTB9t5qdwHbq",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "3oHDHZMhr4Y1w1txxb48bpdSPLjWhXaByWjF9RCC18ta",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "GcjgsJthPvFYpTvGdpRr733ZWsf4NnPoK8RxvVDM5pj6",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "4jG2Bg7Vpe93skg6K5X8TBoDBPJDBh8f6JERngAEwHAq",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "H3GPGbbY2uAnSQ4pyWAXNDpzYMnEo29U4BiNBumy8aV3",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "Df7aaGkCxzHZ4F2p7YsJ3GnJZQokyk5R8roy7uRcYLY8",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "8gvQkTXK4KE4vhkrfEVBC5K2oc8hpJGRMG3LDD8ZVdns",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "22PuUyqJmhRTcvzEu9w4yXxyXMtjef1MuxXbXpPVbUTi",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "Eq5XGECw1si8XNzq96r36ohqhJ9tUdpMirKT3YYxru38",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "ConiKFVdxtV2NnBuCqzr9hNZLDmJ3raDMzspnUmebThf",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "BYD1CZq4QvMhHdyjf6U8PA4gq16o2UVw7iUxCnCa3i3F",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "5aCALySPfQiF75dLRiHNdkR8fTyMNhL18jonPaDiaXKC",
+      "venue": "meteoradbc",
+      "reason": "unsupported program dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN"
+    },
+    {
+      "address": "32znC6x3ty6P5Zy7NV8qtNSYH6KHMCsRFNfP7xp1aPqX",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "7Tw76zDte8kGQXWkMxE5rZhv12Y1shQqBo7MtQwL6QWt",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "7GYfb7Vt5w52XyVGTtobiRwubS7oCYGy9nt39D87XGxX",
+      "venue": "meteoradbc",
+      "reason": "unsupported program dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN"
+    },
+    {
+      "address": "EtnWJbnjY1yu9e9eGmnVkHxNjimucxdQmZvvXSGE75Ns",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "3USty6tUFB7oueTDUmu1csEiNf84mrW8x5MrBYtAUGd7",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "D6kGq3hFMkrVwMDwYEU6YZMSXwNgJH8KAcjrmgURseE1",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "2DSe1uaeansPjBJ9bD3K62dpZdS4m2GJNGxphHXd2xqZ",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "G8Z4aVbVTtLwZfgdjAmBnAQtdXeCQy5SAcHt6te2wBFk",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "C7c2JE8kyWmtiFy12dr7SUutdMG4YqCYRAL3Hs25g7cB",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "59haqTkqMDmVDHojP7hqEb5NQUmRVBkzJEF9V4FrA5hE",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "J2PZ7vhSvns6DJDSfaD9bZaRkAXkezVoDS57Xa231zS1",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "7HzsPSeAn3q4GauR6uCfz4bXdr7dX5asCRdSkHFc4DfM",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "2MW7qXxsm6Rjp9tq8QBxcSSBQgLGRDgn5gV4HcXt1u4b",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "3A5Jw7HQYgFVVPbP2HnNcDjf63sj91AThdB9mWXeXTst",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "DUAdiYQ7xtba2rScCP3mbvccphxTzz1Zpu5d8hc43pB7",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "GSx7RbB8vHS7PMr4nfLGiXuejR9cFxj5NjAgfrQTQg5V",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "HKn8715Ae8sfP331VLf6eXTCcW4MNGw5bUE8NhW69H6x",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "9r9s4iGwfKN4DXxPwxKUnZYAgUaZdoL8wqP6A3AURq6R",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "DaECnpxEevYGnFSHQ5z1GmC2jWiQyJGWbPGE8yUTtDbf",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "QKGPMnbQZR7JfRrsKSUuUQA8jdpp1nm33UfidsH77ec",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "Gau7F7tHetncyehvuB9kXQCrhLKvkLttbdGMyvtKPysp",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "CxEEcVfs6tZohTvxSz52qnzc3yotpLRTv5WoU1itWB43",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "7P6jvZDv1gsvbN3pAZXBrsycdEUXYi3CygKSfZ8WJ8yn",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "DuKdxxXcVgMkf9k9qNE5rPSr1ESrhQGhmAsDYqsjentA",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "EdQ1Twqiu2AGoaQNRb6C7aJMGLJ79DtvfWKGaTLao4nF",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "J2o5DLBVwTwDAnxv87wgG8NYSzivpgX5yu4qG5V5AHDV",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "Fd4zafHg9rGhNFBCEcy1qm8f99pHJrd2xZRkcFWn9aDB",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "DBzbgNDzqJH7qpTeRNW8UwNgYCxwPPr9bGMzbD7zrHnM",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "BShvHAgrC8hidAb3e8T2nEwSQ1mcK3Zbu2q4tDEdENcc",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "5nx5Hi5HMYWX15shKyix5TcCVEtQonBULDBpVNUQXwcw",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "AD2zZWM2dnxs5kEjGuV2yR9ZhKicihbuqcGg7o28iAbY",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "EbcitwcUwyd1NnRiXmE93sAV9AULnSLga4PfhoMPeT3J",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "3fuKHtvzGfzRKJ4jXd8uqaSpStRJiTAfGrSi1uweSi5X",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "6MQgpfPQUKAgHF5fcxtGoBSkM6wyNo56K95HBwAYZevW",
+      "venue": "meteoradbc",
+      "reason": "unsupported program dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN"
+    },
+    {
+      "address": "6jKXEdm6T7KHWn6ZW7Pxv3aUEjustVAjmMrzRBUsJSuC",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "RF69sAWvpbwbEnc6rFE4Ggo7nC7GsTCk8SyqSL3HEfK",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "HCWbb2WLq4nWdZdrs3aRGY2UKnNdykuQ3zXaauGr3Xv6",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "BhN9vHhUmVbYzm4LkgGr296tU6GcekKqa4sddpYgcgFg",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "2bp9MjqXtYBLjZEEG3zFvcvBcvhqaspfHWfQmdBhJhtN",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "HKygn42mS1rHWozgjyJiUaq6VQuR3qTKdPMW1NxHyE6N",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "56jdeRmceXAZMi2K2LdbhYKhzXxZKbogoEDgHjDucTfS",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "AkyigaXhnBCKWupybbphq5VeUg1H2RNHnbLgj5zoyj7t",
+      "venue": "pumpswap",
+      "reason": "unsupported program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+    },
+    {
+      "address": "EQJ5tM5cLFacQQQGNZTcJxwACKX3wM7FsfDn6AATGrzw",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "97NBAzKysBAjzkpKRLBSMYKVxrHUGvqQEVoWtGYbSoyu",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "5uhxFd49thcPKqrXJVyoHHGeZVvz7FKgLV5Y88LQmGKt",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "GsYxf2H1wKYNciTLw4vRoR4jfaHrj2RZmPj7S44qavr3",
+      "venue": "meteoradbc",
+      "reason": "unsupported program dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN"
+    },
+    {
+      "address": "jyJTgAKQkV5piA4oap4zRdHevQS53CxxtfXDHWFDb6B",
+      "venue": "pumpfun",
+      "reason": "unsupported program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+    },
+    {
+      "address": "2Qsx3TQUpPM9NG49aMf3x7tvncaELEf3RkFY7naALfRX",
+      "venue": "meteora:DYN2",
+      "reason": "unsupported program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+    },
+    {
+      "address": "12jzeVLqxueYM6eCo9fa5Vqc8FeQ4giEgujnK54GYRoZ",
+      "venue": "fluxbeam",
+      "reason": "unsupported program FLUXubRmkEi2q6K3Y9kBPg9248ggaZVsoSFhtJHSrm1X"
+    }
+  ]
+}

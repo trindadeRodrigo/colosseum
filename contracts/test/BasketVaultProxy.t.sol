@@ -87,8 +87,8 @@ contract BasketVaultProxyTest is VaultFixture {
         vm.stopPrank();
     }
 
-    /// The vault does not inherit `IBasketVault` until it implements all of it, so the compiler does not hold
-    /// the two to each other. This does, for everything built so far.
+    /// The vault inherits `IBasketVault`, so the compiler holds the two to each other. This pins the
+    /// selectors of section 3.8 as well, in case the inheritance is ever dropped.
     function test_selectors_matchSection38() public pure {
         assertEq(BasketVault.initialize.selector, IBasketVault.initialize.selector);
         assertEq(BasketVault.start.selector, IBasketVault.start.selector);

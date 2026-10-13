@@ -1,0 +1,30 @@
+{
+  "slug": "defense",
+  "name": {
+    "en": "Defense",
+    "pt": "Defesa"
+  },
+  "chain": "solana",
+  "version": 1,
+  "curator": "Rodrigo",
+  "status": "confirmed",
+  "decidedOn": "2026-10-07",
+  "gate": "LABELS-CONFIRMED",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/solana.json, and confirmed by Rodrigo on 2026-10-07 with the members it was proposed with (gate LABELS-CONFIRMED). No tracked name is a defense contractor first: each is here for a defense line of its business. SpaceX is also on the space list.",
+  "members": [
+    {
+      "symbol": "PLTRx",
+      "reason": {
+        "en": "Palantir's Gotham platform is used by defense and intelligence agencies of the United States and its allies",
+        "pt": "a plataforma Gotham, da Palantir, é usada por órgãos de defesa e inteligência dos Estados Unidos e de aliados"
+      }
+    },
+    {
+      "symbol": "SPCXx",
+      "reason": {
+        "en": "SpaceX launches national security missions for the United States government and runs the Starshield network",
+        "pt": "a SpaceX lança missões de segurança nacional para o governo dos Estados Unidos e opera a rede Starshield"
+      }
+    }
+  ]
+}

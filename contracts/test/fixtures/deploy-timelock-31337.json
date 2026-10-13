@@ -1,0 +1,28 @@
+{
+  "about": "For the script's own dry run on forge's in-memory chain (31337), with no node: the timelock path, which a mainnet takes and the committed 31337.json does not. The owner is anvil's second test account, a key, which only a test network allows; its key is public, so this file is for chain 31337 only. Run by `pnpm --filter @colosseum/contracts test:script` and by CI's forge job. It exists because `forge script` refuses things `forge test` allows (a script calling itself), so a mistake in what `run()` prints after the hand-over shows only when the script is run as a script.",
+  "chainId": 31337,
+  "adminIsDeployer": false,
+  "admin": "0x0000000000000000000000000000000000000000",
+  "timelock": {
+    "owner": "0x70997970C51812dc3A010C7D01b50e0d17dc79C8",
+    "delay": 300
+  },
+  "guardian": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+  "keeperEnabled": false,
+  "keeper": "0x0000000000000000000000000000000000000000",
+  "sequencerFeed": "0x0000000000000000000000000000000000000000",
+  "publishDelay": 300,
+  "params": {
+    "toleranceBps": 125,
+    "lossCapBps": 200,
+    "bandBps": 50,
+    "assetCooldown": 3600,
+    "sessionOpen": 52200,
+    "sessionClose": 72000
+  },
+  "priceDevBps": 200,
+  "cashToken": "0x0000000000000000000000000000000000000000",
+  "assets": [],
+  "routers": [],
+  "closedDays": [20813, 20843]
+}

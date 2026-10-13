@@ -1,0 +1,37 @@
+{
+  "slug": "social-media",
+  "name": {
+    "en": "Social media",
+    "pt": "Redes sociais"
+  },
+  "chain": "robinhood",
+  "version": 1,
+  "curator": "Rodrigo",
+  "status": "confirmed",
+  "decidedOn": "2026-10-07",
+  "gate": "LABELS-CONFIRMED",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/robinhood.json, and confirmed by Rodrigo on 2026-10-07 with the members it was proposed with (gate LABELS-CONFIRMED). Added from the research: not in the first proposal. SpaceX (owner of X) was proposed and left out as a side line.",
+  "members": [
+    {
+      "symbol": "META",
+      "reason": {
+        "en": "Meta runs Facebook, Instagram, Threads, Messenger and WhatsApp",
+        "pt": "a Meta opera o Facebook, o Instagram, o Threads, o Messenger e o WhatsApp"
+      }
+    },
+    {
+      "symbol": "RDDT",
+      "reason": {
+        "en": "Reddit runs a platform of user-created communities",
+        "pt": "a Reddit opera uma plataforma de comunidades criadas por usuários"
+      }
+    },
+    {
+      "symbol": "DJT",
+      "reason": {
+        "en": "Trump Media operates the Truth Social platform",
+        "pt": "a Trump Media opera a plataforma Truth Social"
+      }
+    }
+  ]
+}

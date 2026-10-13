@@ -10,6 +10,18 @@ vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 describe('where sign-in leads on to', () => {
   it('is a page of this app, named by its plain path', () => {
     expect(nextPath('/goal')).toBe('/goal');
+    expect(nextPath('/monitor')).toBe('/monitor');
+    // `/` is the landing page, not the product's: it is not a place sign-in leads on to, unless a
+    // product's routes name it
+    expect(nextPath('/')).toBe(AFTER_SIGN_IN);
+    expect(nextPath('/', ['/', '/goal'])).toBe('/');
+    expect(AFTER_SIGN_IN).toBe('/goal');
+    // the plan, buy and order pages, each with one plain segment for its id
+    const id = '7d9c2f4e-1b2a-4c3d-8e9f-0a1b2c3d4e5f';
+    for (const page of [`/plan/${id}`, `/plan/${id}/buy`, `/orders/${id}`])
+      expect(nextPath(page)).toBe(page);
+    for (const page of ['/plan', '/plan/a/b', '/orders', `/orders/${id}/buy`, '/plan/a.b/buy'])
+      expect(nextPath(page)).toBe(AFTER_SIGN_IN);
   });
 
   it('is the goal when it is told nothing', () => {
@@ -43,12 +55,11 @@ describe('where sign-in leads on to', () => {
     '/goal#//evil.com',
     '/@evil.com',
     // not a page of this app
-    '/',
+    '//',
     '/nope',
     '/Goal',
     '/goal/extra',
     '/risk',
-    '/monitor',
     '/dev/ui',
     // not a place to go on to
     '/sign-in',
@@ -68,9 +79,35 @@ describe('the routes sign-in knows', () => {
   it('are the product’s pages, no more and no fewer', () => {
     const pages = [...sourceFiles()]
       .filter((file) => /^app\/\(app\)\/(.+\/)?page\.tsx$/.test(file))
+      // the catch-all is no page to lead to: it answers 404, and as a route sign-in knows its one
+      // free segment would let `?next=` name any address
+      .filter((file) => file !== 'app/(app)/[...missing]/page.tsx')
       .map((file) => file.replace(/^app\/\(app\)/, '').replace(/\/page\.tsx$/, '') || '/')
       .sort();
-    expect(pages).toEqual(['/goal', '/sign-in']);
+    expect(pages).toEqual([
+      '/analytics',
+      '/analytics/[page]',
+      '/analytics/methodology',
+      '/goal',
+      '/indexes/[slug]',
+      '/indexes/[slug]/buy',
+      '/monitor',
+      '/orders/[id]',
+      '/plan/[id]',
+      '/plan/[id]/buy',
+      '/portfolio',
+      '/portfolio/exposure',
+      '/portfolio/methodology',
+      '/portfolio/plan/[chain]/[address]',
+      '/portfolio/rebalancing',
+      '/publish',
+      '/shelf',
+      '/sign-in',
+      '/vaults/[chain]/[address]',
+      '/vaults/[chain]/[address]/add',
+      '/vaults/[chain]/[address]/targets',
+      '/vaults/[chain]/[address]/withdraw',
+    ]);
     expect([...APP_ROUTES].sort()).toEqual(pages);
   });
 

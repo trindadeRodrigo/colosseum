@@ -46,19 +46,38 @@ export const BasketAssetBase = z.object({
   autoFollowEligible: z.boolean(),
   /** Creator cap, section 6. */
   maxWeightBps: Bps,
-  /** ISO two-letter codes. */
+  /**
+   * ISO two-letter codes where the asset may not be offered. Information only: the plan engine
+   * ignores it (gate COUNTRY-REMOVED, Rodrigo, Oct 6). Who may hold an asset is to be enforced at
+   * sign-up and in the terms of service.
+   */
   blockedCountries: z.array(z.string().regex(/^[A-Z]{2}$/)),
   /** The risk sheet this asset points to, under content/risk-sheets/. */
   sheet: z.string(),
   provenance: Provenance,
+  /**
+   * ISO 4217: the currency a cash token is counted in, when it is not dollars. A goal in that
+   * currency holds its near withdrawals in it (the matching leg, gate SOLVER). Left out: dollars.
+   * Only cash tokens carry it. No token on the shelf has one yet, so the database has no column for
+   * it: the column comes with the first such token.
+   */
+  currency: z
+    .string()
+    .regex(/^[A-Z]{3}$/)
+    .optional(),
 });
 
 /** An asset belongs to one chain: its id starts with that chain and its address is in that chain's form. */
 export const BasketAsset = BasketAssetBase.refine((a) => a.id.startsWith(`${a.chain}:`), {
   message: "the id starts with the asset's chain",
   path: ['id'],
-}).refine((a) => isAddressOf(chainFamily(a.chain), a.address), {
-  message: "the address is in the form of the asset's chain",
-  path: ['address'],
-});
+})
+  .refine((a) => isAddressOf(chainFamily(a.chain), a.address), {
+    message: "the address is in the form of the asset's chain",
+    path: ['address'],
+  })
+  .refine((a) => a.currency === undefined || a.cls === 'cash', {
+    message: 'only a cash token is counted in a currency of its own',
+    path: ['currency'],
+  });
 export type BasketAsset = z.infer<typeof BasketAsset>;

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement, StrictMode } from 'react';
+import { act, createElement, StrictMode, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mount, settle, unmountAll } from '../../components/ui/test/dom';
 import type { WebWalletPort } from './port';
@@ -28,6 +28,38 @@ async function bridge({ strict = false } = {}) {
   await mount(strict ? createElement(StrictMode, null, node) : node);
   await settle();
   return { ports, port: () => ports.at(-1) as WebWalletPort };
+}
+
+/**
+ * The bridge as the wallet provider mounts it: mounted again on `restart()`, with what the provider
+ * keeps across mounts (`carry`).
+ */
+async function restartable() {
+  const { default: PrivyBridge } = await import('./privy-bridge');
+  const ports: WebWalletPort[] = [];
+  const carry = { making: Promise.resolve() };
+  let again = () => {};
+  const Host = () => {
+    const [turn, setTurn] = useState(0);
+    again = () => setTurn((n) => n + 1);
+    return createElement(PrivyBridge, {
+      key: turn,
+      carry,
+      onPort: (port: WebWalletPort) => {
+        ports.push(port);
+      },
+    });
+  };
+  await mount(createElement(Host));
+  await settle();
+  return {
+    port: () => ports.at(-1) as WebWalletPort,
+    /** `wait` false under fake timers, where the test moves the clock itself. */
+    restart: async (wait = true) => {
+      await act(async () => again());
+      if (wait) await settle();
+    },
+  };
 }
 
 /** Answers the oldest call that is on its way. */
@@ -240,5 +272,70 @@ describe('one person after another', () => {
     expect(privyDouble.mostAtOnce).toBe(1);
     expect(port().status).toBe('ready');
     expect(port().userId).toBe('did:privy:two');
+  });
+});
+
+describe('the provider mounted again ("Try again" for a slow sign-in)', () => {
+  it('asks for no wallet beside a call still open, and the loop left behind makes nothing more', async () => {
+    privyDouble.reset(privyDouble.passkeyPerson());
+    const { port, restart } = await restartable();
+    expect(privyDouble.calls).toEqual(['solana']);
+    await restart();
+    // the first driver's call is still open: the new driver waits for it
+    expect(privyDouble.calls).toEqual(['solana']);
+    expect(privyDouble.pending).toHaveLength(1);
+    expect(port().walletsOwed).toBe('making');
+
+    await answer((call) => call.made());
+    // the old loop stopped before its next wallet; the new one asks for what is still owed, once
+    expect(privyDouble.calls).toEqual(['solana', 'ethereum']);
+    expect(privyDouble.pending).toHaveLength(1);
+    await answer((call) => call.made());
+    expect(privyDouble.calls).toEqual(['solana', 'ethereum']);
+    expect(privyDouble.mostAtOnce).toBe(1);
+    // and that one came from the mounted provider's hooks, not from the loop left behind
+    expect(privyDouble.deadCalls).toBe(0);
+    expect(port().status).toBe('ready');
+    expect(families(port())).toEqual(['evm:embedded', 'solana:embedded']);
+  });
+
+  it('does not wait for ever on a call that never ends: after its wait the new driver asks', async () => {
+    const { OPEN_CALL_WAIT_MS } = await import('./privy-bridge');
+    privyDouble.reset(privyDouble.passkeyPerson());
+    const { restart } = await restartable();
+    vi.useFakeTimers();
+    await restart(false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(OPEN_CALL_WAIT_MS - 1);
+    });
+    expect(privyDouble.calls).toEqual(['solana']);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(privyDouble.calls).toEqual(['solana', 'solana']);
+  });
+
+  it('ends a sign-in that was open on the port that is gone', async () => {
+    privyDouble.reset();
+    privyDouble.passkey = () => new Promise(() => {});
+    const { port, restart } = await restartable();
+    let outcome = 'open';
+    void port()
+      .signIn('passkey')
+      .then(
+        () => {
+          outcome = 'signed in';
+        },
+        (e: unknown) => {
+          outcome = e instanceof Error ? e.message : 'failed';
+        },
+      );
+    await settle();
+    expect(outcome).toBe('open');
+    await restart();
+    expect(outcome).toMatch(/started again/);
+    // and the new port signs in as before
+    privyDouble.passkey = async () => ({});
+    await expect(port().signIn('passkey')).resolves.toBeUndefined();
   });
 });

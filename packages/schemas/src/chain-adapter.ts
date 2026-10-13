@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { BasketAsset } from './basket-asset';
 import type { BuiltTx } from './basket-tx';
 import { Address, AssetId, BasketId, Bps, type ChainId, RawAmount } from './chain';
+import { ChainError } from './chain-error';
 import type { Provenance } from './enums';
 import { Recipe, Target, Targets } from './recipe';
 import {
@@ -66,6 +67,50 @@ export const ApproveArgs = z.strictObject({
 });
 export type ApproveArgs = z.infer<typeof ApproveArgs>;
 
+/**
+ * The least each trade of a step may give, one per trade and in the trades' order, as the order stated
+ * them when it was made. Given, a builder writes these into the transaction and works out none of its
+ * own: the person approved these terms, and a later quote does not change them. It still quotes, and
+ * refuses with `PriceMoved` when a trade would now give less than its minimum, so nothing is built that
+ * can only revert. Left out (a caller with no order: the keeper's own builds, a script), the builder
+ * sets each minimum from its quote and `slippageBps`.
+ */
+const StatedMinimums = z.array(RawAmount).optional();
+
+/**
+ * The stated minimum of trade `i`, for a builder: null when none were stated, so the builder sets its
+ * own. Throws `BadInput` when there is not one per trade, and `PriceMoved` when the trade, quoted now
+ * at `quotedOutRaw`, would give less than what was stated.
+ */
+export function statedMinimum(
+  minimums: readonly string[] | undefined,
+  trades: readonly Trade[],
+  i: number,
+  quotedOutRaw: bigint,
+): bigint | null {
+  if (minimums === undefined) return null;
+  const trade = trades[i];
+  const stated = minimums[i];
+  if (minimums.length !== trades.length || trade === undefined || stated === undefined)
+    throw new ChainError(
+      'BadInput',
+      `${minimums.length} minimums were stated for ${trades.length} trades: one for each`,
+    );
+  const least = BigInt(stated);
+  // A minimum of nothing accepts any price: no order states one, and none is built with one.
+  if (least <= 0n)
+    throw new ChainError(
+      'BadInput',
+      `a minimum of nothing was stated for ${trade.amountInRaw} raw ${trade.sell}: a trade accepts some least amount`,
+    );
+  if (quotedOutRaw < least)
+    throw new ChainError(
+      'PriceMoved',
+      `the price has moved since the order was made: ${trade.amountInRaw} raw ${trade.sell} now buys ${quotedOutRaw} raw ${trade.buy}, under the ${least} the order accepts at least`,
+    );
+  return least;
+}
+
 export const CreateVaultArgs = z.object({
   owner: Address,
   basketId: BasketId,
@@ -77,6 +122,7 @@ export const CreateVaultArgs = z.object({
   depositRaw: RawAmount.optional(),
   trades: z.array(Trade).optional(),
   slippageBps: Bps,
+  minimums: StatedMinimums,
   nonce: RebuildNonce,
 });
 export type CreateVaultArgs = z.infer<typeof CreateVaultArgs>;
@@ -86,6 +132,7 @@ export const DepositArgs = z.object({
   amountRaw: RawAmount,
   trades: z.array(Trade).optional(),
   slippageBps: Bps,
+  minimums: StatedMinimums,
   nonce: RebuildNonce,
 });
 export type DepositArgs = z.infer<typeof DepositArgs>;
@@ -94,6 +141,7 @@ export const OwnerSwapArgs = z.object({
   vault: Address,
   trades: z.array(Trade).min(1),
   slippageBps: Bps,
+  minimums: StatedMinimums,
   nonce: RebuildNonce,
 });
 export type OwnerSwapArgs = z.infer<typeof OwnerSwapArgs>;
@@ -116,11 +164,26 @@ export const SetAutoFollowArgs = z.object({
 });
 export type SetAutoFollowArgs = z.infer<typeof SetAutoFollowArgs>;
 
-export const WithdrawInKindArgs = z.object({
-  vault: Address,
-  assets: z.array(AssetId).optional(),
-  nonce: RebuildNonce,
-});
+export const WithdrawInKindArgs = z
+  .object({
+    vault: Address,
+    /** Left out: everything the vault holds. */
+    assets: z.array(AssetId).optional(),
+    /**
+     * How much of a named asset, in raw units: some of what the vault holds of it. An asset named with
+     * no amount leaves in full. More than the vault holds is refused, and nothing is built.
+     */
+    amounts: z.record(AssetId, RawAmount).optional(),
+    nonce: RebuildNonce,
+  })
+  .refine((a) => Object.keys(a.amounts ?? {}).every((id) => a.assets?.includes(id)), {
+    message: 'an amount is for an asset the withdrawal names',
+    path: ['amounts'],
+  })
+  .refine((a) => Object.values(a.amounts ?? {}).every((raw) => BigInt(raw) > 0n), {
+    message: 'an amount is more than nothing',
+    path: ['amounts'],
+  });
 export type WithdrawInKindArgs = z.infer<typeof WithdrawInKindArgs>;
 
 export const PublishRecipeArgs = z.object({
@@ -180,7 +243,10 @@ export interface KeeperBuilder {
 export const AttemptRef = z.object({
   messageHash: z.string().min(1),
   signer: Address,
-  /** As the build gave it: a block height on Solana, null on EVM. */
+  /**
+   * As the build gave it: a block height on Solana; on EVM a trade's deadline in unix seconds, and null
+   * for a call that does not trade.
+   */
   validUntil: z.string().nullable(),
   /**
    * EVM: the nonce of record. It is the one the build stated (`evm.nonce`), or the one in the signed or
@@ -199,8 +265,10 @@ export type AttemptRef = z.infer<typeof AttemptRef>;
  * Solana: an attempt is its message. It is `gone` once the chain is past `validUntil`.
  * EVM: an attempt is the pair (messageHash, nonce), since two builds of one call share a hash. It is
  * `landed` when the transaction at the signer's nonce is this call, `gone` when the signer's nonce has
- * passed the attempt's and another call used it, and `open` otherwise. Nothing expires by time. An
- * attempt with no nonce cannot be looked for and is `open`.
+ * passed the attempt's and another call used it, and `open` otherwise. Only a trade expires by time:
+ * `ownerSwap` and `createVaultAndBuy` carry a deadline, and an attempt of one whose deadline the chain's
+ * clock has passed, with no transaction on the chain, is `gone` (the adapter states the deadline as
+ * `validUntil`). An attempt with no nonce cannot be looked for and is `open`.
  */
 export const AttemptFate = z.discriminatedUnion('state', [
   z.object({ state: z.literal('open') }),
@@ -258,3 +326,16 @@ export interface TxProbe {
 
 /** No builder sets a vault's keeper or operator. */
 export type ChainAdapter = ChainReader & OwnerBuilder & KeeperBuilder & TxProbe;
+
+/**
+ * What a quote costs against the reference prices (`Quote.costBps`), in whole basis points of the
+ * value that goes in, or null where there is none to state: a side with no price, nothing going in,
+ * or a figure that is not finite (a price that does not read as a number, a value that overflows).
+ * Never NaN or Infinity: the order that carries the cost could not be answered. Both chain adapters
+ * state their quote's cost through it.
+ */
+export function referenceCostBps(inUsd: number | null, outUsd: number | null): number | null {
+  if (inUsd === null || outUsd === null || !(inUsd > 0)) return null;
+  const bps = Math.round(((inUsd - outUsd) / inUsd) * 10_000);
+  return Number.isFinite(bps) ? bps : null;
+}

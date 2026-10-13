@@ -2,7 +2,7 @@ import { getAddress } from 'viem';
 import { describe, expect, it, vi } from 'vitest';
 import { base64Decode } from './bytes';
 import { toWalletError, type WalletPortError } from './errors';
-import { foundWallets, readAnnouncement, watchEvmWallets } from './found-wallets';
+import { foundWallets, onePerName, readAnnouncement, watchEvmWallets } from './found-wallets';
 import { createWalletPort, idleDriver } from './port';
 import {
   clientType,
@@ -12,7 +12,16 @@ import {
   signInWithSolanaWallet,
   walletAlreadyThere,
 } from './sign-in-flows';
-import { type SignInAttempt, signInFailure } from './sign-in-view';
+import {
+  isCalm,
+  PROMPT_SEEN_MS,
+  passkeysUsable,
+  type SignInAttempt,
+  signInFailure,
+  twinMark,
+  walletChoices,
+  withoutPrompt,
+} from './sign-in-view';
 import { buildConfigForTest } from './test/api-config';
 import { chains, failure } from './test/fixtures';
 import { createTestDriver, TEST_WALLETS } from './test/test-driver';
@@ -63,6 +72,12 @@ describe('what a failed sign-in is called', () => {
       'passkey_unsupported',
     ]);
     expect(read(privy('too_many_requests', 'Too many requests'))).toEqual(['unknown', 'too_many']);
+    // Privy's 403 from an address its app does not list (seen on localhost, Oct 7)
+    expect(read(privy('invalid_origin', 'Origin not allowed'))).toEqual([
+      'unsupported',
+      'origin_refused',
+    ]);
+    expect(read(new Error('Origin not allowed'))).toEqual(['unsupported', 'origin_refused']);
     expect(read(Object.assign(new Error('HTTP 429'), { status: 429 }))).toEqual([
       'unknown',
       'too_many',
@@ -72,6 +87,21 @@ describe('what a failed sign-in is called', () => {
       'unknown',
       'offline',
     ]);
+  });
+
+  it('names a passkey not registered here, and the provider’s other refusals of a sign-in', () => {
+    expect(read(privy('passkey_not_registered', 'Passkey not registered'))).toEqual([
+      'unknown',
+      'passkey_not_registered',
+    ]);
+    // the words alone, with no code
+    expect(read(new Error('This passkey has not been registered'))).toEqual([
+      'unknown',
+      'passkey_not_registered',
+    ]);
+    expect(read(privy('max_accounts_reached', 'x'))).toEqual(['unknown', 'accounts_full']);
+    expect(read(privy('allowlist_rejected', 'x'))).toEqual(['unknown', 'not_invited']);
+    expect(read(privy('session_storage_unavailable', 'x'))).toEqual(['unsupported', 'no_storage']);
   });
 
   it('still calls a wallet’s refusal a refusal, with nothing about a passkey in it', () => {
@@ -106,16 +136,26 @@ describe('the sentence each failure gets', () => {
 
   it('has a sentence for everything else, and never the text that was thrown', () => {
     expect(says(privy('user_does_not_exist', 'x'), 'passkey-use')).toBe('passkeyUnknown');
+    expect(says(privy('passkey_not_registered', 'x'), 'passkey-use')).toBe('passkeyNotRegistered');
+    expect(says(privy('max_accounts_reached', 'x'), 'passkey-create')).toBe('accountsFull');
+    expect(says(privy('allowlist_rejected', 'x'), 'wallet')).toBe('notInvited');
+    expect(says(privy('session_storage_unavailable', 'x'), 'passkey-use')).toBe('noStorage');
     expect(says(new Error('WebAuthn is not supported in this browser'), 'passkey-use')).toBe(
       'passkeyUnsupported',
     );
     expect(says(privy('too_many_requests', 'x'), 'wallet')).toBe('tooMany');
+    for (const attempt of ['passkey-use', 'passkey-create', 'wallet'] as const)
+      expect(says(privy('invalid_origin', 'Origin not allowed'), attempt)).toBe('originRefused');
+    // a real failure, said as one
+    expect(isCalm('originRefused', { usable: true, openMs: 60_000 })).toBe(false);
     expect(says(new TypeError('Failed to fetch'), 'wallet')).toBe('offline');
     expect(says(new Error('Blockhash not found'), 'wallet')).toBe('expired');
     expect(says(new Error('TypeError: cannot read properties of undefined'), 'wallet')).toBe(
       'other',
     );
-    expect(says('a string', 'passkey-use')).toBe('other');
+    // a passkey that was offered and not taken, for no reason the provider names, says that
+    expect(says('a string', 'passkey-use')).toBe('passkeyNotAccepted');
+    expect(says('a string', 'passkey-create')).toBe('other');
     expect(says(null, 'wallet')).toBe('other');
   });
 });
@@ -311,6 +351,168 @@ describe('the wallets a passkey sign-in owes a person', () => {
     expect(walletAlreadyThere({ privyErrorCode: 'embedded_wallet_already_exists' })).toBe(true);
     for (const other of [new Error('Failed to connect to wallet proxy'), null, 'already', {}])
       expect(walletAlreadyThere(other)).toBe(false);
+  });
+});
+
+describe('the wallets as the sign-in screen offers them', () => {
+  const ICON = 'data:image/png;base64,iVBORw0KGgo=';
+  const provider = { request: async () => null };
+
+  it('keeps a wallet’s own icon when it is an image inline, and nothing else', () => {
+    const read = (icon: unknown) =>
+      readAnnouncement({ info: { rdns: 'app.phantom', name: 'Phantom', icon }, provider })?.icon;
+    expect(read(ICON)).toBe(ICON);
+    expect(read('data:image/svg+xml;base64,PHN2Zy8+')).toBe('data:image/svg+xml;base64,PHN2Zy8+');
+    for (const bad of ['https://evil.example/i.png', 'javascript:alert(1)', 'data:text/html,x', 7])
+      expect(read(bad)).toBeUndefined();
+    expect(foundWallets([{ name: 'Backpack', icon: ICON }], [])[0]?.icon).toBe(ICON);
+  });
+
+  it('offers one entry per wallet, with the family of each way in, and no chain in its name', () => {
+    const choices = walletChoices(
+      foundWallets(
+        [{ name: 'Phantom', icon: ICON }, { name: 'Solflare' }],
+        [
+          { rdns: 'app.phantom', name: 'Phantom', provider },
+          { rdns: 'io.metamask', name: 'MetaMask', provider },
+        ],
+      ),
+    );
+    expect(choices.map((c) => [c.name, c.ids])).toEqual([
+      ['MetaMask', { evm: 'evm:io.metamask' }],
+      ['Phantom', { solana: 'solana:Phantom', evm: 'evm:app.phantom' }],
+      ['Solflare', { solana: 'solana:Solflare' }],
+    ]);
+    expect(choices.find((c) => c.name === 'Phantom')?.icon).toBe(ICON);
+  });
+
+  it('joins only the wallets known to sign on both, by id, and never by a name an announcer chose', () => {
+    const FAKE = 'data:image/png;base64,ZmFrZQ==';
+    const choices = walletChoices(
+      foundWallets(
+        [{ name: 'Phantom', icon: ICON }],
+        [
+          // an EVM wallet that calls itself "Phantom", announcing before the real one
+          { rdns: 'com.fake', name: 'Phantom', provider, icon: FAKE },
+          { rdns: 'app.phantom', name: 'Phantom', provider },
+          { rdns: 'io.other', name: 'Phantom', provider },
+        ],
+      ),
+    );
+    expect(choices.map((c) => [c.name, c.ids])).toEqual([
+      ['Phantom', { evm: 'evm:com.fake' }],
+      ['Phantom', { evm: 'evm:io.other' }],
+      ['Phantom', { solana: 'solana:Phantom', evm: 'evm:app.phantom' }],
+    ]);
+    // the real one keeps its own icon; the fake keeps its own, and lends it to nobody
+    expect(choices.find((c) => c.ids.solana)?.icon).toBe(ICON);
+    expect(choices.find((c) => c.ids.evm === 'evm:com.fake')?.icon).toBe(FAKE);
+    expect(choices.find((c) => c.ids.evm === 'evm:io.other')?.icon).toBeUndefined();
+    // with the real EVM side absent, the fake does not take its slot
+    const alone = walletChoices(
+      foundWallets([{ name: 'Phantom' }], [{ rdns: 'com.fake', name: 'Phantom', provider }]),
+    );
+    expect(alone.find((c) => c.ids.solana)?.ids).toEqual({ solana: 'solana:Phantom' });
+  });
+
+  it('lists one Solana wallet per name: a second one called "Phantom" is not listed or used', () => {
+    const real = { name: 'Phantom', icon: ICON };
+    const fake = { name: 'Phantom ', icon: 'data:image/png;base64,ZmFrZQ==' };
+    const kept = onePerName([real, { name: 'Backpack' }, fake, { name: '' }]);
+    expect(kept).toEqual([real, { name: 'Backpack' }]);
+    // the one kept is the first to register, object and all: it is the one a choice signs with
+    expect(kept[0]).toBe(real);
+    expect(foundWallets(kept, []).map((w) => [w.id, w.icon])).toEqual([
+      ['solana:Backpack', undefined],
+      ['solana:Phantom', ICON],
+    ]);
+  });
+
+  it('says calmly only a passkey prompt a person had time to close, where passkeys can be used', () => {
+    const closed = { usable: true, openMs: PROMPT_SEEN_MS };
+    for (const key of ['passkeyNotUsed', 'passkeyNotCreated'] as const) {
+      expect(isCalm(key, closed), key).toBe(true);
+      // refused at once: no prompt was open (a lost press, a frame with no leave)
+      expect(isCalm(key, { usable: true, openMs: PROMPT_SEEN_MS - 1 }), key).toBe(false);
+      // passkeys cannot be used here at all, however long it took
+      expect(isCalm(key, { usable: false, openMs: 60_000 }), key).toBe(false);
+    }
+    for (const key of [
+      'passkeyUnknown',
+      'passkeyNotRegistered',
+      'passkeyNotAccepted',
+      'passkeyOff',
+      'passkeyUnsupported',
+      'walletRefused',
+      'tooMany',
+      'offline',
+      'other',
+    ] as const)
+      expect(isCalm(key, closed), key).toBe(false);
+    // and the sentence of a refusal with no prompt behind it is not "the prompt was closed"
+    expect(withoutPrompt('passkeyNotUsed')).toBe('passkeyNotAccepted');
+    expect(withoutPrompt('passkeyNotCreated')).toBe('other');
+    expect(withoutPrompt('tooMany')).toBe('tooMany');
+  });
+
+  it('knows where passkeys cannot be used: no WebAuthn, or a frame not allowed to', () => {
+    const has = { PublicKeyCredential: class {} };
+    expect(passkeysUsable({})).toBe(false);
+    expect(passkeysUsable(has)).toBe(true);
+    const policy = (allowed: string[]) => ({
+      ...has,
+      document: { permissionsPolicy: { allowsFeature: (f: string) => allowed.includes(f) } },
+    });
+    expect(passkeysUsable(policy([]))).toBe(false);
+    // both are needed: using one, and making one
+    expect(passkeysUsable(policy(['publickey-credentials-get']))).toBe(false);
+    expect(
+      passkeysUsable(policy(['publickey-credentials-get', 'publickey-credentials-create'])),
+    ).toBe(true);
+    // the older name of the same policy
+    expect(
+      passkeysUsable({ ...has, document: { featurePolicy: { allowsFeature: () => false } } }),
+    ).toBe(false);
+    // a policy that cannot be asked is taken to allow: the attempt then says what happened
+    expect(
+      passkeysUsable({
+        ...has,
+        document: {
+          permissionsPolicy: {
+            allowsFeature: () => {
+              throw new Error('no');
+            },
+          },
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it('lists MetaMask once: its Solana wallet and its EVM one are the known pair, by their ids', () => {
+    const choices = walletChoices([
+      { id: 'solana:MetaMask', name: 'MetaMask', family: 'solana', icon: ICON },
+      { id: 'solana:Phantom', name: 'Phantom', family: 'solana' },
+      { id: 'evm:io.metamask', name: 'MetaMask', family: 'evm' },
+    ]);
+    expect(choices.map((c) => [c.name, c.ids])).toEqual([
+      ['MetaMask', { solana: 'solana:MetaMask', evm: 'evm:io.metamask' }],
+      ['Phantom', { solana: 'solana:Phantom' }],
+    ]);
+    expect(choices.map((c) => twinMark(c, choices))).toEqual([null, null]);
+  });
+
+  it('keeps two installs that share a name apart, each marked by its own id, and joins neither', () => {
+    // another wallet announcing itself as "MetaMask" is not MetaMask: it is not folded into it and
+    // does not take its Solana side; the two rows are told apart by what the name's owner cannot fake
+    const choices = walletChoices([
+      { id: 'solana:MetaMask', name: 'MetaMask', family: 'solana' },
+      { id: 'evm:io.metamask', name: 'MetaMask', family: 'evm' },
+      { id: 'evm:xyz.other', name: 'MetaMask', family: 'evm' },
+    ]);
+    expect(choices.map((c) => [c.key, c.ids, twinMark(c, choices)])).toEqual([
+      ['evm:xyz.other', { evm: 'evm:xyz.other' }, 'xyz.other'],
+      ['metamask', { solana: 'solana:MetaMask', evm: 'evm:io.metamask' }, 'io.metamask'],
+    ]);
   });
 });
 

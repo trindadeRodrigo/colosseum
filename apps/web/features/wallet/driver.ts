@@ -7,16 +7,26 @@ import type { SolanaCluster } from './chains';
 /** An account as the provider reports it. The port puts the address in its family's form. */
 export type DriverAccount = { family: Chain; address: string; kind: 'embedded' | 'external' };
 
-/** The call an EVM transaction makes. The wallet adds the nonce, the gas and the fee: nothing else. */
+/**
+ * The call an EVM transaction makes, with the nonce, the gas and the fee our server stated where it
+ * stated them. A wallet that sends fills in its own; Privy's embedded wallet signs the fields it is
+ * given and fills in none, so a call handed to it without them comes back with no gas and no fee.
+ */
 export type EvmRequest = {
   to: `0x${string}`;
   data: `0x${string}`;
   value: bigint;
   chainId: number;
+  nonce?: number;
+  gas?: bigint;
+  maxFeePerGas?: bigint;
+  maxPriorityFeePerGas?: bigint;
 };
 
 /** A wallet found in this browser that a person can sign in with: an extension, or the wallet's own browser. */
 export type FoundWallet = {
+  /** Its icon as the wallet itself gives it (EIP-6963, the wallet standard): a `data:image/` URL. */
+  icon?: string;
   /** Names it to `signIn('wallet', { wallet })`. Stable while the page is open. */
   id: string;
   /** Its own name, as the wallet announces it: "Phantom". */
@@ -68,6 +78,11 @@ export interface WalletDriver {
   sendEvm(address: string, request: EvmRequest): Promise<`0x${string}`>;
   signEvmMessage(address: string, message: string): Promise<`0x${string}`>;
   exportKey(family: Chain, address: string): Promise<void>;
-  /** The API's sign-in tokens, or null for a driver that has none. */
-  tokens(): Promise<{ access: string | null; identity: string | null } | null>;
+  /**
+   * The API's sign-in tokens, or null for a driver that has none. `fresh`: the API refused the ones
+   * sent, so new ones are wanted.
+   */
+  tokens(options?: {
+    fresh?: boolean;
+  }): Promise<{ access: string | null; identity: string | null } | null>;
 }

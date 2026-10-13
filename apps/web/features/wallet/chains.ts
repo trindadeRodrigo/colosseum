@@ -82,8 +82,9 @@ const NETWORKS: readonly WalletNetwork[] = ['testnet', 'mainnet'];
  * Pure: the wallet's table of chains. Unset means the test network, so nothing reaches mainnet by
  * omission. Throws on a value it does not know; the message names the variable and never repeats the
  * value.
- * `local` is refused: it is a copy of mainnet with mainnet's chain id, so a signature made for it is
- * valid on mainnet too, and a browser wallet may hold real funds.
+ * `local` is refused: it is a copy of mainnet on one machine, with mainnet's addresses. An EVM copy
+ * runs under a chain id of its own (31337, `LOCAL_EVM_CHAIN_IDS`), but a browser wallet may hold real
+ * funds and has no business signing for one.
  */
 export function walletChains(env: PublicWalletEnv = {}): WalletChains {
   const networks: EnvLike = {};

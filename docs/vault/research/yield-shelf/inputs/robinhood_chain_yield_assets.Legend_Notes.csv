@@ -1,0 +1,10 @@
+Legend,
+Permissionless,Anyone with a wallet can mint or deposit.
+Hybrid,"KYC to mint/redeem with the issuer, but the token transfers freely and can be bought on-chain without KYC."
+Permissioned,Only allowlisted/KYC'd accounts can hold or access it.
+Caveats,
+Yields,"Point-in-time as of Oct 6, 2026; variable. Robinhood Earn's 7% includes promotional reward tokens; base lending yield is ~3.5–4%."
+Concentration,Most chain yield routes through Morpho USDG markets; ~66% of steakUSDG is lent against USDe. Markets ~90% utilized.
+Chain risk,Robinhood runs the only sequencer; only 2 allowlisted validators can submit fraud proofs; 7-day canonical bridge withdrawals.
+Legal,"'Hybrid' for Stock Tokens is technical; restricted persons (US, CA, UK, CH, UAE) are legally barred from buying."
+Verify,"mGLO own APY, Pendle PT-USDG rate, rUSDG APY, syrup/wstETH/weETH supply, sUSDe deployment."

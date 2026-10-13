@@ -12,7 +12,9 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 import { DEPLOYMENTS, readDeploymentFiles } from '../../scripts/sources';
 import { refusalOf } from '../../test/bites';
+import { withFile } from '../../test/deployments';
 import * as e from '../../test/evm';
+import routeVectors from '../../test/fixtures/evm-route-vectors.json';
 import vectors from '../../test/fixtures/evm-vectors.json';
 import * as s from '../../test/solana';
 import {
@@ -27,7 +29,7 @@ import { evmVaultAddress } from './evm/addresses';
 import { BASKET_PROGRAM } from './generated/basket-program';
 import { guardTransaction, readDeploymentFile as offered } from './index';
 import { configAddress, tokenAccountAddress, vaultAddress } from './solana/addresses';
-import type { ApprovedStep, GuardDeployments } from './types';
+import type { ApprovedStep, EvmDeployment, GuardDeployments } from './types';
 
 vi.mock('./generated/deployment-files', () => import('../../test/deployments'));
 
@@ -67,22 +69,55 @@ describe('the committed deployment files', () => {
     for (const [name, file] of Object.entries(files)) {
       // A file is its network's: mock.json says `mock`, and so on.
       expect((file as DeploymentFile).network, name).toBe(name);
-      expect(Object.keys(readDeploymentFile(file)).length, name).toBeGreaterThan(0);
+      // A placeholder holds a network's place and is refused; every other file reads as a deployment.
+      if ((file as DeploymentFile).placeholder !== undefined)
+        expect(refusalOf(() => readDeploymentFile(file))?.message, name).toMatch(/placeholder/);
+      else expect(Object.keys(readDeploymentFile(file)).length, name).toBeGreaterThan(0);
     }
     expect(Object.keys(files)).toContain('mock');
   });
 
-  it("the mock's file names every chain, with the cash the mock itself uses", () => {
+  it("the mock's file names every chain, with the cash the mock itself uses and its decimals", async () => {
     const mock = deploymentsOf('mock');
     expect(Object.keys(mock).sort()).toEqual([...ChainId.options].sort());
     for (const chain of ChainId.options) {
+      const adapter = createMockAdapter({ chain });
+      const cash = (await adapter.listAssets()).find((a) => a.id === adapter.mock.cash);
       expect(mock[chain]).toEqual({
         family: 'mock',
         chain,
-        cash: createMockAdapter({ chain }).mock.cash,
+        cash: adapter.mock.cash,
+        cashDecimals: cash?.decimals,
       });
       expect(isLoadedDeployment(mock[chain])).toBe(true);
     }
+  });
+
+  it("the test network's decimals are the devnet record's, for every mint, and the loaded deployment carries them", () => {
+    const record = JSON.parse(
+      readFileSync(
+        join(DEPLOYMENTS, '..', '..', '..', 'deployments', 'solana-devnet.json'),
+        'utf8',
+      ),
+    ) as {
+      cash: { mint: string; decimals: number };
+      assets: { mint: string; decimals: number }[];
+      retired: { mint: string; decimals: number }[];
+    };
+    const byMint = new Map(
+      [record.cash, ...record.assets, ...record.retired].map((t) => [t.mint, t.decimals]),
+    );
+    const solana = deploymentsOf('testnet').solana;
+    if (solana?.family !== 'solana') throw new Error('no Solana on the test network');
+    expect(Object.keys(solana.assets).length).toBeGreaterThan(1);
+    for (const [id, asset] of Object.entries(solana.assets))
+      expect(asset.decimals, id).toBe(byMint.get(asset.mint));
+    // And every mint the record names is in the file: a listed token (tPAXG) or a retired one (tGLDx).
+    expect(new Set(Object.values(solana.assets).map((a) => a.mint))).toEqual(
+      new Set(byMint.keys()),
+    );
+    // What a screen turns the cash's raw units into dollars with: the file's, never a server's.
+    expect(solana.assets[solana.cash]?.decimals).toBe(6);
   });
 
   it('a network with no committed file has no deployment', () => {
@@ -226,6 +261,7 @@ describe('a deployment is only what the loader read from a file', () => {
       factory: chain.contracts.factory as string,
       beacon: chain.contracts.beacon as string,
       routers: [chain.router],
+      routes: { [chain.router]: { kind: 'universal-router-v4' as const, hooks: e.POOL.hooks } },
       cash: 'robinhood:usdc',
       assets: { ...e.EVM.assets },
     };
@@ -255,7 +291,7 @@ describe('a deployment is only what the loader read from a file', () => {
           beacon: e.anyone('evil beacon'),
           routers: [],
           cash: 'robinhood:usdc',
-          assets: { 'robinhood:usdc': { address: e.anyone('evil usdc') } },
+          assets: { 'robinhood:usdc': { address: e.anyone('evil usdc'), decimals: 6 } },
         },
       },
     };
@@ -270,13 +306,14 @@ describe('a deployment is only what the loader read from a file', () => {
       refusalOf(() => guardTransaction({ step: approveStep, tx, deployment: read }))?.code,
     ).toBe('deployment');
     // The one way to a deployment reads only the files the package carries, which cannot be added to.
-    for (const network of ['mainnet', '__proto__', 'constructor', 'toString'])
+    for (const network of ['__proto__', 'constructor', 'toString'])
       expect(refusalOf(() => deploymentsOf(network as never))?.code, network).toBe('deployment');
     expect(Object.isFrozen(DEPLOYMENT_FILES) && Object.isFrozen(DEPLOYMENT_FILES.mock)).toBe(true);
     expect(() => {
       (DEPLOYMENT_FILES as Record<string, unknown>).mainnet = fromApi;
     }).toThrow(TypeError);
-    expect(Object.hasOwn(DEPLOYMENT_FILES, 'mainnet')).toBe(false);
+    // Mainnet's entry is still the committed file: never the file handed over.
+    expect(DEPLOYMENT_FILES.mainnet).toEqual(readDeploymentFiles().mainnet);
   });
 });
 
@@ -291,8 +328,8 @@ const fileOf = (network: DeploymentFile['network'] = 'local') => ({
       router: s.ROUTER,
       cash: 'solana:usdc',
       assets: {
-        'solana:usdc': { mint: s.someone('mint usdc'), tokenProgram: 'token' },
-        'solana:spy': { mint: s.someone('mint spy'), tokenProgram: 'token-2022' },
+        'solana:usdc': { mint: s.someone('mint usdc'), tokenProgram: 'token', decimals: 6 },
+        'solana:spy': { mint: s.someone('mint spy'), tokenProgram: 'token-2022', decimals: 8 },
       },
       fee: { maxFeeNativeRaw: '5000000' },
     } as Record<string, unknown>,
@@ -302,10 +339,15 @@ const fileOf = (network: DeploymentFile['network'] = 'local') => ({
       factory: e.FACTORY,
       beacon: e.BEACON,
       routers: [e.ROUTER],
+      routes: { [e.ROUTER]: { kind: 'universal-router-v4', hooks: e.POOL.hooks } },
       cash: 'robinhood:usdc',
       assets: {
-        'robinhood:usdc': { address: e.anyone('token usdc') },
-        'robinhood:spy': { address: e.anyone('token spy') },
+        'robinhood:usdc': { address: e.anyone('token usdc'), decimals: 6 },
+        'robinhood:spy': {
+          address: e.anyone('token spy'),
+          decimals: 18,
+          pool: { fee: 500, tickSpacing: 10 },
+        },
       },
       fee: { maxFeeNativeRaw: '1000000000000000', maxGas: 5_000_000 },
     } as Record<string, unknown>,
@@ -386,7 +428,25 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
   const mint = (label: string, tokenProgram = 'token') => ({
     mint: s.someone(label),
     tokenProgram,
+    decimals: 8,
   });
+
+  const V4 = { kind: 'universal-router-v4', hooks: e.POOL.hooks };
+  /** The file with SPY's pool set to `pool`, or with none when it is left out. */
+  const spyPool = (pool?: unknown) =>
+    asset(evm, 'robinhood:spy', {
+      address: e.anyone('token spy'),
+      decimals: 18,
+      ...(pool === undefined ? {} : { pool }),
+    });
+  const OTHER = e.anyone('another router');
+  /** A router whose address viem wrote with its checksum: two spellings of one address. */
+  const SPELT = vectors.checksums.find(
+    (c) => c.checksummed !== c.lower && c.lower !== e.FACTORY && c.lower !== e.BEACON,
+  ) as { lower: string; checksummed: string };
+  /** The file with fields of its one route set, or taken out. */
+  const route = (change: Record<string, unknown>) =>
+    set(evm, 'routes', { [e.ROUTER]: { ...V4, ...change } });
 
   const wrong: [string, (f: File) => unknown, RegExp][] = [
     ['nothing', () => null, /not an object/],
@@ -407,7 +467,9 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
       /solana: .*not an object/,
     ],
     ['a field nobody reads in an entry', set(sol, 'rpcUrl', 'x'), /rpcUrl/],
-    ['a field nobody reads in an EVM entry', set(evm, 'registry', e.STRANGER), /registry/],
+    ['a field nobody reads in an EVM entry', set(evm, 'keeper', e.STRANGER), /keeper/],
+    ['a registry that is not an address', set(evm, 'registry', 'nowhere'), /registry/],
+    ['a registry that is the factory', set(evm, 'registry', e.FACTORY), /the same/],
     // ---- families
     [
       'an EVM entry for Solana',
@@ -422,7 +484,10 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
     ['no family', drop(sol, 'family'), /family is not solana/],
     [
       'a mock chain in a real network',
-      (f) => ({ ...f, chains: { ...f.chains, base: { family: 'mock', cash: 'base:usdc' } } }),
+      (f) => ({
+        ...f,
+        chains: { ...f.chains, base: { family: 'mock', cash: 'base:usdc', cashDecimals: 6 } },
+      }),
       /base: its family is not evm/,
     ],
     [
@@ -453,7 +518,7 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
     ],
     [
       'a mint that is not an address',
-      asset(sol, 'solana:spy', { mint: 'spy', tokenProgram: 'token' }),
+      asset(sol, 'solana:spy', { mint: 'spy', tokenProgram: 'token', decimals: 6 }),
       /mint of solana:spy/,
     ],
     [
@@ -463,8 +528,8 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
     ],
     [
       'a field nobody reads in an asset',
-      asset(sol, 'solana:spy', { ...mint('mint spy'), decimals: 6 }),
-      /decimals/,
+      asset(sol, 'solana:spy', { ...mint('mint spy'), symbol: 'SPY' }),
+      /symbol/,
     ],
     ['an asset that is not an object', asset(sol, 'solana:spy', 'spy'), /not an object/],
     ['no assets', drop(sol, 'assets'), /assets is not an object/],
@@ -536,35 +601,152 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
     ['the factory as its own beacon', set(evm, 'beacon', e.FACTORY), /addresses are the same/],
     ['the factory as a router', set(evm, 'routers', [e.FACTORY]), /addresses are the same/],
     ['one router twice', set(evm, 'routers', [e.ROUTER, e.ROUTER]), /addresses are the same/],
+    // ---- how a router's call data is read
+    ['a router with no route', drop(evm, 'routes'), /states no route/],
+    ['a second router with no route', set(evm, 'routers', [e.ROUTER, OTHER]), /states no route/],
+    ['routes that are a list', set(evm, 'routes', [V4]), /list of routes is not an object/],
+    [
+      'a route for an address that is no router',
+      set(evm, 'routes', { [e.ROUTER]: V4, [OTHER]: V4 }),
+      /no router of the entry/,
+    ],
+    [
+      'two routes for one router, in two spellings',
+      (f) =>
+        set(evm, 'routes', { [SPELT.lower]: V4, [SPELT.checksummed]: V4 })(
+          set(evm, 'routers', [SPELT.lower])(f),
+        ),
+      /two routes are stated/,
+    ],
+    ['a route with no kind', route({ kind: undefined }), /no kind the guard reads/],
+    ['a route of a kind nobody reads', route({ kind: 'universal-router-v3' }), /no kind/],
+    // ---- the pool is each asset's own, never the router's
+    [
+      'a route that states one fee for the whole chain',
+      route({ fee: 500 }),
+      /route of .* carries fee, which the guard does not read/,
+    ],
+    [
+      'a route that states one pool shape for the whole chain',
+      route({ fee: 500, tickSpacing: 10 }),
+      /carries fee, tickSpacing/,
+    ],
+    ['an asset with no pool, beside a router whose swaps are read', spyPool(), /states no pool/],
+    ['a pool that is not an object', spyPool(500), /pool of robinhood:spy is not an object/],
+    ['a pool with no fee', spyPool({ tickSpacing: 10 }), /fee of the pool of robinhood:spy/],
+    ['a fee as text', spyPool({ fee: '500', tickSpacing: 10 }), /fee of the pool/],
+    ['a fee below zero', spyPool({ fee: -1, tickSpacing: 10 }), /fee of the pool/],
+    ['a fee above any pool', spyPool({ fee: 1_000_001, tickSpacing: 10 }), /fee of the pool/],
+    ['a pool with no tick spacing', spyPool({ fee: 500 }), /tick spacing of the pool/],
+    ['a tick spacing of zero', spyPool({ fee: 500, tickSpacing: 0 }), /tick spacing of the pool/],
+    [
+      'a tick spacing below zero',
+      spyPool({ fee: 500, tickSpacing: -10 }),
+      /tick spacing of the pool/,
+    ],
+    [
+      'a tick spacing above any pool',
+      spyPool({ fee: 500, tickSpacing: 32_768 }),
+      /tick spacing of the pool/,
+    ],
+    [
+      'a pool that names its hooks',
+      spyPool({ fee: 500, tickSpacing: 10, hooks: OTHER }),
+      /pool of robinhood:spy carries hooks/,
+    ],
+    [
+      'the cash with a pool',
+      asset(evm, 'robinhood:usdc', {
+        address: e.anyone('token usdc'),
+        decimals: 6,
+        pool: { fee: 500, tickSpacing: 10 },
+      }),
+      /cash robinhood:usdc states a pool/,
+    ],
+    ['a pool with hooks', route({ hooks: OTHER }), /hooks of the route/],
+    ['no hooks stated', route({ hooks: undefined }), /hooks of the route/],
+    ['a field nobody reads in a route', route({ quoter: OTHER }), /quoter/],
+    [
+      'an unread route that states a pool',
+      set(evm, 'routes', { [e.ROUTER]: { kind: 'unread', fee: 500 } }),
+      /fee/,
+    ],
+    [
+      'an unread route on mainnet',
+      (f) => ({
+        ...set(evm, 'evmChainId', 4663)(set(evm, 'routes', { [e.ROUTER]: { kind: 'unread' } })(f)),
+        network: 'mainnet',
+      }),
+      /unread, and on mainnet/,
+    ],
+    // ---- a file that holds a network's place
+    [
+      'a placeholder',
+      (f) => ({ ...f, placeholder: true, todo: 'the factory' }),
+      /placeholder for local, not a deployment: the factory/,
+    ],
+    ['a placeholder with no note', (f) => ({ ...f, placeholder: true }), /placeholder for local/],
+    ['a placeholder mark set to false', (f) => ({ ...f, placeholder: false }), /placeholder/],
+    ['a note left in beside real addresses', (f) => ({ ...f, todo: 'later' }), /placeholder/],
     [
       'the factory as the cash token',
-      asset(evm, 'robinhood:usdc', { address: e.FACTORY }),
+      asset(evm, 'robinhood:usdc', { address: e.FACTORY, decimals: 6 }),
       /addresses are the same/,
     ],
     [
       'a router as a token',
-      asset(evm, 'robinhood:spy', { address: e.ROUTER }),
+      asset(evm, 'robinhood:spy', { address: e.ROUTER, decimals: 6 }),
       /addresses are the same/,
     ],
     [
       'a token that is not an address',
-      asset(evm, 'robinhood:spy', { address: 'spy' }),
+      asset(evm, 'robinhood:spy', { address: 'spy', decimals: 6 }),
       /token of robinhood:spy/,
     ],
     [
       'a field nobody reads in a token',
-      asset(evm, 'robinhood:spy', { address: e.anyone('t'), decimals: 6 }),
-      /decimals/,
+      asset(evm, 'robinhood:spy', { address: e.anyone('t'), decimals: 6, symbol: 'SPY' }),
+      /symbol/,
     ],
     [
       'an asset of another chain on EVM',
-      asset(evm, 'base:usdc', { address: e.anyone('t') }),
+      asset(evm, 'base:usdc', { address: e.anyone('t'), decimals: 6 }),
       /not an asset of robinhood/,
     ],
     [
       'cash that is not listed on EVM',
       set(evm, 'cash', 'robinhood:gold'),
       /cash is not one of its assets/,
+    ],
+    [
+      'no decimals for a token',
+      asset(evm, 'robinhood:spy', { address: e.anyone('t') }),
+      /decimals of robinhood:spy/,
+    ],
+    [
+      'decimals as text',
+      asset(evm, 'robinhood:spy', { address: e.anyone('t'), decimals: '18' }),
+      /decimals/,
+    ],
+    [
+      'decimals past a byte',
+      asset(evm, 'robinhood:spy', { address: e.anyone('t'), decimals: 256 }),
+      /decimals/,
+    ],
+    [
+      'decimals below zero',
+      asset(sol, 'solana:spy', { ...mint('mint spy', 'token-2022'), decimals: -1 }),
+      /decimals of solana:spy/,
+    ],
+    [
+      'decimals of a fraction',
+      asset(sol, 'solana:spy', { ...mint('mint spy', 'token-2022'), decimals: 1.5 }),
+      /decimals/,
+    ],
+    [
+      'no decimals for a mint',
+      asset(sol, 'solana:usdc', { mint: s.someone('mint usdc'), tokenProgram: 'token' }),
+      /decimals of solana:usdc/,
     ],
     ["a proxy's code that is not hex", set(evm, 'proxyCreationCode', '0xzz'), /hex/],
     [
@@ -582,6 +764,16 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
     ],
     ['a mock chain with no cash', mockFile({ family: 'mock' }), /cash is not an asset of base/],
     [
+      'a mock chain with no decimals for its cash',
+      mockFile({ family: 'mock', cash: 'base:usdc' }),
+      /cashDecimals of base:usdc/,
+    ],
+    [
+      'a mock chain with decimals that are no number',
+      mockFile({ family: 'mock', cash: 'base:usdc', cashDecimals: 6.5 }),
+      /cashDecimals of base:usdc/,
+    ],
+    [
       'a mock chain with cash of no name',
       mockFile({ family: 'mock', cash: 'base:' }),
       /cash is not an asset of base/,
@@ -598,6 +790,130 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
     const refusal = refusalOf(() => readDeploymentFile(change(fileOf())));
     expect(refusal?.code).toBe('deployment');
     expect(refusal?.message).toMatch(message);
+  });
+
+  it('reads each router with its route, and an unread one only off mainnet', () => {
+    expect(readDeploymentFile(fileOf()).robinhood).toMatchObject({
+      routers: [e.ROUTER],
+      routes: { [e.ROUTER]: { kind: 'universal-router-v4', hooks: e.ZERO_ADDRESS } },
+      assets: { 'robinhood:spy': { pool: { fee: 500, tickSpacing: 10 } } },
+    });
+    // Each asset's pool is its own: a second asset at another fee is read as written.
+    const two = fileOf();
+    (evm(two).assets as Record<string, unknown>)['robinhood:gold'] = {
+      address: e.anyone('token gold'),
+      decimals: 18,
+      pool: { fee: 3000, tickSpacing: 60 },
+    };
+    expect(readDeploymentFile(two).robinhood).toMatchObject({
+      assets: {
+        'robinhood:usdc': { decimals: 6 },
+        'robinhood:spy': { pool: { fee: 500, tickSpacing: 10 } },
+        'robinhood:gold': { pool: { fee: 3000, tickSpacing: 60 } },
+      },
+    });
+    expect(
+      (readDeploymentFile(two).robinhood as EvmDeployment).assets['robinhood:usdc']?.pool,
+    ).toBeUndefined();
+    // A route keyed by its router as viem writes it is held in lower case, like the router.
+    const mixed = fileOf();
+    Object.assign(evm(mixed), { routers: [SPELT.lower], routes: { [SPELT.checksummed]: V4 } });
+    expect(Object.keys((readDeploymentFile(mixed).robinhood as { routes: object }).routes)).toEqual(
+      [SPELT.lower],
+    );
+    for (const network of ['local', 'testnet'] as const) {
+      const file = fileOf(network);
+      evm(file).routes = { [e.ROUTER]: { kind: 'unread' } };
+      expect(readDeploymentFile(file).robinhood, network).toMatchObject({
+        provenance: 'sandbox',
+        routes: { [e.ROUTER]: { kind: 'unread' } },
+      });
+      // Where no router's swaps are read, an asset may state no pool: nothing is held to one.
+      spyPool()(file);
+      expect(
+        (readDeploymentFile(file).robinhood as EvmDeployment).assets['robinhood:spy']?.pool,
+        network,
+      ).toBeUndefined();
+    }
+    // No router, nothing to read: an entry that trades through nothing states no route.
+    const none = fileOf();
+    Object.assign(evm(none), { routers: [], routes: {} });
+    expect(readDeploymentFile(none).robinhood).toMatchObject({ routers: [], routes: {} });
+  });
+
+  it("mainnet's committed file is the deployment of 2026-10-12; marked a placeholder or with a zero address it loads nothing", () => {
+    const committed = readDeploymentFiles().mainnet as DeploymentFile;
+    expect(committed.placeholder).toBeUndefined();
+    expect(isLoadedDeployment(deploymentsOf('mainnet').robinhood)).toBe(true);
+    // What it states beside the contracts is what the repository already holds: the chain's number,
+    // Universal Router as the shared presets name it, and the pool shape routes.ts trades in.
+    const rh = committed.chains.robinhood;
+    if (rh?.family !== 'evm') throw new Error('the file has no Robinhood Chain');
+    expect(rh.evmChainId).toBe(CHAIN_PRESETS.robinhood.networks.mainnet.evmChainId);
+    expect(rh.routers.map((r) => r.toLowerCase())).toEqual([
+      CHAIN_PRESETS.robinhood.networks.mainnet.router,
+    ]);
+    expect(Object.values(rh.routes)).toEqual([
+      { kind: 'universal-router-v4', hooks: routeVectors.pools.mainnet.hooks },
+    ]);
+    // Each listed token states its own pool, and they are not all one shape: NVDA's is the one the
+    // vault's fork test first traded in, and most of the others sit at another fee.
+    const { fee, tickSpacing } = routeVectors.pools.mainnet;
+    expect(rh.assets['robinhood:nvda']?.pool).toEqual({ fee, tickSpacing });
+    expect(rh.assets[rh.cash]?.pool).toBeUndefined();
+    const shapes = Object.entries(rh.assets)
+      .filter(([id]) => id !== rh.cash)
+      .map(([, a]) => `${a.pool?.fee}/${a.pool?.tickSpacing}`);
+    expect(shapes.length).toBeGreaterThan(1);
+    expect(shapes).not.toContain('undefined/undefined');
+    expect(new Set(shapes).size).toBeGreaterThan(1);
+    for (const address of [rh.factory, rh.beacon, rh.registry])
+      expect(address).not.toBe(e.ZERO_ADDRESS);
+    // With a placeholder's mark on it, real addresses change nothing.
+    const marked: DeploymentFile = {
+      ...structuredClone(committed),
+      placeholder: true,
+      todo: 'not deployed',
+    };
+    const refusal = refusalOf(() => readDeploymentFile(marked));
+    expect(refusal?.code).toBe('deployment');
+    expect(refusal?.message).toContain('it is a placeholder for mainnet, not a deployment');
+    expect(refusal?.message).toContain('not deployed');
+    // And with no mark but a zero address in a contract's place, it is refused for that.
+    const zeroed: DeploymentFile = {
+      ...structuredClone(committed),
+      chains: {
+        robinhood: {
+          ...structuredClone(rh),
+          factory: e.ZERO_ADDRESS,
+          beacon: e.ZERO_ADDRESS,
+          registry: e.ZERO_ADDRESS,
+        },
+      },
+    };
+    expect(refusalOf(() => readDeploymentFile(zeroed))?.message).toMatch(/zero address/);
+  });
+
+  it('another file put in mainnet’s place loads as mainnet, and the committed one is back after', () => {
+    const committed = readDeploymentFiles().mainnet as DeploymentFile;
+    const file = structuredClone(committed);
+    const rh = file.chains.robinhood;
+    if (rh?.family !== 'evm') throw new Error('the file has no Robinhood Chain');
+    const deployed = rh.factory;
+    Object.assign(rh, { factory: e.FACTORY, beacon: e.BEACON, registry: e.anyone('registry') });
+    const router = CHAIN_PRESETS.robinhood.networks.mainnet.router as string;
+    expect(readDeploymentFile(file).robinhood).toMatchObject({
+      provenance: 'live',
+      evmChainId: 4663,
+      factory: e.FACTORY,
+      routers: [router],
+      routes: { [router]: { kind: 'universal-router-v4', hooks: e.ZERO_ADDRESS } },
+      cash: 'robinhood:usdg',
+    });
+    const loaded = withFile(file, () => deploymentsOf('mainnet')).robinhood;
+    expect(isLoadedDeployment(loaded)).toBe(true);
+    // And the committed file is back in its place after.
+    expect(deploymentsOf('mainnet').robinhood).toMatchObject({ factory: deployed });
   });
 
   it("carries a proxy's creation code the file states, and derives the vault from it", () => {

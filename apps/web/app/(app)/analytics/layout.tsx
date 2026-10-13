@@ -1,0 +1,18 @@
+import type { ReactNode } from 'react';
+import { QuietPins } from '../../../components/ui/ProvenancePin';
+import { BearingProvider } from '../../../features/bearing/BearingProvider';
+import { BearingShell } from '../../../features/bearing/BearingShell';
+
+// Bearing's analytics (Rodrigo's Analytics 2.0): five pages behind one side menu, and the methodology.
+// The provider holds the reads of the risk API and the person's choices while they move between pages,
+// and the chain they are read for: the page's own filter, which follows nothing else (chain.ts).
+
+export default function AnalyticsLayout({ children }: { children: ReactNode }) {
+  return (
+    <BearingProvider>
+      <QuietPins>
+        <BearingShell>{children}</BearingShell>
+      </QuietPins>
+    </BearingProvider>
+  );
+}

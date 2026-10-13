@@ -33,8 +33,9 @@ const BUILT = [
   'embed-shell',
   'subscribe-block',
   'token-mapping',
+  'bearing-heatmap-tile',
 ];
-const NOT_BUILT = ['bearing-heatmap-tile', 'goal-showcase-case', 'joint-stage'];
+const NOT_BUILT = ['goal-showcase-case', 'joint-stage'];
 
 describe('the showcase (/dev/ui)', () => {
   it('accounts for every component spec: built and shown, or listed as not built', () => {
@@ -75,14 +76,18 @@ describe('the showcase (/dev/ui)', () => {
     }
   });
 
-  it('labels every panel MOCK: a note at the top of the page is not enough', () => {
+  it('marks every panel as sample in its own panel: a note at the top of the page is not enough', () => {
     for (const section of sections)
       for (const panel of all(section, (el) => classes(el).includes('tf-app')).slice(-2)) {
-        const plates = all(panel, ui('mock-plate'));
-        expect(plates.length, specOf(section)).toBeGreaterThan(0);
-        expect(text(plates[0] as never)).toContain('MOCK');
+        const marks = all(
+          panel,
+          (el) =>
+            ['sample-note', 'sample-glyph'].includes(el.attrs['data-ui'] ?? '') ||
+            'data-hatch' in el.attrs,
+        );
+        expect(marks.length, specOf(section)).toBeGreaterThan(0);
       }
-    expect(text(all(page, tag('h1'))[0]?.parent as never)).toContain('MOCK');
+    expect(all(page, (el) => classes(el).includes('tf-mock-plate'))).toHaveLength(0);
   });
 
   it('shows the pin in each of its states', () => {
@@ -105,14 +110,19 @@ describe('the showcase (/dev/ui)', () => {
     }
   });
 
-  it('spends the serif only where a spec does: the goal sentence, the wordmark, a marketing heading, the type specimen', () => {
-    const serif = all(page, (el) => classes(el).includes('font-display'));
-    for (const el of serif) {
+  it('spends the display face on headings and big numbers only: the goal card, the wordmark, a marketing heading, a KPI or stat, the type specimen', () => {
+    const display = all(page, (el) => classes(el).includes('font-display'));
+    expect(display.length).toBeGreaterThan(0);
+    for (const el of display) {
       const home = closest(el, (e) =>
-        ['goal-card', 'compact-nav', 'subscribe-block'].includes(e.attrs['data-ui'] ?? ''),
+        ['goal-card', 'compact-nav', 'subscribe-block', 'stat'].includes(e.attrs['data-ui'] ?? ''),
       );
       const specimen = closest(el, (e) => e.tag === 'figure' && text(e).startsWith('type'));
-      expect(home !== null || specimen !== null, text(el)).toBe(true);
+      const heading = /^h[1-4]$/.test(el.tag);
+      const kpi = classes(el).includes('text-b-kpi');
+      expect(home !== null || specimen !== null || heading || kpi, text(el)).toBe(true);
+      // Inter Tight is set at 600, never lighter, never a serif
+      expect(classes(el), text(el)).toContain('font-semibold');
     }
   });
 

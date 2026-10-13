@@ -26,12 +26,16 @@ export const GUARD_CHECKS = [
   'minimum',
   /** A token is not the step's asset. */
   'asset',
-  /** The vault's targets are not the step's. */
+  /** The vault's targets, or a shared portfolio's assets and weights, are not the step's. */
   'targets',
   /** The auto-follow switch is not as the step has it. */
   'auto_follow',
   /** The shared portfolio followed, or its version, is not the step's. */
   'version',
+  /** The shared portfolio published, updated or taken back is not the step's: another creator's or family's, or other text. */
+  'recipe',
+  /** A shared portfolio published with a fee cap or flags that are not zero. */
+  'limits',
   /** The vault is not the person's own for this plan. */
   'vault',
   /** A trade goes through an exchange the deployment does not name. */
@@ -64,6 +68,16 @@ export const GUARD_CHECKS = [
   'spender',
   /** An approval of everything, whatever the order says. */
   'unlimited',
+  /**
+   * A trade's deadline has passed, or is further off than a signed step may stay good, or the route
+   * inside it carries another deadline than the trade's own.
+   */
+  'deadline',
+  /**
+   * The call data a trade hands its exchange is not the one route the deployment states for it: one
+   * exact-input swap in one pool of the stated fee, tick spacing and hooks, and nothing beside it.
+   */
+  'route',
 ] as const;
 export type GuardCheck = (typeof GUARD_CHECKS)[number];
 

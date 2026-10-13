@@ -9,7 +9,7 @@
 | Primitives duplicated as inline class strings (button ×3, input ×4, card ×5, table ×5, explorer link ×3) | `GoalFlow.tsx`, `PlanView.tsx`, `monitor/page.tsx`, `StatsCard.tsx`, `app/page.tsx` | high | Extract `components/ui/{Button,Input,Select,Card,DataTable,ExplorerLink,Stat}.tsx` |
 | Chart colors hard-coded hex, outside any palette, no legend mapping stress → color | `components/ScheduleChart.tsx` | medium | Drive strokes from CSS vars (`currentColor` / `var(--chart-n)`), add legend |
 | Formatters (`pct`, `brl`, USD `toFixed`, `toLocaleString`) re-implemented per file with inconsistent precision (1 vs 2 decimals) and locale | `PlanView.tsx`, `monitor/page.tsx`, `StatsCard.tsx`, `app/page.tsx` | medium | `lib/format.ts`, one locale policy, tabular figures |
-| No fonts loaded; brand specifies Newsreader + IBM Plex Sans/Mono | `app/layout.tsx` | medium | `next/font/google` + `--font-*` theme vars |
+| No fonts loaded; brand specifies Inter Tight + Inter + IBM Plex Mono (IDENTITY-2, 2026-10-08) | `app/layout.tsx` | medium | `next/font/google` + `--font-*` theme vars |
 | Raw JSON `<pre>` dumped as the policy-run result UI | `app/monitor/page.tsx` | medium | Render outcome/signatures/explorer links as a result card |
 
 ## Component Fragility

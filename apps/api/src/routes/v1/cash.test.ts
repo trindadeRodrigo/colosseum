@@ -121,7 +121,9 @@ describe('a buy when the plan keeps cash', () => {
         [`${chain}:nvda`, '250000000'],
         [`${chain}:gold`, '200000000'],
       ]);
-      expect(placed.summary).toBe(`Buy $1,000.00 of your plan on ${registry.name(chain)}`);
+      expect(placed.summary).toBe(
+        `Deposit $1,000.00 into your plan’s vault on ${registry.name(chain)}`,
+      );
 
       // The transaction that opens the vault takes the whole deposit from the wallet.
       let latest = placed;

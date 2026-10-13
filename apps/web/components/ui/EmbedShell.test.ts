@@ -21,7 +21,17 @@ describe('EmbedShell (embed-shell.md)', () => {
   it('has no navigation, no wallet and nothing to sign', () => {
     expect(all(root, (e) => role(e) === 'navigation')).toHaveLength(0);
     const buttons = all(root, tag('button')).filter(
-      (b) => !['pin', 'copy-button', 'pin-source'].includes(b.attrs['data-ui'] ?? ''),
+      // a pin, what its popover holds (its details, a copy of the source or of an address), and the
+      // tooltip of a signature cut short
+      (b) =>
+        ![
+          'pin',
+          'copy-button',
+          'pin-details',
+          'pin-copy',
+          'pin-copy-address',
+          'hint-trigger',
+        ].includes(b.attrs['data-ui'] ?? ''),
     );
     expect(buttons).toHaveLength(0);
     expect(html(embed.ready)).not.toMatch(/wallet|Sign in|Connect/i);
@@ -36,16 +46,22 @@ describe('EmbedShell (embed-shell.md)', () => {
         '@max-[359px]:text-[length:var(--tf-e-lead)]',
       ]),
     );
-    expect(html(embed.ready)).not.toMatch(/font-display|Newsreader/);
+    expect(html(embed.ready)).not.toMatch(/font-display|Inter Tight/);
     for (const el of all(shell))
       expect(classes(el).join(' ')).not.toMatch(/text-(display|h1|h2|h3)\b/);
   });
 
-  it('keeps what survives: pins, the hatch with the word, the disclaimer in full, explorer links', () => {
+  it('keeps what survives: pins, the hatch with its named glyph, the disclaimer in full, explorer links', () => {
     expect(all(shell, ui('pin')).length).toBeGreaterThan(0);
-    expect(all(shell, ui('mock-plate')).length).toBeGreaterThan(0);
+    expect(all(shell, ui('sample-glyph')).length).toBeGreaterThan(0);
+    expect(text(shell)).not.toContain('MOCK');
     expect(text(one(shell, ui('disclaimer')))).toBe(DISCLAIMER.en);
     expect(all(shell, ui('explorer-link')).length).toBeGreaterThan(0);
+  });
+
+  it('makes the credit a target a finger can hit: 24px tall at least (WCAG 2.5.8)', () => {
+    const credit = one(render(embed.ready), ui('embed-credit'));
+    expect(classes(credit)).toEqual(expect.arrayContaining(['inline-flex', 'min-h-6']));
   });
 
   it('credits the brand at the foot, in the partner’s muted colour, linking to the public plan', () => {
@@ -69,10 +85,10 @@ describe('EmbedShell (embed-shell.md)', () => {
     expect(classes(beside.parent as never)).toContain('@min-[560px]:grid-cols-2');
   });
 
-  it('drops the hatch but keeps the word MOCK when the partner’s muted colour is too faint', () => {
+  it('drops the hatch but keeps the quiet line when the partner’s muted colour is too faint', () => {
     const faint = one(render(embed.faint), ui('embed-shell'));
     expect(faint.attrs.style).toContain('--tf-hatch:transparent');
-    expect(all(faint, ui('mock-plate')).length).toBeGreaterThan(0);
+    expect(text(one(faint, ui('sample-note')))).toBe('Sample figures');
     expect(shell.attrs.style).toBeUndefined();
   });
 
@@ -80,6 +96,18 @@ describe('EmbedShell (embed-shell.md)', () => {
     const loading = render(embed.loading);
     expect(text(one(loading, (e) => e.attrs.role === 'status'))).toBe('Loading plan…');
     expect(all(loading, tag('svg'))).toHaveLength(0);
+  });
+
+  it('keeps still boxes while it loads, busy, and after a few seconds says the service may be waking', () => {
+    const loading = render(embed.loading);
+    const section = one(loading, (e) => e.attrs['data-ui'] === 'embed-shell');
+    expect(section.attrs['aria-busy']).toBe('true');
+    expect(all(loading, ui('skeleton'))).toHaveLength(3);
+    expect(all(loading, ui('embed-slow'))).toHaveLength(0);
+    const slow = render(embed.slow);
+    expect(text(one(slow, (e) => e.attrs.role === 'status'))).toBe(
+      'Loading plan…Still loading. The server may be waking up.',
+    );
   });
 
   it('says one sentence and nothing else when the plan is not available', () => {

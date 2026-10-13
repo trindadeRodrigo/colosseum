@@ -9,7 +9,7 @@ import {
   type PriceObservation,
   type PriceSourceId,
 } from '@colosseum/risk';
-import { gte } from 'drizzle-orm';
+import { and, eq, gte } from 'drizzle-orm';
 import { RISK_HOME } from '../lib-lending';
 import { observationKey, referenceRow, upsertObservations, upsertReferencePrices } from './db';
 import { buildPriceInputs, PRICES_METHOD_VERSION, type StoredObservation } from './lib';
@@ -74,7 +74,15 @@ for (const [dir, source, map] of [
 const inDb = await db
   .select()
   .from(riskPriceObservations)
-  .where(gte(riskPriceObservations.observedAt, new Date((now - P.windowSec) * 1000)));
+  // Solana rows only. The table also holds the Chainlink reads of Robinhood Chain (scripts/risk-evm,
+  // PLAN-UNIVERSE RU.7): this job would file them as a lending oracle and write a reference price for
+  // each EVM address under `chain: 'solana'`.
+  .where(
+    and(
+      gte(riskPriceObservations.observedAt, new Date((now - P.windowSec) * 1000)),
+      eq(riskPriceObservations.chain, 'solana'),
+    ),
+  );
 const window = new Map<string, StoredObservation>();
 const flagInDb = new Map<string, boolean>();
 for (const r of inDb) {

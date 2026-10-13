@@ -1,7 +1,6 @@
 import { buildPlanTransactions, createRpc, explorerTxUrl } from '@colosseum/chain-solana';
 import {
   assets as assetsTable,
-  createDb,
   executions,
   markConfirmed,
   markFailed,
@@ -9,6 +8,7 @@ import {
   planLegs,
   plans,
   recordBuilt,
+  sharedDb,
 } from '@colosseum/db';
 import {
   ApiError,
@@ -33,7 +33,8 @@ const rowToAsset = (r: typeof assetsTable.$inferSelect): Asset =>
   });
 
 export async function registerTransactionRoutes(app: FastifyInstance) {
-  const { db } = createDb();
+  // The process's one pool (packages/db: `sharedDb`).
+  const { db } = sharedDb();
   // RPC is created on first use so the app builds (and tests run) without chain env.
   let rpcInstance: ReturnType<typeof createRpc> | undefined;
   const rpc = () => (rpcInstance ??= createRpc());

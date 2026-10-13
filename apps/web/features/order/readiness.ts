@@ -1,0 +1,155 @@
+import { type ChainId, explorerLink } from '@colosseum/schemas';
+import {
+  basketIdOfLinkedPlan,
+  basketIdOfPlan,
+  type DeploymentNetwork,
+  deploymentsOf,
+  type GuardDeployment,
+  type GuardDeployments,
+} from '@colosseum/sdk';
+import { publicWalletEnv, walletChains } from '../wallet/chains';
+
+// Whether a chain can be bought on from this app: it needs a deployment committed for its network in
+// packages/sdk/deployments/, which the guard derives every address from. The test network's file has
+// Solana and Robinhood Chain (46630, since WEB-RH-BUY); Base has none, and nothing is signed there. The
+// order runner reads the deployments it hands the executor from here too.
+
+/**
+ * The network a chain's deployment is read for. Every real network is this app's own
+ * `NEXT_PUBLIC_CHAIN_NETWORK_<CHAIN>`, never the API's word. The one thing the API's word can choose is
+ * the mock's file (with the throwaway wallet of development, the caller says `mock` too): its
+ * transactions are no chain's, and a real wallet refuses to sign them (features/wallet/port.ts).
+ */
+export function networkFor(
+  chain: ChainId,
+  mock: boolean,
+): Exclude<DeploymentNetwork, 'local'> | null {
+  if (mock) return 'mock';
+  try {
+    return walletChains(publicWalletEnv())[chain].network;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The deployments of the chain's network as the package loaded them from the committed file, handed on
+ * as they came back. Null when the network has no file, or the file has no entry for the chain: nothing
+ * is signed there.
+ */
+export function deploymentsFor(chain: ChainId, mock: boolean): GuardDeployments | null {
+  const network = networkFor(chain, mock);
+  if (!network) return null;
+  try {
+    const deployments = deploymentsOf(network);
+    return deployments[chain] ? deployments : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The chain's own coin, which pays the network fee: this app's chain table, never the API's word. */
+export function gasUnitsFor(chain: ChainId): { symbol: string; decimals: number } | null {
+  try {
+    return walletChains(publicWalletEnv())[chain].gas;
+  } catch {
+    return null;
+  }
+}
+
+/** The chain runs on the mock: the API says so, or the wallet is the throwaway one of development. */
+export const onMock = (
+  port: { test: boolean; network(chain: ChainId): { provenance: string } | null },
+  chain: ChainId,
+): boolean => port.test || port.network(chain)?.provenance === 'mock';
+
+/** True when an order on this chain can be signed from this app. */
+export const chainReady = (chain: ChainId, mock: boolean): boolean =>
+  deploymentsFor(chain, mock) !== null;
+
+/**
+ * The vault a plan was bought into, by its number on chain: the API's own rule, from the SDK
+ * (`basketIdOfPlan`), or, for a plan made from a link, the buyer's own (`basketIdOfLinkedPlan`, gate
+ * `AGENT-LINK`). The runner names it to the guard, and the portfolio joins a vault to the goal of its
+ * plan with it.
+ */
+export const basketOfPlan = (proposalId: string, buyer: string | null = null): string =>
+  buyer ? basketIdOfLinkedPlan(proposalId, buyer) : basketIdOfPlan(proposalId);
+
+/**
+ * A transaction's link on the explorer of the network this app signs for, from this app's own chain
+ * table, never the API's word: a link the API sent could point anywhere, mainnet's explorer included.
+ * On the mock, whose transactions are no network's, the mock's own `mock://` link (packages/chain-mock's
+ * rule). Null on a network with no explorer, and where there is no transaction.
+ *
+ * `provenance` is the step's own label, where the caller has it: a step of another network of the chain
+ * than this app's has no page on this app's explorer, and gets no link. A test network's step left in
+ * the database must never be handed mainnet's explorer for its hash, nor the other way round.
+ */
+export function explorerUrlFor(
+  chain: ChainId,
+  txId: string | null,
+  mock: boolean,
+  provenance?: string,
+): string | null {
+  if (!txId) return null;
+  if (mock) return `mock://${chain}/tx/${txId}`;
+  try {
+    const mine = walletChains(publicWalletEnv())[chain];
+    if (provenance !== undefined && provenance !== mine.provenance) return null;
+    return explorerLink(mine.config, txId);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a shared portfolio can be published on a chain with this deployment: the guard signs an EVM
+ * publish only through the registry the deployment names (AGT-4). No deployment at all is the chain
+ * not being ready, which the screens say on their own.
+ */
+export const publishableOn = (deployment: GuardDeployment | undefined): boolean =>
+  deployment?.family !== 'evm' || deployment.registry !== undefined;
+
+/**
+ * A wallet's page on the explorer of the network this app signs for, from the same chain table as a
+ * transaction's link: Solscan names an account `/account/…`, the EVM explorers `/address/…`. Null on
+ * the mock, whose addresses are no network's, and on a network with no explorer.
+ */
+export function explorerAddressUrlFor(
+  chain: ChainId,
+  address: string,
+  mock: boolean,
+): string | null {
+  if (mock || !address) return null;
+  try {
+    const { config } = walletChains(publicWalletEnv())[chain];
+    if (!config.explorerTx?.includes('/tx/{txId}')) return null;
+    const page = config.family === 'solana' ? 'account' : 'address';
+    return config.explorerTx.replace('/tx/{txId}', `/${page}/${encodeURIComponent(address)}`);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The same page with `{address}` where the address goes: what a figure's pin is handed, so each
+ * address in its source's details links to the explorer of the network it was read on
+ * (`PinSource.explorer`). Null where `explorerAddressUrlFor` is.
+ */
+export function explorerAddressTemplateFor(chain: ChainId, mock: boolean): string | null {
+  const SLOT = 'ADDRESS-SLOT';
+  return explorerAddressUrlFor(chain, SLOT, mock)?.replace(SLOT, '{address}') ?? null;
+}
+
+/**
+ * Whether a chain's figures are live in this app: its network variable says mainnet. This app's own
+ * word, as every label's is, never the API's. False when the table cannot be read.
+ */
+export function chainIsLive(chain: ChainId): boolean {
+  try {
+    return walletChains(publicWalletEnv())[chain].provenance === 'live';
+  } catch {
+    return false;
+  }
+}

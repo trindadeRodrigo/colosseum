@@ -5,6 +5,7 @@ import { decodeAssets } from '../basket';
 import { REPO_ROOT } from '../env';
 import { decodeRouter, routerAddress, writePriceInstruction } from '../mock-router';
 import type { AccountView, Chain } from './chain';
+import { decide, HOLD_AVERAGE_AFTER_S, HOLD_PRICE_AFTER_S, written } from './hold';
 import type { Deployment } from './setup';
 
 // The job that copies real prices onto a test network (TNET-5). It reads mainnet read only and
@@ -28,18 +29,6 @@ type SourceAsset =
       lending: string;
       price: number[];
       twap: number[];
-      method: string;
-      source?: string;
-    }
-  | {
-      kind: 'pool-mid';
-      /** A Raydium CLMM pool of the token against USDC: the price is its mid. */
-      pool: string;
-      /** An Orca Whirlpool of the same pair the mid must agree with, to `maxSpreadBps`. */
-      check: string;
-      maxSpreadBps: number;
-      mint: string;
-      decimals: number;
       method: string;
       source?: string;
     }
@@ -115,74 +104,6 @@ function jupiterLendRate(data: Uint8Array): { rate: bigint; unixTimestamp: bigin
 
 const older = (a: bigint, b: bigint) => (a < b ? a : b);
 
-const RAYDIUM_CLMM = 'CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK';
-const ORCA_WHIRLPOOL = 'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc';
-/** A pool's mid is written with this many decimal places. */
-const POOL_EXPONENT = 8n;
-
-const u128At = (data: Uint8Array, at: number) => u64At(data, at) + (u64At(data, at + 8) << 64n);
-
-/** Dollars for one whole token at a pool's sqrt price, the token being mint 0 against USDC (6
- * decimals) at one dollar: (sqrt / 2^64)^2 · 10^(decimals − 6), scaled by 10^8, rounded down. */
-const midOf = (sqrtX64: bigint, decimals: number) => {
-  const shift = BigInt(decimals - 6) + POOL_EXPONENT;
-  return (sqrtX64 * sqrtX64 * 10n ** shift) >> 128n;
-};
-
-/** A Raydium CLMM pool's two mints and sqrt price, and an Orca Whirlpool's (programs/risk decoders). */
-function poolSide(data: Uint8Array, owner: string) {
-  const decoder = getAddressDecoder();
-  if (owner === RAYDIUM_CLMM && data.length === 1544)
-    return {
-      mint0: decoder.decode(data.slice(73, 105)),
-      mint1: decoder.decode(data.slice(105, 137)),
-      sqrtX64: u128At(data, 253),
-      updatedAt: 0n,
-    };
-  if (owner === ORCA_WHIRLPOOL && data.length === 653)
-    return {
-      mint0: decoder.decode(data.slice(101, 133)),
-      mint1: decoder.decode(data.slice(181, 213)),
-      sqrtX64: u128At(data, 65),
-      /** `reward_last_updated_timestamp`: moved by every swap and every change of liquidity. */
-      updatedAt: u64At(data, 261),
-    };
-  throw new Error(
-    `${owner} is neither a Raydium CLMM pool nor an Orca Whirlpool of the expected size`,
-  );
-}
-
-/** The mid of a token's USDC pool, checked against an Orca Whirlpool of the pair and stamped with
- * that pool's own last update, so the price goes stale when the pool does. The pool keeps no
- * average: the same mid stands as the average entry. */
-async function poolMid(
-  source: Source,
-  asset: Extract<SourceAsset, { kind: 'pool-mid' }>,
-): Promise<{ price: Entry; twap: Entry }> {
-  const [pool, check] = await Promise.all([
-    source.account(address(asset.pool)),
-    source.account(address(asset.check)),
-  ]);
-  if (!pool || !check) throw new Error('a pool is not there');
-  if (pool.owner !== RAYDIUM_CLMM || check.owner !== ORCA_WHIRLPOOL)
-    throw new Error('the pool is not a Raydium CLMM pool, or the check is not an Orca Whirlpool');
-  const sides = [pool, check].map((account) => {
-    const side = poolSide(account.data, account.owner);
-    if (side.mint0 !== asset.mint || side.mint1 !== USDC_MINT)
-      throw new Error(
-        `a pool is ${side.mint0} against ${side.mint1}, not ${asset.mint} against USDC`,
-      );
-    return side;
-  });
-  const [mid = 0n, other = 0n] = sides.map((side) => midOf(side.sqrtX64, asset.decimals));
-  const apart = mid > other ? mid - other : other - mid;
-  if (mid === 0n || apart * 10_000n > mid * BigInt(asset.maxSpreadBps))
-    throw new Error(`the two pools' mids are more than ${asset.maxSpreadBps} bps apart`);
-  const unixTimestamp = sides[1]?.updatedAt ?? 0n;
-  const entry = { value: mid, exponent: POOL_EXPONENT, unixTimestamp };
-  return { price: entry, twap: entry };
-}
-
 /** Reads every asset of `sources` from mainnet. An asset whose source cannot be read says why. */
 export async function readPrices(source: Source, sources: Sources): Promise<Reading[]> {
   const scope = await source.account(address(sources.scope.account));
@@ -210,14 +131,6 @@ export async function readPrices(source: Source, sources: Sources): Promise<Read
         twap: chained(scope.data, asset.twap),
         method: asset.method,
       });
-      continue;
-    }
-    if (asset.kind === 'pool-mid') {
-      try {
-        readings.push({ id, ...(await poolMid(source, asset)), method: asset.method });
-      } catch (error) {
-        readings.push({ id, none: (error as Error).message });
-      }
       continue;
     }
     try {
@@ -252,11 +165,16 @@ export type CopyOptions = {
    * stamped (at least one hour's worth, at most `MAX_GAP_JUMP_BPS`), so a token that moved while
    * the copier was stopped is copied when it starts again. */
   maxJumpBps: number;
+  /** `--hold-last`: an entry whose source has stopped is written again with the cluster's time and
+   * the value the source still holds, so a closed market does not leave the test network stale. */
+  holdLast?: boolean;
   log: (line: string) => void;
 };
 
 export type RoundResult = {
   written: string[];
+  /** Assets whose entries were only stamped again (`holdLast`). */
+  held: string[];
   unchanged: string[];
   refused: { id: string; why: string }[];
   signatures: string[];
@@ -307,6 +225,7 @@ function refusal(
  * One round on Solana: reads what the price account holds, writes the entries whose source time is
  * newer, six assets a transaction, signed by the price writer the exchange names. The deploy key
  * (the exchange's admin) is refused: the copier holds the one key that can do nothing but this.
+ * With `holdLast`, what each entry gets is `decide` in hold.ts.
  */
 export async function copyRound(
   chain: Chain,
@@ -337,12 +256,22 @@ export async function copyRound(
   const entries = listed ? decodeAssets(listed.data).assets : [];
   const now = await chain.now();
 
-  const result: RoundResult = { written: [], unchanged: [], refused: [], signatures: [] };
+  const result: RoundResult = {
+    written: [],
+    held: [],
+    unchanged: [],
+    refused: [],
+    signatures: [],
+  };
   const writes: {
     id: string;
     symbol: string;
     args: { priceIndex: number; twapIndex: number; price: Entry; twap: Entry };
+    /** A line per entry stamped again, and whether that is all this write does. */
+    holds: string[];
+    onlyHeld: boolean;
   }[] = [];
+  const posted = (entry: Entry) => new Date(Number(entry.unixTimestamp) * 1000).toISOString();
   for (const reading of readings) {
     const asset = deployment.assets.find((a) => a.id === reading.id);
     if (!asset) {
@@ -364,29 +293,69 @@ export async function copyRound(
     }
     const heldPrice = entryAt(held.data, asset.priceIndex);
     const heldTwap = entryAt(held.data, asset.twapIndex);
-    const newerPrice = reading.price.unixTimestamp > heldPrice.unixTimestamp;
-    const newerTwap = reading.twap.unixTimestamp > heldTwap.unixTimestamp;
-    if (!newerPrice && !newerTwap) {
+    const price = decide(
+      reading.price,
+      heldPrice,
+      now,
+      options.holdLast ? HOLD_PRICE_AFTER_S : null,
+    );
+    const twap = decide(
+      reading.twap,
+      heldTwap,
+      now,
+      options.holdLast ? HOLD_AVERAGE_AFTER_S : null,
+    );
+    if (price === 'unchanged' && twap === 'unchanged') {
       result.unchanged.push(asset.symbol);
       continue;
     }
     const why =
-      (newerPrice && refusal('price', reading.price, range, heldPrice, now, options.maxJumpBps)) ||
-      (newerTwap && refusal('average', reading.twap, range, heldTwap, now, options.maxJumpBps));
+      (price === 'copy' &&
+        refusal('price', reading.price, range, heldPrice, now, options.maxJumpBps)) ||
+      (twap === 'copy' &&
+        refusal('average', reading.twap, range, heldTwap, now, options.maxJumpBps));
     if (why) {
       result.refused.push({ id: asset.symbol, why });
       continue;
     }
-    // An entry whose source is not newer is written back as the account holds it.
+    // A held entry keeps its value and takes the cluster's time; one left alone is written back as
+    // the account holds it (`written` in hold.ts).
+    const nextPrice = written(
+      price,
+      reading.price,
+      heldPrice,
+      now,
+      options.holdLast ? HOLD_PRICE_AFTER_S : null,
+    );
+    const nextTwap = written(
+      twap,
+      reading.twap,
+      heldTwap,
+      now,
+      options.holdLast ? HOLD_AVERAGE_AFTER_S : null,
+    );
     writes.push({
       id: asset.id,
       symbol: asset.symbol,
       args: {
         priceIndex: asset.priceIndex,
         twapIndex: asset.twapIndex,
-        price: newerPrice ? reading.price : heldPrice,
-        twap: newerTwap ? reading.twap : heldTwap,
+        price: nextPrice.entry,
+        twap: nextTwap.entry,
       },
+      holds: [
+        ...(nextPrice.held
+          ? [
+              `${asset.symbol} at ${dollars(nextPrice.entry)} (source last posted ${posted(reading.price)})`,
+            ]
+          : []),
+        ...(nextTwap.held
+          ? [
+              `${asset.symbol} average at ${dollars(nextTwap.entry)} (source last posted ${posted(reading.twap)})`,
+            ]
+          : []),
+      ],
+      onlyHeld: price !== 'copy' && twap !== 'copy',
     });
   }
 
@@ -396,7 +365,7 @@ export async function copyRound(
       batch.map((w) => writePriceInstruction(writer, prices, w.args)),
     );
     if (options.dryRun) {
-      for (const w of batch)
+      for (const w of batch.filter((w) => !w.onlyHeld))
         options.log(
           `    would write ${w.symbol}: entry ${w.args.priceIndex} ${dollars(w.args.price)} at ${w.args.price.unixTimestamp}, entry ${w.args.twapIndex} ${dollars(w.args.twap)} at ${w.args.twap.unixTimestamp}`,
         );
@@ -404,7 +373,11 @@ export async function copyRound(
       const sent = await chain.send(writer, instructions);
       result.signatures.push(sent.signature);
     }
-    for (const w of batch) result.written.push(w.symbol);
+    for (const w of batch) {
+      (w.onlyHeld ? result.held : result.written).push(w.symbol);
+      for (const line of w.holds)
+        options.log(`${options.dryRun ? '    would hold' : 'held'} ${line}`);
+    }
   }
   return result;
 }
@@ -415,6 +388,9 @@ export function roundLine(at: Date, round: number, result: RoundResult, dryRun: 
   const refused = result.refused.map((r) => `${r.id}: ${r.why}`);
   return `${at.toISOString()} round ${round}${dryRun ? ' (dry run)' : ''}: ${[
     `${dryRun ? 'would write' : 'wrote'} ${result.written.length}${list(result.written)}`,
+    ...(result.held.length
+      ? [`${dryRun ? 'would hold' : 'held'} ${result.held.length}${list(result.held)}`]
+      : []),
     `unchanged ${result.unchanged.length}${list(result.unchanged)}`,
     `refused ${result.refused.length}${list(refused)}`,
     ...(result.signatures.length ? [`tx ${result.signatures.join(' ')}`] : []),

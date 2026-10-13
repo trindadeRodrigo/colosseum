@@ -89,6 +89,13 @@ jobs:
       - name: Tests
         run: pnpm test:contracts
 
+      # `forge script` refuses things `forge test` allows (a script that calls itself, for one), so the deploy
+      # script is also run as a script: on forge's in-memory chain, no node, the path a mainnet takes, where
+      # the admin ends up a timelock. It fails if the run does not end with everything printed.
+      - name: The deploy script, run as a script (the timelock path)
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @colosseum/contracts test:script
+
       - name: Contract sizes
         if: ${{ !cancelled() }}
         working-directory: contracts

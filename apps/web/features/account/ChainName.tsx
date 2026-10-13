@@ -1,8 +1,10 @@
-import type { Provenance } from '@colosseum/schemas';
+import type { ChainId, Provenance } from '@colosseum/schemas';
+import { ChainBadge } from '../../components/ui/ChainBadge';
+import { ChainLogo } from '../../components/ui/ChainLogo';
 import { MockPlate } from '../../components/ui/MockPlate';
 
 // A chain's name as a screen shows it, with what a person has to know about where it runs. A chain the
-// API runs on the mock, and a chain on a test network, are not live: the name carries the MOCK plate,
+// API runs on the mock, and a chain on a test network, are not live: the name carries the sample glyph,
 // and a test network adds the words (DESIGN-VAULT section 11, "Test networks"). Only `live` has no
 // mark; a label this build does not know is shown as not live.
 
@@ -21,7 +23,7 @@ export function ChainMark({ provenance, labels, announce = true }: ChainMarkProp
   if (provenance === 'live') return null;
   return (
     <span data-ui="chain-mark" className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
-      <MockPlate announce={announce} labels={{ announce: labels.mockAnnounce }} />
+      <MockPlate announce={announce} labels={{ figure: labels.mockAnnounce }} />
       {provenance === 'sandbox' && (
         <span className="text-caption text-muted-foreground">{labels.testNetwork}</span>
       )}
@@ -29,11 +31,54 @@ export function ChainMark({ provenance, labels, announce = true }: ChainMarkProp
   );
 }
 
-/** The name, then the mark. */
-export function ChainName({ name, ...mark }: ChainMarkProps & { name: string }) {
+export type ChainHowLabels = { testNetwork: string; sample: string };
+
+/**
+ * How a chain is run, in words alone, where the chain itself is named and no figure is beside it: a
+ * choice of chain, the chain a person signed in on (Thom, 2026-10-09). "Test network", "Sample" on
+ * the sample chain, nothing on a live one. No hatched glyph: the hatch marks a sample figure.
+ */
+export function ChainHow({
+  provenance,
+  labels,
+}: {
+  provenance: Provenance;
+  labels: ChainHowLabels;
+}) {
+  if (provenance === 'live') return null;
+  return (
+    <span data-ui="chain-how" className="text-caption text-muted-foreground">
+      {provenance === 'sandbox' ? labels.testNetwork : labels.sample}
+    </span>
+  );
+}
+
+/** The chain's logo and name, then how it is run, in words. */
+export function ChainName({
+  chain,
+  name,
+  provenance,
+  labels,
+}: {
+  chain: ChainId;
+  name: string;
+  provenance: Provenance;
+  labels: ChainHowLabels;
+}) {
   return (
     <span data-ui="chain-name" className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+      <ChainLogo chain={chain} size={16} decorative />
       <span>{name}</span>
+      <ChainHow provenance={provenance} labels={labels} />
+    </span>
+  );
+}
+
+/** The chain's badge, then the mark: where a screen names the chain a plan or a vault is on. */
+export function ChainBadgeMarked({ chain, ...mark }: ChainMarkProps & { chain: ChainId }) {
+  return (
+    <span data-ui="chain-name" className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+      <ChainBadge chain={chain} />
       <ChainMark {...mark} />
     </span>
   );

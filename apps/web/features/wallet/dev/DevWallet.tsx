@@ -15,12 +15,12 @@ import { evmSelfTransfer, solanaSelfTransfer } from './self-transfer';
 
 const CHAINS: ChainId[] = ['solana', 'robinhood'];
 const MESSAGE = 'Tenonfi wallet check. This signature moves nothing.';
-const button = 'rounded-[2px] border border-gray-500 px-3 py-1.5 text-sm hover:border-black';
+const button = 'rounded-sm border border-input px-3 py-1.5 text-sm hover:border-foreground';
 
 /** Where a figure came from, when and how. Every figure on this page is followed by one. */
 function Source({ of }: { of: Pick<Reading<unknown>, 'source' | 'fetchedAt' | 'method'> }) {
   return (
-    <span className="font-mono text-xs text-gray-600">
+    <span className="font-mono text-xs text-muted-foreground">
       {of.source} · {of.fetchedAt} · {of.method}
     </span>
   );
@@ -29,9 +29,9 @@ function Source({ of }: { of: Pick<Reading<unknown>, 'source' | 'fetchedAt' | 'm
 /** A test network is said in words beside everything that comes from one. */
 function NetworkLabel({ chain }: { chain: WalletChain }) {
   return chain.provenance === 'sandbox' ? (
-    <span className="border border-gray-500 px-1.5 text-xs">test network</span>
+    <span className="border border-input px-1.5 text-xs">test network</span>
   ) : (
-    <span className="border border-black px-1.5 text-xs font-semibold">mainnet</span>
+    <span className="border border-foreground px-1.5 text-xs font-semibold">mainnet</span>
   );
 }
 
@@ -113,7 +113,7 @@ function ChainPanel({
 
   if (!account || !address)
     return (
-      <section className="border border-gray-300 p-4">
+      <section className="border border-border p-4">
         <h2 className="font-semibold">
           {name} <NetworkLabel chain={chain} />
         </h2>
@@ -190,20 +190,20 @@ function ChainPanel({
 
   const funded = balance !== null && balance.value > 0n;
   return (
-    <section className="space-y-3 border border-gray-300 p-4">
+    <section className="space-y-3 border border-border p-4">
       <h2 className="font-semibold">
         {name} <NetworkLabel chain={chain} />
       </h2>
       <dl className="space-y-1 text-sm">
         <div>
-          <dt className="inline text-gray-600">Network: </dt>
+          <dt className="inline text-muted-foreground">Network: </dt>
           <dd className="inline">
             {networkName}
             {chain.config.evmChainId !== null && `, chain id ${chain.config.evmChainId}`}
           </dd>
         </div>
         <div>
-          <dt className="inline text-gray-600">Address: </dt>
+          <dt className="inline text-muted-foreground">Address: </dt>
           <dd className="inline break-all font-mono">{address}</dd>{' '}
           <span>
             ({account.kind === 'embedded' ? 'made at sign-in' : 'an outside wallet'}
@@ -211,7 +211,7 @@ function ChainPanel({
           </span>
         </div>
         <div>
-          <dt className="inline text-gray-600">Gas balance: </dt>
+          <dt className="inline text-muted-foreground">Gas balance: </dt>
           <dd className="inline">
             {balance ? (
               <>
@@ -226,7 +226,7 @@ function ChainPanel({
           </dd>
         </div>
         <div>
-          <dt className="inline text-gray-600">Funding: </dt>
+          <dt className="inline text-muted-foreground">Funding: </dt>
           <dd className="inline">
             {balance === null
               ? 'not known until the balance is read'
@@ -236,7 +236,7 @@ function ChainPanel({
           </dd>
         </div>
         <div>
-          <dt className="inline text-gray-600">This wallet: </dt>
+          <dt className="inline text-muted-foreground">This wallet: </dt>
           <dd className="inline">
             {caps.silent ? 'signs with no prompt' : 'prompts for each signature'},{' '}
             {caps.signOnly ? 'hands the signed bytes back' : 'sends what it signs itself'},{' '}
@@ -323,7 +323,7 @@ function Tokens({ port }: { port: WebWalletPort }) {
       return <p>GET /v1/config answered {res.status} with the sign-in headers attached.</p>;
     });
   return (
-    <section className="space-y-3 border border-gray-300 p-4">
+    <section className="space-y-3 border border-border p-4">
       <h2 className="font-semibold">Sign-in token for the API</h2>
       <div className="flex flex-wrap gap-2">
         <button type="button" className={button} aria-busy={step.busy !== null} onClick={read}>
@@ -359,7 +359,7 @@ export function DevWallet() {
     <div className="space-y-6" data-marker={DEV_PAGE_MARKER}>
       <div>
         <h1 className="text-2xl font-semibold">Wallet check</h1>
-        <p className="mt-1 text-sm text-gray-600">
+        <p className="mt-1 text-sm text-muted-foreground">
           A development page, not part of the product. It exists under the development server only.
           Nothing here is sent unless you press a button that says so.
         </p>

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { dictionary } from '../../i18n';
 import { FIGURE, LIVE_SPECIMEN, MOCK_OBS, SANDBOX_OBS, STALE_SPECIMEN } from './fixtures/mock';
 import {
   kindWords,
@@ -91,34 +92,48 @@ describe('ProvenancePin (provenance-pin.md)', () => {
         expect(svg.attrs.viewBox).toBe('0 0 18 12');
         expect(svg.attrs['aria-hidden']).toBe('true');
         expect(classes(svg)).toEqual(expect.arrayContaining(['h-[0.75em]', 'w-[1.125em]']));
-        const outline = one(svg, tag('rect'));
+        const outline = all(svg, tag('rect'))[0] as ReturnType<typeof one>;
         expect(outline.attrs).toMatchObject({
           x: '0.75',
           y: '0.75',
           width: '16.5',
           height: '10.5',
+          rx: '2.5',
         });
+        // the logo's tenon end in line mode: no circle anywhere (LOGO-2: the pin is square)
+        expect(all(svg, tag('circle'))).toHaveLength(0);
         expect(outline.attrs.stroke).toBe('var(--tf-pin-outline)');
         expect(outline.attrs['stroke-width']).toBe('1.5');
         expect(outline.attrs.fill).toBe('none');
       }
     });
 
-    it('live: a solid pin in the brand wood', () => {
-      const dot = one(glyph(pin.live), tag('circle'));
-      expect(dot.attrs).toMatchObject({ cx: '9', cy: '6', r: '2.5', fill: 'var(--tf-pin)' });
+    it('live: a solid square pin, 4 by 4 with a corner of 1, set toward the end, in honey (honey-l on day)', () => {
+      const square = all(glyph(pin.live), tag('rect'))[1];
+      expect(square?.attrs).toMatchObject({
+        x: '11',
+        y: '4',
+        width: '4',
+        height: '4',
+        rx: '1',
+        fill: 'var(--tf-pin)',
+      });
     });
 
-    it('stale: a hollow ring in the outline colour, the same size as the pin', () => {
-      const ring = one(glyph(pin.stale), tag('circle'));
-      expect(ring.attrs.fill).toBe('none');
-      expect(ring.attrs.stroke).toBe('var(--tf-pin-outline)');
-      expect(Number(ring.attrs.r) + Number(ring.attrs['stroke-width']) / 2).toBe(2.5);
+    it('stale: the same square, hollow, in the pin colour', () => {
+      const square = all(glyph(pin.stale), tag('rect'))[1];
+      expect(square?.attrs.fill).toBe('none');
+      expect(square?.attrs.stroke).toBe('var(--tf-pin)');
+      // its outer edge is the live pin's: 11 to 15 and 4 to 8
+      const half = Number(square?.attrs['stroke-width']) / 2;
+      expect(Number(square?.attrs.x) - half).toBe(11);
+      expect(Number(square?.attrs.width) + 2 * half).toBe(4);
     });
 
     it('MOCK: no pin at all, and a 45° hatch at a 3px pitch inside the outline', () => {
       const svg = glyph(pin.mock);
-      expect(all(svg, tag('circle'))).toHaveLength(0);
+      // the outline alone: no square pin
+      expect(all(svg, tag('rect'))).toHaveLength(1);
       const hatch = one(svg, tag('path'));
       expect(hatch.attrs.stroke).toBe('var(--tf-hatch)');
       expect(hatch.attrs['stroke-width']).toBe('1');
@@ -169,11 +184,28 @@ describe('ProvenancePin (provenance-pin.md)', () => {
       };
       expect(label(pin.live)).toBe('Source for 6.40%');
       expect(label(pin.stale)).toBe('Source for 6.40%, stale, 3 hours old');
-      expect(label(pin.mock)).toBe('Source for 6.40%, mock data');
-      expect(label(pin.sandbox)).toBe('Source for 6.40%, mock data');
+      expect(label(pin.mock)).toBe('Source for 6.40%, sample figure');
+      expect(label(pin.sandbox)).toBe('Source for 6.40%, sample figure');
       expect(label(pin.labelled)).toBe('Source for $12,480');
       expect(pinLabel('1', { ...STALE_SPECIMEN, staleAgeSec: 3600 })).toBe(
         'Source for 1, stale, 1 hour old',
+      );
+    });
+
+    it('says the age in the view’s language in its name: no English inside a Portuguese one', () => {
+      const pt = dictionary('pt').pin;
+      const at = (staleAgeSec: number) => pinLabel('6,40%', { ...STALE_SPECIMEN, staleAgeSec }, pt);
+      expect(at(13 * 3600)).toBe('Fonte de 6,40%, desatualizado, há 13 horas');
+      expect(at(3600)).toBe('Fonte de 6,40%, desatualizado, há 1 hora');
+      expect(at(120)).toBe('Fonte de 6,40%, desatualizado, há 2 minutos');
+      expect(at(3 * 86_400)).toBe('Fonte de 6,40%, desatualizado, há 3 dias');
+      expect(at(13 * 3600)).not.toMatch(/hour|old/);
+      // the words are plain data: a server component hands them to the pin, and no function crosses
+      for (const lang of ['en', 'pt'] as const)
+        expect(JSON.parse(JSON.stringify(dictionary(lang).pin))).toEqual(dictionary(lang).pin);
+      // and English says it as it did
+      expect(pinLabel('1', { ...STALE_SPECIMEN, staleAgeSec: 7200 }, dictionary('en').pin)).toBe(
+        'Source for 1, stale, 2 hours old',
       );
     });
 
@@ -192,21 +224,25 @@ describe('ProvenancePin (provenance-pin.md)', () => {
       }
       const root = render(pin.staleNoAge);
       expect(text(one(root, ui('stale-tag')))).toBe('stale · age unknown');
-      expect(text(one(root, ui('pin-popover')))).toContain('stale · age unknown');
+      // the popover says it as a sentence, first
+      expect(text(one(root, ui('pin-stale')))).toBe('Stale, and its age is not known');
       expect(text(root)).not.toMatch(/NaN|Infinity/);
-      expect(all(one(root, ui('pin-glyph')), tag('circle'))[0]?.attrs.fill).toBe('none');
+      expect(all(one(root, ui('pin-glyph')), tag('rect'))[1]?.attrs.fill).toBe('none');
       expect(text(one(render(pin.staleNegative), ui('stale-tag')))).toBe('stale · age unknown');
       // an age of nothing is still an age
       expect(staleWords({ ...LIVE_SPECIMEN, staleAgeSec: 0 })).toBe('stale · 1 min');
     });
 
-    it('never shows mock data without the MOCK plate, and never with a solid pin', () => {
+    it('shows sample data by its hatched pin and its name, never the word MOCK, never a solid pin', () => {
       for (const node of [pin.mock, pin.sandbox, pin.unknownKind]) {
         const root = render(node);
-        expect(text(one(root, ui('mock-plate')))).toBe('MOCK');
-        expect(all(root, tag('circle'))).toHaveLength(0);
+        expect(one(root, ui('pin-glyph'))).toBeTruthy();
+        expect(all(root, (el) => 'data-hatch' in el.attrs)).toHaveLength(1);
+        expect(text(root)).not.toContain('MOCK');
+        expect(one(root, ui('pin')).attrs['aria-label']).toMatch(/, sample figure$/);
+        expect(all(one(root, ui('pin-glyph')), tag('rect'))).toHaveLength(1); // no pin
       }
-      expect(all(render(pin.live), ui('mock-plate'))).toHaveLength(0);
+      expect(all(render(pin.live), (el) => 'data-hatch' in el.attrs)).toHaveLength(0);
     });
   });
 
@@ -217,52 +253,77 @@ describe('ProvenancePin (provenance-pin.md)', () => {
       expect(one(root, ui('pin')).attrs['aria-expanded']).toBe('false');
     });
 
-    it('reads source · fetched_at · method, the time in ISO 8601 UTC, in the mono face', () => {
-      expect(sourceLine(LIVE_SPECIMEN)).toBe('sample feed · 2026-10-01T14:02:11Z · haircut v2');
-      expect(sourceLine({ ...LIVE_SPECIMEN, fetchedAt: '2026-10-01T11:02:11-03:00' })).toBe(
-        'sample feed · 2026-10-01T14:02:11Z · haircut v2',
-      );
+    it('says in plain words what the number is, where from, how fresh and whether live', () => {
       const root = render(pin.open);
       const popover = one(root, ui('pin-popover'));
-      expect(text(popover)).toContain(sourceLine(LIVE_SPECIMEN));
-      expect(text(popover)).toContain(FIGURE.rateDetail);
+      // no clock on the server: the exact time stands until the browser's is read
+      expect(
+        all(
+          one(popover, ui('pin-summary')),
+          (el) => el.tag === 'span' && 'data-ui' in el.attrs,
+        ).map((el) => text(el)),
+      ).toEqual(['From a sample feed', 'Read 1 Oct 2026, 14:02:11 UTC', 'Live', FIGURE.rateDetail]);
+      // the API's own words are one step away, never dumped by default (gate TOOLTIP-WORDS)
+      expect(all(popover, ui('pin-source'))).toHaveLength(0);
+      expect(text(popover)).not.toContain(sourceLine(LIVE_SPECIMEN));
+      expect(text(popover)).not.toContain('2026-10-01T14:02:11Z');
+      expect(one(popover, ui('pin-details')).attrs['aria-expanded']).toBe('false');
+      // words in the UI face on the popover surface; only an address is set in the mono face
       expect(classes(popover)).toEqual(
         expect.arrayContaining([
-          'font-mono',
-          'text-source',
+          'font-sans',
+          'text-body-sm',
           'bg-popover',
           'border',
           'border-border',
           'rounded-md',
+          'shadow-popover',
         ]),
+      );
+      expect(classes(popover)).not.toContain('font-mono');
+    });
+
+    it('keeps the line the API wrote, the time in ISO 8601 UTC, for the copy', () => {
+      expect(sourceLine(LIVE_SPECIMEN)).toBe('sample feed · 2026-10-01T14:02:11Z · haircut v2');
+      expect(sourceLine({ ...LIVE_SPECIMEN, fetchedAt: '2026-10-01T11:02:11-03:00' })).toBe(
+        'sample feed · 2026-10-01T14:02:11Z · haircut v2',
       );
     });
 
-    it('is a tooltip that describes the pin, or a named dialog when it holds a link', () => {
+    it('is a named dialog its pin controls, described by the plain sentences', () => {
       const plain = render(pin.open);
-      const tip = one(plain, ui('pin-popover'));
-      expect(role(tip)).toBe('tooltip');
-      expect(one(plain, ui('pin')).attrs['aria-describedby']).toBe(tip.attrs.id);
-      const withLink = render(pin.openWithDocs);
-      const dialog = one(withLink, ui('pin-popover'));
-      expect(role(dialog)).toBe('dialog');
-      expect(dialog.attrs['aria-label']).toBe('Provenance');
-      expect(one(withLink, ui('pin')).attrs['aria-controls']).toBe(dialog.attrs.id);
-      expect(one(dialog, tag('a')).attrs).toMatchObject({
+      const popover = one(plain, ui('pin-popover'));
+      // it holds controls (Details, copy), so it is a dialog, never a tooltip with buttons in it
+      expect(role(popover)).toBe('dialog');
+      expect(popover.attrs['aria-label']).toBe('Source details');
+      expect(one(plain, ui('pin')).attrs['aria-controls']).toBe(popover.attrs.id);
+      expect(one(plain, ui('pin')).attrs['aria-describedby']).toBe(
+        one(popover, ui('pin-summary')).attrs.id,
+      );
+      // closed, the pin points at nothing
+      expect(one(render(pin.live), ui('pin')).attrs['aria-describedby']).toBeUndefined();
+      const withLink = one(render(pin.openWithDocs), ui('pin-popover'));
+      expect(one(withLink, tag('a')).attrs).toMatchObject({
         href: '/risk/methodology',
         rel: 'noopener',
       });
     });
 
-    it('adds the state: how stale, or which kind of mock', () => {
-      expect(text(one(render(pin.openWithDocs), ui('pin-popover')))).toContain('stale · 3 h');
-      expect(text(one(render(pin.sandbox), ui('pin-popover')))).toContain('MOCK · test network');
-      expect(text(one(render(pin.unknownKind), ui('pin-popover')))).toContain('MOCK · not live');
+    it('says a stale reading first, and never shows a sample or a test network as live', () => {
+      const stale = one(render(pin.openWithDocs), ui('pin-summary'));
+      expect(text(all(stale, tag('span'))[0] as never)).toBe(
+        'Last updated 3 hours ago, which is stale',
+      );
+      const sandbox = one(render(pin.sandbox), ui('pin-popover'));
+      expect(text(one(sandbox, ui('pin-state')))).toBe('Test network, not live');
+      expect(text(one(render(pin.unknownKind), ui('pin-state')))).toBe('Not live');
+      expect(text(sandbox)).not.toContain('MOCK');
+      expect(text(sandbox)).not.toMatch(/\bLive\b/);
       expect(PIN_LABELS.kinds).toEqual({
-        mock: 'mock data',
-        sandbox: 'test network',
-        fixture: 'fixture',
-        prior_dataset: 'prior dataset',
+        mock: 'Sample figure, not live',
+        sandbox: 'Test network, not live',
+        fixture: 'Sample figure, not live',
+        prior_dataset: 'From an earlier dataset, not live',
       });
       expect(SANDBOX_OBS.provenance).toBe('sandbox');
     });
@@ -270,23 +331,17 @@ describe('ProvenancePin (provenance-pin.md)', () => {
     it('opens on a provenance named like something every object has, and calls it "not live"', () => {
       for (const node of [pin.inheritedKind, pin.constructorKind]) {
         const root = render(node); // `kinds['__proto__']` is an object: React cannot draw one
-        expect(text(one(root, ui('pin-popover')))).toContain('MOCK · not live');
-        expect(text(one(root, ui('mock-plate')))).toBe('MOCK');
-        expect(all(root, tag('circle'))).toHaveLength(0);
+        expect(text(one(root, ui('pin-state')))).toBe('Not live');
+        expect(all(root, (el) => 'data-hatch' in el.attrs)).toHaveLength(1);
+        expect(all(one(root, ui('pin-glyph')), tag('rect'))).toHaveLength(1); // no pin
       }
       for (const odd of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', '', 'replayed'])
-        expect(kindWords(odd), odd).toBe('not live');
-      for (const odd of [null, undefined, 3, {}]) expect(kindWords(odd)).toBe('not live');
-      expect(kindWords('sandbox')).toBe('test network');
+        expect(kindWords(odd), odd).toBe('Not live');
+      for (const odd of [null, undefined, 3, {}]) expect(kindWords(odd)).toBe('Not live');
+      expect(kindWords('sandbox')).toBe('Test network, not live');
       expect(
         kindWords('fixture', { ...PIN_LABELS, kinds: { ...PIN_LABELS.kinds, fixture: ' ' } }),
-      ).toBe('not live');
-    });
-
-    it('offers the source line as something to copy', () => {
-      const source = one(render(pin.open), ui('pin-source'));
-      expect(source.tag).toBe('button');
-      expect(text(source)).toContain(sourceLine(LIVE_SPECIMEN));
+      ).toBe('Not live');
     });
   });
 });

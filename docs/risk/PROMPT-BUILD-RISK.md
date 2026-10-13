@@ -8,7 +8,7 @@
 
 You are the sole engineer adding a liquidity and risk layer to this repository. Read `HANDOFF-RISK.md` and `docs/risk/PLAN-RISK.md` fully, then `CLAUDE.md`, `docs/structurer/STATE.md` and `docs/GATES.md`. `PLAN-RISK.md` is the schedule; `HANDOFF-RISK.md` is the spec. Where they conflict, stop and tell me.
 
-Standing constraint for this whole build: the hackathon submission on `main` is live and freezes Oct 9. **Do not modify `scripts/depth-snapshot.mjs`, `scripts/launchd/*`, the launchd job `com.colosseum.depth-snapshot`, anything under `~/.colosseum/depth/`, or the `main` branch.** If a task seems to need it, stop and ask.
+Standing constraint for this whole build: the hackathon submission on `main` is live; there is no feature freeze (gate `NO-FREEZE`, Oct 5), and `main` is tagged at the submission on Oct 12. **Do not modify `scripts/depth-snapshot.mjs`, `scripts/launchd/*`, the launchd job `com.colosseum.depth-snapshot`, anything under `~/.colosseum/depth/`, or the `main` branch.** If a task seems to need it, stop and ask.
 
 Do these in order:
 

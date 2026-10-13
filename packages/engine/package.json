@@ -5,10 +5,15 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./personal": "./src/personal/index.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@colosseum/basket": "workspace:*",
     "@colosseum/schemas": "workspace:*",
     "javascript-lp-solver": "^1.0.3",
     "zod": "^4.6.5"

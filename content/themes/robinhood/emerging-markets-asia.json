@@ -1,0 +1,37 @@
+{
+  "slug": "emerging-markets-asia",
+  "name": {
+    "en": "Emerging markets and Asia",
+    "pt": "Mercados emergentes e Ásia"
+  },
+  "chain": "robinhood",
+  "version": 1,
+  "curator": "Rodrigo",
+  "status": "confirmed",
+  "decidedOn": "2026-10-07",
+  "gate": "LABELS-CONFIRMED",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/robinhood.json, and confirmed by Rodrigo on 2026-10-07 with the members it was proposed with (gate LABELS-CONFIRMED).",
+  "members": [
+    {
+      "symbol": "TSM",
+      "reason": {
+        "en": "TSMC is based in Taiwan",
+        "pt": "a TSMC tem sede em Taiwan"
+      }
+    },
+    {
+      "symbol": "BABA",
+      "reason": {
+        "en": "Alibaba does most of its business in China",
+        "pt": "a Alibaba faz a maior parte dos seus negócios na China"
+      }
+    },
+    {
+      "symbol": "EWY",
+      "reason": {
+        "en": "EWY is a fund of South Korean stocks",
+        "pt": "o EWY é um fundo de ações da Coreia do Sul"
+      }
+    }
+  ]
+}

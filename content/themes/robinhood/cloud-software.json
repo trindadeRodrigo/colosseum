@@ -1,0 +1,51 @@
+{
+  "slug": "cloud-software",
+  "name": {
+    "en": "Cloud and software",
+    "pt": "Nuvem e software"
+  },
+  "chain": "robinhood",
+  "version": 1,
+  "curator": "Rodrigo",
+  "status": "confirmed",
+  "decidedOn": "2026-10-07",
+  "gate": "LABELS-CONFIRMED",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/robinhood.json, and confirmed by Rodrigo on 2026-10-07 with the members it was proposed with (gate LABELS-CONFIRMED). CoreWeave and Nebius are on the AI infrastructure list, and Alibaba on the emerging markets list.",
+  "members": [
+    {
+      "symbol": "MSFT",
+      "reason": {
+        "en": "Microsoft sells cloud services through Azure and cloud software such as Microsoft 365",
+        "pt": "a Microsoft vende serviços de nuvem pela Azure e software em nuvem como o Microsoft 365"
+      }
+    },
+    {
+      "symbol": "AMZN",
+      "reason": {
+        "en": "Amazon Web Services sells on-demand compute, storage and database services",
+        "pt": "a Amazon Web Services vende computação, armazenamento e bancos de dados sob demanda"
+      }
+    },
+    {
+      "symbol": "GOOGL",
+      "reason": {
+        "en": "Google Cloud sells cloud infrastructure and Google Workspace subscriptions",
+        "pt": "a Google Cloud vende infraestrutura de nuvem e assinaturas do Google Workspace"
+      }
+    },
+    {
+      "symbol": "ORCL",
+      "reason": {
+        "en": "Oracle sells cloud applications, cloud infrastructure and its database software",
+        "pt": "a Oracle vende aplicativos em nuvem, infraestrutura de nuvem e seu software de banco de dados"
+      }
+    },
+    {
+      "symbol": "PLTR",
+      "reason": {
+        "en": "Palantir builds software platforms that organizations use to work with their data and AI",
+        "pt": "a Palantir desenvolve plataformas de software que organizações usam para trabalhar com seus dados e com IA"
+      }
+    }
+  ]
+}

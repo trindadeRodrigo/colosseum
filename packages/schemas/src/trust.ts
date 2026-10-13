@@ -1,0 +1,103 @@
+import type { ChainId } from './chain';
+
+/**
+ * What the app tells a person about the trust they place in it, before their first deposit and
+ * wherever the vault's terms are shown (DESIGN-VAULT section 13, "What the app says"). One constant,
+ * next to `DISCLAIMER`: the screens word it, and never state a fact about the vaults that is not here.
+ *
+ * `textVersion` names this text. A person's acceptance is kept with it, so a change to anything below
+ * that a person must read again comes with a new version.
+ */
+export const TRUST_STATUS = {
+  textVersion: '2026-10-12',
+  /** No outside audit of the vault programs or contracts has been made. */
+  audited: false,
+  /** Who holds the keys that upgrade the vault code. The team: it could change the code, so it could move funds. */
+  upgradeKeys: 'team',
+  /**
+   * The admin of each chain's deployment, as its deploy recorded it: the key that upgrades and
+   * changes parameters. Only deployed chains are listed. Solana: `roles.admin` of
+   * `deployments/solana-devnet.json`; Robinhood Chain: `roles.admin` of
+   * `deployments/robinhood-testnet.json` (trust.test.ts holds each to its record).
+   */
+  admin: {
+    solana: '32AQhayMMrQFW3DgdmwW6EBwjQE8Ek8HeB4ixL55boWC',
+    robinhood: '0xf474920851f97dc8797e78470095206dfd8367d8',
+  } as Partial<Record<ChainId, string>>,
+  /**
+   * What the keeper may do in a vault with auto-follow on, per deployed chain, as the deploy set it:
+   * a trade is refused when it receives less than the reference price minus `toleranceBps`, and a leg
+   * that loses is refused once the week's losses would pass `weeklyLossCapBps` of the vault's value.
+   * Solana: `params.toleranceBps` and `params.lossCapBps` of `deployments/solana-devnet.json`.
+   * Robinhood Chain: `params` of `contracts/script/config/46630.json`, which its deploy wrote.
+   */
+  keeper: {
+    solana: { toleranceBps: 75, weeklyLossCapBps: 100 },
+    robinhood: { toleranceBps: 125, weeklyLossCapBps: 100 },
+  } as Partial<Record<ChainId, { toleranceBps: number; weeklyLossCapBps: number }>>,
+  /**
+   * The same facts for a chain on MAINNET, where the money is real and the keys are held differently:
+   * the contracts' admin is a timelock, a Safe proposes to it, and a guardian can only pause. Only a
+   * chain with a mainnet deploy file is listed, and trust.test.ts holds each value to that file
+   * (`contracts/script/config/4663.json`). `keeper` and `depositCap` say whether there is one.
+   * `tradesChecked`: each trade a person signs is held to a reference price and a largest size by the
+   * app before it is built. `issuerCanUpgradeStocks` and `cashCanBeFrozen` are what the tokens'
+   * contracts answered on 2026-10-12: every stock token is a proxy its issuer can replace the code of,
+   * and the dollar token has a freeze.
+   */
+  mainnet: {
+    robinhood: {
+      safe: '0x4568Bc6Cc821B34095059Fd46102eAA22A675Fdc',
+      safeSignatures: 2,
+      delayHours: 48,
+      guardian: '0x0a1c3312c808b23D019bF241028f6B5624f4cc98',
+      keeper: false,
+      depositCap: false,
+      tradesChecked: true,
+      issuerCanUpgradeStocks: true,
+      cashCanBeFrozen: true,
+    },
+  } as Partial<
+    Record<
+      ChainId,
+      {
+        safe: string;
+        safeSignatures: number;
+        delayHours: number;
+        guardian: string;
+        keeper: boolean;
+        depositCap: boolean;
+        tradesChecked: boolean;
+        issuerCanUpgradeStocks: boolean;
+        cashCanBeFrozen: boolean;
+      }
+    >
+  >,
+  /** Issuers of stock tokens can pause, freeze or seize them. */
+  issuersCanFreeze: true,
+  /** The product is not offered to people in the United States. */
+  usPersons: 'blocked',
+  /** A passkey that is lost and not synced loses the wallet it opens. */
+  passkeyLoss: true,
+  /**
+   * The checks of tier 2 (DESIGN-VAULT section 13) not yet run and recorded. Each leaves the notice when
+   * docs/vault/SECURITY.md records it run; A1 and A11 on a replayed route are done for the owner's swap
+   * (Oct 3) and are not listed.
+   */
+  openChecks: [
+    'evm_invariants',
+    'solana_sequences',
+    'static_analysis',
+    'robinhood_fork',
+    'second_rehearsal',
+  ] as readonly (
+    | 'evm_invariants'
+    | 'solana_sequences'
+    | 'static_analysis'
+    | 'robinhood_fork'
+    | 'second_rehearsal'
+  )[],
+  /** Set during an incident (docs/INCIDENT.md): a banner, and reads and withdrawals only. */
+  incident: null as null | { since: string; text: string },
+} as const;
+export type TrustStatus = typeof TRUST_STATUS;

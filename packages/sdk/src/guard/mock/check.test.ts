@@ -22,6 +22,7 @@ import {
 import { SOLANA } from '../../../test/solana';
 import { deploymentsOf } from '../deployment';
 import { guardTransaction } from '../index';
+import { familyTextHash } from '../meta';
 import type { GuardCheck } from '../refusal';
 import type { ApprovedStep, GuardInput } from '../types';
 import { mockVaultAddress } from './check';
@@ -34,6 +35,13 @@ vi.mock('../generated/deployment-files', () => import('../../../test/deployments
 
 const BASKET = '42';
 const FAMILY = 'ab'.repeat(32);
+const OWN_FAMILY = 'cd'.repeat(32);
+const OWN_TEXT = {
+  slug: 'own',
+  name: 'My portfolio',
+  copy: 'Three test tokens.',
+  kind: 'index' as const,
+};
 const TARGETS = (chain: ChainId) => [
   { asset: `${chain}:spy`, weightBps: 6000 },
   { asset: `${chain}:gold`, weightBps: 4000 },
@@ -180,6 +188,45 @@ async function build(chain: ChainId): Promise<World> {
     await adapter.buildSetAutoFollow({ vault: following, on: true }),
     ['auto_follow_on'],
   );
+  // The owner's own shared portfolio: the text the form showed, and its hash in the bytes.
+  if (chain === 'solana') {
+    const mine = {
+      ...recipeOf(w, OWN_FAMILY, { spy: 4000, nvda: 3000, gold: 3000 }),
+      creator: owner,
+    };
+    mine.metaHash = familyTextHash({ familyId: OWN_FAMILY, ...OWN_TEXT });
+    await keep(
+      'publish',
+      {
+        ...base,
+        basketId: '0',
+        kind: 'publish',
+        action: 'publish',
+        familyId: OWN_FAMILY,
+        components: [
+          { asset: 'solana:spy', weightBps: 4000 },
+          { asset: 'solana:nvda', weightBps: 3000 },
+          { asset: 'solana:gold', weightBps: 3000 },
+        ],
+        text: OWN_TEXT,
+        version: 1,
+      },
+      await adapter.buildPublishRecipe({ creator: owner, recipe: mine }),
+      ['publish'],
+    );
+  }
+  // Part of a token: the amount the person reviewed, in the bytes.
+  const [part] = await adapter.buildWithdrawInKind({
+    vault,
+    assets: [`${chain}:gold`],
+    amounts: { [`${chain}:gold`]: '7' },
+  });
+  if (!part) throw new Error('the mock built no partial withdrawal');
+  await keep(
+    'withdraw_part',
+    { ...base, kind: 'withdraw', withdrawals: [{ asset: `${chain}:gold`, amountRaw: '7' }] },
+    part,
+  );
   const [withdraw] = await adapter.buildWithdrawInKind({ vault, assets: [`${chain}:gold`] });
   if (!withdraw) throw new Error('the mock built no withdrawal');
   await keep(
@@ -213,6 +260,26 @@ describe('the guard on the mock chain: what the mock builds passes', () => {
       expect(w.vault).toBe(mockAddress(w.chain, `vault:${w.owner}:${BASKET}`));
       expect((await w.adapter.getVaults(w.owner)).map((v) => v.address)).toContain(w.vault);
     }
+  });
+
+  it("a creator's publish, held to the form's text and weights; a version taken back is not the mock's", () => {
+    const w = worlds.solana;
+    expect(refusalOf(() => guardTransaction(input(w, 'publish')))).toBeNull();
+    const c = w.cases.publish as Case;
+    const cancel = { ...c.step, action: 'cancel', components: [], text: null } as ApprovedStep;
+    expect(
+      refusalOf(() =>
+        guardTransaction({
+          step: cancel,
+          tx: c.tx,
+          deployment: w.deployment,
+          consents: ['publish'],
+        }),
+      )?.code,
+    ).toBe('unsupported');
+    expect(refusalOf(() => guardTransaction(input(w, 'publish', undefined, [])))?.code).toBe(
+      'consent',
+    );
   });
 
   it('every step the owner signs, on Solana and on an EVM chain', () => {
@@ -307,7 +374,37 @@ const lie = (
   },
 });
 
+/** The recipe a mock publish carries, to change one of its fields. */
+const recipeIn = (m: { op: { a: Record<string, unknown> } }) =>
+  m.op.a.recipe as Record<string, unknown>;
+
 const negatives: Negative[] = [
+  lie('solana', 'publish', 'signer', "a publish in another creator's name", (m, w) => {
+    m.op.a.creator = w.stranger;
+  }),
+  lie('solana', 'publish', 'recipe', 'another family than the form shows', (m) => {
+    recipeIn(m).familyId = 'ef'.repeat(32);
+  }),
+  lie('solana', 'publish', 'recipe', 'the hash of other words than the form shows', (m) => {
+    recipeIn(m).metaHash = familyTextHash({
+      familyId: OWN_FAMILY,
+      ...OWN_TEXT,
+      copy: 'Other words.',
+    });
+  }),
+  lie('solana', 'publish', 'recipe', "the portfolio of another creator's account", (m) => {
+    recipeIn(m).onchainId = 'somewhere';
+  }),
+  lie('solana', 'publish', 'targets', 'other weights than the form shows', (m) => {
+    recipeIn(m).components = [
+      { kind: 'asset', asset: 'solana:spy', weightBps: 3000 },
+      { kind: 'asset', asset: 'solana:nvda', weightBps: 4000 },
+      { kind: 'asset', asset: 'solana:gold', weightBps: 3000 },
+    ];
+  }),
+  lie('solana', 'publish', 'limits', 'a fee cap in the bytes', (m) => {
+    recipeIn(m).maxFeeBps = 50;
+  }),
   lie('robinhood', 'approve', 'spender', 'an approval of the factory', (m, w) => {
     m.op.a.spender = w.adapter.mock.addresses.factory;
   }),
@@ -410,6 +507,33 @@ const negatives: Negative[] = [
   lie('solana', 'withdraw', 'vault', "a withdrawal from another person's vault", (m, w) => {
     m.op.a.vault = mockVaultAddress('solana', w.stranger, BASKET);
   }),
+  lie('solana', 'withdraw', 'amount', 'part of the token where the step takes all of it', (m) => {
+    m.op.a.amounts = { 'solana:gold': '1' };
+  }),
+  lie('solana', 'withdraw_part', 'amount', 'a larger withdrawal than the step names', (m) => {
+    m.op.a.amounts = { 'solana:gold': '8' };
+  }),
+  lie('solana', 'withdraw_part', 'amount', 'all of the token where the step names part', (m) => {
+    delete m.op.a.amounts;
+  }),
+  lie(
+    'solana',
+    'withdraw_part',
+    'asset',
+    'an amount for a token the bytes do not withdraw',
+    (m) => {
+      m.op.a.amounts = { 'solana:gold': '7', 'solana:spy': '1' };
+    },
+  ),
+  lie(
+    'robinhood',
+    'withdraw_part',
+    'vault',
+    "part of a token from another person's vault",
+    (m, w) => {
+      m.op.a.vault = mockVaultAddress('robinhood', w.stranger, BASKET);
+    },
+  ),
   {
     name: 'solana: the switch turned on with no consent handed over',
     check: 'consent',

@@ -6,12 +6,12 @@ Built so far:
 
 | Contract | What it is | Slot |
 |---|---|---|
-| `src/BasketVault.sol` | One person's vault for one plan, the logic behind every vault's beacon proxy. The owner's path: deposit cash, swap, set targets, withdraw in kind | EVM-1, EVM-2 |
+| `src/BasketVault.sol` | One person's vault for one plan, the logic behind every vault's beacon proxy. The owner's path: deposit cash, swap, set targets, withdraw in kind, accept a version, switch auto-follow. The keeper's swap, and the adopt anyone may call | EVM-1, EVM-2, EVM-3 |
 | `src/VaultFactory.sol` on `src/VaultConfig.sol` | Creates the vaults and lists them; holds the platform's settings, the three roles and the guardian's switches. A UUPS proxy | EVM-1, EVM-2 |
 | `src/IndexRegistry.sol` | The shared portfolios and the four author limits. A UUPS proxy | EVM-2 |
 | `src/VaultBeacon.sol` | The one beacon of a chain, handed over in two steps | EVM-2 |
-
-The keeper path is EVM-3: `keeperSwap`, `acceptVersion`, `adoptVersion`, `setAutoFollow`, `snapshot`.
+| `src/price/PoolAverageFeed.sol`, `TickPrice.sol` | The keeper's one-hour average on a chain where Chainlink publishes none: one asset's Uniswap v3 pool against the dollar token, behind Chainlink's `latestRoundData`. One per asset, no owner, no setter, no storage. Not deployed anywhere; proposed for Robinhood Chain mainnet (gate `POOL-AVERAGE`). See "The pool average" | EVM-4 |
+| `testnet/` | TEST NETWORK ONLY: the test cash, the test stock token, the test price contract, the sequencer stub and the test market of the EVM test networks; never deployed on a mainnet. See "The Robinhood Chain test network" | TNET-1, TNET-2 |
 
 ## Run
 
@@ -22,7 +22,7 @@ node contracts/script/rules-bite.mjs           # takes each check out in turn; a
 RH_FORK_URL=https://robinhood.drpc.org pnpm test:contracts   # also the tests on a fork of Robinhood Chain
 ```
 
-The fork tests read a pinned block and send nothing. Without `RH_FORK_URL` they are skipped.
+The fork tests read one block and send nothing. Without `RH_FORK_URL` they are skipped. The block is `RH_FORK_BLOCK`; left out, it is the default in `test/fork/ForkBlock.sol`, 86,735,800 (2026-10-12 14:14 UTC), the block each listed token's pool was measured at. The block the rig first pinned, 77,417,307, stopped resolving on public nodes. They need a node that keeps old state: the chain's own public node (`rpc.mainnet.chain.robinhood.com`) drops a block's state within minutes and cannot serve them; `https://robinhood.drpc.org` does. `RobinhoodForkDeploy.t.sol` needs 86,734,497 or later (the Safe's block), and trades every token of `script/config/4663.json` through the pool the file records for it. The pool-average tests keep their own two Friday blocks.
 
 The ABIs of the five contracts are committed in `idl/evm/`, beside the Solana interface files: `BasketVault`, `VaultFactory`, `VaultConfig` (the settings half of the factory), `IndexRegistry`, `VaultBeacon`. After a change to a contract's interface, `cd contracts && forge build && node script/abi.mjs` writes them again; `test/Abi.t.sol` fails while they are not what the build gives.
 
@@ -36,11 +36,49 @@ Run forge from this folder, not with `--root`: with `--root` a failing run write
 anvil                                                                   # a local chain, in another terminal
 cd contracts && forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 \
   --sender 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+
+# Robinhood Chain's test network (46630), read only: the deployer's address, never its key
+cd contracts && forge script script/Deploy.s.sol --rpc-url https://rpc.testnet.chain.robinhood.com \
+  --sender <deployer address>
 ```
 
-It simulates against the chain the URL answers for and prints what it would deploy: the vault logic, the beacon, the factory and the registry with their logic contracts, and the settings it wrote. Nothing is sent without `--broadcast`, and sending is a person's to do. The settings come from `script/config/<chain id>.json`; `example.json` shows every field. A file is refused on any chain but the one it names.
+`pnpm --filter @colosseum/contracts test:script` runs the same script with no node, on forge's in-memory chain, down the path a mainnet takes (the admin handed to a timelock; `test/fixtures/deploy-timelock-31337.json`). CI's forge job runs it: `forge script` refuses a script that calls itself, which `forge test` allows, and on Oct 12 that failed the mainnet dry run at its last printout, after all 40 transactions had simulated. `--block-timestamp` is there because the in-memory chain starts at time 1, which the timelock reads as an operation already done.
 
-The deployer is the admin while the script runs and proposes the file's admin at the end. Until that key calls `acceptAdmin()` on the factory and `acceptOwnership()` on the beacon, the deployer still holds both.
+It simulates against the chain the URL answers for and prints every transaction it would send, numbered, with its target and what it does (`tx 1 ... create the vault logic`, ..., `setClosedDay(20783, closed)`), then what it deployed. Nothing is sent without `--broadcast`, and sending is a person's to do. The settings come from `script/config/<chain id>.json`; `example.json` shows every field. A file is refused on any chain but the one it names.
+
+The deployer is the admin while the script runs and proposes the file's admin at the end. Until that key calls `acceptAdmin()` on the factory and `acceptOwnership()` on the beacon, the deployer still holds both. A file with `"adminIsDeployer": true` keeps them with the deployer, as on a test network with one key: `46630.json` does, with no guardian (the admin makes the guardian's calls) and no keeper yet.
+
+`46630.json` lists no asset, no cash token and no router until the test network kit has run: `scripts/testnet/robinhood/vault-config.ts` fills them from the kit's record ("The Robinhood Chain test network" below). On a factory already deployed, the second entry lists them, as its admin:
+
+```
+FACTORY=<factory proxy> forge script script/Deploy.s.sol --sig "settings()" \
+  --rpc-url https://rpc.testnet.chain.robinhood.com --sender <admin address>
+```
+
+## Mainnet: what stands in front of the admin, and how a deploy is held to it
+
+Written for a first, small, owner-signed deployment on Robinhood Chain (4663), which was made on 2026-10-12: `docs/vault/MAINNET-DEPLOY.md` has every address and transaction. No deposit has been made there yet. `docs/vault/SECURITY.md` says who can do what; `docs/vault/INCIDENT.md` what to do when something is wrong.
+
+- **The admin is a timelock.** With a `timelock` block in its file, `Deploy.s.sol` creates OpenZeppelin's `TimelockController`, hands it the factory's admin and the beacon, and finishes the hand-over itself: the timelock starts with no delay and the deployer as a second proposer, for one batch (accept both keys, set the delay, remove the deployer's three roles), and the script then reads everything back and fails if the deployer still holds anything. After it, `timelock.owner` (a Safe) is the only proposer, canceller and executor, and every `onlyAdmin` call, both UUPS upgrades and the beacon's `upgradeTo` wait out the delay. 48 hours on a mainnet, the notice a follower gets for a new portfolio version.
+- **The guardian stops, at once, and only stops**: `pauseKeeper`, `pauseDeposits` (new), `haltAsset`, `extendClosedUntil`, `addClosedDay`. Lifting any of them is the admin's, so it waits. `pauseDeposits` stops `deposit` and the first deposit of a create; `withdraw` and `withdrawAll` still call nothing and read no pause.
+- **Deposit caps**, optional and off by default on every network (gate `NO-DEPOSIT-CAP`): one per vault and one for all vaults of the factory, in raw units of the cash token (`setDepositCaps`, `depositCaps()`). Zero is no cap; a file with no `depositCaps` (or with `"caps": "none"`) deploys with deposits open and unlimited, and what closes deposits is the guardian's pause, never a number. The count runs either way: a vault counts cash in less cash out (`netDeposited()`) and reports it inside each deposit (`noteDeposit`); a withdrawal lowers the vault's own count and tells nobody, so the factory's total is brought down by that vault's next deposit or by anyone's `syncDeposits`. What a cap does not see is in `SECURITY.md`.
+- **Who may create a vault** (`setCreationRestricted`, `setCreator`, `mayCreate`): open to anyone unless the admin restricts it to a list, on a mainnet too. A file that names `creators` restricts creation to them. A vault that exists is not touched by it.
+- **The timelock's owner must be a Safe of two or more**: the script reads `getThreshold()` and `getOwners()`, refuses a threshold under `safeMinThreshold` (2 at least on a mainnet), fewer than two owners, a contract that does not answer, a key with delegated code, and a Safe with a module enabled or one that does not list its modules, and prints the owners for a person to compare.
+- **A stock's price of the day** (`sessionPriceAge`, M1): where set, a keeper trade in session needs every stock it values stamped at or after that day's open and no older than the age. Off (zero) on the test network.
+- **Decimals** stated in `setAsset` are held to the token's, the feed's and the average feed's own `decimals()` where they answer (M3).
+- **A mainnet file** is refused by `checkMainnet` before anything is created: a `TODO` anywhere in it; `adminIsDeployer`; an `admin` beside the timelock; a timelock owner that is zero, has no code or is the deployer; a delay under 48 hours; no guardian; a keeper, or any asset's keeper switch, while `keeperEnabled` is false; with the keeper on, limits looser than 150 bps a trade, 200 bps a week, an hour between trades, 200 bps from the average, or a range wider than about 15% either side; a per-vault cap above the total, where both are given; creators named beside `openToAll`; a cash token that is not USDG or a router that is not Universal Router (on 4663); a token whose decimals are not the file's; a feed with no code, other decimals, no aggregator behind it, another description than the file's `feedDescription`, or that answers as a test price contract. `settings()` is refused on a mainnet. On every chain, an `averageFeed` that names what it averages (a pool-average feed: `base()`, `feed()`, `quote()`, `decimals()`) is held to the asset before `setAsset`, so one pasted beside the wrong asset stops the run (`AverageFeedMismatch`) and is not left for the keeper to refuse in silence; on a mainnet an average feed that names nothing is refused.
+- **`script/config/4663.json`** holds no unconfirmed value: Thom confirmed every proposed one on 2026-10-12 (each token, feed and description, each pool, ceiling and largest trade, the bound, the rail and its age, the live age, each average pool), each note says so and what it rests on, and every address was re-read on chain that day (block 86,843,924). The marker rule no longer stops it; every other rule of `checkMainnet` still holds it, and deploying is a person's to do (gate `SPEND`; `ROBINHOOD-MAINNET-DRYRUN.md` in the workspace has the run and the command). It lists USDG and nine tokens (NVDA, SPY, AAPL, MSFT, GOOGL, AMZN, META, TSLA, GLD), each with its feed, its `feedDescription`, `pool`, `maxTradeUsd` and `average`. The script reads `pool`, `staleRailBps` and `average` nowhere; the builder and, for the pool, the guard do (`packages/sdk/deployments/mainnet.json`, held by `tests/evm-vault/record.test.ts`). QQQ and SGOV are not listed: no v4 pool against USDG fills a $1,000 trade. It sets no deposit cap and names no creators.
+- **The contracts in `testnet/`** refuse to be created on chain ids 1, 4663 and 8453 (`TestnetOnly`).
+
+```
+# Dry run of the mainnet file, read only: prints every transaction and sends none
+cd contracts && forge script script/Deploy.s.sol --rpc-url https://rpc.mainnet.chain.robinhood.com --sender <deployer>
+
+# After a person has deployed: who holds what, against the record written from the deploy's output
+pnpm ops:authority-check --record deployments/robinhood-mainnet.json --rpc-env ROBINHOOD_RPC_URL
+```
+
+**Upgrading a chain that already runs the contracts before this** (46630): the new fields are appended (`test/StorageLayout.t.sol`), and they read zero after the upgrade, which is no cap, deposits not paused and creation open: deposits go on as before with nothing for the admin to set (`test_upgrade_fromTheLayoutBefore_staysOpenAndUncapped_untilACapIsSet`). The vault logic and the factory go together, as in note 12: the new vault calls `noteDeposit` and `sessionPriceAge` on its factory. A vault that already holds cash starts with a count of zero.
 
 ## What holds today
 
@@ -74,6 +112,27 @@ The deployer is the admin while the script runs and proposes the file's admin at
 - The creator, the guardian or the admin can cancel a waiting version. The wait before the next one is still counted from when it was published, and its number is not used again.
 - A vault that follows a shared portfolio copies the active version at creation, if it is the version the person reviewed: otherwise `VersionMismatch` (A18).
 
+**The keeper's swap (EVM-3)**
+
+The checks of `DESIGN-VAULT.md` section 5, in the Solana program's order, each with a test at its boundary (`test/KeeperSwap.t.sol`, at 6, 8 and 18 decimals) and a bite row:
+
+- The caller is the config's `keeper()`. There is no operator of a vault's own: `setOperator` is not in the interface, as Solana's `set_keeper` is not built. Auto-follow on, the keeper not paused.
+- Cash on exactly one side; the other side a target of the vault, bought only while it is listed and sold whether or not it is. One trade per asset per cooldown, stamped only by a trade that spent something.
+- The token: not within a day of its multiplier change either way (`scheduleSelector`, `effectiveAt()` on Robinhood Chain), not paused by its issuer (`pauseProbe`), not halted by the guardian. A schedule or a probe that does not answer refuses the trade. For a stock (`session` 1): Monday to Friday, inside the session, not a closed day, not before `closedUntil`.
+- The reference price, for the asset and for every other target the vault holds: a Chainlink feed and the keeper's switch on, an answer above zero inside the asset's range, its average from `averageFeed`, both within `maxAge` of the clock either way, the two within `priceDevBps`. Base's sequencer feed, where the config names one. Cash at $1.
+- Direction before the trade; after it, the vault's own balances as for the owner's swap (exact approval, revoked and read back, `minOut`, no other token lower), the value received within the tolerance at the reference, the band, no further from the target and at most half as far on the other side when it crosses, and the weekly counter, which drains over seven days and starts again at each loss.
+- A stolen keeper key: `test/Keeper.invariant.t.sol` runs a keeper with a router that pays any price, pays someone else or takes another target, for seven days. The vault keeps 98% of its value at the reference (I2, twice the cap of 100 bps), no trade leaves its asset further from the target (I5), and nothing reaches the keeper or the router's choice (A1).
+
+**Following (EVM-3)**
+
+- `acceptVersion(indexId, version)` is the owner's: the version in effect, by its number (`VersionNotEffective` for the number that waits, `VersionMismatch` for any other). `setAutoFollow` is the owner's. A create can switch auto-follow on.
+- `adoptVersion()` is anyone's, for a vault with auto-follow on and the keeper not paused, when a newer version is in effect and each of its assets is a target above zero (`NewAssetNeedsOwner` otherwise).
+- Both keep an asset the version drops and the vault still holds as a target of zero, for the keeper to sell; past 16 targets is `InvalidTargets(1)`.
+
+**Deadlines (EVM-3)**
+
+`ownerSwap(swaps, deadline)` and `createVaultAndBuy(..., deadline)` are refused after `deadline`, in unix seconds. The guard passes one at most 30 minutes ahead of its own clock. The other owner calls take none; why is in `DESIGN-VAULT.md` 3.8, "Deadlines".
+
 **Storage**
 
 ERC-7201 namespaces: `basket.storage.BasketVault`, `basket.storage.VaultConfig`, `basket.storage.VaultFactory`, `basket.storage.IndexRegistry`. A later version adds fields at the end of `VaultStorage`, `ConfigStorage`, `FactoryStorage`, `RegistryStorage` and the registry's `Index`, and never reorders them. `test/StorageLayout.t.sol` pins where each field is, the `operator` in the slot it shares included.
@@ -92,7 +151,59 @@ From the review of this slot. None lets anyone but the owner move a vault's toke
 - **A token that fixes Permit2's allowance at infinity** (some token libraries do by default) can be bought, withdrawn and sold through a router that pulls directly, and not sold through one that pulls through Permit2: the vault cannot set or clear that allowance. Do not list one on a chain whose only router is pull 2, and do not build test tokens that way.
 - **The check that a router is not a token** is made once, when the router is listed, with 100,000 gas for the probe. A contract that starts answering as a token later is not seen. What that could reach is a token sent to a vault from outside and never listed: listed tokens are refused by address.
 
+**From EVM-3.** None lets anyone but the owner move a vault's tokens; each bounds or stops the keeper.
+
+- **Balances are read, not tracked.** There is no `tracked` and no `syncBalances`: the keeper's swap reads `balanceOf` of every target, which Solana's account model cannot. A target sent in counts at once. So a stranger's dust of a target the vault held none of, while that target's price cannot pass, stops the keeper for that vault; on Solana `tracked` hides such dust and only the owner or the keeper can record it. The owner sells the dust, or the price comes back.
+- **A target whose balance cannot be read stops the keeper** for the vault (`BalanceUnreadable`); the owner's path skips it as before.
+- **Cash is $1.** The 0.5% peg check first written for EVM is not built, as on Solana. A dollar token off its peg is the guardian's pause to stop.
+- **The average is held to `maxAge`**, not to an hour as on Solana, since a stock feed updates only in session. The price itself can be held to the day's session with `sessionPriceAge` (see the mainnet section). No Chainlink feed of an average exists on Robinhood Chain or Base: the switch goes on only for an asset whose average feed the platform provides. On the test network that is TNET-1's price contract, written by our price writer. For mainnet the proposal is `PoolAverageFeed` ("The pool average" below), which nobody writes and whose answer is stamped with the block's time, so `maxAge` on that slot always passes.
+- **The multiplier window does not compare the next multiplier with the current one**, as Solana does: a schedule that changes nothing still keeps the keeper away for a day either side.
+- **The keeper measures nothing past 10^30 raw units of cash** (`ValueTooLarge`): under that bound no product its checks form comes near 2^256.
+
+## The pool average (EVM-4, gate `POOL-AVERAGE`: proposed, not deployed)
+
+`src/price/PoolAverageFeed.sol` goes in an asset's `averageFeed` slot and answers `latestRoundData` with the asset's time-weighted average price over the last `window` seconds in its Uniswap v3 pool against the dollar token (`observe`), in the Chainlink feed's decimals. The vault is not changed: its check 8 then reads "Chainlink within `priceDevBps` of where the token traded over the hour", and a revert here is `AssetNotPriced`. `check()` returns the same decision without reverting, with the numbers, for the keeper and the app.
+
+It gives no answer when, in this order:
+
+| Reason | When | Test (`test/PoolAverageFeed.t.sol`) |
+|---|---|---|
+| `PoolChanged` | The pool names other tokens or another order, or a token or the feed states other decimals, than at deployment | `test_refuses_aPoolOrATokenThatChanged` |
+| `FeedDown` | Chainlink does not answer, or answers zero, below, over 128 bits, with no time or a time ahead of the clock | `test_refuses_aChainlinkFeedThatGivesNoPrice` |
+| `ThinPool` | The pool's liquidity in range is under `minLiquidity` now, or as the window's average (the pool's own `secondsPerLiquidity`) | `test_refuses_aThinPool`, `test_refuses_aPoolThatWasThinForTheHour`, `test_refuses_anHourWithOneSecondOfNoLiquidity` |
+| `ShortHistory` | `observe` reverts or answers in another shape: the pool has less than `window` of history | `test_refuses_aPoolWithLessThanAnHourOfHistory`, `test_refuses_aPoolThatDoesNotAnswer` |
+| `PriceOutOfRange` | The average tick is past ±443,636, or the price is zero or over 128 bits in the feed's decimals | `test_refuses_aPriceItCannotState`, `test_refuses_aPriceThatRoundsToZero` |
+| `FeedRounds` | Chainlink's rounds of the last `window` cannot all be read: more than `maxRounds`, one missing, one out of order, or a new aggregator with no round before its first | `test_refuses_moreRoundsThanItReads`, `test_refuses_aMissingRound`, `test_refuses_aNewAggregator_forAnHour`, `test_refuses_roundsOutOfOrderOrEmpty` |
+| `FeedJumped` | Chainlink's latest answer is more than `jumpBps` from the time-weighted average of its own rounds over the window. A latest round older than the window stood for all of it and nothing more is read | `test_refuses_aChainlinkStepOverTheBand`, `test_refuses_aChainlinkStepDown`, `test_aQuietFeed_readsNoEarlierRound` |
+
+- **The time it states.** `updatedAt` and `startedAt` are the block's time, and both round ids are zero: the average runs up to the block it is read in and has no rounds. The vault's `_fresh(averageAt, maxAge)` therefore always passes on this slot; what stands for an age is `ShortHistory`.
+- **The pool's history cannot be shortened.** A v3 pool keeps at most one observation a second in as many slots as its cardinality, so a pool with 1,800 slots that someone trades every second has half an hour of history, and `observe` for an hour reverts. The constructor requires more slots than the window has seconds (`InvalidSetup("pool cardinality")`, `test_deployment_refusesWhatCannotWork`); the number only grows. On mainnet META keeps 1,801 and SGOV and GLD 1,800; the other eight keep 7,200.
+- **A quiet feed.** A Chainlink feed that has not written for an hour has no step, so `FeedJumped` passes it with its own average equal to its latest. A feed that is old and wrong is caught by the distance from the pool, not here.
+- **Rounding.** The average tick is turned to face the asset and rounded toward minus infinity, so the asset's price is rounded down whichever token of the pool it is (by under one tick, 0.01%); `TickPrice.priceAt` then rounds down again (`test_rounding_isDownInTheAssetsPrice_inBothOrders`, `test/TickPrice.t.sol`). The average is the pool's geometric one: the price at the mean tick. Rounding down makes the vault's band one-sided by at most a tick: looser by up to 1 bp when Chainlink is under the average, stricter when over. `test/fixtures/tick-price-vectors.json` holds 4,000 vectors in exact arithmetic (`node script/tick-table.mjs --fixture`), read by `test/TickPrice.t.sol` and by `packages/chain-evm/test/pool-average.test.ts`, so the contract and its off-chain copy are held to one file.
+- **Decimals.** Stated at deployment, held there to the tokens' own `decimals()`, and checked again on every read. Tested for 18 against 6 (a stock against USDG) in both token orders, 6 against 18, 8 against 8, and a feed of 18.
+- **The tick maths** is `src/price/TickPrice.sol`, Apache-2.0 like the rest, written here: exponentiation by squaring over a table of `1.0001^(-2^i)` in 128-bit fixed point. Uniswap v3's `TickMath` is GPL-2.0-or-later and is not used: neither its code nor its table (which holds the square roots). `script/tick-table.mjs` prints the table and the test vectors in exact integers. It takes ticks to ±443,636 (a raw price between 2^-64 and 2^64) and refuses past that. Uniswap v4's `TickMath` is MIT and would be the file to vendor if a person prefers the audited one.
+- **What moving the pool can do** (`test/PoolAverageFeedVault.t.sol`, with the feed in a real vault's slot): the check is an AND, so with Chainlink right a push can only stop the keeper (`test_manipulation_aPushThatIsHeld_canOnlyStopTheKeeper`), and one block of it changes nothing (`test_manipulation_aPushOfOneBlock_changesNothing`). With Chainlink wrong by 5% and steady, no push of up to 100,000 ticks for up to twelve seconds lets the trade through (`testFuzz_manipulation_aPushOfSeconds_cannotPassAWrongChainlinkPrice`), a push past the pool's liquidity is `ThinPool` (`test_manipulation_aPushPastTheLiquidity_isNoAnswer`), and a Chainlink price that has just stepped is refused whatever the pool says. What is left is stated and tested: Chainlink wrong and steady and the pool held there for most of an hour (`test_manipulation_whatIsLeft_bothWrongForMostOfAnHour`).
+- **On a fork of Robinhood Chain** (`test/fork/RobinhoodForkPoolFeed.t.sol`, `RH_FORK_URL`, Friday 2026-10-09 16:30 UTC and 15:19 UTC): a contract reads `observe` on the NVDA and SPY pools and `latestRoundData` and `getRoundData` on both Chainlink proxies; the answer equals `observe` worked off-chain; Chainlink is 17 and 30 bps from the two averages; a keeper leg lands with the feed in the slot of both held targets (545,000 gas); making NVDA 5% dearer in its v3 pool took $681,000, was refused while it stood (`ThinPool`: the pool holds a third of its liquidity there), and changed nothing once put back; held for half an hour it is refused, as `AssetNotPriced` at the deployed floor and as `PriceDeviation` with a floor low enough to answer.
+- **Not rule-bitten.** `rules-bite.mjs` has no rows for these checks yet.
+
+**Deploying the feeds, as a dry run.**
+
+```
+cd contracts && forge script script/DeployPoolFeeds.s.sol --rpc-url <4663 node> --sender <deployer address>
+```
+
+It reads `script/config/pool-feeds/<chain id>.json` (or `POOL_FEEDS_CONFIG`): per asset the token, the Chainlink feed and how it describes itself, the pool and its fee, the floor, the band, and `holds`; and for the chain the v3 factory and `poolInitCodeHash`. It stops if a pool is not the one the v3 factory names for the pair and the fee, if a pool is not Uniswap's own code, or if a feed does not describe itself as the file says. It deploys no feed for an asset with a hold (`feed-from-pools` for GLD, `rounds-unread` for the six feeds whose round history nobody has read, `person-decides` for SGOV) unless the file says `"accepted": true`, which a person sets. Whatever the file says, it deploys none over a pool that is under its floor when it runs, or that keeps no more observations than the window has seconds.
+
+- **Uniswap's own code.** A pool's deployed code carries its tokens, fee and factory, so no two pools share a code hash (NVDA's and SPY's differ). What they share is the code that created them: the script works out the CREATE2 address for the factory, the pair, the fee and `poolInitCodeHash` (Uniswap v3's published `0xe34f…8b54`) and stops at a pool that is not there (`NotUniswapsPoolCode`). All eleven mainnet pools are at that address (the fork test).
+- **Growing a pool's history first.** Anyone may, and a person sends it: `cast send <pool> "increaseObservationCardinalityNext(uint16)" 7200 --rpc-url <4663 node>` for META, SGOV and GLD. The pool starts using the new slots once it has written its way through the ones it has, so `slot0().observationCardinality` reads 7200 some 1,800 trades later; the script refuses until then.
+- **Setting the floors.** Run the keeper's mainnet dry run for two weeks; every line carries `meanLiquidity`, the hour's average the contract measures. Take the lines inside the session (`inSession`), and set each asset's `minLiquidity` at about half the 5th percentile. Check off-chain that the dollars to move the price 1% at that floor are more than the auto-follow money held in the asset: `liquidity` is the depth of the active range only, and a narrow position lifts it for little.
+- **When a pool's shape changes** (liquidity moves to another fee or to v4, the pool is re-ranged, the Chainlink feed is replaced): a feed's floor, pool and feed are fixed for good. Deploy a new feed from a corrected file and have the admin name it with `setAsset`; the old one is simply no longer read. It prints each feed's address and what it answers. `test/DeployPoolFeeds.t.sol` runs it on mocks and, with `RH_FORK_URL`, on the committed mainnet file.
+
+How it joins `Deploy.s.sol`: the feeds depend on nothing of ours and have no owner, so they are deployed first; a person copies each printed address into that asset's `averageFeed` in the chain's main file (`script/config/<chain id>.json`), with `flags` 1 and a range, and `Deploy.s.sol` writes it with `setAsset`. Neither script reads the other's file. The floors in `4663.json` are half of what each pool held in range on Friday Oct 9 at 16:30 UTC; NVDA's pool held 2.0e18 an hour earlier and 9.7e18 that night, so they are set again from the dry run. The file's `watch` section is the keeper's (`apps/keeper/README.md`).
+
 ## What the app and the trust notice must say
+
+On a mainnet the admin is a timelock a Safe proposes to, so what follows takes 48 hours and can be read on chain first; on the test network it is one key and takes one transaction. Through settings alone the admin can also drain a vault that has auto-follow on (`test_H2_settingsAloneDrainAnAutoFollowVault_butOnlyAfterTheDelay`).
 
 The admin key can replace the factory's logic. Through that it can reach two things a vault that exists is safe from: cash a person has approved to a vault not yet created, and tokens sent to that address in advance (`test_trust_theFactoryAdminReachesAVaultNotYetCreated_andNoVaultThatExists`). The beacon's key can replace every vault's code. So:
 
@@ -101,16 +212,78 @@ The admin key can replace the factory's logic. Through that it can reach two thi
 - **Never leave a standing allowance to a vault.** Each `deposit` gets its own approval for its own amount.
 - **Never create a vault through a shared helper contract.** The owner is `msg.sender` of the factory call: a helper that calls the factory owns the vault, for good.
 
-## For the keeper path (EVM-3)
+## The notes EVM-2 left for the keeper path, and what EVM-3 did
 
-1. **The vault's storage is ready**: `indexId`, `acceptedVersion`, `autoFollow`, `operator` and `targets` are in `VaultStorage`. Nothing sets `autoFollow` or `operator` yet, and the factory refuses `autoFollow = true` at creation (`AutoFollowUnavailable`). Turning that on is a decision about what a create with auto-follow must check; lift the refusal in the same change that builds `setAutoFollow`. Append `lastKeeperAt` and the loss counter after `targets`.
-2. **`_follow` is the accept.** `acceptVersion(indexId, expectedVersion)` is `_follow` behind `onlyOwner nonReentrant`, plus `VersionNotEffective` for a version that is still waiting. `adoptVersion` reads the registry the same way.
-3. **Every new function that changes state takes the guard**, `adoptVersion` included: it is callable by anyone, and A17 is a router re-entering it mid-swap.
-4. **`keeperSwap` can reuse `_swap`**, which already does the approval, the take-back and the balance checks. Two things differ. The keeper's `minOut` is computed by the vault from the feeds, not passed in. And the "no other token went down" check leaves out a token whose balance could not be read before the swap: for the owner that is a liveness choice, for the keeper decide whether an unreadable accepted asset should stop the trade.
-5. **A removed asset keeps its settings** (`asset()` still answers, `isAsset` is false, `wasAsset` true), so it can be valued and sold. Decide whether the keeper may sell one.
-6. **The guardian's switches are stored and not yet read**: `keeperPaused`, `haltUntil`, `closedUntil`, `closedDay`, the params. The keeper path reads them; the owner path must never.
-7. **A later version of the vault logic that needs a `reinitializer` must gate it to the owner or the factory.** An open one is a second `initialize`.
-8. **Each new check gets a row in `script/rules-bite.mjs`**, and each new entry point a line in `test/EntryPoints.t.sol`.
-9. **Accept and adopt check that every asset of the version is still listed.** `_follow` copies the active version as it is today. And the guardian cancels waiting versions that name a removed asset.
-10. **A tracked token gone bad blocks later owner swaps, with no way to drop it.** A token in `tokens` whose balance read fails after having answered makes every later `ownerSwap` fail on `OtherTokenDebited`; one that never answers is skipped. Decide whether the owner may take a token out of `tokens`.
-11. **Versions published before `launch()`** keep their short wait. Either a setter that lengthens a waiting version, or a rule that `launch()` needs none waiting.
+1. Auto-follow: `setAutoFollow` is built, and a create may switch it on (`AutoFollowUnavailable` is gone). `lastKeeperAt`, `lossAccum` and `lossTs` are appended after `targets` (`test/StorageLayout.t.sol`). `operator` stays reserved and unread.
+2. `acceptVersion` is `_follow` behind `onlyOwner nonReentrant`, with `VersionNotEffective`; `adoptVersion` reads the registry the same way.
+3. Every new function that changes state takes the guard; A17 re-enters `keeperSwap` and `adoptVersion` mid-trade.
+4. `keeperSwap` reuses the owner's trade (`_trade`). Its `minOut` is passed in and held, as on the owner's path, and the vault also works out the value it must receive from the feeds (check 4). Every target must be readable: one that is not stops the keeper. A token outside the targets keeps the owner's rule.
+5. The keeper may sell a removed asset still held as a target, and may not buy it.
+6. The keeper path reads the pause, the halts, `closedUntil`, the closed days and the params; the owner path reads none of them (`test_I4_theOwnersPath_withEveryKeeperSwitchAgainstIt`).
+7. Still true of any later version: a `reinitializer` must be gated to the owner or the factory.
+8. Done: 89 more rows in `script/rules-bite.mjs`, 318 in all, and the entry points in `test/EntryPoints.t.sol`.
+9. Not done, on purpose: accept and adopt copy a version that names a removed asset as it is, as Solana does. The keeper never buys a removed asset, so that weight stays in cash. The guardian still cancels waiting versions that name one.
+10. Still open: a token in `tokens` whose balance read fails after having answered blocks later swaps of the owner and of the keeper; the owner cannot drop it from `tokens`.
+11. Still open: versions published before `launch()` keep their short wait.
+12. The vault logic and the factory are one build: `start` changed selector and `asset()` returns the appended fields. A chain that already runs the EVM-2 contracts upgrades the beacon and the factory in one transaction (a batch from the admin's Safe), never one without the other. Nothing EVM is deployed yet.
+
+## The Robinhood Chain test network (TNET-1, TNET-2)
+
+TEST NETWORK ONLY. Chain 46630 has Uniswap v4 (mainnet's PoolManager code at mainnet's address), Permit2, Multicall3, the CREATE2 deployer and Universal Router 2.1.1. It has no Universal Router 2.1.2, no Chainlink feed and none of our tokens (`docs/vault/research/test-networks.md`). The kit brings them, and the vault contracts run on it unchanged.
+
+**The contracts (`testnet/`)**, outside `src/` so that nothing reading the vault's own contracts (the error codes, the ABIs, an audit's tools) takes them for product code.
+
+| Contract | What it is |
+|---|---|
+| `TestToken` | An ERC-20 whose admin names who mints and burns (`MINTER_ROLE`). The test cash, tUSDG, 6 decimals. It leaves Permit2's allowance alone |
+| `TestStockToken` | A test stock token, 18 decimals, with the calls of Robinhood's own (read from the implementation behind their test TSLA on 46630): `uiMultiplier`, `newUIMultiplier`, `effectiveAt`, `updateMultiplier` now or at a time, `balanceOfUI`, `totalSupplyUI`, `paused`, `pause`, `unpause`, `mint`, `burn`. A multiplier set for a time takes effect then; a paused token moves nothing, mint and burn included. The vault's probes read `effectiveAt()` and `paused()` on it |
+| `TestPriceFeed` | Chainlink's aggregator interface (`decimals`, `description`, `version`, `latestRoundData`, `getRoundData`), 8 decimals. One price writer, or the owner, writes each round: above zero, newer than the last, at most 60 s ahead of the clock. No round yet reverts, as a new aggregator does. Each token has two: its price and its one-hour average |
+| `StubSequencerFeed` | Chainlink's L2 sequencer uptime answer (0 up, 1 down, `startedAt` the change), flipped by its owner. For Base Sepolia; Robinhood Chain has no sequencer feed |
+| `TestMarket` | The market maker of the test pools: one hookless v4 pool per stock token against the test cash (fee 500, tick spacing 10), opened at the token's test price, seeded over the whole range, and moved back to the test price (`recentre`) when it drifts more than 10 bps. It holds the minter role and no stock: it mints what a pool is owed and burns what it takes. The owner opens and seeds; the owner or the operator (the price writer) re-centres, and only ever to the price the token's own price contract holds |
+
+**The scripts**
+
+- `script/testnet/TestnetKit.s.sol` with `script/testnet/config/46630.json`: the test cash, eleven test stock tokens (tSPY, tQQQ, tNVDA, tAAPL, tMSFT, tGOOGL, tAMZN, tMETA, tTSLA, tGLD, tSGOV, each modelled on a Robinhood token with a Chainlink feed on mainnet), their 22 price contracts with a first round copied from mainnet, Universal Router 2.1.2, the market, its eleven pools and their liquidity (1,000,000 test dollars a side). Every contract goes through the CREATE2 deployer, and each step looks at the chain first, so a second run sends nothing. The deployer is the admin of everything; the price writer is never the deployer. With `TESTNET_RECORD` it writes the record (`deployments/robinhood-testnet.json`).
+- `script/testnet/UniversalRouter-2.1.2.json`: Universal Router's creation code, built from its 2.1.2 tag with the repository's own settings. Its runtime equals mainnet's router at `0x204F…0498` byte for byte outside its immutables (`test_router_isMainnets2_1_2_outsideItsImmutables`, with `RH_FORK_URL`), and the kit deploys it with mainnet's constructor arguments.
+- `scripts/testnet/robinhood/vault-config.ts`: fills `script/config/46630.json` from the record (the cash, each token with its price, average, pause probe, schedule and keeper switch, a range from 0.775 to 1.25 times the price it holds, the router at pull 2).
+- `script/testnet/CopyPrices.s.sol`, run by `scripts/testnet/robinhood/prices.ts` (`--dry-run`, `--once`, `--loop`): reads each token's Chainlink feed on Robinhood Chain mainnet, read only, and writes the price with the feed's own answer and `updatedAt` when it is newer. The average, which no Chainlink feed gives, is the feed's rounds weighted by how long each held over the hour before the mainnet block, stamped with that block's time, written with each new round and between rounds at most every five minutes while it moves. Refused, with nothing of the token written: a source whose `description()` is not the record's, a value not above zero, stamped more than 60 s ahead, outside the vault's range (`FACTORY` set), or further from what the test network holds than 1,000 bps per hour since (at most 5,000), the Solana copier's rules. Then every pool more than 10 bps off its price is re-centred. A source that does not answer refuses its own token only, and an average whose rounds cover less than the hour says so. It signs only as the record's price writer and refuses the deploy key.
+
+**Tests**: `test/testnet/TestnetContracts.t.sol` (the rules of the token, the stock token, the price contract and the stub; the market's are in `TestnetKit.t.sol`), `TestnetVault.t.sol` (the vault's keeper path against the test contracts: the feed and its average, their age, their distance, the range, the issuer's pause with `withdrawAll` skipping the paused token, the multiplier window either side of a change, the sequencer stub; the owner's path reads none of it), `TestnetKit.t.sol` (the kit on chain 46630 with the real PoolManager's code from `test/fixtures/v4-pool-manager.json` and Universal Router from source, then the vault deployed by `Deploy.s.sol` on the kit's tokens: an owner's buy and a keeper's rebalance through Universal Router 2.1.2, a keeper trade refused while its pool is off the test price and passed once re-centred; the same file runs on a fork of the live test network with `RH_TESTNET_FORK_URL`), `CopyPrices.t.sol` (the copier's reading and rules). `node script/rules-bite.mjs testnet` takes each rule out in turn.
+
+**Deploying it.** On Thom's word (given for 46630 on Oct 5), with funded test keys only.
+
+1. Keys, kept outside the repo (`testnet-keys/robinhood-testnet-deployer.key` and `robinhood-testnet-price-writer.key`, with their addresses beside them): the deployer (admin of every kit contract and, with `adminIsDeployer`, of the vault's factory and beacon; the guardian's calls too), the price writer (writes the 22 price contracts and re-centres the pools; never the deployer), and later the keeper (`setKeeper`). Put the price writer's address in `script/testnet/config/46630.json` (`priceWriter`) and the keeper's, if made, in `script/config/46630.json`.
+2. Test ETH. The faucet is hard to reach, so only the deployer is funded (0.01 ETH, Oct 5) and it forwards the price writer's share. Measured on a local fork of 46630 on 2026-10-05: the kit 137 transactions and 40.9 million gas, the vault 36 transactions and 14.6 million gas, one copier round that writes all eleven tokens and re-centres every pool 33 transactions and 3.35 million gas. The test network's own gas estimates run about 15% above the fork's (its L1 share). At its 0.01 gwei base fee:
+
+   | Step | Gas, with the 15% | ETH |
+   |---|---|---|
+   | Kit | 47 million | 0.00047 |
+   | Vault | 17 million | 0.00017 |
+   | To the price writer | | 0.008 |
+   | Left with the deployer, for `setKeeper`, `settings()` and a re-run | | about 0.0013 |
+   | A copier round that writes every token and moves every pool | 3.9 million | 0.000039 |
+
+   So the price writer's 0.008 ETH pays for about 200 full rounds. A round with nothing newer on mainnet and every pool on its price sends nothing and costs nothing; what a loop costs is the mainnet rounds it copies (a few an hour per token in session, none off session), the averages catching up for an hour after each, and the pools that trades pulled away.
+3. The kit, as a dry run, then sent:
+
+   ```
+   cd contracts
+   forge script script/testnet/TestnetKit.s.sol --rpc-url https://rpc.testnet.chain.robinhood.com --sender <deployer>
+   TESTNET_RECORD=script/testnet/deployed/46630.json forge script script/testnet/TestnetKit.s.sol \
+     --rpc-url https://rpc.testnet.chain.robinhood.com --sender <deployer> --broadcast --slow --interactives 1
+   ```
+
+   A second dry run prints `transactions: 0`. `script/testnet/deployed/46630.json` is the kit's own record: the market, each token's price contracts and its mainnet source, for the copier and the scripts below.
+4. The vault's config and the vault: `pnpm exec tsx scripts/testnet/robinhood/vault-config.ts` (each range around the price the kit wrote), then `forge script script/Deploy.s.sol` with the same RPC and `--sender <deployer>`, dry, then with `--broadcast --slow --interactives 1`.
+5. The price writer's gas, from the deployer: `cast send <price writer> --value 0.008ether --rpc-url https://rpc.testnet.chain.robinhood.com --interactive`.
+6. The first copy, so that every price is fresh and every pool on it: `pnpm exec tsx scripts/testnet/robinhood/prices.ts --dry-run`, then with `PRICE_WRITER_KEY_FILE=<path>` and `--once`.
+7. The record the API and the guard read, in ADE-1's shape (`EvmDeploymentRecord`): `FACTORY=<factory proxy> pnpm exec tsx scripts/testnet/robinhood/record.ts` reads it all from the chain through the factory and writes `deployments/robinhood-testnet.json`. Commit it, the kit's record and the filled `script/config/46630.json`.
+8. The copier runs while someone tests or shows the network, not for good: `FACTORY=<factory proxy> PRICE_WRITER_KEY_FILE=<path> pnpm exec tsx scripts/testnet/robinhood/prices.ts --loop --every <seconds>` (60 by default, 15 at the least). The vault takes a price and its average up to `maxAge` old, 93,600 s (26 hours) on 46630 as on mainnet, so for prices alone one `--once` a day in session keeps the keeper trading; the average also has to be within 200 bps of the price, which a round right after a move does not give until the average catches up. What needs a shorter interval is the pools: a buy moves its pool and the next keeper trade in that token is refused (`ValueTooLow`) until a round re-centres it, so while someone trades, `--every 60` to `300`. With `--hold-last` (off unless said) a price or an average whose mainnet feed has posted nothing newer is written again, same value, when it is eight hours from the age the vault takes (at 18 of the stock tokens' 26 hours), stamped with the time of the mainnet block read, so the weekend does not leave the test network stale; a round mainnet posts later is newer and is copied as usual. Only a value the source still holds is held, and each one is logged as `held tSPY at 669.12000000 (source last posted 2026-10-09T20:00:00Z)`. A hold that is due and not made says why on the token's line (the mainnet block more than a minute ahead of the test network's latest, a value that is not the source's, or a source that has posted nothing for four days, which is held no longer), and `average only` marks a hold that left the price. The jump limit counts hours since the test network's value was stamped, so after a hold a Monday gap above `MAX_JUMP_BPS` is refused at first; a refused value is not written and not held, so the allowance grows each hour until it is copied, and only a gap above 5,000 bps needs a person, as before. With the flag on, the keeper could trade a held price during a closure inside session hours that `closedDays` does not list (an early close, a halt), where the stale price used to stop it: test networks only.
+
+Deployed on 2026-10-05 on Thom's word: the record the API reads is `deployments/robinhood-testnet.json`, the kit's own is `script/testnet/deployed/46630.json`, the transactions and the cost are in TNET-2's row of `docs/vault/STATE-VAULT.md`. Rehearsed on 2026-10-05 against `anvil --fork-url https://rpc.testnet.chain.robinhood.com`, anvil's own account deploying and a throwaway key writing prices: kit 137 of 137 sent, second run 0; `vault-config.ts`, then the vault 36 of 36 with 12 assets and the router; the copier's dry run would write 11, `--once` wrote 11 and re-centred 11 pools, a second `--once` wrote 0, and a run with the deploy key stopped at `DeployKey`; `record.ts` wrote a record `EvmDeploymentRecord` parses, 11 assets.
+
+**Known limits.** The pools follow the copied price because the market moves them there; a real pool does not, and this is what the test exchange is for, as on Solana. The average is ours: Chainlink publishes none on Robinhood Chain. Robinhood's own test stock tokens on 46630 are not listed. What a real stock token does between its calls (when a scheduled multiplier shows in `uiMultiplier`, what pausing stops) is not published; the test token does the plain thing. The kit's first rounds are copied when the config is written and go stale until the copier runs. The price writer's key is the hot key: it runs unattended, and `TestPriceFeed.write` holds a round only to above zero, newer and at most 60 s ahead, so the jump and range limits are the copier's and a stolen writer key can write any price the vault's range lets through (the range then stops the keeper). Its loss is the admin's `setWriter` and `setOperator` to a new key. The kit and the copier refuse Robinhood Chain's and Base's mainnet chain ids (4663, 8453) in Solidity, the copier reads only from 4663, and each TypeScript script asks the node its `eth_chainId` before anything else. A pool someone opened first at another price is moved to the test price by `open` while it is empty, and refused once it holds liquidity.
+
+## For the adapter
+
+What ADE-1 and ADE-2 need: the ABIs in `idl/evm/`; `snapshot()` for one read of a vault (the targets, then the cash token with what the targets leave); the keeper's swap carries `minOut` and the vault checks the value too; `ownerSwap` and `createVaultAndBuy` take a deadline the guard holds to at most 30 minutes ahead, which the adapter states as the attempt's `validUntil`; the error codes are in `packages/schemas` (`CONTRACT_ERROR_CODE`).

@@ -122,9 +122,25 @@ export function retryOn429(
   }) as RpcTransport;
 }
 
+/** A transport that gives up on a node that has not answered in `ms`, with a `TimeoutError`. */
+export function timedOut(transport: RpcTransport, ms = 15_000): RpcTransport {
+  return ((config: Parameters<RpcTransport>[0]) => {
+    const limit = AbortSignal.timeout(ms);
+    return transport({
+      ...config,
+      signal: config.signal ? AbortSignal.any([config.signal, limit]) : limit,
+    });
+  }) as RpcTransport;
+}
+
 /** A cluster over its JSON RPC. Every read and every confirmation is at `confirmed`. */
 export function rpcChain(url: string): RpcChain {
-  const rpc = createSolanaRpcFromTransport(retryOn429(createDefaultRpcTransport({ url })));
+  return rpcChainOver(retryOn429(createDefaultRpcTransport({ url })));
+}
+
+/** The same over a transport the caller made: one node, or several with fail-over. */
+export function rpcChainOver(transport: RpcTransport): RpcChain {
+  const rpc = createSolanaRpcFromTransport(transport);
   const base64 = getBase64Encoder();
   const account = async (target: Address): Promise<AccountView | null> => {
     const { value } = await rpc

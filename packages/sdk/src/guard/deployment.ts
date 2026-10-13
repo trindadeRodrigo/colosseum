@@ -8,6 +8,8 @@ import { GuardRefusal } from './refusal';
 import { count, deepFreeze, type Loose, must, only, text } from './strict';
 import type {
   EvmDeployment,
+  EvmPool,
+  EvmRoute,
   FeeLimit,
   GuardDeployment,
   GuardDeployments,
@@ -35,7 +37,7 @@ export type SolanaEntry = {
   /** `Config.router_program`: the only program a vault swaps through. */
   router: string;
   cash: AssetId;
-  assets: Record<AssetId, { mint: string; tokenProgram: 'token' | 'token-2022' }>;
+  assets: Record<AssetId, { mint: string; tokenProgram: 'token' | 'token-2022'; decimals: number }>;
   fee?: FeeLimit;
 };
 /** A chain's entry in a file for a real network, on an EVM chain. Addresses in lower case or with their checksum. */
@@ -48,18 +50,44 @@ export type EvmEntry = {
   /** Only when the factory holds another proxy than the committed build's. */
   proxyCreationCode?: string;
   routers: string[];
+  /**
+   * How each router's call data is read, by the router's address: one for every router, and none for
+   * anything else. `unread` is refused in mainnet's file.
+   */
+  routes: Record<string, EvmRouteEntry>;
+  /** The shared portfolios' registry. Left out, a publish on the chain is never signed. */
+  registry?: string;
   cash: AssetId;
-  /** Each asset's token contract. The field is `address`: a secret scanner reads `token` as a credential. */
-  assets: Record<AssetId, { address: string }>;
+  /**
+   * Each asset's token contract. The field is `address`: a secret scanner reads `token` as a credential.
+   * `pool` is the asset's own Uniswap v4 pool against the cash, the one its trades go through: stated
+   * for every asset but the cash wherever a router's route is `universal-router-v4`.
+   */
+  assets: Record<AssetId, { address: string; decimals: number; pool?: EvmPoolEntry }>;
   fee?: FeeLimit;
 };
+/**
+ * A router's route in a file. `universal-router-v4`: one swap in one Uniswap v4 pool, `hooks` the zero
+ * address; the pool's fee and tick spacing are the traded asset's (`assets[id].pool`), not the
+ * router's. `unread`: call data the guard does not read (a local mock router).
+ */
+export type EvmRouteEntry = { kind: 'universal-router-v4'; hooks: string } | { kind: 'unread' };
+/** An asset's pool in a file: the fee in hundredths of a basis point, and the tick spacing. */
+export type EvmPoolEntry = { fee: number; tickSpacing: number };
 /** A chain's entry in the mock's file: the chain runs on packages/chain-mock and moves nothing. */
-export type MockEntry = { family: 'mock'; cash: AssetId };
+export type MockEntry = { family: 'mock'; cash: AssetId; cashDecimals: number };
 
 /** The file: packages/sdk/deployments/<network>.json. */
 export type DeploymentFile = {
   format: typeof DEPLOYMENT_FORMAT;
   network: DeploymentNetwork;
+  /**
+   * A file that holds a network's place before the network is deployed to. The loader refuses it,
+   * whatever else it says, until the mark and its note are taken out with the real addresses put in.
+   */
+  placeholder?: true;
+  /** What is still to fill in, for a placeholder. */
+  todo?: string;
   chains: Partial<Record<ChainId, SolanaEntry | EvmEntry | MockEntry>>;
 };
 
@@ -101,6 +129,12 @@ function evmAddress(value: unknown, what: string): string {
   );
   must(!/^0x0{40}$/.test(lower), `${what} is the zero address`);
   return lower;
+}
+
+/** A token's decimals as the chain keeps them: a whole number from 0 to 255 (a mint's `u8`, ERC-20's `uint8`). */
+function decimalsOf(value: unknown, what: string, field = 'decimals'): number {
+  must(count(value, 0) && (value as number) <= 255, `the ${field} of ${what} are not 0 to 255`);
+  return value as number;
 }
 
 function solanaAddress(value: unknown, what: string): string {
@@ -158,7 +192,7 @@ function solanaOf(entry: Loose, network: DeploymentNetwork): SolanaDeployment {
   );
   const seen = [BASKET_PROGRAM.address, solanaAddress(entry.router, 'the router')];
   const { cash, assets } = assetsOf('solana', entry, seen, (a, id) => {
-    const asset = only(`the asset ${id}`, a, ['mint', 'tokenProgram']);
+    const asset = only(`the asset ${id}`, a, ['mint', 'tokenProgram', 'decimals']);
     must(
       asset.tokenProgram === 'token' || asset.tokenProgram === 'token-2022',
       `${id} names no token program`,
@@ -166,7 +200,11 @@ function solanaOf(entry: Loose, network: DeploymentNetwork): SolanaDeployment {
     const mint = solanaAddress(asset.mint, `the mint of ${id}`);
     return {
       address: mint,
-      value: { mint, tokenProgram: asset.tokenProgram as 'token' | 'token-2022' },
+      value: {
+        mint,
+        tokenProgram: asset.tokenProgram as 'token' | 'token-2022',
+        decimals: decimalsOf(asset.decimals, id),
+      },
     };
   });
   must(new Set(seen).size === seen.length, 'two of its addresses are the same');
@@ -182,6 +220,72 @@ function solanaOf(entry: Loose, network: DeploymentNetwork): SolanaDeployment {
   };
 }
 
+const ZERO_ADDRESS = `0x${'0'.repeat(40)}`;
+/** Uniswap v4's own bounds: a fee in hundredths of a basis point, and `TickMath.MAX_TICK_SPACING`. */
+const MAX_V4_FEE = 1_000_000;
+const MAX_V4_TICK_SPACING = 32_767;
+
+/** An asset's pool: a fee and a tick spacing inside Uniswap v4's own bounds, and nothing else. */
+function poolOf(value: unknown, id: string): EvmPool {
+  const what = `the pool of ${id}`;
+  const pool = only(what, value, ['fee', 'tickSpacing']);
+  must(
+    count(pool.fee, 0) && (pool.fee as number) <= MAX_V4_FEE,
+    `the fee of ${what} is not 0 to ${MAX_V4_FEE}`,
+  );
+  must(
+    count(pool.tickSpacing, 1) && (pool.tickSpacing as number) <= MAX_V4_TICK_SPACING,
+    `the tick spacing of ${what} is not 1 to ${MAX_V4_TICK_SPACING}`,
+  );
+  return { fee: pool.fee as number, tickSpacing: pool.tickSpacing as number };
+}
+
+/**
+ * The routes of an EVM entry: one for every router, none for anything else, each of a kind the guard
+ * knows. A router with no route is refused, so no call data goes unread without the file saying so.
+ */
+function routesOf(
+  value: unknown,
+  routers: string[],
+  network: DeploymentNetwork,
+): Record<string, EvmRoute> {
+  const stated = only('the list of routes', value ?? {}, Object.keys((value ?? {}) as object));
+  const routes: Record<string, EvmRoute> = {};
+  for (const [key, raw] of Object.entries(stated)) {
+    const router = evmAddress(key, 'the router of a route');
+    must(
+      routers.includes(router),
+      `a route is stated for ${router}, which is no router of the entry`,
+    );
+    must(!Object.hasOwn(routes, router), `two routes are stated for ${router}`);
+    const what = `the route of ${router}`;
+    // The pool's shape is each asset's own (`assets[id].pool`): a route that still states one fee for
+    // the whole chain is a file of the earlier shape, and is refused by name.
+    const route = only(what, raw, ['kind', 'hooks']);
+    if (route.kind === 'unread') {
+      only(what, raw, ['kind']);
+      must(
+        network !== 'mainnet',
+        `${what} is unread, and on mainnet every router's call data is read`,
+      );
+      routes[router] = { kind: 'unread' };
+      continue;
+    }
+    must(route.kind === 'universal-router-v4', `${what} is of no kind the guard reads`);
+    must(
+      route.hooks === ZERO_ADDRESS,
+      `the hooks of ${what} are not the zero address: a vault trades in pools with no hooks`,
+    );
+    routes[router] = { kind: 'universal-router-v4', hooks: ZERO_ADDRESS };
+  }
+  for (const router of routers)
+    must(
+      Object.hasOwn(routes, router),
+      `the router ${router} states no route: how its call data is read is not said`,
+    );
+  return routes;
+}
+
 function evmOf(
   chain: Exclude<ChainId, 'solana'>,
   entry: Loose,
@@ -194,6 +298,8 @@ function evmOf(
     'beacon',
     'proxyCreationCode',
     'routers',
+    'routes',
+    'registry',
     'cash',
     'assets',
     'fee',
@@ -210,13 +316,32 @@ function evmOf(
   const beacon = evmAddress(entry.beacon, 'the beacon');
   must(Array.isArray(entry.routers), 'it names no list of routers');
   const routers = (entry.routers as unknown[]).map((r) => evmAddress(r, 'a router'));
-  const seen = [factory, beacon, ...routers];
+  const registry =
+    entry.registry === undefined ? undefined : evmAddress(entry.registry, 'the registry');
+  const seen = [factory, beacon, ...routers, ...(registry ? [registry] : [])];
   const { cash, assets } = assetsOf(chain, entry, seen, (a, id) => {
-    const asset = only(`the asset ${id}`, a, ['address']);
+    const asset = only(`the asset ${id}`, a, ['address', 'decimals', 'pool']);
     const token = evmAddress(asset.address, `the token of ${id}`);
-    return { address: token, value: { token } };
+    const pool = asset.pool === undefined ? undefined : poolOf(asset.pool, id);
+    return {
+      address: token,
+      value: { token, decimals: decimalsOf(asset.decimals, id), ...(pool ? { pool } : {}) },
+    };
   });
   must(new Set(seen).size === seen.length, 'two of its addresses are the same');
+  const routes = routesOf(entry.routes, routers, network);
+  // A pool is an asset's pool against the cash: the cash has none. Where a router's swaps are read,
+  // every other asset states its own, so no trade is held to a pool nobody wrote down.
+  must(
+    assets[cash]?.pool === undefined,
+    `the cash ${cash} states a pool, and a pool is an asset's`,
+  );
+  if (Object.values(routes).some((r) => r.kind === 'universal-router-v4'))
+    for (const [id, asset] of Object.entries(assets))
+      must(
+        id === cash || asset.pool !== undefined,
+        `the asset ${id} states no pool: which pool its trades go through is not said`,
+      );
   let proxyCreationCode: string | undefined;
   if (entry.proxyCreationCode !== undefined) {
     must(typeof entry.proxyCreationCode === 'string', "the proxy's creation code is not hex");
@@ -234,6 +359,8 @@ function evmOf(
     beacon,
     ...(proxyCreationCode ? { proxyCreationCode } : {}),
     routers,
+    routes,
+    ...(registry ? { registry } : {}),
     cash,
     assets,
     ...(fee ? { fee } : {}),
@@ -241,19 +368,29 @@ function evmOf(
 }
 
 function mockOf(chain: ChainId, entry: Loose): MockDeployment {
-  only('the entry', entry, ['family', 'cash']);
+  only('the entry', entry, ['family', 'cash', 'cashDecimals']);
   must(
     text(entry.cash) && entry.cash.startsWith(`${chain}:`) && entry.cash.length > chain.length + 1,
     `its cash is not an asset of ${chain}`,
   );
-  return { family: 'mock', chain, cash: entry.cash as AssetId };
+  return {
+    family: 'mock',
+    chain,
+    cash: entry.cash as AssetId,
+    cashDecimals: decimalsOf(entry.cashDecimals, String(entry.cash), 'cashDecimals'),
+  };
 }
 
 function read(content: unknown, mark: boolean): DeploymentsRead {
-  const file = only('it', content, ['format', 'network', 'chains']);
+  const file = only('it', content, ['format', 'network', 'placeholder', 'todo', 'chains']);
   must(file.format === DEPLOYMENT_FORMAT, `its format is not ${DEPLOYMENT_FORMAT}`);
   const network = DEPLOYMENT_NETWORKS.find((n) => n === file.network);
   must(network !== undefined, 'it names no network');
+  // A placeholder is never a deployment: not with the mark set to anything, and not with a note left in.
+  must(
+    file.placeholder === undefined && file.todo === undefined,
+    `it is a placeholder for ${network}, not a deployment${text(file.todo) ? `: ${file.todo}` : ''}`,
+  );
   const chains = only('its list of chains', file.chains, Object.keys(CHAIN_NUMBERS));
   must(Object.keys(chains).length > 0, 'it names no chain');
 

@@ -1,6 +1,7 @@
 import type { BasketTx, ChainId, OrderDetail, Target } from '@colosseum/schemas';
 import {
   type ApiFetch,
+  basketIdOfLinkedPlan,
   basketIdOfPlan,
   createOrderApi,
   deploymentsOf,
@@ -11,7 +12,7 @@ import {
 } from '@colosseum/sdk';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ChainRegistry } from '../apps/api/src/orders/chains';
-import { basketIdOf } from '../apps/api/src/orders/prepare';
+import { basketIdOf, basketIdOfLinked } from '../apps/api/src/orders/prepare';
 import { orderFlow } from '../apps/api/src/testing/flow';
 import {
   type HomeChain,
@@ -147,6 +148,18 @@ describe("the SDK's rule for a plan's number", () => {
   it("is the API's own", () => {
     for (const id of [...Object.values(plans), 'A1B2C3D4-0000-4000-8000-000000000000'])
       expect(basketIdOfPlan(id)).toBe(basketIdOf(id));
+  });
+
+  it("is the API's own for a plan made from a link, and differs for each buyer and from the plan's", () => {
+    const id = 'A1B2C3D4-0000-4000-8000-000000000000';
+    for (const user of ['did:privy:alice', 'did:privy:bob', 'test:5Hx9a1b2'])
+      expect(basketIdOfLinkedPlan(id, user)).toBe(basketIdOfLinked(id, user));
+    const numbers = new Set([
+      basketIdOfPlan(id),
+      basketIdOfLinkedPlan(id, 'did:privy:alice'),
+      basketIdOfLinkedPlan(id, 'did:privy:bob'),
+    ]);
+    expect(numbers.size).toBe(3);
   });
 });
 
