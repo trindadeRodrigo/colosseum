@@ -6,7 +6,7 @@ import { ExplorerLink } from '../../components/ui/ExplorerLink';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { displayName } from '../order/plain';
-import { explorerUrlFor, onMock } from '../order/readiness';
+import { explorerNameFor, explorerUrlFor, onMock } from '../order/readiness';
 import { utc } from '../portfolio/figures';
 import { useWalletPort } from '../wallet/WalletProvider';
 import type { Plan, PlansChain, RebalancesAnswer, RebalancesChain } from './api';
@@ -142,7 +142,7 @@ export function PlanTrades({
                           <ExplorerLink
                             signature={step.txId}
                             href={mock ? null : explorerUrlFor(step.chain, step.txId, false)}
-                            explorer={t.chain.explorers[step.chain]}
+                            explorer={explorerNameFor(step.chain, t.chain)}
                             labels={t.order.link}
                           />
                         </span>

@@ -9,6 +9,7 @@ import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { formatRaw, tokenName } from '../order/amounts';
 import { displayName } from '../order/plain';
+import { explorerNameFor } from '../order/readiness';
 import { unitsFor } from '../order/units';
 import { share, shareExact, utc } from '../portfolio/figures';
 import type { RebalancesChain } from './api';
@@ -280,7 +281,7 @@ export function RebalanceStep({
           <ExplorerLink
             signature={entry.txId}
             href={explorerHref(entry, label)}
-            explorer={t.chain.explorers[entry.chain]}
+            explorer={explorerNameFor(entry.chain, t.chain)}
             labels={{
               ...t.order.link,
               // the sample chain's transactions are on no network: said, in place of a link

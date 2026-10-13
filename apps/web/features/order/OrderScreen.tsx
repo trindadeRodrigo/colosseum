@@ -61,7 +61,7 @@ import {
 import { legsInOrder, type NextStep, type OutcomeView, outcomeView, stepOf } from './order-view';
 import { readStoredPlan } from './plan-store';
 import { targetsOfPlan } from './plan-terms';
-import { chainIsLive, chainReady, explorerUrlFor, onMock } from './readiness';
+import { chainIsLive, chainReady, explorerNameFor, explorerUrlFor, onMock } from './readiness';
 import { planNumberOf, type RunOutcome, useOrderRunner } from './run-order';
 import { TrustNotice } from './TrustNotice';
 import { tradeLine } from './trade-line';
@@ -813,7 +813,7 @@ export function OrderScreen({
                   ? Object.fromEntries(terms.items.map((i) => [i.asset, i.multiplier]))
                   : undefined
               }
-              explorer={t.chain.explorers[chain]}
+              explorer={explorerNameFor(chain, t.chain)}
               mock={onMock(port, chain)}
               money={(value) => dollars(value, lang)}
               t={t}

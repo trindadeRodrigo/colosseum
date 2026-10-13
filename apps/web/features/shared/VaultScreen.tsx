@@ -12,7 +12,7 @@ import { useAccount } from '../account/AccountProvider';
 import { type CallFailure, readOrder } from '../order/order-api';
 import { stoppedShort } from '../order/order-check';
 import { latestOf, recallOrder, recallOrders } from '../order/order-record';
-import { explorerAddressUrlFor } from '../order/readiness';
+import { explorerAddressUrlFor, explorerNameFor } from '../order/readiness';
 import { dollars } from '../portfolio/figures';
 import { vaultValueSource } from '../portfolio/portfolio';
 import { OwnVaultActions } from '../portfolio/VaultActions';
@@ -154,7 +154,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
         rel="noopener"
         className={className}
       >
-        {v.explorer(t.chain.explorers[read.chain])}
+        {v.explorer(explorerNameFor(read.chain, t.chain))}
         <Icon name="ArrowUpRight" size={16} />
       </a>
     );

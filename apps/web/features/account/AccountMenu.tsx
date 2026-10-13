@@ -7,7 +7,7 @@ import { shorten } from '../../components/ui/format';
 import { Icon } from '../../components/ui/Icon';
 import { Skeleton, SkeletonLine } from '../../components/ui/Skeleton';
 import { useT } from '../../i18n/I18nProvider';
-import { explorerAddressUrlFor, onMock } from '../order/readiness';
+import { explorerAddressUrlFor, explorerNameFor, onMock } from '../order/readiness';
 import { useWalletPort } from '../wallet/WalletProvider';
 import { useAccount } from './AccountProvider';
 import { AccountBars, CHIP_BOX, LABEL_BOX } from './account-control-parts';
@@ -137,7 +137,7 @@ export function AccountBlock({
                       data-ui="account-explorer"
                       className="ml-auto inline-flex min-h-10 items-center gap-1 rounded-md px-2 text-body-sm text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                     >
-                      <span>{t.shell.viewOn(t.chain.explorers[chain])}</span>
+                      <span>{t.shell.viewOn(explorerNameFor(chain, t.chain))}</span>
                       <Icon name="ArrowUpRight" size={16} />
                     </a>
                   )}

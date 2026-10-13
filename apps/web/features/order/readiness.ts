@@ -7,6 +7,7 @@ import {
   type GuardDeployment,
   type GuardDeployments,
 } from '@colosseum/sdk';
+import type { Dictionary } from '../../i18n';
 import { publicWalletEnv, walletChains } from '../wallet/chains';
 
 // Whether a chain can be bought on from this app: it needs a deployment committed for its network in
@@ -130,6 +131,22 @@ export function explorerAddressUrlFor(
   } catch {
     return null;
   }
+}
+
+/**
+ * The name shown beside an explorer link: the chain's, except where this app's chain table points the
+ * chain at an Etherscan instance (Robinhood Chain on mainnet, gate MAINNET-EXPLORER), which is named
+ * as what it is. Read from the same table the link is built from, so the name and the link agree.
+ */
+export function explorerNameFor(chain: ChainId, names: Dictionary['chain']): string {
+  try {
+    const { explorerTx } = walletChains(publicWalletEnv())[chain].config;
+    if (explorerTx && new URL(explorerTx.replace('{txId}', '')).hostname.endsWith('.etherscan.io'))
+      return names.etherscan;
+  } catch {
+    // an unknown network value: the chain's own name for its explorer
+  }
+  return names.explorers[chain];
 }
 
 /**

@@ -195,7 +195,7 @@ describe('Robinhood Chain on mainnet', () => {
   it('has an explorer for a mainnet transaction, so a step is never logged without its link', () => {
     const env = { CHAIN_NETWORK_ROBINHOOD: 'mainnet' };
     expect(parseChainConfigs(env, contracts).robinhood.explorerTx).toBe(
-      'https://robinhoodchain.blockscout.com/tx/{txId}',
+      'https://robin.etherscan.io/tx/{txId}',
     );
   });
 });

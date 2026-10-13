@@ -236,6 +236,8 @@ export const en = {
     short: { solana: 'Solana', robinhood: 'Robinhood', base: 'Base' },
     /** The explorer each chain's transaction links open, named beside the link. */
     explorers: { solana: 'Solscan', robinhood: 'Robinhood explorer', base: 'Basescan' },
+    /** Robinhood Chain's explorer on mainnet (4663), where the links open Etherscan's. */
+    etherscan: 'Etherscan',
     /** What is left of the bar's switch, which is gone (CHAIN-AT-THE-PLAN): words pages still say. */
     switch: {
       noWallet: (chain: string) => `The wallet you signed in with doesn’t sign on ${chain}.`,

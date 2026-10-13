@@ -11,7 +11,14 @@ import { keepOrder, recallOrder } from './order-record';
 import { outcomeView, refusalKind, stepOf } from './order-view';
 import { recallPlan, rememberPlan } from './plan-store';
 import { targetsOfPlan } from './plan-terms';
-import { chainReady, deploymentsFor, explorerUrlFor, networkFor } from './readiness';
+import {
+  chainReady,
+  deploymentsFor,
+  explorerAddressUrlFor,
+  explorerNameFor,
+  explorerUrlFor,
+  networkFor,
+} from './readiness';
 import {
   doneOrder,
   LEG_CREATE,
@@ -155,11 +162,23 @@ describe('which chains can be signed on', () => {
     vi.stubEnv('NEXT_PUBLIC_CHAIN_NETWORK_ROBINHOOD', 'mainnet');
     try {
       expect(explorerUrlFor('robinhood', '0xab', false, 'live')).toBe(
-        'https://robinhoodchain.blockscout.com/tx/0xab',
+        'https://robin.etherscan.io/tx/0xab',
       );
       // A test network's step left in the database must not get mainnet's explorer for its hash.
       expect(explorerUrlFor('robinhood', '0xab', false, 'sandbox')).toBeNull();
       expect(explorerUrlFor('robinhood', '0xab', false, 'mock')).toBeNull();
+      // mainnet's explorer is Etherscan's: an address page on it, and its name beside every link
+      expect(explorerAddressUrlFor('robinhood', '0xcd', false)).toBe(
+        'https://robin.etherscan.io/address/0xcd',
+      );
+      expect(explorerNameFor('robinhood', en.chain)).toBe('Etherscan');
+      expect(explorerNameFor('robinhood', dictionary('pt').chain)).toBe('Etherscan');
+      expect(activityOf(doneOrder('robinhood'), en, false).map((l) => l.explorer)).toEqual([
+        'Etherscan',
+        'Etherscan',
+      ]);
+      // the other chains keep their own
+      expect(explorerNameFor('solana', en.chain)).toBe('Solscan');
     } finally {
       vi.unstubAllEnvs();
     }

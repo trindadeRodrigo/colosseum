@@ -176,6 +176,7 @@ export const pt: Dictionary = {
     names: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
     short: { solana: 'Solana', robinhood: 'Robinhood', base: 'Base' },
     explorers: { solana: 'Solscan', robinhood: 'explorador da Robinhood', base: 'Basescan' },
+    etherscan: 'Etherscan',
     switch: {
       noWallet: (chain: string) => `A carteira com que você entrou não assina na ${chain}.`,
       saving: 'Trocando…',
