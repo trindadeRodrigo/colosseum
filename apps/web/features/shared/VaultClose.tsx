@@ -40,8 +40,27 @@ export function CloseConfirm({
   const [state, setState] = useState<'asking' | 'busy' | 'failed' | 'not-empty' | 'order-open'>(
     empty ? 'asking' : 'not-empty',
   );
+  const said = useRef<HTMLParagraphElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  // Escape is "Keep it open", as a dialog's way out, from anywhere in the confirm; not while it closes.
+  useEffect(() => {
+    const el = box.current;
+    if (!el || state === 'busy') return;
+    const away = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      onKeep();
+    };
+    el.addEventListener('keydown', away);
+    return () => el.removeEventListener('keydown', away);
+  }, [state, onKeep]);
   // The confirm takes the focus as it opens, so a keyboard is where the question is.
   useEffect(() => title.current?.focus(), []);
+  // A close that did not go through says why, and the focus goes to the sentence that says it.
+  useEffect(() => {
+    if (state === 'failed' || state === 'order-open' || state === 'not-empty')
+      said.current?.focus();
+  }, [state]);
   const close = async () => {
     setState('busy');
     const done = await closeVault(apiFetch, vault);
@@ -50,43 +69,54 @@ export function CloseConfirm({
   };
   return (
     <Panel as="section" aria-labelledby={titleId} data-ui="vault-close-confirm">
-      <PanelBody>
-        <h2
-          ref={title}
-          id={titleId}
-          tabIndex={-1}
-          className="text-body-lg font-semibold outline-none"
-        >
-          {c.title}
-        </h2>
-        <p className="max-w-(--tf-measure-body) text-body-sm">
-          {state === 'not-empty' ? c.notEmpty : c.body}
-        </p>
-        {(state === 'failed' || state === 'order-open') && (
-          <p role="alert" className="text-body-sm text-destructive">
-            {state === 'failed' ? c.failed : c.orderOpen}
+      <div ref={box}>
+        <PanelBody>
+          <h2
+            ref={title}
+            id={titleId}
+            tabIndex={-1}
+            className="text-body-lg font-semibold outline-none"
+          >
+            {c.title}
+          </h2>
+          <p
+            ref={state === 'not-empty' ? said : undefined}
+            tabIndex={-1}
+            className="max-w-(--tf-measure-body) text-body-sm outline-none"
+          >
+            {state === 'not-empty' ? c.notEmpty : c.body}
           </p>
-        )}
-        <div className="flex flex-wrap items-center gap-3">
-          {state === 'not-empty' ? (
-            <Button variant="primary" data-action="vault-close-withdraw" onClick={onWithdraw}>
-              {t.withdraw.action}
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              data-action="vault-close-confirm"
-              busy={state === 'busy'}
-              onClick={close}
+          {(state === 'failed' || state === 'order-open') && (
+            <p
+              ref={said}
+              tabIndex={-1}
+              role="alert"
+              className="text-body-sm text-destructive outline-none"
             >
-              {state === 'busy' ? c.closing : c.confirm}
-            </Button>
+              {state === 'failed' ? c.failed : c.orderOpen}
+            </p>
           )}
-          <Button variant="secondary" data-action="vault-close-keep" onClick={onKeep}>
-            {c.keep}
-          </Button>
-        </div>
-      </PanelBody>
+          <div className="flex flex-wrap items-center gap-3">
+            {state === 'not-empty' ? (
+              <Button variant="primary" data-action="vault-close-withdraw" onClick={onWithdraw}>
+                {t.withdraw.action}
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                data-action="vault-close-confirm"
+                busy={state === 'busy'}
+                onClick={close}
+              >
+                {state === 'busy' ? c.closing : c.confirm}
+              </Button>
+            )}
+            <Button variant="secondary" data-action="vault-close-keep" onClick={onKeep}>
+              {c.keep}
+            </Button>
+          </div>
+        </PanelBody>
+      </div>
     </Panel>
   );
 }
@@ -96,10 +126,13 @@ export function ClosedNote({
   vault,
   closedAt,
   onReopened,
+  focus = false,
 }: {
   vault: Vault;
   closedAt: string;
   onReopened: () => void;
+  /** Just closed here: the focus goes to the note that says so. */
+  focus?: boolean;
 }) {
   const t = useT();
   const lang = useLang();
@@ -107,6 +140,11 @@ export function ClosedNote({
   const apiFetch = useApiFetch();
   const titleId = useId();
   const [state, setState] = useState<'idle' | 'busy' | 'failed'>('idle');
+  const title = useRef<HTMLHeadingElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, as the note first shows
+  useEffect(() => {
+    if (focus) title.current?.focus();
+  }, []);
   const date = new Intl.DateTimeFormat(LOCALE[lang], { dateStyle: 'medium' }).format(
     new Date(closedAt),
   );
@@ -119,7 +157,12 @@ export function ClosedNote({
   return (
     <Panel as="section" aria-labelledby={titleId} data-ui="vault-closed">
       <PanelBody>
-        <h2 id={titleId} className="text-body-lg font-semibold">
+        <h2
+          ref={title}
+          id={titleId}
+          tabIndex={-1}
+          className="text-body-lg font-semibold outline-none"
+        >
           {c.title}
         </h2>
         <p className="max-w-(--tf-measure-body) text-body-sm">{c.body(date)}</p>

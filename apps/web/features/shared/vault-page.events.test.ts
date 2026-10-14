@@ -1641,6 +1641,12 @@ describe('closing a vault (gate VAULT-CLOSE-REUSE)', () => {
     await settle();
     expect(host.querySelector('[data-ui="vault-close-confirm"]')).toBeNull();
     expect(server.calls.some((call) => call.path === CLOSE)).toBe(false);
+    // Escape is the same way out, from anywhere in the confirm
+    await askClose(host);
+    await press(find(host, '[data-action="vault-close-confirm"]'), 'Escape');
+    await settle();
+    expect(host.querySelector('[data-ui="vault-close-confirm"]')).toBeNull();
+    expect(server.calls.some((call) => call.path === CLOSE)).toBe(false);
 
     await askClose(host);
     await click(find(host, '[data-action="vault-close-confirm"]'));
@@ -1651,6 +1657,8 @@ describe('closing a vault (gate VAULT-CLOSE-REUSE)', () => {
     // read again: the page says it is closed, and how to open it again
     const note = find(host, '[data-ui="vault-closed"]');
     expect(note.textContent).toContain(p.closed.title);
+    // the note that says so has the focus
+    expect(document.activeElement).toBe(find(note, 'h2'));
     expect(note.textContent).toContain(p.closed.body('Oct 14, 2026'));
     expect(host.querySelector('[data-action="vault-close"]')).toBeNull();
   });
@@ -1682,6 +1690,8 @@ describe('closing a vault (gate VAULT-CLOSE-REUSE)', () => {
     for (let i = 0; i < 4; i += 1) await settle(30);
     const confirm = find(host, '[data-ui="vault-close-confirm"]');
     expect(find(confirm, '[role="alert"]').textContent).toBe(c.orderOpen);
+    // the sentence that says why has the focus
+    expect(document.activeElement).toBe(find(confirm, '[role="alert"]'));
     expect(host.querySelector('[data-ui="vault-closed"]')).toBeNull();
   });
 

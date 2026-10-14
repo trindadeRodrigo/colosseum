@@ -360,6 +360,8 @@ function OwnVault({
   // Closing the vault (gate VAULT-CLOSE-REUSE): asked once more before it is made. A closed vault's
   // owner is told so, with the way to open it again.
   const [closing, setClosing] = useState(false);
+  // closed from this page just now: the note that says so takes the focus
+  const [justClosed, setJustClosed] = useState(false);
   const closedAt = vault.closedAt ?? null;
   const where = { chain: read.chain, address: vault.address };
   // The pane as it is now, for an answer that comes back late: an order is taken only by the pane that
@@ -636,11 +638,19 @@ function OwnVault({
                 }}
                 onClosed={() => {
                   setClosing(false);
+                  setJustClosed(true);
                   onReadAgain();
                 }}
               />
             )}
-            {closedAt && <ClosedNote vault={where} closedAt={closedAt} onReopened={onReadAgain} />}
+            {closedAt && (
+              <ClosedNote
+                vault={where}
+                closedAt={closedAt}
+                onReopened={onReadAgain}
+                focus={justClosed}
+              />
+            )}
             {away && (
               <p
                 data-ui="vault-off-target"

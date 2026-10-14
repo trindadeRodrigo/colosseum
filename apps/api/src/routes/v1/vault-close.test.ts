@@ -11,8 +11,8 @@ import {
 } from '@colosseum/schemas';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { ChainRegistry } from '../../orders/chains';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { ChainEntry, ChainRegistry } from '../../orders/chains';
 import { orderFlow, walletOf } from '../../testing/flow';
 import {
   type HomeChain,
@@ -49,12 +49,29 @@ beforeAll(async () => {
     solana: await data.storePlan(planFixture('solana')),
     robinhood: await data.storePlan(planFixture('robinhood')),
   };
-  ({ app, registry } = await testApp({ issuer: issuer.issuer, db: data.db }));
+  ({ app, registry } = await testApp({ issuer: issuer.issuer, db: data.db, wrap: pricing }));
   undo.push(() => app.close());
 });
 afterAll(async () => {
   for (const step of undo.reverse()) await step();
 });
+
+/** Assets a chain answers no price for, where a test says so: what such a holding is worth is unknown. */
+let priceless = new Set<string>();
+afterEach(() => {
+  priceless = new Set();
+});
+const pricing = (inner: ChainRegistry): ChainRegistry => {
+  const dress = (e: ChainEntry): ChainEntry => ({
+    ...e,
+    adapter: {
+      ...e.adapter,
+      getPrices: async (assets) =>
+        (await e.adapter.getPrices(assets)).filter((p) => !priceless.has(p.asset)),
+    } as ChainEntry['adapter'],
+  });
+  return { ...inner, get: (c) => dress(inner.get(c)), active: () => inner.active().map(dress) };
+};
 
 const { post, get, fund, order, openVault, settleAll } = orderFlow({
   app: () => app,
@@ -127,6 +144,7 @@ describe.each(CHAINS)('closing a vault on %s', (chain) => {
     expect((await close(b, chain, address)).statusCode).toBe(404);
     expect((await reopen(b, chain, address)).statusCode).toBe(404);
     expect((await close(null, chain, address)).statusCode).toBe(401);
+    expect((await reopen(null, chain, address)).statusCode).toBe(401);
     const [untouched] = await data.db
       .select()
       .from(vaultLifetimes)
@@ -141,6 +159,37 @@ describe.each(CHAINS)('closing a vault on %s', (chain) => {
     // a second close is the first: its time stands
     const again = VaultLifetimeResponse.parse((await close(a, chain, address)).json());
     expect(again.closedAt).toBe(closed.closedAt);
+  });
+
+  it('does not close a vault that holds a token with no price, however little; dust it can value, it does', async () => {
+    const a = await someone(chain);
+    await openVault(a);
+    const vault = await vaultOf(a, chain);
+    // everything out but one unit of one holding: dust, worth well under a cent
+    const [kept] = vault.positions.filter((p) => BigInt(p.raw) > 1n);
+    if (!kept) throw new Error('the vault holds no position');
+    const res = await post(a, '/v1/orders', {
+      type: 'withdraw',
+      vaults: [vault.address],
+      sellToCash: false,
+      withdrawals: [vault.cash, ...vault.positions]
+        .filter((h) => BigInt(h.raw) > 0n)
+        .map((h) => ({
+          asset: h.asset,
+          amountRaw: (h.asset === kept.asset ? BigInt(h.raw) - 1n : BigInt(h.raw)).toString(),
+        })),
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect((await settleAll(a, OrderDetail.parse(res.json()))).status).toBe('done');
+
+    // with no price for it, what it holds is not known to be nothing
+    priceless = new Set([kept.asset]);
+    const unpriced = await close(a, chain, vault.address);
+    expect(unpriced.statusCode).toBe(409);
+    expect(OrderError.parse(unpriced.json()).code).toBe('NOT_EMPTY');
+    // priced, the unit is dust under a cent, and the vault closes
+    priceless = new Set();
+    expect((await close(a, chain, vault.address)).statusCode).toBe(200);
   });
 
   it('does not close a vault while an order on it is unfinished, and does once it has run out', async () => {
