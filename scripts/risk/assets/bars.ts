@@ -146,7 +146,14 @@ let existing: {
 if (backfill && rows.length) {
   const { db, client } = createDb();
   try {
-    const hours = rows.map((r) => (r.hour as Date).getTime());
+    // a fold, not Math.min(...hours): a month of a chain's bars is past the arguments a call takes (2026-10-14)
+    let first = Number.POSITIVE_INFINITY;
+    let last = Number.NEGATIVE_INFINITY;
+    for (const r of rows) {
+      const t = (r.hour as Date).getTime();
+      if (t < first) first = t;
+      if (t > last) last = t;
+    }
     const have = await db
       .select({
         address: marketBars.address,
@@ -159,8 +166,8 @@ if (backfill && rows.length) {
         and(
           eq(marketBars.chain, chain),
           eq(marketBars.methodVersion, BARS_METHOD_VERSION),
-          gte(marketBars.hour, new Date(Math.min(...hours))),
-          lte(marketBars.hour, new Date(Math.max(...hours))),
+          gte(marketBars.hour, new Date(first)),
+          lte(marketBars.hour, new Date(last)),
         ),
       );
     const src = new Map(have.map((h) => [`${h.address}|${h.pool}|${h.hour.getTime()}`, h.source]));

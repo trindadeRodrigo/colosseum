@@ -9,7 +9,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { gunzipSync } from 'node:zlib';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import {
   type AnchoredPage,
   addToManifest,
@@ -46,6 +46,7 @@ import {
   classifyPools,
   type Deps,
   fetchLogs,
+  gzLines,
   LOG_TOPIC,
   logsOf,
   readFetched,
@@ -474,6 +475,26 @@ describe.skipIf(!existsSync(fetchFx))('Robinhood Chain logs: a recorded fetch, r
     expect(covered).toEqual([{ from: to - (to % 1000) - 1000, to }]);
     expect(covered.some((c) => c.from <= from)).toBe(false);
   });
+});
+
+describe('a day file read back line by line', () => {
+  it('yields every line of gzip members appended one after another, empty lines skipped', () => {
+    const a = gzipSync('{"block":1,"logIndex":0}\n{"block":1,"logIndex":1}\n');
+    const b = gzipSync('{"block":2,"logIndex":0}\n\n{"block":2,"logIndex":3}');
+    expect([...gzLines(Buffer.concat([a, b]))]).toEqual([
+      '{"block":1,"logIndex":0}',
+      '{"block":1,"logIndex":1}',
+      '{"block":2,"logIndex":0}',
+      '{"block":2,"logIndex":3}',
+    ]);
+  });
+  it('reads a day that unpacks past the longest string V8 makes', () => {
+    const line = `{"block":7,"logIndex":0,"pad":"${'x'.repeat(1_000_000)}"}\n`;
+    const day = gzipSync(Buffer.concat(Array.from({ length: 560 }, () => Buffer.from(line))));
+    let n = 0;
+    for (const l of gzLines(day)) n += l.length > 0 ? 1 : 0;
+    expect(n).toBe(560);
+  }, 60_000);
 });
 
 describe('the gates of a whole series', () => {

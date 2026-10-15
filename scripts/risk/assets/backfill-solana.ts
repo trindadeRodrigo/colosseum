@@ -16,7 +16,7 @@
 //           <out>/solana/<swaps|mints>/<address>/<day>.jsonl.gz with a manifest
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { gunzipSync, gzipSync } from 'node:zlib';
+import { gzipSync } from 'node:zlib';
 import {
   type AnchoredPage,
   addToManifest,
@@ -27,6 +27,7 @@ import {
   tokenBalances,
 } from '@colosseum/risk';
 import type { RegistryPool } from '../lib-history';
+import { gzLines } from './gz-lines';
 
 type Rpc = <T>(method: string, params: unknown[]) => Promise<T>;
 type Sig = { signature: string; slot: number; blockTime: number | null; err: unknown };
@@ -345,8 +346,7 @@ export async function fetchWindow(inp: FetchSolana) {
     // count is the file's, not this window's
     const have = new Set<string>();
     if (existsSync(file))
-      for (const l of gunzipSync(readFileSync(file)).toString().split('\n'))
-        if (l) have.add((JSON.parse(l) as { s: string }).s);
+      for (const l of gzLines(readFileSync(file))) have.add((JSON.parse(l) as { s: string }).s);
     const fresh = rs.filter((r) => !have.has(r.s));
     duplicates += rs.length - fresh.length;
     for (const r of fresh) have.add(r.s);

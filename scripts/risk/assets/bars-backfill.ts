@@ -19,7 +19,6 @@
 // Read-only: no RPC, no database, no write.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { gunzipSync } from 'node:zlib';
 import {
   addBarSwap,
   type BarHour,
@@ -62,6 +61,7 @@ import {
   type SwapRow,
 } from '../../risk-evm/history';
 import { evmBarSwap, LAYER, type PoolBars, type SolanaPoolMeta, solanaBarSwaps } from './bars-read';
+import { gzLines as gzBufferLines } from './gz-lines';
 
 type Provenance = 'live' | 'prior_dataset';
 /** Pool bars that also name, per hour, the day file the bar came from. */
@@ -82,16 +82,9 @@ const readJson = <T>(f: string): T | null => {
     return null;
   }
 };
-/** The lines of a gzip day file (one gzip member per piece the fetch appended). */
+/** The lines of a gzip day file (one gzip member per piece the fetch appended), never one string. */
 export function* gzLines(file: string): Generator<string> {
-  const text = gunzipSync(readFileSync(file)).toString('utf8');
-  let i = 0;
-  while (i < text.length) {
-    const j = text.indexOf('\n', i);
-    const end = j < 0 ? text.length : j;
-    if (end > i) yield text.slice(i, end);
-    i = end + 1;
-  }
+  yield* gzBufferLines(readFileSync(file));
 }
 const hoursOfDay = (day: string) => {
   const s = Date.parse(`${day}T00:00:00Z`) / 1000;
