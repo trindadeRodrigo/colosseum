@@ -1799,6 +1799,8 @@ export const en = {
         /** A figure stated in a reply, named for screen readers: the value, what it is, how old. */
         figureSaid: '{value}, a measured figure',
         figureSaidAged: '{value}, a measured figure, {age}',
+        /** Beside a figure over a window shown with some of its hours not collected. */
+        figureHoursMissing: '{missing} of {total} hours missing',
         /** In a figure's place, in a kept reply whose figures are no longer kept. No number. */
         figureNotKept: '(figure no longer kept)',
         comparison: 'Current target → proposed share',

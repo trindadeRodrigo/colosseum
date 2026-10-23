@@ -3,7 +3,7 @@ import { VaultAgentReply } from '@colosseum/schemas';
 import { describe, expect, it, vi } from 'vitest';
 import { launchShelf } from '../../../../packages/engine/src/personal/testing';
 import { type ModelScript, scriptedModel, toolResults } from '../testing/lookup-script';
-import { fixtureLookups, OFFLINE_DB } from '../testing/lookups';
+import { fixtureLookups, LOOKUP_CHAIN_HOURS, LOOKUP_ROWS, OFFLINE_DB } from '../testing/lookups';
 import { LOOKUP_TOOLS, type LookupBase } from './lookup-loop';
 import { createRelaxedGoalAgent } from './relaxed-goal-agent';
 import { FIGURE_CUT, type GoalAgentContext } from './vault-agent';
@@ -135,6 +135,40 @@ describe('the relaxed intake looks up the data we hold', () => {
       expect.objectContaining({ id: `bars:${NVDA}:7d:close`, value: expect.any(Number) }),
     );
     expect(JSON.stringify(looked)).not.toMatch(/"source"|"method"/u);
+  });
+
+  it('says how many hours a window misses beside each of its figures, and never hands the model the count', async () => {
+    // the chain's collector down five hours on Oct 2: the week is shown (at most 8 of 168 may miss)
+    const down = new Set(
+      LOOKUP_CHAIN_HOURS.filter((h) => h >= '2026-10-02T10:00' && h < '2026-10-02T15:00'),
+    );
+    const service = fixtureLookups({
+      bars: async () => ({
+        rows: LOOKUP_ROWS.bars.filter((bar) => !down.has(bar.hour)),
+        before: null,
+        chainHours: LOOKUP_CHAIN_HOURS.filter((h) => !down.has(h)),
+      }),
+    });
+    const { result, calls } = await ask({ lookups: [[week]], final: sheet(MOVED) }, undefined, {
+      base: lookups({ service }),
+    });
+    const reply = served(result);
+    expect(reply.message).toBe(
+      "NVDAx's price changed by 4.32% (5 of 168 hours missing) over the last week. Its latest closing price was $240.51 (5 of 168 hours missing).",
+    );
+    // the drawn figure keeps its value as its text, and carries the count for the client
+    expect(reply.figures?.prose.message).toBe(MOVED);
+    expect(factsOf(result).get(`bars:${NVDA}:7d:close`)).toMatchObject({
+      text: '$240.51',
+      missingHours: 5,
+      windowHours: 168,
+    });
+    const [looked] = toolResults(calls[1]);
+    const close = ((looked?.json.facts ?? []) as { id: string; window?: string }[]).find(
+      (fact) => fact.id === `bars:${NVDA}:7d:close`,
+    );
+    expect(close?.window).toMatch(/not collected; the server writes how many/u);
+    expect(JSON.stringify(looked)).not.toMatch(/missingHours|windowHours|168/u);
   });
 
   it("gives each call what is left of the reply's time, and never sends that time to the model", async () => {

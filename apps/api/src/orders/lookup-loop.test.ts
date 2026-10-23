@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { launchShelf } from '../../../../packages/engine/src/personal/testing';
 import { fixtureLookups, OFFLINE_DB } from '../testing/lookups';
 import {
+  emptyLooked,
   LOOKUP_FINAL_MS,
   LOOKUP_MAX_ROUNDS,
   LOOKUP_TOOLS,
@@ -15,6 +16,7 @@ import {
   runLookupLoop,
 } from './lookup-loop';
 import type { AssetLookups, LookupAnswer } from './lookups';
+import { figureResolver } from './vault-figures';
 
 // The lookup loop of both conversations (FIGURES-BY-REFERENCE as amended 2026-10-14, ledger
 // API-AGENT-LOOKUPS-2), with the model and the reader stubbed: what goes to the model, what comes back
@@ -416,5 +418,57 @@ describe('the lookup loop', () => {
     expect(into.sources.get(`profile:${NVDA}:pool_tvl_usd`)).toBeDefined();
     expect(into.references.staleAgeSec).toEqual({ [`profile:${NVDA}:pool_tvl_usd`]: 449_495 });
     expect(Object.keys(into.references.missing)).toContain(`profile:${NVDA}:holders_top20_share`);
+  });
+
+  it("keeps the hours a looked-up window misses, and the resolver says them beside the figure in the reply's language", () => {
+    const id = `bars:${NVDA}:30d:close`;
+    const looked = emptyLooked();
+    looked.sources.set(id, {
+      id,
+      assetId: NVDA,
+      label: 'Latest closing price over the last month',
+      value: 240.51,
+      unit: 'USD',
+      source: 'market_bars',
+      method: 'hourly bars',
+      fetchedAt: '2026-10-22T20:00:00.000Z',
+      provenance: 'live',
+    });
+    looked.windowGaps[id] = { missingHours: 11, windowHours: 720 };
+    const into = {
+      sources: new Map(),
+      references: { missing: {}, staleAgeSec: {} },
+      lowerBound: new Set<string>(),
+    };
+    mergeLooked(into, looked);
+    expect(into.references).toMatchObject({
+      windowGaps: { [id]: { missingHours: 11, windowHours: 720 } },
+    });
+    for (const [language, said] of [
+      ['en', '$240.51 (11 of 720 hours missing)'],
+      ['pt', 'US$ 240,51 (faltam 11 de 720 horas)'],
+    ] as const) {
+      const resolver = figureResolver({
+        enabled: true,
+        sources: into.sources,
+        references: into.references,
+        lowerBound: into.lowerBound,
+        language,
+      });
+      const figure = resolver.figure(id);
+      expect(figure).toMatchObject({ missingHours: 11, windowHours: 720 });
+      expect(figure && resolver.plain(figure)).toBe(said);
+    }
+    // a figure with no hours missing reads as its text alone
+    const whole = figureResolver({
+      enabled: true,
+      sources: into.sources,
+      references: { missing: {}, staleAgeSec: {} },
+      lowerBound: new Set(),
+      language: 'en',
+    });
+    const plain = whole.figure(id);
+    expect(plain).not.toHaveProperty('missingHours');
+    expect(plain && whole.plain(plain)).toBe('$240.51');
   });
 });

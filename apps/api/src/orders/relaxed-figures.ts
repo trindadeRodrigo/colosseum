@@ -133,7 +133,7 @@ export function filled(template: string, references: FigureResolver) {
     if (!fact) return '';
     facts.set(id, fact);
     counts[fact.value === null ? 'missing' : 'resolved'] += 1;
-    return fact.text;
+    return references.plain(fact);
   });
   return { plain, facts: [...facts.values()], counts };
 }
@@ -158,7 +158,8 @@ export function fitted(template: string, max: number, references: FigureResolver
   for (const match of template.matchAll(FIGURE_REFERENCE)) {
     const words = template.slice(from, match.index);
     if (length + words.length > room) return `${(out + words.slice(0, room - length)).trimEnd()}…`;
-    const text = references.figure(match[1] ?? '')?.text ?? '';
+    const fact = references.figure(match[1] ?? '');
+    const text = fact ? references.plain(fact) : '';
     seen.add(match[1] ?? '');
     if (length + words.length + text.length > room || seen.size > MAX_FACTS)
       return `${(out + words).trimEnd()}…`;

@@ -191,6 +191,52 @@ describe('a figure the conversation states', () => {
     );
   });
 
+  it("says beside a figure how many hours its window misses, in the reader's language", async () => {
+    const close = 'bars:solana:gldx:30d:close';
+    const reply = answer({
+      message: 'Its latest closing price over the last month was $20.00 (11 of 720 hours missing).',
+      figures: {
+        prose: {
+          message: `Its latest closing price over the last month was ${ref(close)}.`,
+          question: null,
+          proposal: null,
+        },
+        facts: [
+          measured({
+            id: close,
+            text: '$20.00',
+            value: 20,
+            unit: 'USD',
+            provenance: 'live',
+            missingHours: 11,
+            windowHours: 720,
+          }),
+        ],
+      },
+    });
+    for (const [lang, note] of [
+      ['en', '(11 of 720 hours missing)'],
+      ['pt', '(faltam 11 de 720 horas)'],
+    ] as const) {
+      serve(reply, null);
+      const host = await show(lang);
+      await say(host, 'How did it move this month?');
+      const figure = find(host, '[data-ui="vault-transcript"] [data-ui="figure"]');
+      expect(find(figure, '.tf-figure').textContent).toBe('$20.00');
+      expect(
+        find(host, '[data-ui="figure-hours-missing"]').textContent?.replace(/\s+/gu, ' ').trim(),
+      ).toBe(note);
+      await unmountAll();
+      localStorage.clear();
+      sessionStorage.clear();
+    }
+    // a window with no hour missing says nothing of it
+    serve(figured, null);
+    const host = await show();
+    await say(host, 'What would selling cost?');
+    expect(host.querySelector('[data-ui="figure-hours-missing"]')).toBeNull();
+  });
+
   it('says a figure that is not measured in words, with no number and no pin', async () => {
     serve(
       answer({

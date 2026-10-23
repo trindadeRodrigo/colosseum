@@ -3,7 +3,8 @@ import { FIGURE_REFERENCE } from '@colosseum/schemas';
 import { Fragment, type ReactNode } from 'react';
 import { formatAge, sayAge } from '../../components/ui/format';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
-import { useT } from '../../i18n/I18nProvider';
+import { LOCALE } from '../../i18n';
+import { useLang, useT } from '../../i18n/I18nProvider';
 import { displayName } from '../order/plain';
 import type { Figure } from './agent';
 
@@ -14,7 +15,8 @@ export const FIGURE_AGE_SHOWN_SEC = 3600;
  * A text of the conversation with each figure it states drawn as a figure (gate FIGURES-BY-REFERENCE):
  * the value our server measured, with the provenance pin every other figure has, the sample or
  * test-network mark where it is not live, and its age once it is an hour old, so a reply read again
- * later shows what was measured then and never passes for today's. A figure that is not measured is
+ * later shows what was measured then and never passes for today's. A figure over a window shown with some
+ * of its hours not collected says how many beside it ("11 of 720 hours missing"). A figure that is not measured is
  * its reason in words; a placeholder that names no fact is a dash. Nothing here is the model's number,
  * and no brace is ever shown. `now` is the reader's clock in milliseconds, or null before it is read.
  */
@@ -30,6 +32,8 @@ export function FiguredText({
   const t = useT();
   const copy = t.shared.vault.conversation;
   const byId = new Map(facts.map((fact) => [fact.id, fact]));
+  const lang = useLang();
+  const count = (n: number) => new Intl.NumberFormat(LOCALE[lang]).format(n);
   const parts: ReactNode[] = [];
   let from = 0;
   let key = 0;
@@ -79,6 +83,16 @@ export function FiguredText({
             ({aged})
           </span>
         )}
+        {fact.missingHours && fact.windowHours ? (
+          <span data-ui="figure-hours-missing" className="text-caption text-muted-foreground">
+            {' '}
+            (
+            {copy.figureHoursMissing
+              .replace('{missing}', () => count(fact.missingHours as number))
+              .replace('{total}', () => count(fact.windowHours as number))}
+            )
+          </span>
+        ) : null}
       </Fragment>,
     );
   }

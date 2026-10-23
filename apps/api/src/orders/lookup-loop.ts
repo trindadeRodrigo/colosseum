@@ -9,7 +9,7 @@ import {
   type LookupMissing,
   type LookupWindow,
 } from './lookups';
-import { type FigureReferences, NULL_REASONS } from './vault-figures';
+import { type FigureReferences, NULL_REASONS, type WindowGap } from './vault-figures';
 
 // The lookups in the conversations (gate FIGURES-BY-REFERENCE as amended 2026-10-14, ledger
 // API-AGENT-LOOKUPS-2): one loop, used by the relaxed intake behind /goal and by a vault's own
@@ -124,6 +124,8 @@ export type LookedUp = {
   missing: FigureReferences['missing'];
   /** The age of a looked-up reading past its age limit, by id. */
   staleAgeSec: Record<string, number>;
+  /** The hours not collected of a looked-up figure's window, by id, where any is. */
+  windowGaps: Record<string, WindowGap>;
   /** The ids whose value is a lower bound. */
   lowerBound: Set<string>;
   /** For the log: lookup rounds, tool calls, facts added and calls answered with an error. */
@@ -179,6 +181,7 @@ export function emptyLooked(): LookedUp {
     sources: new Map(),
     missing: {},
     staleAgeSec: {},
+    windowGaps: {},
     lowerBound: new Set(),
     counts: { rounds: 0, calls: 0, facts: 0, errors: 0 },
   };
@@ -195,6 +198,13 @@ function factOut(fact: LookupFact, modelledOn: string | null) {
     provenance: fact.provenance,
     ...(fact.lowerBound ? { lowerBound: true } : {}),
     ...(fact.staleAgeSec === undefined ? {} : { ageSeconds: fact.staleAgeSec }),
+    // no count: the model types no number; the server writes how many hours beside the figure
+    ...(fact.missingHours
+      ? {
+          window:
+            'Some hours of this window were not collected; the server writes how many beside the figure.',
+        }
+      : {}),
     ...(modelledOn && fact.provenance !== 'live' ? { modelledOn } : {}),
   };
 }
@@ -325,6 +335,11 @@ async function runTool(
     });
     if (fact.lowerBound) looked.lowerBound.add(fact.id);
     if (fact.staleAgeSec !== undefined) looked.staleAgeSec[fact.id] = fact.staleAgeSec;
+    if (fact.missingHours && fact.windowHours)
+      looked.windowGaps[fact.id] = {
+        missingHours: fact.missingHours,
+        windowHours: fact.windowHours,
+      };
     looked.counts.facts += 1;
     facts.push(factOut(fact, answer.modelledOn));
   }
@@ -479,6 +494,8 @@ export function mergeLooked(
     if (looked.lowerBound.has(id)) into.lowerBound.add(id);
     const age = looked.staleAgeSec[id];
     if (age !== undefined) into.references.staleAgeSec[id] = age;
+    const gap = looked.windowGaps[id];
+    if (gap) into.references.windowGaps = { ...into.references.windowGaps, [id]: gap };
   }
   for (const [id, missing] of Object.entries(looked.missing))
     if (!held(id)) into.references.missing[id] = missing;

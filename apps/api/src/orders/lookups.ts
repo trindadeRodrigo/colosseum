@@ -27,6 +27,12 @@ export type LookupFact = VaultAgentSource & {
   lowerBound?: true;
   /** The reading is past its age limit: this is its age, in seconds. */
   staleAgeSec?: number;
+  /**
+   * A figure over a window shown with some of its hours not collected (at most 5% of them): how many are
+   * missing, of the window's `windowHours`. Absent when none is.
+   */
+  missingHours?: number;
+  windowHours?: number;
 };
 /** A figure that is not measured: the id it would have had, what it measures, and why. */
 export type LookupMissing = {

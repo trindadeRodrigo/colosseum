@@ -57,13 +57,17 @@ const NULL_REASONS_PT: Record<FactNullReason, string> = {
 export type FigureReferences = {
   missing: Record<string, { assetId?: string; label: string; reason: FactNullReason }>;
   staleAgeSec: Record<string, number>;
+  /** A figure over a window shown with some of its hours not collected: how many, of how many. */
+  windowGaps?: Record<string, WindowGap>;
 };
+export type WindowGap = { missingHours: number; windowHours: number };
 
 const LOCALE = { en: 'en-US', pt: 'pt-BR' } as const;
 const WORDS = {
   en: {
     atLeast: 'at least',
     missing: 'not measured',
+    hoursMissing: '{missing} of {total} hours missing',
     hours: 'hours',
     seconds: 'seconds',
     tokens: 'tokens',
@@ -71,6 +75,7 @@ const WORDS = {
   pt: {
     atLeast: 'pelo menos',
     missing: 'não medido',
+    hoursMissing: 'faltam {missing} de {total} horas',
     hours: 'horas',
     seconds: 'segundos',
     tokens: 'tokens',
@@ -118,6 +123,19 @@ export function figureText(
   const fixed = number(places);
   const said = `${value !== 0 && !/[1-9]/u.test(fixed) ? number({ maximumSignificantDigits: 2 }) : fixed}${suffix}`;
   return lowerBound ? `${words.atLeast} ${said}` : said;
+}
+
+/**
+ * A figure as plain prose says it: its `text`, and, for a window shown with hours not collected, how many
+ * ("3.2% (11 of 720 hours missing)"). A client that draws the figure shows the same note from its fields.
+ */
+export function plainFigureText(figure: VaultAgentFigure, language: 'en' | 'pt'): string {
+  if (figure.value === null || !figure.missingHours || !figure.windowHours) return figure.text;
+  const count = (n: number) => new Intl.NumberFormat(LOCALE[language]).format(n);
+  const note = WORDS[language].hoursMissing
+    .replace('{missing}', count(figure.missingHours))
+    .replace('{total}', count(figure.windowHours));
+  return `${figure.text} (${note})`;
 }
 
 /**
@@ -713,6 +731,8 @@ const SAID = {
 export type FigureResolver = {
   /** The figure an id names in this request, measured or not, or undefined when it names none. */
   figure(id: string): VaultAgentFigure | undefined;
+  /** A figure of this request as plain prose says it, in the reply's language (`plainFigureText`). */
+  plain(figure: VaultAgentFigure): string;
   /**
    * Why `text` holds an unbacked figure through its references, one entry each: an id that names no
    * figure, and what `SAID` lists. Empty when every reference stands alone as a figure of the request.
@@ -762,6 +782,10 @@ export function figureResolver(input: {
       source.unit !== undefined
     ) {
       const atLeast = lowerBound.has(id);
+      const gap =
+        references?.windowGaps && Object.hasOwn(references.windowGaps, id)
+          ? references.windowGaps[id]
+          : undefined;
       return {
         id,
         ...(source.assetId === undefined ? {} : { assetId: source.assetId }),
@@ -778,6 +802,9 @@ export function figureResolver(input: {
             ? (references.staleAgeSec[id] ?? null)
             : null,
         ...(atLeast ? { lowerBound: true as const } : {}),
+        ...(gap && gap.missingHours > 0
+          ? { missingHours: gap.missingHours, windowHours: gap.windowHours }
+          : {}),
       };
     }
     const missing = references && Object.hasOwn(references.missing, id) && references.missing[id];
@@ -1031,6 +1058,7 @@ export function figureResolver(input: {
   };
   return {
     figure,
+    plain: (figure) => plainFigureText(figure, language),
     parts,
     unbacked: (text, lead) => [...new Set(parts(text, lead).flatMap((part) => part.why))],
   };

@@ -17,6 +17,7 @@ import { lendsToken } from './lending-facts';
 import type { LookupAnswer, LookupFact } from './orders/lookups';
 import { MEASURED } from './orders/relaxed-figures';
 import { figureResolver } from './orders/vault-figures';
+import { AssetFactsResponse } from './routes/v1/assets';
 
 // The asset lookups with their reads handed in: the rows are the fixtures the builders are tested on
 // (fixtures/risk/assets/lookups/), so what is tested here is the reading, keeping, waiting, naming and
@@ -105,6 +106,42 @@ describe('the asset lookups', () => {
     expect(close).toMatchObject({ unit: 'USD', provenance: 'live' });
     // the stale pool reading says its age on every pool figure it gave
     expect(answers[2]?.facts.every((f) => f.id.endsWith(':volume') || f.staleAgeSec)).toBe(true);
+  });
+
+  it('a week with hours not collected (up to 5%) answers its figures with the count, as the route serves them', async () => {
+    // the chain's collector down five hours on Oct 2: no bar of any asset then
+    const down = new Set(
+      chainHours.filter((h) => h >= '2026-10-02T10:00' && h < '2026-10-02T15:00'),
+    );
+    expect(down.size).toBe(5);
+    const lookups = make(
+      reads({
+        bars: vi.fn(async () => ({
+          rows: bars.filter((bar) => !down.has(bar.hour)),
+          before: null,
+          chainHours: chainHours.filter((h) => !down.has(h)),
+        })),
+      }),
+    );
+    const answer = await lookups.priceHistory({ ...query, window: '7d' });
+    const close = answer.facts.find((f) => f.id === 'bars:solana:nvdax:7d:close');
+    expect(close).toMatchObject({ missingHours: 5, windowHours: 168 });
+    expect(close?.method).toMatch(/no more than 5% of its hours were not collected/u);
+    const body = AssetFactsResponse.parse({
+      assetId: asset.id,
+      chain: 'solana',
+      symbol: asset.symbol,
+      provenance: 'live',
+      window: '7d',
+      parts: { price_history: answer },
+      disclaimer: 'not advice',
+    });
+    expect(
+      body.parts.price_history?.facts.every((f) => f.missingHours === 5 && f.windowHours === 168),
+    ).toBe(true);
+    // a complete week says nothing of missing hours
+    const whole = await make(reads()).priceHistory({ ...query, window: '7d' });
+    expect(whole.facts.some((f) => 'missingHours' in f || 'windowHours' in f)).toBe(false);
   });
 
   it('keeps a read, and reads it once however many ask', async () => {

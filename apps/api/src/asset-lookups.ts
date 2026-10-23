@@ -264,6 +264,9 @@ export function answerOf(assetId: string, named: readonly Named[]): Built {
       unit: parsed.data.unit as string,
       ...(figure.lowerBound ? { lowerBound: true as const } : {}),
       ...(figure.staleAgeSec === undefined ? {} : { staleAgeSec: figure.staleAgeSec }),
+      ...(figure.missingHours === undefined || figure.windowHours === undefined
+        ? {}
+        : { missingHours: figure.missingHours, windowHours: figure.windowHours }),
     });
   }
   return { facts, missing };

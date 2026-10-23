@@ -333,6 +333,7 @@ describe('the hours the hourly job writes', () => {
     expect(barCoverage(bars, before, '24h', now, hours)).toEqual({
       covered: true,
       collectedHours: 23,
+      missingHours: 0,
     });
     // one more hour short (the bars stop at HH-3, as a daily job's would by evening): not covered
     const short = bars.filter((b) => b.hour < '2026-10-22T08:00:00.000Z');

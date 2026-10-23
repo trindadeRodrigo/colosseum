@@ -2838,6 +2838,7 @@ export async function replyToVaultConversation(
     references: {
       missing: { ...(context.references?.missing ?? {}) },
       staleAgeSec: { ...(context.references?.staleAgeSec ?? {}) },
+      windowGaps: { ...(context.references?.windowGaps ?? {}) },
     },
     lowerBound: new Set((context.analytics?.assets ?? []).flatMap((row) => row.lowerBound ?? [])),
   };
@@ -2874,7 +2875,7 @@ export async function replyToVaultConversation(
         }
         facts.set(id, fact);
         counts[fact.value === null ? 'missing' : 'resolved'] += 1;
-        return fact.text;
+        return references.plain(fact);
       });
     const { proposal } = template;
     const reply = {

@@ -12,6 +12,8 @@ import {
   lendsIt,
   lentOf,
   MAX_POOLS,
+  maxMissingHours,
+  midCoverage,
   newestByMetric,
   type ObservationRow,
   type PoolBarRow,
@@ -187,6 +189,7 @@ describe('price history: the asset bars of a window, in dollars', () => {
     expect(barCoverage(bars, '2026-08-01T00:00:00.000Z', '30d', now, all)).toEqual({
       covered: true,
       collectedHours: 720 - 1,
+      missingHours: 0,
     });
     expect(barCoverage(bars, '2026-08-01T00:00:00.000Z', '30d', now, collected)).toEqual({
       covered: false,
@@ -289,6 +292,172 @@ describe("price history: an hour the chain's collector did not run is never a qu
     expect(barCoverage(asset(upTo), null, '7d', late, upTo)).toEqual({
       covered: false,
       missingHours: 3,
+    });
+  });
+});
+
+describe('a window with up to 5% of its hours not collected is shown, with the count (HOURLY-BARS, Oct 22)', () => {
+  // A week read on Oct 10 at 00:30: 168 hours from Oct 3 01:00 to Oct 10 00:00, the asset's bar in every
+  // hour the chain was collected, its history older than the window.
+  const now = new Date('2026-10-10T00:30:00.000Z');
+  const week = hoursBetween(windowStart('7d', now).getTime(), '2026-10-10T00:00:00.000Z');
+  const template = bars.find((bar) => bar.closeUsd !== null && bar.volumeUsd !== null) as BarRow;
+  const asset = (hours: string[]): BarRow[] => hours.map((hour) => ({ ...template, hour }));
+  const old = '2026-10-01T00:00:00.000Z';
+  /** The window's hours with `n` hours of the chain's collector down, from the window's middle. */
+  const down = (hours: string[], n: number) => {
+    const from = Math.floor(hours.length / 2);
+    return hours.filter((_, at) => at < from || at >= from + n);
+  };
+
+  it('tolerates 5% of the hours, rounded down: 1 of 24, 8 of 168, 36 of 720', () => {
+    expect(maxMissingHours('24h')).toBe(1);
+    expect(maxMissingHours('7d')).toBe(8);
+    expect(maxMissingHours('30d')).toBe(36);
+  });
+
+  it('exactly 5% missing is covered; every figure says how many hours of the window are missing', () => {
+    const served = down(week, 8);
+    expect(week).toHaveLength(168);
+    expect(barCoverage(asset(served), old, '7d', now, served)).toEqual({
+      covered: true,
+      collectedHours: 160,
+      missingHours: 8,
+    });
+    const figures = priceHistoryFigures(asset(served), old, '7d', now, served);
+    for (const figure of figures) {
+      expect(figure.value).not.toBeNull();
+      expect(figure).toMatchObject({
+        missingHours: 8,
+        windowHours: 168,
+        method: expect.stringContaining('no more than 5% of its hours were not collected'),
+      });
+    }
+    const got = byKey(figures);
+    // the figures are the bars that exist: the missing hours are neither swaps nor gaps
+    expect(got.get('swaps')).toMatchObject({ value: 160 * template.swaps });
+    expect(got.get('gaps')).toMatchObject({ value: 0 });
+  });
+
+  it('one hour past 5% is withheld, every figure not collected with the hours missing', () => {
+    const served = down(week, 9);
+    expect(barCoverage(asset(served), old, '7d', now, served)).toEqual({
+      covered: false,
+      missingHours: 9,
+    });
+    expect(priceHistoryFigures(asset(served), old, '7d', now, served)).toEqual(
+      BAR_KEYS.map((key) => ({ key, value: null, reason: 'not_collected', missingHours: 9 })),
+    );
+  });
+
+  it('a day tolerates one hour and not two; a month 36 and not 37', () => {
+    const day = week.slice(-24);
+    expect(barCoverage(asset(down(day, 1)), old, '24h', now, down(day, 1))).toMatchObject({
+      covered: true,
+      missingHours: 1,
+    });
+    expect(barCoverage(asset(down(day, 2)), old, '24h', now, down(day, 2))).toEqual({
+      covered: false,
+      missingHours: 2,
+    });
+    const month = hoursBetween(windowStart('30d', now).getTime(), '2026-10-10T00:00:00.000Z');
+    expect(month).toHaveLength(720);
+    expect(barCoverage(asset(down(month, 36)), old, '30d', now, down(month, 36))).toEqual({
+      covered: true,
+      collectedHours: 684,
+      missingHours: 36,
+    });
+    expect(barCoverage(asset(down(month, 37)), old, '30d', now, down(month, 37))).toEqual({
+      covered: false,
+      missingHours: 37,
+    });
+  });
+
+  it("a history that starts inside the window counts its hours before the asset's first bar", () => {
+    const late = week.slice(8);
+    expect(barCoverage(asset(late), null, '7d', now, week)).toMatchObject({
+      covered: true,
+      missingHours: 8,
+    });
+    expect(barCoverage(asset(week.slice(9)), null, '7d', now, week)).toEqual({
+      covered: false,
+      missingHours: 9,
+    });
+  });
+
+  it('a complete window carries no count', () => {
+    for (const figure of priceHistoryFigures(asset(week), old, '7d', now, week)) {
+      expect(figure).not.toHaveProperty('missingHours');
+      expect(figure).not.toHaveProperty('windowHours');
+    }
+  });
+
+  it('freshness stays strict: within the 5%, bars that stop more than two hours short of now are withheld', () => {
+    // one hour missing in the middle (tolerated) and the chain's bars end at 23:00: fine at 00:30
+    const served = down(week, 1).slice(0, -1);
+    expect(barCoverage(asset(served), old, '7d', now, served)).toMatchObject({
+      covered: true,
+      missingHours: 1,
+    });
+    // at 02:30 the last hour ended three and a half hours before: withheld, the stale hours counted
+    const later = new Date('2026-10-10T02:30:00.000Z');
+    expect(barCoverage(asset(served), old, '7d', later, served)).toMatchObject({
+      covered: false,
+    });
+    expect(
+      priceHistoryFigures(asset(served), old, '7d', later, served).every(
+        (f) => f.value === null && f.reason === 'not_collected',
+      ),
+    ).toBe(true);
+  });
+
+  it('no bar of the asset in the window is withheld, whatever the chain holds', () => {
+    expect(barCoverage([], old, '7d', now, week)).toEqual({ covered: false, missingHours: 168 });
+  });
+
+  it('the mid bars of a Solana token: up to 5% of the hours the mid collector did not run, its own bars current', () => {
+    const mids = (hours: string[]): BarRow[] =>
+      hours.map((hour) => ({ ...template, hour, methodVersion: 'mids-0.1' }));
+    const day = week.slice(-24);
+    // an hour neither the swap collector nor the mid collector ran
+    const one = down(day, 1);
+    expect(midCoverage(mids(one), old, '24h', now, [], one)).toMatchObject({
+      covered: true,
+      missingHours: 1,
+    });
+    const close = byKey(priceHistoryFigures(mids(one), old, '24h', now, [], one)).get('close');
+    expect(close).toMatchObject({ missingHours: 1, windowHours: 24 });
+    expect(midCoverage(mids(down(day, 2)), old, '24h', now, [], down(day, 2))).toEqual({
+      covered: false,
+      missingHours: 2,
+    });
+    // the chain's mids go on, but this token's own stopped three hours before: withheld
+    const ownStops = day.slice(0, -3);
+    expect(midCoverage(mids(ownStops), old, '24h', now, [], day)).toMatchObject({
+      covered: false,
+    });
+  });
+
+  it("a pool's day volume over a covered day with an hour missing carries the count", () => {
+    const at = new Date('2026-10-06T06:30:00.000Z');
+    const dayHours = collected.filter(
+      (hour) => Date.parse(hour) >= windowStart('24h', at).getTime(),
+    );
+    const holed = down(dayHours, 1);
+    const coverage = barCoverage(
+      bars.filter((bar) => holed.includes(bar.hour)),
+      null,
+      '24h',
+      at,
+      holed,
+    );
+    expect(coverage).toMatchObject({ covered: true, missingHours: 1 });
+    const { pools: served } = poolFigures(pools.reading, pools.poolBars, coverage, at);
+    expect(byKey((served[0] as (typeof served)[number]).figures).get('volume')).toMatchObject({
+      unit: 'usd',
+      missingHours: 1,
+      windowHours: 24,
+      method: expect.stringContaining('no more than 5%'),
     });
   });
 });

@@ -37,6 +37,10 @@ export type GetAssetsByIdFactsResponse = {
         lowerBound?: true;
         /** The reading is past its age limit: its age, in seconds */
         staleAgeSec?: number;
+        /** A figure over a window shown with some of its hours not collected (at most 5% of the window's hours): how many are missing */
+        missingHours?: number;
+        /** The hours of the window `missingHours` is counted in */
+        windowHours?: number;
       }[];
       missing: {
         id: string;
@@ -80,6 +84,10 @@ export type GetAssetsByIdFactsResponse = {
         lowerBound?: true;
         /** The reading is past its age limit: its age, in seconds */
         staleAgeSec?: number;
+        /** A figure over a window shown with some of its hours not collected (at most 5% of the window's hours): how many are missing */
+        missingHours?: number;
+        /** The hours of the window `missingHours` is counted in */
+        windowHours?: number;
       }[];
       missing: {
         id: string;
@@ -123,6 +131,10 @@ export type GetAssetsByIdFactsResponse = {
         lowerBound?: true;
         /** The reading is past its age limit: its age, in seconds */
         staleAgeSec?: number;
+        /** A figure over a window shown with some of its hours not collected (at most 5% of the window's hours): how many are missing */
+        missingHours?: number;
+        /** The hours of the window `missingHours` is counted in */
+        windowHours?: number;
       }[];
       missing: {
         id: string;
@@ -166,6 +178,10 @@ export type GetAssetsByIdFactsResponse = {
         lowerBound?: true;
         /** The reading is past its age limit: its age, in seconds */
         staleAgeSec?: number;
+        /** A figure over a window shown with some of its hours not collected (at most 5% of the window's hours): how many are missing */
+        missingHours?: number;
+        /** The hours of the window `missingHours` is counted in */
+        windowHours?: number;
       }[];
       missing: {
         id: string;
@@ -209,6 +225,10 @@ export type GetAssetsByIdFactsResponse = {
         lowerBound?: true;
         /** The reading is past its age limit: its age, in seconds */
         staleAgeSec?: number;
+        /** A figure over a window shown with some of its hours not collected (at most 5% of the window's hours): how many are missing */
+        missingHours?: number;
+        /** The hours of the window `missingHours` is counted in */
+        windowHours?: number;
       }[];
       missing: {
         id: string;
@@ -2365,6 +2385,8 @@ export type PostConversationsByChainGoalReplyResponse = {
           provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
           staleAgeSec: number | null;
           lowerBound?: true;
+          missingHours?: number;
+          windowHours?: number;
         }
       | {
           id: string;
@@ -4270,6 +4292,8 @@ export type GetVaultsByChainByAddressConversationResponse = {
                 provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
                 staleAgeSec: number | null;
                 lowerBound?: true;
+                missingHours?: number;
+                windowHours?: number;
               }
             | {
                 id: string;
@@ -4376,6 +4400,8 @@ export type PutVaultsByChainByAddressConversationBody = {
                 provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
                 staleAgeSec: number | null;
                 lowerBound?: true;
+                missingHours?: number;
+                windowHours?: number;
               }
             | {
                 id: string;
@@ -4478,6 +4504,8 @@ export type PutVaultsByChainByAddressConversationResponse = {
                 provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
                 staleAgeSec: number | null;
                 lowerBound?: true;
+                missingHours?: number;
+                windowHours?: number;
               }
             | {
                 id: string;
@@ -4659,6 +4687,8 @@ export type PostVaultsByChainByAddressConversationReplyResponse = {
           provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
           staleAgeSec: number | null;
           lowerBound?: true;
+          missingHours?: number;
+          windowHours?: number;
         }
       | {
           id: string;

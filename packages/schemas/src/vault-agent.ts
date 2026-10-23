@@ -174,7 +174,9 @@ export type VaultAgentWeightNote = z.infer<typeof VaultAgentWeightNote>;
  * `{{fact:<id>}}` where a number would stand and never the number; the server resolves the id against
  * the evidence of that request and writes everything here. Measured: the value, its unit, `text` as it
  * is shown ("$1,234.56", "0.42%"), its pin, and `staleAgeSec` when the figure has an age limit and is
- * past it (a price the chain's vault no longer trades on), else null. Not measured: null with the
+ * past it (a price the chain's vault no longer trades on), else null; a figure over a window shown with
+ * some of its hours not collected (gate HOURLY-BARS as amended 2026-10-22) has `missingHours` of
+ * `windowHours`, which a client shows beside it ("11 of 720 hours missing"). Not measured: null with the
  * reason, and `text` says so in words with no number.
  */
 const figureHead = {
@@ -195,6 +197,9 @@ export const VaultAgentFigure = z.union([
     staleAgeSec: z.number().finite().nonnegative().nullable(),
     /** The true value is at least this: `text` says "at least". */
     lowerBound: z.literal(true).optional(),
+    /** The hours of the figure's window that were not collected, of `windowHours`; absent when none. */
+    missingHours: z.number().int().positive().optional(),
+    windowHours: z.number().int().positive().optional(),
   }),
   z.strictObject({ ...figureHead, value: z.null(), reason: FactNullReason }),
 ]);

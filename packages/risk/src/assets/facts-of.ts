@@ -26,6 +26,12 @@ export type AssetFigure =
       lowerBound?: true;
       /** The reading is older than its job's limit by its cadence: this is its age, in seconds. */
       staleAgeSec?: number;
+      /**
+       * A figure over a window shown with some of its hours not collected (at most `maxMissingHours`):
+       * how many hours are missing, of the window's `windowHours`. Absent when none is.
+       */
+      missingHours?: number;
+      windowHours?: number;
     }
   | { key: string; value: null; reason: FactNullReason; missingHours?: number };
 
@@ -169,6 +175,16 @@ export type LookupWindow = '24h' | '7d' | '30d';
 export const WINDOW_HOURS: Record<LookupWindow, number> = { '24h': 24, '7d': 168, '30d': 720 };
 /** The bars reach the present when their last hour ended no more than this long before `now`. */
 export const BARS_FRESH_MS = 2 * HOUR_MS;
+/** The share of a window's hours that may be uncollected and the window still shown, in percent. */
+export const MAX_MISSING_PERCENT = 5;
+/**
+ * The hours a window may miss and still be shown (gate HOURLY-BARS as amended 2026-10-22, Thom): 5% of
+ * its hours, rounded down: 1 of 24, 8 of 168, 36 of 720.
+ */
+export const maxMissingHours = (window: LookupWindow): number =>
+  Math.floor((WINDOW_HOURS[window] * MAX_MISSING_PERCENT) / 100);
+/** What every figure of a window says of the rule it was shown under. */
+export const COVERAGE_METHOD = `; the window is shown when no more than ${MAX_MISSING_PERCENT}% of its hours were not collected`;
 
 /** One `market_bars` row, its dollar columns only: the quote-token columns are never read here. */
 export type BarRow = {
@@ -255,13 +271,15 @@ export function windowStart(window: LookupWindow, now: Date): Date {
  * Whether the bars cover the window. `chainHours` are the hours in which any asset of the chain has a bar built
  * from swaps (never a bar of the collector's mid prices, gate HOURLY-BARS: another token's mids do not make this
  * one's stale bars current; the asset's own bars, mids included, are its own collected hours): an
- * hour of the window in which none has is an hour the collector did not run (an outage), never a quiet hour,
- * and a window with one is not covered. A quiet hour is one the chain has bars for and this asset has none: a
- * gap. The asset's own history must reach back to the window's start (a bar at or before it, or `before`, the
- * latest bar older than the window), and the chain's latest collected hour must have ended at most
- * `BARS_FRESH_MS` before `now`: the hours after it, within that tolerance, are neither covered nor missing.
- * Covered: `collectedHours`, the window's hours up to the chain's latest collected one. Otherwise, how many
- * of the window's hours were not collected.
+ * hour of the window in which none has is an hour the collector did not run (an outage), never a quiet hour.
+ * A quiet hour is one the chain has bars for and this asset has none: a gap. The hours before the asset's
+ * own first bar are not collected too when its history does not reach back to the window's start (no bar at
+ * or before it, and no `before`, the latest bar older than the window). A window is covered when at most
+ * `maxMissingHours` of its hours are not collected (5%, gate HOURLY-BARS as amended 2026-10-22), and two
+ * rules stay strict: the asset has a bar in the window, and the chain's latest collected hour ended at most
+ * `BARS_FRESH_MS` before `now` (the hours after it, within that tolerance, are neither covered nor missing).
+ * Covered: `collectedHours`, the window's hours up to the chain's latest collected one that were collected,
+ * and `missingHours`, those that were not. Otherwise, how many of the window's hours were not collected.
  */
 export function barCoverage(
   bars: readonly { hour: string }[],
@@ -269,7 +287,9 @@ export function barCoverage(
   window: LookupWindow,
   now: Date,
   chainHours: readonly string[],
-): { covered: true; collectedHours: number } | { covered: false; missingHours: number } {
+):
+  | { covered: true; collectedHours: number; missingHours: number }
+  | { covered: false; missingHours: number } {
   const total = WINDOW_HOURS[window];
   const start = windowStart(window, now).getTime();
   const end = start + total * HOUR_MS;
@@ -288,13 +308,29 @@ export function barCoverage(
     for (let at = start; at < Math.min(...own); at += HOUR_MS) uncollected.add(at);
   // an hour in which no asset of the chain has a bar
   for (let at = start; at <= latest; at += HOUR_MS) if (!collected.has(at)) uncollected.add(at);
-  // the chain's bars stop short of now by more than the tolerance
-  if (now.getTime() - (latest + HOUR_MS) > BARS_FRESH_MS)
+  // the chain's bars stop short of now by more than the tolerance: stale, never shown
+  if (now.getTime() - (latest + HOUR_MS) > BARS_FRESH_MS) {
     for (let at = latest + HOUR_MS; at < now.getTime() && at < end; at += HOUR_MS)
       uncollected.add(at);
-  return uncollected.size
-    ? { covered: false, missingHours: Math.min(total, uncollected.size) }
-    : { covered: true, collectedHours: Math.round((latest - start) / HOUR_MS) + 1 };
+    return { covered: false, missingHours: Math.min(total, uncollected.size) };
+  }
+  if (uncollected.size > maxMissingHours(window))
+    return { covered: false, missingHours: Math.min(total, uncollected.size) };
+  return {
+    covered: true,
+    collectedHours: Math.round((latest - start) / HOUR_MS) + 1 - uncollected.size,
+    missingHours: uncollected.size,
+  };
+}
+
+/** What a figure over a covered window says of its hours not collected: nothing when none is. */
+export function windowGap(
+  coverage: ReturnType<typeof barCoverage>,
+  window: LookupWindow,
+): { missingHours: number; windowHours: number } | Record<string, never> {
+  return coverage.covered && coverage.missingHours > 0
+    ? { missingHours: coverage.missingHours, windowHours: WINDOW_HOURS[window] }
+    : {};
 }
 
 /** How the bars put their quotes in dollars, without the pools' addresses: `implied_from_<pool>`. */
@@ -337,11 +373,18 @@ function barPin(rows: readonly BarRow[]) {
   };
 }
 
+/** A pin with the rule its window was shown under. */
+const withCoverage = <T extends { method: string }>(pin: T): T => ({
+  ...pin,
+  method: `${pin.method}${COVERAGE_METHOD}`,
+});
+
 /**
  * The coverage of a window holding the asset's own mid bars: the hours the chain's mid collector ran count as
- * collected (an hour it ran and this asset has no bar is a quiet hour, not an outage), and the asset's own newest
- * bar must have ended at most `BARS_FRESH_MS` before `now`, so other tokens' fresh mids never make this one's
- * old marks current. Otherwise not covered, the hours after its newest bar missing.
+ * collected (an hour it ran and this asset has no bar is a quiet hour, not an outage), the window may miss up to
+ * `maxMissingHours` as `barCoverage` allows, and the asset's own newest bar must have ended at most
+ * `BARS_FRESH_MS` before `now`, so other tokens' fresh mids never make this one's old marks current. Otherwise
+ * not covered, the hours after its newest bar missing.
  */
 export function midCoverage(
   bars: readonly { hour: string }[],
@@ -374,9 +417,11 @@ export const SWAP_ONLY_KEYS: readonly BarKey[] = ['volume', 'buyvol', 'sellvol',
  * the window's high and low, the change from its first priced close to its last (a past figure, as a
  * fraction), the volume and the volume of purchases and of sales in dollars, the swaps, and the hours with
  * no priced swap among the hours the chain was collected (up to its latest collected hour). A window the bars
- * do not cover (`barCoverage`: an outage of the chain's collector, a history that starts inside the window,
- * bars that stop short of now) answers every figure `not_collected` with the hours missing: never a part of
- * the window shown as the whole of it. One bar an hour (`oneAnHour`: a swap-built bar before a mid-price one).
+ * do not cover (`barCoverage`: more than 5% of its hours not collected, through an outage of the chain's
+ * collector or a history that starts inside the window; no bar of the asset; bars that stop short of now)
+ * answers every figure `not_collected` with the hours missing. A covered window with hours not collected is
+ * figured from the bars it has, and every figure says how many hours are missing of the window's
+ * (`missingHours`, `windowHours`): never a part of the window shown as the whole of it. One bar an hour (`oneAnHour`: a swap-built bar before a mid-price one).
  * A window with any bar of the collector's mid prices (Solana's hourly bars, gate HOURLY-BARS) answers its
  * close, high, low and change from them, and the volumes, the swaps and the gaps `not_collected`
  * (`SWAP_ONLY_KEYS`): those hours read no swap, so a sum over the window would leave them out.
@@ -405,7 +450,9 @@ export function priceHistoryFigures(
     value: number,
     unit: FigureUnit,
   ): AssetFigure =>
-    Number.isFinite(value) ? { key, value, unit, ...barPin(used) } : missing(key, 'not_a_number');
+    Number.isFinite(value)
+      ? { key, value, unit, ...withCoverage(barPin(used)), ...windowGap(coverage, window) }
+      : missing(key, 'not_a_number');
   const out: AssetFigure[] = [];
   const last = priced.at(-1);
   const first = priced[0];
@@ -501,7 +548,8 @@ export function topPools(
  * sums), the Robinhood Chain reading sums the discovery file's pools, and the per-pool `market_bars` hold
  * swaps, not balances. So the pools, their TVL and the shares all come from one reading, with its age.
  * The volume is each pool's own bars (`market_bars`, `pool` = its address) over the last day, served only
- * when the asset's bars cover that day (`dayCovered`); a pool with no bar in it is not collected, never zero.
+ * when the asset's bars cover that day (`dayCovered`, with the hours it misses); a pool with no bar in it is
+ * not collected, never zero.
  * Where the reading's sum is a lower bound (a pool it could not measure), no pool's share is served.
  */
 export function poolFigures(
@@ -539,7 +587,8 @@ export function poolFigures(
                 key: 'volume',
                 value: valued.reduce((total, bar) => total + (bar.volumeUsd as number), 0),
                 unit: 'usd',
-                ...barPin(valued),
+                ...withCoverage(barPin(valued)),
+                ...windowGap(dayCovered, '24h'),
               };
       // A sum that left a pool out (`detail.lowerBound`) is less than the whole: a share of it would be
       // overstated, so it is not measured. The pool's own TVL stands.

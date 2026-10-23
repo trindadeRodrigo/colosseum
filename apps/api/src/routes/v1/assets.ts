@@ -41,6 +41,20 @@ const LookupFactBody = z.object({
     .nonnegative()
     .optional()
     .describe('The reading is past its age limit: its age, in seconds'),
+  missingHours: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      "A figure over a window shown with some of its hours not collected (at most 5% of the window's hours): how many are missing",
+    ),
+  windowHours: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('The hours of the window `missingHours` is counted in'),
 });
 const LookupMissingBody = z.object({
   id: z.string(),
@@ -98,7 +112,7 @@ export function registerAssetFactsRoute(
       schema: {
         tags: ['assets'],
         summary: 'The facts the server holds of one listed asset',
-        description: `One listed asset of a chain the server runs, by its catalog id (\`solana:tslax\`). Each part answers its facts and the ones that are not measured, with why: \`profile\`, the newest reading of each of the asset's metrics (supply, the issuer's supply, the twenty largest holders' share, pool TVL, DEX volume over a day, protocol TVL, exchange rate, each yield reading), served with \`staleAgeSec\` when it is older than three of its job's intervals; \`price_history\`, over \`window\` from the hourly bars of the asset's DEX pools in dollars: the latest close, the high, the low, the change from the window's first close to its last (a past figure, never a forecast), the volume, the volume traded on the entry side and on the exit side, the swaps and the hours with no priced swap, every one \`not_collected\` with \`missingHours\` when the bars do not cover the window; \`pools\`, its pools by dollars held, at most five; \`lending\`, per lending market that lends the asset itself (at most five, the largest by what a lender can withdraw now; markets of one venue that lend from one pool once), its supply and borrow rates, the share lent out and what a lender can withdraw now: a lending figure is always the figure of the token the market lends, so a market that only takes the asset as collateral gives no figure under it, only a missing \`lend:<asset>:<account>:collateral\` entry (\`not_applicable\`) whose label names the token it lends, whose own lending markets carry the rates; \`bearing\`, Bearing's exit, liquidity and market figures at the reference size. DEX prices and oracle prices are never blended. Every fact carries its source, method, \`fetchedAt\` and \`provenance\`: a test-network token's facts are its mainnet model's, labelled \`sandbox\` with the model named (\`modelledOn\`), and a chain on the mock labels them \`mock\`. A part whose read takes longer than a moment answers \`unread: "reading"\`: ask again. A cash token answers only \`lending\` (where it can be lent and at what rates); its other parts are empty. An unknown id is a 404.\n\n${DISCLAIMER.en}`,
+        description: `One listed asset of a chain the server runs, by its catalog id (\`solana:tslax\`). Each part answers its facts and the ones that are not measured, with why: \`profile\`, the newest reading of each of the asset's metrics (supply, the issuer's supply, the twenty largest holders' share, pool TVL, DEX volume over a day, protocol TVL, exchange rate, each yield reading), served with \`staleAgeSec\` when it is older than three of its job's intervals; \`price_history\`, over \`window\` from the hourly bars of the asset's DEX pools in dollars: the latest close, the high, the low, the change from the window's first close to its last (a past figure, never a forecast), the volume, the volume traded on the entry side and on the exit side, the swaps and the hours with no priced swap. A window is shown when no more than 5% of its hours were not collected (1 of 24, 8 of 168, 36 of 720), its figures made from the bars it has, each with \`missingHours\` and \`windowHours\` when any hour is missing ("11 of 720 hours missing"); with more missing, with no bar of the asset in it, or with the chain's bars ending more than two hours before now, every figure is \`not_collected\` with \`missingHours\`; \`pools\`, its pools by dollars held, at most five, each pool's volume over the last day under the same rule; \`lending\`, per lending market that lends the asset itself (at most five, the largest by what a lender can withdraw now; markets of one venue that lend from one pool once), its supply and borrow rates, the share lent out and what a lender can withdraw now: a lending figure is always the figure of the token the market lends, so a market that only takes the asset as collateral gives no figure under it, only a missing \`lend:<asset>:<account>:collateral\` entry (\`not_applicable\`) whose label names the token it lends, whose own lending markets carry the rates; \`bearing\`, Bearing's exit, liquidity and market figures at the reference size. DEX prices and oracle prices are never blended. Every fact carries its source, method, \`fetchedAt\` and \`provenance\`: a test-network token's facts are its mainnet model's, labelled \`sandbox\` with the model named (\`modelledOn\`), and a chain on the mock labels them \`mock\`. A part whose read takes longer than a moment answers \`unread: "reading"\`: ask again. A cash token answers only \`lending\` (where it can be lent and at what rates); its other parts are empty. An unknown id is a 404.\n\n${DISCLAIMER.en}`,
         params: z.strictObject({ id: AssetId }),
         querystring: z.strictObject({
           parts: z
