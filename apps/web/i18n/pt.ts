@@ -455,9 +455,9 @@ export const pt: Dictionary = {
         `Gerar ${income} por mês com ${amount} por ${months}.`,
       months: (n: number) => (n === 1 ? '1 mês' : `${n} meses`),
       sentenceOpen: {
-        grow: (amount: string) => `Fazer ${amount} crescer, sem data definida.`,
-        income: (amount: string) => `Gerar renda com ${amount}, sem data definida.`,
-        protect: (amount: string) => `Proteger ${amount}, sem data definida.`,
+        grow: (amount: string) => `Fazer ${amount} crescer`,
+        income: (amount: string) => `Gerar renda com ${amount}`,
+        protect: (amount: string) => `Proteger ${amount}`,
       },
       noDate: 'Sem data definida',
       unfinished: 'Seu objetivo, como foi lido até aqui.',

@@ -47,7 +47,7 @@ export const LeaderboardPnl = Sourced.extend({
 export type LeaderboardPnl = z.infer<typeof LeaderboardPnl>;
 
 /**
- * The goal a vault was opened for, as the board names the vault ("Grow $5,000, with no date set."):
+ * The goal a vault was opened for, as the board names the vault ("Grow $5,000"):
  * the five structured fields of its plan's sheet and nothing else, where the plan is its owner's own.
  */
 export const LeaderboardGoal = BasketSheet.pick({

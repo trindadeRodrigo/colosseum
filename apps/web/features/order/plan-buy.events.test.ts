@@ -210,7 +210,7 @@ describe('the plan screen', () => {
       },
     });
     const host = await plan();
-    expect(find(host, 'h1').textContent).toBe('Grow $40,000, with no date set.');
+    expect(find(host, 'h1').textContent).toBe('Grow $40,000');
     // The limits are the page's heading now, not chips: the time frame's figure says it.
     expect(host.textContent).toContain(en.goal.card.noDate);
     expect(host.textContent).not.toMatch(/120 months|2036/);
