@@ -602,7 +602,7 @@ describe('a plan built again in the same conversation', () => {
   it('joins only a plan of the caller’s own: another person’s, a link’s or an unknown id starts a thread', async () => {
     const [who, other] = [await someone(), await someone()];
     const theirs = await make(other, 6_124, {
-      thread: [{ text: 'the other person’s own words 9917', reply: reply() }],
+      thread: [{ text: 'the other person’s own words QZX-other-words', reply: reply() }],
     });
     const linked = PersonalizeResponse.parse(
       (await post(null, '/v1/baskets/propose', { sheet: sheet({ amountUsd: 6_125 }) })).json(),
@@ -611,7 +611,7 @@ describe('a plan built again in the same conversation', () => {
     for (const previousPlanId of [theirs.id, linked.id, crypto.randomUUID()]) {
       const mine = await make(who, amountUsd++, { previousPlanId });
       const read = await get(who, `/v1/baskets/${mine.id}/thread`);
-      expect(read.body).not.toContain('9917');
+      expect(read.body).not.toContain('QZX-other-words');
       // a thread of its own, started as any plan's is
       expect(events(ThreadResponse.parse(read.json()))).toEqual([
         { type: 'plan_built', planId: mine.id },
@@ -619,7 +619,7 @@ describe('a plan built again in the same conversation', () => {
     }
     // and nothing was written to the thread that was named
     expect(lines(await thread(other, theirs.id))).toEqual([
-      'person: the other person’s own words 9917',
+      'person: the other person’s own words QZX-other-words',
       'app',
       'plan_built',
     ]);
@@ -776,7 +776,7 @@ describe('a thread’s place in the limits and the database', () => {
   });
 
   it('lets nothing of a person’s words into a log when the database refuses a write', async () => {
-    const secret = 'what I earn is my own 5521';
+    const secret = 'what I earn is my own QZX-earned';
     // the driver's own error repeats what it was sent: this is what must never be logged
     const raw = await breaking(data.db)
       .insert(planTurns)
@@ -785,7 +785,7 @@ describe('a thread’s place in the limits and the database', () => {
         () => null,
         (e: unknown) => e as Error & { params?: unknown },
       );
-    expect(`${raw?.message} ${JSON.stringify(raw?.params)}`).toContain('5521');
+    expect(`${raw?.message} ${JSON.stringify(raw?.params)}`).toContain('QZX-earned');
 
     const logged: string[] = [];
     const broken = await testApp({
@@ -821,7 +821,7 @@ describe('a thread’s place in the limits and the database', () => {
       // and no line of the log, of any request, has a word of either turn or of the reply
       const all = logged.join('\n');
       expect(logged.length).toBeGreaterThan(2);
-      for (const word of ['5521', 'what I earn', 'said first', 'tesla', 'cantPick'])
+      for (const word of ['QZX-earned', 'what I earn', 'said first', 'tesla', 'cantPick'])
         expect(all, word).not.toContain(word);
       expect(lines(await thread(who, plan.id))).toEqual(['plan_built']);
     } finally {
